@@ -31,71 +31,72 @@ _NO_DEVICE = """
 """
 
 
-def _press_mic_with(page: Page, base_url: str, sid: str, session: dict) -> None:
+# Every answer the server can give, with whether it earns the specific hint.
+_ANSWERS = [
+    ({"state": "remote", "this_pc": True}, True),
+    ({"state": "local", "this_pc": True}, False),
+    ({"state": "unknown", "this_pc": True}, False),
+    ({"state": "remote", "this_pc": False}, False),
+]
+
+
+def _route_desktop_session(page: Page) -> dict:
+    """Mock /api/desktop-session with whatever ``answer["body"]`` holds when
+    the request lands: the client reads it live on every mic press and every
+    Settings open, so one page can walk every answer."""
+    answer: dict = {"body": {}}
     page.route(
         "**/api/desktop-session",
         lambda route: route.fulfill(
-            status=200, content_type="application/json", body=json.dumps(session)
+            status=200, content_type="application/json", body=json.dumps(answer["body"])
         ),
     )
-    _open_composer(page, base_url, sid)
-    page.evaluate(_NO_DEVICE)
-    page.locator("#terminalComposeBar .composer-mic").click()
+    return answer
 
 
-def test_a_remote_session_on_this_pc_shows_the_remote_desktop_hint(
+def test_only_a_remote_session_on_this_pc_turns_the_mic_toast_into_the_hint(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
-    _press_mic_with(
-        authed_page, base_url, launched_pty_session, {"state": "remote", "this_pc": True}
-    )
+    """``remote`` from this PC names Remote Desktop; every other answer keeps
+    the generic "Microphone unavailable" toast. The toast is emptied before
+    each press, so each check reads that press's own toast."""
+    answer = _route_desktop_session(authed_page)
+    _open_composer(authed_page, base_url, launched_pty_session)
+    authed_page.evaluate(_NO_DEVICE)
+    mic = authed_page.locator("#terminalComposeBar .composer-mic")
     toast = authed_page.locator("#toast")
-    expect(toast).to_contain_text("No microphone in this remote-desktop session")
-    expect(toast).to_contain_text("Record from this computer")
+    for session, hinted in _ANSWERS:
+        answer["body"] = session
+        authed_page.evaluate("() => { document.getElementById('toast').textContent = ''; }")
+        mic.click()
+        if hinted:
+            expect(toast).to_contain_text("No microphone in this remote-desktop session")
+            expect(toast).to_contain_text("Record from this computer")
+        else:
+            expect(toast).to_contain_text("Microphone unavailable")
+            expect(toast).not_to_contain_text("remote-desktop")
 
 
-@pytest.mark.parametrize(
-    "session",
-    [
-        {"state": "local", "this_pc": True},
-        {"state": "unknown", "this_pc": True},
-        {"state": "remote", "this_pc": False},
-    ],
-    ids=["local", "unknown", "remote-but-another-device"],
-)
-def test_every_other_answer_keeps_the_generic_message(
-    authed_page: Page, base_url: str, launched_pty_session: str, session: dict
-) -> None:
-    _press_mic_with(authed_page, base_url, launched_pty_session, session)
-    toast = authed_page.locator("#toast")
-    expect(toast).to_contain_text("Microphone unavailable")
-    expect(toast).not_to_contain_text("remote-desktop")
-
-
-@pytest.mark.parametrize(
-    "session, shown",
-    [
-        ({"state": "remote", "this_pc": True}, True),
-        ({"state": "local", "this_pc": True}, False),
-        ({"state": "unknown", "this_pc": True}, False),
-        ({"state": "remote", "this_pc": False}, False),
-    ],
-    ids=["remote", "local", "unknown", "remote-but-another-device"],
-)
 def test_settings_voice_line_shows_only_for_a_remote_session_on_this_pc(
-    authed_page: Page, base_url: str, session: dict, shown: bool
+    authed_page: Page, base_url: str
 ) -> None:
-    authed_page.route(
-        "**/api/desktop-session",
-        lambda route: route.fulfill(
-            status=200, content_type="application/json", body=json.dumps(session)
-        ),
-    )
+    """Settings re-reads the answer on every open. Each answer that hides the
+    line follows an open that showed it, so its check sees the line go away
+    rather than a page that never showed it."""
+    remote, *others = _ANSWERS
+    answer = _route_desktop_session(authed_page)
     authed_page.goto(base_url, wait_until="domcontentloaded")
-    open_settings(authed_page)
     parts = authed_page.locator("#paneSettings [data-voice-remote]")
-    if shown:
+    for session, _shown in others:
+        answer["body"] = remote[0]
+        open_settings(authed_page)
         expect(parts.locator("visible=true")).to_have_count(3)
-        expect(authed_page.locator("#voiceRemoteHelp")).to_contain_text("Record from this computer")
-    else:
+        expect(authed_page.locator("#voiceRemoteHelp")).to_contain_text(
+            "Record from this computer"
+        )
+        authed_page.locator("#tabClaude").click()
+
+        answer["body"] = session
+        open_settings(authed_page)
         expect(parts.locator("visible=true")).to_have_count(0)
+        authed_page.locator("#tabClaude").click()

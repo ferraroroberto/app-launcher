@@ -57,7 +57,7 @@ def _stage(page: Page, *names: str) -> None:
     )
 
 
-def test_second_tap_cancels_a_long_extraction(
+def test_second_tap_cancels_a_long_extraction_and_a_partial_retry_says_how_many_were_missed(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
     page = authed_page
@@ -87,26 +87,17 @@ def test_second_tap_cancels_a_long_extraction(
     expect(page.locator(THUMBS)).to_have_count(2)
     expect(page.locator(TEXTAREA)).to_have_value("")
 
-
-def test_partial_take_inserts_text_and_says_how_many_were_missed(
-    authed_page: Page, base_url: str, launched_pty_session: str
-) -> None:
-    page = authed_page
-    page.route(
-        re.compile(r".*/api/ocr$"),
-        lambda route: route.fulfill(
-            status=200,
-            content_type="application/json",
-            body=json.dumps({
-                "text": "page one\n[missing: photo 2 (e2e-stub-b.png) could not be read]",
-                "missing_photos": ["e2e-stub-b.png"],
-            }),
-        ),
+    # The retry is answered with a partly read take.
+    extract.click()
+    held.wait_for(2)
+    held.routes[1].fulfill(
+        status=200,
+        content_type="application/json",
+        body=json.dumps({
+            "text": "page one\n[missing: photo 2 (e2e-stub-b.png) could not be read]",
+            "missing_photos": ["e2e-stub-b.png"],
+        }),
     )
-    _open_compose(page, base_url, launched_pty_session)
-    _stage(page, "e2e-stub-a.png", "e2e-stub-b.png")
-
-    page.locator(EXTRACT).click()
 
     # The text lands (inline marker included), and the toast is not the plain
     # "Text extracted" success: it names how many screenshots could not be read.

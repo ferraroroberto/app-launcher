@@ -48,6 +48,13 @@ def _path(name: str) -> str:
     return f"E:/tmp/.launcher-tmp/{name}"
 
 
+def _reset_message(page: Page) -> None:
+    """Empty the composer's message and the toast between two runs on one
+    page, so the next run's paths and summary are its own."""
+    page.locator(INPUT).fill("")
+    page.evaluate("() => { document.getElementById('toast').textContent = ''; }")
+
+
 def _ready(page: Page, base_url: str, sid: str) -> HeldUploads:
     held = HeldUploads(page, _UPLOAD_ROUTE)
     _open_terminal(page, base_url, sid)
@@ -55,7 +62,7 @@ def _ready(page: Page, base_url: str, sid: str) -> HeldUploads:
     return held
 
 
-def test_progress_shows_on_the_button_and_status_line_then_clears(
+def test_progress_shows_then_clears_and_a_second_pick_mid_batch_queues_in_order(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
     held = _ready(authed_page, base_url, launched_pty_session)
@@ -96,8 +103,33 @@ def test_progress_shows_on_the_button_and_status_line_then_clears(
         "Uploaded 3 files — paths added to the message."
     )
 
+    # A second pick that lands while the first file is still uploading.
+    _reset_message(authed_page)
+    authed_page.locator(ATTACH_INPUT).set_input_files(
+        files=[_png("e2e-stub-d.png"), _png("e2e-stub-e.png")]
+    )
+    held.wait_for(4)
+    expect(status).to_have_text("Uploading 1 of 2 · e2e-stub-d.png")
+    authed_page.locator(ATTACH_INPUT).set_input_files(files=[_png("e2e-stub-f.png")])
+    expect(status).to_have_text("Uploading 1 of 3 · e2e-stub-d.png")
+    assert held.count == 4, "a queued pick must not start beside the running upload"
 
-def test_a_failure_mid_batch_is_named_in_the_summary_and_the_rest_land(
+    held.ok(3, _path("e2e-stub-d.png"))
+    held.wait_for(5)
+    held.ok(4, _path("e2e-stub-e.png"))
+    held.wait_for(6)
+    expect(status).to_have_text("Uploading 3 of 3 · e2e-stub-f.png")
+    held.ok(5, _path("e2e-stub-f.png"))
+
+    expect(status).to_be_hidden()
+    expect(authed_page.locator(INPUT)).to_have_value(
+        "\n\n".join(_path(n) for n in ("e2e-stub-d.png", "e2e-stub-e.png", "e2e-stub-f.png"))
+    )
+    expect(authed_page.locator("#toast")).to_contain_text("Uploaded 3 files")
+    assert held.count == 6, "each file is uploaded exactly once"
+
+
+def test_a_failure_mid_batch_is_named_and_an_oversize_file_never_leaves_the_browser(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
     held = _ready(authed_page, base_url, launched_pty_session)
@@ -119,52 +151,20 @@ def test_a_failure_mid_batch_is_named_in_the_summary_and_the_rest_land(
     )
     expect(authed_page.locator(STATUS)).to_be_hidden()
 
-
-def test_an_oversize_file_is_refused_before_any_upload_and_names_the_limit(
-    authed_page: Page, base_url: str, launched_pty_session: str
-) -> None:
-    held = _ready(authed_page, base_url, launched_pty_session)
+    # A file over the host's limit is refused before any upload.
+    _reset_message(authed_page)
     big = {"name": "e2e-stub-big.png", "mimeType": "image/png",
            "buffer": b"\0" * (13 * 1024 * 1024)}
-    authed_page.locator(ATTACH_INPUT).set_input_files(files=[big, _png("e2e-stub-a.png")])
+    authed_page.locator(ATTACH_INPUT).set_input_files(files=[big, _png("e2e-stub-d.png")])
     # Only the small file is ever requested: the big one costs no bytes.
-    held.wait_for(1)
-    held.ok(0, _path("e2e-stub-a.png"))
+    held.wait_for(4)
+    held.ok(3, _path("e2e-stub-d.png"))
 
-    expect(authed_page.locator("#toast")).to_have_text(
+    expect(toast).to_have_text(
         "Uploaded 1 of 2 — 1 failed: e2e-stub-big.png (13 MB, limit 12 MB)"
     )
-    expect(authed_page.locator(INPUT)).to_have_value(_path("e2e-stub-a.png"))
-    assert held.count == 1, "the oversize file must never be requested"
-
-
-def test_a_second_pick_mid_batch_queues_in_order_without_duplicates(
-    authed_page: Page, base_url: str, launched_pty_session: str
-) -> None:
-    held = _ready(authed_page, base_url, launched_pty_session)
-    authed_page.locator(ATTACH_INPUT).set_input_files(
-        files=[_png("e2e-stub-a.png"), _png("e2e-stub-b.png")]
-    )
-    held.wait_for(1)
-    expect(authed_page.locator(STATUS)).to_have_text("Uploading 1 of 2 · e2e-stub-a.png")
-    # The second pick lands while the first file is still uploading.
-    authed_page.locator(ATTACH_INPUT).set_input_files(files=[_png("e2e-stub-c.png")])
-    expect(authed_page.locator(STATUS)).to_have_text("Uploading 1 of 3 · e2e-stub-a.png")
-    assert held.count == 1, "a queued pick must not start beside the running upload"
-
-    held.ok(0, _path("e2e-stub-a.png"))
-    held.wait_for(2)
-    held.ok(1, _path("e2e-stub-b.png"))
-    held.wait_for(3)
-    expect(authed_page.locator(STATUS)).to_have_text("Uploading 3 of 3 · e2e-stub-c.png")
-    held.ok(2, _path("e2e-stub-c.png"))
-
-    expect(authed_page.locator(STATUS)).to_be_hidden()
-    expect(authed_page.locator(INPUT)).to_have_value(
-        "\n\n".join(_path(n) for n in ("e2e-stub-a.png", "e2e-stub-b.png", "e2e-stub-c.png"))
-    )
-    expect(authed_page.locator("#toast")).to_contain_text("Uploaded 3 files")
-    assert held.count == 3, "each file is uploaded exactly once"
+    expect(authed_page.locator(INPUT)).to_have_value(_path("e2e-stub-d.png"))
+    assert held.count == 4, "the oversize file must never be requested"
 
 
 def test_a_tap_on_the_busy_button_cancels_and_a_fresh_pick_works(

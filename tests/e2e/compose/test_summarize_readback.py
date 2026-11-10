@@ -50,7 +50,10 @@ def _open_terminal(page: Page, base_url: str, sid: str) -> None:
 
 def _route_hub(page: Page, *, available: bool = True,
                summary: str = "Build is green. No decision needed.",
-               summarize_status: int = 200) -> None:
+               summarize_status: int = 200) -> dict:
+    """Stub the hub routes. The returned dict's ``summarize_status`` is read on
+    every request, so a test can turn the summarize answer into an error."""
+    answer = {"summarize_status": summarize_status}
     page.route(
         "**/api/tts/health",
         lambda route: route.fulfill(
@@ -61,7 +64,7 @@ def _route_hub(page: Page, *, available: bool = True,
     page.route(
         "**/api/tts/summarize",
         lambda route: route.fulfill(
-            status=summarize_status, content_type="application/json",
+            status=answer["summarize_status"], content_type="application/json",
             body='{"summary": "%s"}' % summary,
         ),
     )
@@ -72,49 +75,26 @@ def _route_hub(page: Page, *, available: bool = True,
             headers={"X-Sample-Rate": "24000"}, body=_PCM,
         ),
     )
+    return answer
 
 
-def test_summarize_reply_returns_summary(
+def test_summarize_then_play_composes_and_a_failed_summary_rejects(
     authed_page: Page, base_url: str
 ) -> None:
     """summarizeReply() POSTs the reply to /api/tts/summarize and resolves the
-    hub's condensed summary string."""
-    _route_hub(authed_page, summary="Tests pass. Decide whether to merge.")
-    _load_readback(authed_page, base_url)
-    got = authed_page.evaluate(
-        "async () => window.__readback.summarizeReply('a long reply', "
-        "{ token: 'bt', terminalToken: 'tt' })"
-    )
-    assert got == "Tests pass. Decide whether to merge."
-
-
-def test_summarize_reply_rejects_on_error(
-    authed_page: Page, base_url: str
-) -> None:
-    """A failed summarize POST makes summarizeReply() reject, so the click
-    handler can surface an error and skip the read."""
-    _route_hub(authed_page, summarize_status=502)
-    _load_readback(authed_page, base_url)
-    rejected = authed_page.evaluate(
-        "async () => { try { await window.__readback.summarizeReply('x', {});"
-        " return false; } catch (_) { return true; } }"
-    )
-    assert rejected is True
-
-
-def test_summarize_then_play_composes(
-    authed_page: Page, base_url: str
-) -> None:
-    """The summarize action's composition: arm the hub audio in the gesture
-    (prepareHub), await the summary (summarizeReply), then read it into the
-    armed context (speakHubInto) — the audio still plays after the round-trip."""
+    hub's condensed summary string. The summarize action's composition: arm the
+    hub audio in the gesture (prepareHub), await the summary (summarizeReply),
+    then read it into the armed context (speakHubInto), so the audio still plays
+    after the round-trip. A failed summarize POST makes summarizeReply() reject,
+    so the click handler can surface an error and skip the read."""
     authed_page.add_init_script(AUDIO_MOCK)
-    _route_hub(authed_page, summary="Shipped. Your call: deploy now?")
+    answer = _route_hub(authed_page, summary="Shipped. Your call: deploy now?")
     _load_readback(authed_page, base_url)
     got = authed_page.evaluate(
         "async () => {"
         "  const handle = window.__readback.prepareHub();"
-        "  const summary = await window.__readback.summarizeReply('long', {});"
+        "  const summary = await window.__readback.summarizeReply('long', "
+        "    { token: 'bt', terminalToken: 'tt' });"
         "  const ok = await window.__readback.speakHubInto(handle, summary, {});"
         "  return Object.assign({ ok, summary }, window.__audioLog); }"
     )
@@ -124,52 +104,34 @@ def test_summarize_then_play_composes(
     assert got["resumed"] >= 1       # resumed for iOS autoplay
     assert got["started"] >= 1       # the summary PCM was scheduled
 
-
-def test_menu_offers_both_actions_when_hub_available(
-    authed_page: Page, base_url: str, launched_pty_session: str
-) -> None:
-    """When the hub is reachable, the ⋮ menu lists both "Read aloud" and
-    "Summarize & read", above "Stop and kill"; there is no separate speaker
-    button in the bar."""
-    _route_hub(authed_page, available=True)
-    _open_terminal(authed_page, base_url, launched_pty_session)
-    # The rows are built on every open, so wait for the probe to settle first.
-    wait_for_hub_probe(authed_page, "up")
-    expect(authed_page.locator("#terminalSpeak")).to_have_count(0)
-    open_menu(authed_page)
-    expect(authed_page.locator(READ_ITEM)).to_be_visible()
-    expect(authed_page.locator(SUMMARIZE_ITEM)).to_be_visible()
-    order = authed_page.locator(".terminal-menu [role=menuitem]").evaluate_all(
-        "els => els.map(e => e.dataset.item || e.textContent.trim())"
+    answer["summarize_status"] = 502
+    rejected = authed_page.evaluate(
+        "async () => { try { await window.__readback.summarizeReply('x', {});"
+        " return false; } catch (_) { return true; } }"
     )
-    stop = order.index("action-stop-close")
-    assert order.index("overlay-read-aloud-btn") < order.index("overlay-summarize-read-btn") < stop, order
+    assert rejected is True
 
 
-def test_summary_modal_autocloses_when_reading_ends(
+def test_summary_modal_closes_when_reading_ends_and_on_a_tap(
     authed_page: Page, base_url: str
 ) -> None:
     """The summary modal is shown while the summary is read aloud and must
-    auto-close the moment reading stops — wired through the speaking-state
-    machine, so a natural finish, a stop, or a tab-leave all close it."""
+    auto-close the moment reading stops: wired through the speaking-state
+    machine, so a natural finish, a stop, or a tab-leave all close it. Tapping
+    the modal dismisses it too (and stops the read)."""
     _load_readback(authed_page, base_url)
+    modal = authed_page.locator("#summaryModal")
     # Open the modal, then drive the speaking state to idle (cancelHub flips it).
     authed_page.evaluate("() => { document.getElementById('summaryModal').hidden = false; }")
-    expect(authed_page.locator("#summaryModal")).to_be_visible()
+    expect(modal).to_be_visible()
     authed_page.evaluate("() => window.__readback.cancelHub()")
-    expect(authed_page.locator("#summaryModal")).to_be_hidden()
+    expect(modal).to_be_hidden()
 
-
-def test_summary_modal_tap_dismisses(
-    authed_page: Page, base_url: str
-) -> None:
-    """Tapping the modal dismisses it (and stops the read)."""
-    _load_readback(authed_page, base_url)
     authed_page.evaluate("() => { document.getElementById('summaryModal').hidden = false; }")
-    expect(authed_page.locator("#summaryModal")).to_be_visible()
+    expect(modal).to_be_visible()
     surface(authed_page, "readback.summary-modal")
-    authed_page.locator("#summaryModal").click()
-    expect(authed_page.locator("#summaryModal")).to_be_hidden()
+    modal.click()
+    expect(modal).to_be_hidden()
 
 
 def test_menu_suppressed_when_hub_unavailable(
@@ -185,16 +147,31 @@ def test_menu_suppressed_when_hub_unavailable(
     expect(authed_page.locator(SUMMARIZE_ITEM)).to_have_count(0)
 
 
-def test_menu_row_stops_a_read_in_progress(
+def test_menu_offers_both_actions_and_its_row_stops_a_read_in_progress(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
-    """With the speaker button gone, the ⋮ menu is where a read is stopped:
-    while speech plays the ⋮ button pulses, the Read aloud row reads "Stop
-    reading", the Summarize row steps aside, and tapping the row silences it."""
+    """When the hub is reachable, the ⋮ menu lists both "Read aloud" and
+    "Summarize & read", above "Stop and kill"; there is no separate speaker
+    button in the bar. So the ⋮ menu is where a read is stopped: while speech
+    plays the ⋮ button pulses, the Read aloud row reads "Stop reading", the
+    Summarize row steps aside, and tapping the row silences it."""
     authed_page.add_init_script(AUDIO_MOCK)
     _route_hub(authed_page, available=True)
     _open_terminal(authed_page, base_url, launched_pty_session)
+    # The rows are built on every open, so wait for the probe to settle first.
     wait_for_hub_probe(authed_page, "up")
+    expect(authed_page.locator("#terminalSpeak")).to_have_count(0)
+    open_menu(authed_page)
+    expect(authed_page.locator(READ_ITEM)).to_be_visible()
+    expect(authed_page.locator(SUMMARIZE_ITEM)).to_be_visible()
+    order = authed_page.locator(".terminal-menu [role=menuitem]").evaluate_all(
+        "els => els.map(e => e.dataset.item || e.textContent.trim())"
+    )
+    stop = order.index("action-stop-close")
+    assert order.index("overlay-read-aloud-btn") < order.index("overlay-summarize-read-btn") < stop, order
+    open_menu(authed_page)  # the anchor toggles its menu shut
+    expect(authed_page.locator(READ_ITEM)).to_be_hidden()
+
     authed_page.evaluate("() => window.__readback.speakHub('Reading on.', {})")
     expect(authed_page.locator("#terminalMenu")).to_have_attribute("data-speaking", "true")
     expect(authed_page.locator("#terminalMenu")).to_have_class(re.compile(r"\bspeaking\b"))
