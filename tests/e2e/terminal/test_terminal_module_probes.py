@@ -3,8 +3,8 @@
 Every probe here needs nothing but a loaded SPA: it imports a terminal module
 (``terminal.js``, ``terminal-connection.js``, ``terminal-touch.js``) or reads
 the CSS tokens, and exercises a pure helper, a throwaway DOM node or a fake
-WebSocket. None opens a PTY, mocks a route or uses a fixture beyond
-``authed_page``. They used to be eight separate tests across seven modules,
+WebSocket. None opens a PTY or uses a fixture beyond ``authed_page``, and only
+the git-refresh probe mocks a route. They used to be eight separate tests across seven modules,
 each paying its own browser context and page boot for one ``evaluate``; #1215
 folded them into one test on one page load.
 
@@ -17,6 +17,10 @@ module's docstring, so the issue each one pins stays readable here:
 * ``_probe_native_touch_scroll_routing`` — #23 (``test_terminal_native_scroll.py``)
 * ``_probe_terminal_tokens_follow_app_theme`` — #383
   (``test_terminal_light_theme.py``)
+* ``_probe_git_refresh_button_rechecks_without_a_popover`` — #1434
+  (``test_status_popover.py``), the one probe that mocks a route: the Code
+  tab's git-status fetch, served before the load so it counts requests
+  instead of running git. Chromium only, as it always ran.
 
 The probes that needed only a pure helper (``routeFrame``, the repaint-batch
 reset, the reconnect closing its old socket, and the value tables of
@@ -24,15 +28,20 @@ reset, the reconnect closing its old socket, and the value tables of
 ``tests/js/terminal_module_helpers.test.mjs``, which runs under plain Node;
 the probes left here read layout, computed style or a real xterm.
 
-Order matters only at the edges: the read-only DOM check runs first, the
+Order matters only at the edges: the read-only DOM check runs first, then
+the git-refresh probe (it opens the Projects card and taps its button), the
 probes that build throwaway nodes remove what they added, the native-scroll probe waits for the xterm global, and the
 theme flip (which leaves ``html[data-theme]`` changed) runs last.
 """
 
 from __future__ import annotations
 
+import json
+
 import pytest
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
+
+from tests.e2e.fixtures.waits import wait_until
 
 # iPhone keyboard overlay, visualViewport and native touch-scroll probes.
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
@@ -47,6 +56,50 @@ def _probe_no_follow_switch_remains(page: Page) -> None:
     Formerly ``test_terminal_light_theme.py::test_no_follow_switch_remains``.
     """
     assert page.locator("#termFollowTheme").count() == 0
+
+
+# ----------------------------------------------------------------- #1434
+
+def _serve_git_status(page: Page) -> list[str]:
+    """Fulfil /api/claude-code/git-status with an empty body, recording each URL."""
+    calls: list[str] = []
+
+    def _fulfill(route):
+        calls.append(route.request.url)
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps({"projects": []}))
+
+    page.route("**/api/claude-code/git-status*", _fulfill)
+    return calls
+
+
+def _probe_git_refresh_button_rechecks_without_a_popover(page: Page, calls: list[str]) -> None:
+    """Regression pin for #1434 (was #139's off-main status popover).
+
+    Formerly ``test_status_popover.py::test_git_refresh_button_rechecks_without_a_popover``.
+
+    #139 put an off-main popover behind the Code tab's "Git status" button.
+    #1434 removed both: the rows themselves are the off-main list ("on
+    <branch>" in their meta), and the refresh is an icon button in the Projects
+    card's toolbar whose only feedback is the footer's "Git checked just now".
+    This pins that the refresh re-runs the git check, that no popover opens,
+    and that the old button is gone.
+    """
+    wait_until(page, lambda: len(calls) >= 1, "the boot git-status fetch")
+
+    page.locator("details.projects-card").evaluate("el => { el.open = true; }")
+    refresh = page.locator(".projects-toolbar #gitRefreshBtn")
+    expect(refresh).to_be_visible()
+    expect(refresh).to_have_attribute("aria-label", "Refresh git status")
+    expect(page.locator("#gitStatusBtn")).to_have_count(0)
+    expect(page.locator("#gitStatusSummary")).to_have_count(0)
+
+    before = len(calls)
+    refresh.click()
+    wait_until(page, lambda: len(calls) > before, "the refresh's git-status fetch")
+    assert calls[-1].endswith("?fresh=true"), "the refresh button must ask for a scan that starts now"
+    expect(page.locator("#gitCheckedFooter")).to_have_text("Git checked just now")
+    expect(refresh).to_be_enabled()
 
 
 # ------------------------------------------------------------------ #135
@@ -390,11 +443,16 @@ def _probe_terminal_tokens_follow_app_theme(page: Page) -> None:
     assert _term_bg(page) == "#0a0a0a"
 
 
-def test_terminal_module_contracts(authed_page: Page, base_url: str) -> None:
+def test_terminal_module_contracts(
+    authed_page: Page, base_url: str, browser_name: str
+) -> None:
     page = authed_page
+    git_calls = _serve_git_status(page)
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
     _probe_no_follow_switch_remains(page)
+    if browser_name == "chromium":
+        _probe_git_refresh_button_rechecks_without_a_popover(page, git_calls)
     _probe_keyboard_overlay_height(page)
     _probe_fullscreen_keyboard_pan(page)
     _probe_native_touch_scroll_routing(page)

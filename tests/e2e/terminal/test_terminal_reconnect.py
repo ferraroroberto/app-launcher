@@ -17,6 +17,10 @@ This test exercises the JS half of the fix by:
      "iOS-suspend" path, same one reached when uvicorn's ping timeout fires.
   4. Asserting the SPA opens a fresh WS and that input sent on the
      fresh socket reaches ``webapp/sessions/<sid>.log``.
+
+Before the drop, the same page and socket carry the warm re-open pin (#430),
+formerly ``test_warm_terminal_reopen.py``: see
+``_leg_warm_reopen_reuses_terminal_and_ws``.
 """
 
 from __future__ import annotations
@@ -24,7 +28,7 @@ from __future__ import annotations
 import os
 
 import pytest
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS
@@ -97,6 +101,145 @@ _WS_PROBE = """
 """
 
 
+# The SPA loads its modules cache-busted (`state.js?v=<asset_hash>`). A bare
+# import('/static/state.js') would evaluate a SECOND module instance with its
+# own empty state (and, for terminal.js, its own empty warm cache) — silently
+# testing a parallel universe. Resolve the page's real module URL from the
+# resource timeline so the import shares the live instance.
+_LIVE_MODULE = """
+(name) => {
+  const hit = performance.getEntriesByType('resource')
+    .map((r) => r.name)
+    .find((n) => n.includes('/static/' + name + '?v='));
+  return hit || ('/static/' + name);
+}
+"""
+
+
+def _hide_overlay_and_assert_stashed(authed_page: Page) -> None:
+    """Hide the terminal overlay and check the xterm element and WS were kept, not disposed."""
+    # Close the overlay — must stash, not dispose (#430): element stays in
+    # the DOM (hidden) and the WS stays OPEN.
+    authed_page.evaluate(
+        "async () => (await import(("
+        + _LIVE_MODULE
+        + ")('terminal.js'))).hideTerminal()"
+    )
+    expect(authed_page.locator("#terminalOverlay")).to_be_hidden()
+    kept = authed_page.evaluate(
+        """() => {
+          const el = document.querySelector('#terminalHost .xterm');
+          return {
+            tag: el ? el.dataset.warm : null,
+            hidden: el ? el.style.display : null,
+            wsCount: window.__wsInstances.length,
+            wsState: window.__wsInstances[0].readyState,
+          };
+        }"""
+    )
+    assert kept["tag"] == "tagged", (
+        "hiding the overlay destroyed the xterm element — the warm cache "
+        "(#430) is gone and every re-open will replay the transcript"
+    )
+    assert kept["hidden"] == "none", (
+        f"stashed terminal element should be display:none, got "
+        f"{kept['hidden']!r}"
+    )
+    assert kept["wsCount"] == 1 and kept["wsState"] == 1, (
+        f"hiding the overlay should keep the single WS open, got "
+        f"count={kept['wsCount']} state={kept['wsState']}"
+    )
+
+
+def _leg_warm_reopen_reuses_terminal_and_ws(
+    authed_page: Page, sid: str, wait_for_session_log
+) -> None:
+    """Regression pin for issue #430 (warm terminal re-open).
+
+    The bug class: every overlay close disposed the xterm + WebSocket, so
+    every re-open re-subscribed to the session-host, which answers a
+    fullscreen (re)connect with a clear-frame + winsize-toggle repaint nudge
+    — and a ratatui agent (Codex/Antigravity/Pi/Copilot) re-emits its ENTIRE
+    transcript on any winsize change (empirical probe on #430: ~65 KB for a
+    long conversation, on every open/close cycle). The phone watched the
+    whole conversation scroll through on every re-open, and the always-on PC
+    mirror flashed with it.
+
+    The fix keeps a warm per-session terminal cache: hiding the overlay
+    stashes the xterm (painted frame intact) and keeps the WS streaming;
+    re-opening the same session shows the same canvas and reuses the same
+    socket — no re-subscribe, no repaint nudge, no re-emission. This pins:
+
+      1. The deep-link open created exactly one WS; the xterm element is tagged.
+      2. hideTerminal() hides the overlay but leaves the tagged element in
+         the DOM and the WS open.
+      3. openTerminal() for the same sid re-shows the SAME element (tag
+         intact), opens NO new WS, and input still reaches the PTY log over
+         the original socket.
+    """
+    assert authed_page.evaluate("window.__wsInstances.length") == 1
+    expect(authed_page.locator("#terminalOverlay")).to_be_visible()
+
+    # Tag the live xterm root so element identity survives the round-trip.
+    authed_page.wait_for_selector("#terminalHost .xterm", timeout=OVERLAY_OPEN_MS)
+    authed_page.evaluate(
+        "document.querySelector('#terminalHost .xterm').dataset.warm = 'tagged'"
+    )
+
+    _hide_overlay_and_assert_stashed(authed_page)
+
+    # Re-open the same session: same element, same socket, no new WS.
+    authed_page.evaluate(
+        """async (sid) => {
+          const live = """ + _LIVE_MODULE + """;
+          const term = await import(live('terminal.js'));
+          const { state } = await import(live('state.js'));
+          const s = (state.sessions || []).find(
+            (x) => x.session_id === sid
+          ) || { session_id: sid, name: 'warm-reopen' };
+          await term.openTerminal(s);
+        }""",
+        sid,
+    )
+    expect(authed_page.locator("#terminalOverlay")).to_be_visible()
+    reopened = authed_page.evaluate(
+        """() => {
+          const el = document.querySelector('#terminalHost .xterm');
+          return {
+            tag: el ? el.dataset.warm : null,
+            display: el ? el.style.display : null,
+            wsCount: window.__wsInstances.length,
+            wsState: window.__wsInstances.at(-1).readyState,
+          };
+        }"""
+    )
+    assert reopened["tag"] == "tagged", (
+        "re-open built a fresh xterm instead of resuming the cached one — "
+        "the re-subscribe fires the server repaint nudge the cache exists "
+        "to avoid"
+    )
+    assert reopened["display"] == "", (
+        f"resumed terminal element should be shown, got "
+        f"{reopened['display']!r}"
+    )
+    assert reopened["wsCount"] == 1 and reopened["wsState"] == 1, (
+        f"re-open must reuse the original WS, got count={reopened['wsCount']} "
+        f"state={reopened['wsState']}"
+    )
+
+    # The reused socket still carries real input to the PTY.
+    marker = "warm-re0pen-marker-430\n"
+    authed_page.evaluate(
+        "(text) => window.__wsInstances[0].send("
+        "JSON.stringify({ type: 'input', data: text }))",
+        marker,
+    )
+    assert wait_for_session_log(authed_page, sid, "warm-re0pen-marker-430"), (
+        f"input sent on the reused ws did not appear in "
+        f"webapp/sessions/{sid}.log — the warm re-open resumed a dead socket"
+    )
+
+
 def test_terminal_reconnects_after_ws_drop(
     authed_page: Page,
     base_url: str,
@@ -114,6 +257,7 @@ def test_terminal_reconnects_after_ws_drop(
         "&& window.__wsInstances[0].readyState === 1",
         timeout=OVERLAY_OPEN_MS,
     )
+    _leg_warm_reopen_reuses_terminal_and_ws(authed_page, sid, wait_for_session_log)
 
     # Force-drop the live socket. close() with no args fires onclose with
     # code 1005, which terminal.js routes to scheduleReconnect (line 113).
@@ -146,20 +290,6 @@ def test_terminal_reconnects_after_ws_drop(
 
 
 # --------------------------------------------------------------- issue #444
-
-# The SPA loads its modules cache-busted (`state.js?v=<asset_hash>`). A bare
-# import('/static/state.js') would evaluate a SECOND module instance with its
-# own empty state — silently testing a parallel universe. Resolve the page's
-# real module URL from the resource timeline so the import shares the live
-# instance (same pattern as test_warm_terminal_reopen.py).
-_LIVE_MODULE = """
-(name) => {
-  const hit = performance.getEntriesByType('resource')
-    .map((r) => r.name)
-    .find((n) => n.includes('/static/' + name + '?v='));
-  return hit || ('/static/' + name);
-}
-"""
 
 # Count occurrences of a marker across the ACTIVE terminal's whole xterm
 # buffer (scrollback + viewport). Installed once as window.__bufCount.

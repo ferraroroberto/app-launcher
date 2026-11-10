@@ -818,7 +818,7 @@ label      = "repo-meta"
 # imported by main.js, so a broken one takes the whole SPA down: test_smoke
 # and test_primary_nav (which carries the bottom tab bar's checks since #1215)
 # catch that. test_coding_model_selector drives both tabs' model combos
-# (claude-options.js imports them), and test_terminal_bar_overflow shares the
+# (claude-options.js imports them), and test_overlay_phone_composer's bar legs share the
 # terminal bar's classes with the Life OS doc-browser bar and mirrors the board
 # carousel's overflow pattern.
 # tests/unit/repo/test_classify_e2e.py pins every surface with a narrowing path and a
@@ -863,7 +863,7 @@ pytest_targets = [
     "tests/e2e/code/test_channel_sessions_hidden.py",
     "tests/e2e/session/test_session_rename.py",
     "tests/e2e/code/test_coding_model_selector.py",
-    "tests/e2e/terminal/test_terminal_bar_overflow.py",
+    "tests/e2e/terminal/test_overlay_phone_composer.py",
     "tests/e2e/shell/test_primary_nav.py",
     "tests/e2e/shell/test_smoke.py",
     "tests/e2e/shell/test_row_name_typography.py",
@@ -909,7 +909,7 @@ pytest_targets = [
     "tests/e2e/shell/test_markdown_tables.py",
     "tests/e2e/shell/test_collapsible_other_tabs.py",
     "tests/e2e/code/test_coding_model_selector.py",
-    "tests/e2e/terminal/test_terminal_bar_overflow.py",
+    "tests/e2e/terminal/test_overlay_phone_composer.py",
     "tests/e2e/shell/test_primary_nav.py",
     "tests/e2e/shell/test_smoke.py",
     "tests/e2e/shell/test_row_name_typography.py",
