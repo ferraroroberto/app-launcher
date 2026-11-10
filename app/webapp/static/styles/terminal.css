@@ -41,6 +41,15 @@ body.terminal-open {
   -webkit-overflow-scrolling: touch;
   overflow-anchor: none;
 }
+/* Installed phone app only: the overlay is fixed outside `.app`, so it takes
+   the same offset below the safe area that `.app` does (base.css), keeping the
+   session header level with the main tabs' header. After the base rule above
+   (equal specificity), plain padding so no layer is created. */
+@media (display-mode: standalone) and (pointer: coarse) and (max-width: 520px) {
+  .terminal-overlay {
+    padding-top: calc(env(safe-area-inset-top, 0px) + var(--standalone-head-offset));
+  }
+}
 .terminal-bar {
   position: relative;
   display: flex;
