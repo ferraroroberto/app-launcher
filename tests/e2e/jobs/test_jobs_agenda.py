@@ -206,13 +206,18 @@ def test_agenda_groups_by_day_holds_across_midnight_and_says_when_empty(
     authed_page.locator("#jobSheetClose").click()
     expect(authed_page.locator("#jobSheet")).to_be_hidden()
 
-    # -- was test_agenda_day_labels_hold_across_local_midnight --
+    _midnight_labels_hold(authed_page, served)
+    _empty_week_offers_add_job(authed_page, served)
+
+
+def _midnight_labels_hold(page: Page, served: dict) -> None:
+    """Was test_agenda_day_labels_hold_across_local_midnight."""
     # #918: the boundary, faked rather than waited for. Thirty seconds before
     # local midnight, with one row either side of it. The labels must still
     # read Today/Tomorrow — under the old wall-clock anchoring the page's
     # "now" could land on the far side of 00:00 from the fixture and the first
     # header rendered as a bare date.
-    authed_page.clock.set_fixed_time(
+    page.clock.set_fixed_time(
         _MIDNIGHT + _dt.timedelta(hours=23, minutes=59, seconds=30))
     served["agenda"] = {
         "days": 7,
@@ -225,37 +230,39 @@ def test_agenda_groups_by_day_holds_across_midnight_and_says_when_empty(
         ],
         "frequent": [],
     }
-    _revisit_jobs(authed_page)
+    _revisit_jobs(page)
     # Next up draws its day from the same clock (the meta line's first word).
-    expect(authed_page.locator("#jobsNextUpList .action-row-meta")).to_have_text(
+    expect(page.locator("#jobsNextUpList .action-row-meta")).to_have_text(
         ["today · Daily 23:45", "tomorrow · Daily 00:15"])
-    authed_page.locator("#jobsAgendaOpen").click()
-    expect(authed_page.locator("#jobsAgendaSheet")).to_be_visible()
-    expect(authed_page.locator("#jobsAgendaBody .jobs-agenda-day")).to_have_text(
+    page.locator("#jobsAgendaOpen").click()
+    expect(page.locator("#jobsAgendaSheet")).to_be_visible()
+    expect(page.locator("#jobsAgendaBody .jobs-agenda-day")).to_have_text(
         ["Today", "Tomorrow"])
-    rows = authed_page.locator("#jobsAgendaBody .jobs-fire-row")
+    rows = page.locator("#jobsAgendaBody .jobs-fire-row")
     expect(rows).to_have_count(2)
     assert rows.evaluate_all("els => els.map(e => e.dataset.jobId)") == ["alpha", "zeta"]
-    authed_page.locator("#jobsAgendaSheetClose").click()
-    expect(authed_page.locator("#jobsAgendaSheet")).to_be_hidden()
+    page.locator("#jobsAgendaSheetClose").click()
+    expect(page.locator("#jobsAgendaSheet")).to_be_hidden()
 
-    # -- was test_agenda_empty_state (last: it opens the Add job dialog) --
+
+def _empty_week_offers_add_job(page: Page, served: dict) -> None:
+    """Was test_agenda_empty_state (last: it opens the Add job dialog)."""
     served["agenda"] = {"days": 7, "generated_epoch": _epoch(0),
                         "occurrences": [], "frequent": []}
-    _revisit_jobs(authed_page)
+    _revisit_jobs(page)
     # Next up says why it is empty (design.md "Async data & feedback").
-    expect(authed_page.locator("#jobsNextUpCard")).to_have_attribute("data-state", "empty")
-    expect(authed_page.locator("#jobsNextUpState")).to_contain_text(
+    expect(page.locator("#jobsNextUpCard")).to_have_attribute("data-state", "empty")
+    expect(page.locator("#jobsNextUpState")).to_contain_text(
         "Nothing scheduled in the next 7 days")
-    authed_page.locator("#jobsAgendaOpen").click()
-    expect(authed_page.locator("#jobsAgendaBody")).to_contain_text(
+    page.locator("#jobsAgendaOpen").click()
+    expect(page.locator("#jobsAgendaBody")).to_contain_text(
         "No scheduled runs in the next 7 days")
     # Its own next step (#1201): an Add job button that opens the same dialog
     # as the Jobs card's +. (Edit mode is gone: that + is always shown, #1438.)
-    expect(authed_page.locator("#jobsAddBtn")).to_be_visible()
-    add = authed_page.locator("#jobsAgendaBody .empty-state-action")
+    expect(page.locator("#jobsAddBtn")).to_be_visible()
+    add = page.locator("#jobsAgendaBody .empty-state-action")
     expect(add).to_have_text("Add job")
     add.click()
-    expect(authed_page.locator("#jobsAgendaSheet")).to_be_hidden()
-    expect(authed_page.locator("#jobDialog")).to_be_visible()
-    expect(authed_page.locator("#jobDialogTitle")).to_have_text("Add job")
+    expect(page.locator("#jobsAgendaSheet")).to_be_hidden()
+    expect(page.locator("#jobDialog")).to_be_visible()
+    expect(page.locator("#jobDialogTitle")).to_have_text("Add job")
