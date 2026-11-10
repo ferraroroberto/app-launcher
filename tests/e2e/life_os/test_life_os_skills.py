@@ -37,8 +37,49 @@ from tests.e2e.life_os._support import (
 pytestmark = pytest.mark.smoke
 
 
-def test_life_os_tab_renders_skill_tiles(authed_page: Page, base_url: str) -> None:
+def _capture_journal_daily_launches(page: Page) -> list:
+    """Capture every journal-daily Start new POST. The mocked response is
+    ``kind=remote`` so the client never opens a terminal overlay against the
+    fake sid; ``launchSkill`` reads only ``body.session``, so the request
+    payload is the whole observable."""
+    posted: list = []
+
+    def _capture_launch(route):
+        posted.append(_json.loads(route.request.post_data or "{}"))
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({
+                "launched": "journal-daily", "name": "journal-daily",
+                "session": {"session_id": "x", "kind": "remote"},
+            }),
+        )
+
+    page.route(
+        re.compile(r".*/api/life-os/skills/journal-daily/launch$"),
+        _capture_launch,
+    )
+    return posted
+
+
+def _start_new_journal_daily(page: Page, posted: list) -> dict:
+    """Tap the journal-daily kebab's Start new conversation (a row tap opens
+    the Conversations list since #1691) and return the POSTed payload."""
+    before = len(posted)
+    _skill_menu_item(page, "journal-daily", "[data-item=lifeos-start-new-btn]").click()
+    wait_until(page, lambda: len(posted) == before + 1, "the launch POST")
+    return posted[-1]
+
+
+def test_life_os_tab_renders_skills_and_its_toolbar_drives_the_launch(
+    authed_page: Page, base_url: str
+) -> None:
+    """The tab renders skill tiles from ``/api/life-os/skills`` with the model
+    combo and Detached switch in the Skills card's toolbar (#496; provider
+    parity in #845; out of the summary since #1132), a streamed launch sizes
+    its PTY (#374), neither control collapses the panel (#540), and a launch
+    carries the toolbar's provider-qualified model and mode (#540/#845)."""
     _mock_skills(authed_page)
+    posted = _capture_journal_daily_launches(authed_page)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.wait_for_selector("#tabLifeOS", state="attached", timeout=5_000)
     authed_page.locator("#tabLifeOS").click()
@@ -48,9 +89,6 @@ def test_life_os_tab_renders_skill_tiles(authed_page: Page, base_url: str) -> No
     expect(tiles.first).to_be_visible(timeout=5_000)
     assert tiles.count() == 2
     expect(tiles.first).to_contain_text("journal-daily")
-    # The shared Claude/Codex model dropdown + Detached toggle live in the
-    # Skills card's toolbar (#496; provider parity in #845; out of the
-    # summary since #1132).
     expect(authed_page.locator("#lifeOsModelCombo")).to_be_attached()
     expect(
         authed_page.locator(
@@ -60,24 +98,24 @@ def test_life_os_tab_renders_skill_tiles(authed_page: Page, base_url: str) -> No
     expect(authed_page.locator("#lifeOsDetached")).to_be_attached()
     surface(authed_page, "lifeos.tab")
 
+    # Regression pin for issue #374: a streamed (pty) skill launch sizes the
+    # PTY at spawn. Skills stream output the moment the PTY exists, so a
+    # 40x120 spawn poured 120-col text that re-wrapped into first-paint
+    # garble when the overlay's fit() shrank the PTY to phone width. A phone
+    # launch must carry rows/cols (launch-size.js estimateTermSize, same
+    # contract as the Coding tab, #126); a desktop client sends the mirror
+    # flag instead and keeps the Edge-window default. Detached is still OFF.
+    payload = _start_new_journal_daily(authed_page, posted)
+    assert payload.get("mode") == "pty"
+    if payload.get("desktop"):
+        assert "rows" not in payload and "cols" not in payload
+    else:
+        assert payload.get("rows", 0) >= 10 and payload.get("cols", 0) >= 20
 
-def test_life_os_toggles_live_in_skills_summary_without_options_card(
-    authed_page: Page, base_url: str
-) -> None:
-    """#496 round 2: the separate Life OS options card is gone — the model
-    combo + Detached/Resume controls sit in the Skills card's summary (same
-    structure as the Coding tab's Projects card, #540), and interacting with
-    one must not collapse the panel."""
-    _mock_skills(authed_page)
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    authed_page.locator("#tabLifeOS").click()
-    expect(authed_page.locator("#paneLifeOS")).to_be_visible()
-
-    # The old standalone options card no longer exists.
+    # #496 round 2: the separate Life OS options card is gone. The model
+    # dropdown renders in the Skills card's toolbar (#1132 moved it out of
+    # its <summary>); both toggles live in its menu (#1503).
     expect(authed_page.locator("#lifeOsOptions")).to_have_count(0)
-
-    # The model dropdown renders in the Skills card's toolbar (#1132 moved
-    # it out of its <summary>); both toggles live in its menu (#1503).
     toolbar = authed_page.locator("details.lifeos-list-card .card-toolbar")
     expect(toolbar.locator("#lifeOsModelCombo")).to_be_visible()
     expect(toolbar.locator(".launch-toolbar-switches")).to_have_count(0)
@@ -94,7 +132,7 @@ def test_life_os_toggles_live_in_skills_summary_without_options_card(
     )
 
     # Opening + picking in the model dropdown likewise must not collapse the
-    # panel (#540 — its trigger/options are click targets inside the summary).
+    # panel (#540: its trigger/options are click targets inside the summary).
     authed_page.locator("#lifeOsModelBtn").click()
     expect(authed_page.locator("#lifeOsModelMenu")).to_be_visible()
     surface(authed_page, "lifeos.model-menu")
@@ -109,87 +147,12 @@ def test_life_os_toggles_live_in_skills_summary_without_options_card(
         "model-dropdown pick must not collapse the Skills panel"
     )
 
-
-def _launch_journal_daily(
-    page: Page, base_url: str, *, model: str | None = None,
-    detached: bool = False,
-) -> dict:
-    """Open the Life OS tab, set the model/Detached controls, tap the
-    journal-daily kebab's Start new conversation (a row tap opens the
-    Conversations list since #1691), and return the POSTed launch payload. The
-    mocked response is ``kind=remote`` so the client never opens a terminal
-    overlay against the fake sid — ``launchSkill`` reads only ``body.session``,
-    so the request payload is the whole observable."""
-    _mock_skills(page)
-
-    captured: dict = {}
-
-    def _capture_launch(route):
-        captured["body"] = route.request.post_data or ""
-        route.fulfill(
-            status=200, content_type="application/json",
-            body=_json.dumps({
-                "launched": "journal-daily", "name": "journal-daily",
-                "session": {"session_id": "x", "kind": "remote"},
-            }),
-        )
-
-    page.route(
-        re.compile(r".*/api/life-os/skills/journal-daily/launch$"),
-        _capture_launch,
-    )
-
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    page.locator("#tabLifeOS").click()
-    expect(page.locator("#lifeOsList li.lifeos-item").first).to_be_visible(
-        timeout=5_000
-    )
-
-    if model:
-        page.locator("#lifeOsModelBtn").click()
-        page.locator(f"#lifeOsModelMenu button[data-value='{model}']").click()
-    if detached:
-        life_launch_switch(page, "#lifeOsDetached")
-
-    _skill_menu_item(page, "journal-daily", "[data-item=lifeos-start-new-btn]").click()
-
-    # Wait for the launch route to capture the POST body.
-    wait_until(page, lambda: "body" in captured, "the launch POST")
-    assert "body" in captured, "launch POST was never intercepted"
-    return _json.loads(captured["body"])
-
-
-def test_life_os_launch_posts_mode_and_model(
-    authed_page: Page, base_url: str
-) -> None:
-    """#540/#845: launch carries the provider-qualified model choice. Detached
-    on, so it launches detached → no terminal overlay / WS in the assertion."""
-    payload = _launch_journal_daily(
-        authed_page, base_url, model="codex:gpt-6-luna", detached=True,
-    )
-    # resume defaults to False on a normal (non-resume) launch (issue #151).
+    # Detached on, so it launches detached; resume defaults to False on a
+    # normal (non-resume) launch (issue #151).
+    payload = _start_new_journal_daily(authed_page, posted)
     assert payload == {
         "mode": "remote", "model": "codex:gpt-6-luna", "resume": False
     }, payload
-
-
-def test_life_os_pty_launch_carries_terminal_size(
-    authed_page: Page, base_url: str
-) -> None:
-    """Regression pin for issue #374: a streamed (pty) skill launch sizes
-    the PTY at spawn. Skills stream output the moment the PTY exists, so a
-    40×120 spawn poured 120-col text that re-wrapped into first-paint
-    garble when the overlay's fit() shrank the PTY to phone width. A phone
-    launch must carry rows/cols (launch-size.js estimateTermSize, same contract as the
-    Coding tab, #126); a desktop client sends the mirror flag instead and
-    keeps the Edge-window default."""
-    # Detached stays OFF — this is the streamed pty path #374 is about.
-    payload = _launch_journal_daily(authed_page, base_url)
-    assert payload.get("mode") == "pty"
-    if payload.get("desktop"):
-        assert "rows" not in payload and "cols" not in payload
-    else:
-        assert payload.get("rows", 0) >= 10 and payload.get("cols", 0) >= 20
 
 
 def test_life_os_row_tap_opens_conversations_and_starts_nothing(

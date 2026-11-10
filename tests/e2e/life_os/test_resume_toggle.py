@@ -88,55 +88,39 @@ def _open_coding(page: Page, base_url: str) -> None:
     )
 
 
-def test_resume_toggle_present(authed_page: Page, base_url: str) -> None:
-    _install_mocks(authed_page)
-    _open_coding(authed_page, base_url)
-    # The launch toolbar's role="switch" button is present and starts
-    # unchecked (issue #355).
-    expect(authed_page.locator("#claudeResume")).to_be_attached()
-    expect(authed_page.locator("#claudeResume")).not_to_be_checked()
+def _launch_demo(page: Page) -> dict:
+    with page.expect_request("**/api/apps/*/launch") as req_info:
+        page.locator(
+            '#claudeList .coding-item[data-id="demo"] '
+            'button.action-row-main[data-agent="claude"]'
+        ).click()
+    return req_info.value.post_data_json
 
 
-def test_resume_only_launch_streams_pty(
+def test_resume_alone_streams_a_pty_and_with_detached_opens_a_console(
     authed_page: Page, base_url: str
 ) -> None:
+    """The switch is there and off (issue #355); Resume alone streams a pty,
+    Detached + Resume a remote console (#157). On the same load, Code's
+    toolbar without ``switchesInMenu`` stays byte-identical."""
     _install_mocks(authed_page)
     _open_coding(authed_page, base_url)
+    assert authed_page.evaluate(_CODE_TOOLBAR) == _CODE_TOOLBAR_GOLDEN
+    expect(authed_page.locator("#claudeResume")).to_be_attached()
+    expect(authed_page.locator("#claudeResume")).not_to_be_checked()
 
     # Resume alone (Detached off) → streamed pty: resume=true, no remote mode.
     authed_page.locator("#claudeResume").click()
     expect(authed_page.locator("#claudeResume")).to_be_checked()
-
-    with authed_page.expect_request("**/api/apps/*/launch") as req_info:
-        authed_page.locator(
-            '#claudeList .coding-item[data-id="demo"] '
-            'button.action-row-main[data-agent="claude"]'
-        ).click()
-
-    payload = req_info.value.post_data_json
+    payload = _launch_demo(authed_page)
     assert payload.get("resume") is True
     assert payload.get("mode") != "remote"
     assert payload.get("agent") == "claude"
 
-
-def test_resume_with_detached_launches_remote_console(
-    authed_page: Page, base_url: str
-) -> None:
-    _install_mocks(authed_page)
-    _open_coding(authed_page, base_url)
-
     # Detached + Resume → remote console: resume=true AND mode=remote (#157).
     authed_page.locator("#claudeDetached").click()
-    authed_page.locator("#claudeResume").click()
     expect(authed_page.locator("#claudeResume")).to_be_checked()
-
-    with authed_page.expect_request("**/api/apps/*/launch") as req_info:
-        authed_page.locator(
-            '#claudeList .coding-item[data-id="demo"] '
-            'button.action-row-main[data-agent="claude"]'
-        ).click()
-
-    payload = req_info.value.post_data_json
+    payload = _launch_demo(authed_page)
     assert payload.get("resume") is True
     assert payload.get("mode") == "remote"
     assert payload.get("agent") == "claude"
@@ -150,7 +134,7 @@ _RESOLVE = (
 
 
 @pytest.mark.iphone
-def test_launch_toolbar_switches_are_vendored_and_accent_when_on(
+def test_launch_switches_are_vendored_and_accent_when_on_in_code_and_life_menus(
     authed_page: Page, base_url: str
 ) -> None:
     """#1434 — the Code launch toolbar's Detached and Resume are the vendored
@@ -159,6 +143,7 @@ def test_launch_toolbar_switches_are_vendored_and_accent_when_on(
     accent fill, never success (design.md, fleet-config#1200). The colours
     are resolved from the page's own tokens in light and dark, so the
     assertion survives a token revalue. Auto-retrying `to_have_css` (#680).
+    Then, on the same load, Life's menu switches (``_life_launch_options_live_in_the_model_menu``).
     """
     _install_mocks(authed_page)
     authed_page.add_init_script(
@@ -191,28 +176,16 @@ def test_launch_toolbar_switches_are_vendored_and_accent_when_on(
         success = authed_page.evaluate(_RESOLVE, "--success")
         assert fill != success, f"{theme}: the probe cannot tell the accent from success"
         expect(detached).to_have_css("background-color", fill)
+    _life_launch_options_live_in_the_model_menu(authed_page)
 
 
-@pytest.mark.iphone
-def test_life_launch_options_live_in_the_model_menu(
-    authed_page: Page, base_url: str
-) -> None:
+def _life_launch_options_live_in_the_model_menu(authed_page: Page) -> None:
     """#1503 decision 6: Life's Detached and Resume moved into the model
     combo's menu, under the model list. They are still the vendored switch
     beside its word, accent when on (never success), and toggle in place
     without closing the menu; a model pick is still one tap that closes it.
     Closed, the combo's label names any switch that is on. Resolved from the
     page's own tokens in light and dark; auto-retrying `to_have_css` (#680)."""
-    _install_mocks(authed_page)
-    authed_page.add_init_script(
-        "document.addEventListener('DOMContentLoaded', () => {"
-        "  const st = document.createElement('style');"
-        "  st.textContent = '*, *::before, *::after "
-        "{ transition: none !important; animation: none !important; }';"
-        "  document.head.appendChild(st);"
-        "});"
-    )
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.locator("#tabLifeOS").click()
     toolbar = authed_page.locator("#lifeOsLaunchToolbar .launch-toolbar")
     expect(toolbar).to_be_visible()
@@ -303,10 +276,3 @@ _CODE_TOOLBAR_GOLDEN = (
     "alse\" id=\"gr\" title=\"Resume title\"><span class=\"knob\"></span><span class=\"toggle-label\">OF"
     "F</span></button></label></div></div>"
 )
-
-
-def test_a_toolbar_without_switches_in_menu_is_byte_identical(
-    authed_page: Page, base_url: str
-) -> None:
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    assert authed_page.evaluate(_CODE_TOOLBAR) == _CODE_TOOLBAR_GOLDEN

@@ -160,12 +160,10 @@ def test_skills_lead_the_tab_and_no_telegram_card_is_left(life) -> None:
     expect(page.locator("#channelProfileProblems")).to_contain_text("cellar")
 
 
-@pytest.mark.iphone
-def test_channels_skill_chip_is_the_code_inline_chip(life) -> None:
+def _assert_channels_skill_chip_is_code(page: Page) -> None:
     """#1624 (COMP-17): a skill folder name is code, so the `code-inline` chip --
     mono at 0.875em of the line around it (14px in the 16px body), never
     caption's 12px -- in both themes."""
-    page = life()
     open_settings_sheet(page, "channelsSheet")
     chip = page.locator("#channelSkills .channel-skill-chip").first
     expect(chip).to_have_text("garden-notes")
@@ -181,11 +179,50 @@ def test_channels_skill_chip_is_the_code_inline_chip(life) -> None:
     assert parent_px == 16, f"the chips' line is {parent_px}px, not the 16px body"
 
 
+def _assert_skill_rows_run_full_bleed_on_the_phone_only(page: Page) -> None:
+    """The experiment the owner asked for: on the phone the Skills card runs
+    edge to edge, so a row and its panes span the screen, while its header,
+    toolbar and the rows' text keep the inset they had. Wide, it stays a
+    card."""
+    measure = """el => {
+      if (!el.isConnected) return null;
+      const box = (n) => n.getBoundingClientRect();
+      const card = el.closest('.lifeos-list-card');
+      const row = el.querySelector("li[data-id='garden-notes']");
+      const app = el.closest('.app');
+      return {
+        // The content edge, without the desktop scrollbar a narrow window keeps.
+        edge: box(app).left + app.clientWidth,
+        card: box(card), row: box(row),
+        radius: getComputedStyle(card).borderTopLeftRadius,
+        head: box(card.querySelector('.collapse-main')),
+        filter: box(card.querySelector('.action-row-filter')),
+        avatar: box(row.querySelector('.avatar')),
+      };
+    }"""
+    page.set_viewport_size({"width": 390, "height": 844})
+    phone = stable_eval(page.locator("#lifeOsList"), measure)
+    assert round(phone["row"]["left"]) == 0, phone
+    assert abs(phone["row"]["right"] - phone["edge"]) <= 1, phone
+    assert phone["radius"] == "0px", phone
+    # The text keeps its inset (the gutter plus the card's 14px): header,
+    # filter and avatar line up, off the edge.
+    assert phone["filter"]["left"] >= 24, phone
+    for part in ("avatar", "head"):
+        assert abs(phone[part]["left"] - phone["filter"]["left"]) <= 2, (part, phone)
+    page.set_viewport_size({"width": 1024, "height": 800})
+    wide = stable_eval(page.locator("#lifeOsList"), measure)
+    assert wide["card"]["left"] > 0 and wide["radius"] != "0px", wide
+
+
 @pytest.mark.iphone
-def test_a_linked_skill_says_telegram_and_its_avatar_wears_the_badge(life) -> None:
+def test_a_linked_skill_says_telegram_its_rows_run_full_bleed_and_its_chip_is_code(
+    life,
+) -> None:
     """The bot is a plain fact in the meta, never a chip; the avatar's green
     badge only while that bot runs. Every row is a two-line row (rows.lg),
-    its avatar on the leading edge and its kebab on the trailing one."""
+    its avatar on the leading edge and its kebab on the trailing one. Then,
+    on the same load, the phone's full-bleed rows and Settings' code chip."""
     page = life()
     garden, reading, trip = (_row(page, i) for i in ("garden-notes", "reading-list", "trip-planner"))
     expect(garden.locator(".action-row-meta")).to_have_text("no conversations yet · Telegram")
@@ -216,8 +253,11 @@ def test_a_linked_skill_says_telegram_and_its_avatar_wears_the_badge(life) -> No
     assert title["right"] <= kebab["left"], (title, kebab)
     assert kebab["width"] >= 44 and kebab["height"] >= 44, kebab
 
+    _assert_skill_rows_run_full_bleed_on_the_phone_only(page)
+    _assert_channels_skill_chip_is_code(page)
 
-def test_the_kebab_starts_or_opens_the_linked_bot(life) -> None:
+
+def test_the_kebab_starts_restarts_or_opens_the_linked_bot(life) -> None:
     page = life()
     launches = _channel_launches(page)
 
@@ -255,6 +295,8 @@ def test_the_kebab_starts_or_opens_the_linked_bot(life) -> None:
     wait_until(page, lambda: len(launches) == 2, "the resumed channel launch")
     assert launches[1]["body"]["resume"] is True
 
+    _restart_the_running_bot_after_a_confirm(page)
+
     # A running bot: "Open Telegram session", and no launch.
     reading = _row(page, "reading-list")
     reading.locator(".action-row-kebab").click()
@@ -266,10 +308,9 @@ def test_the_kebab_starts_or_opens_the_linked_bot(life) -> None:
     assert len(launches) == 2, launches
 
 
-def test_a_running_bot_restarts_from_the_kebab_after_a_confirm(life) -> None:
+def _restart_the_running_bot_after_a_confirm(page: Page) -> None:
     """Restart (#1675) sits under Open, for a running bot only; it asks
     first, and only the confirmed tap posts to /restart."""
-    page = life()
     restarts: list = []
 
     def _restart(route):
@@ -350,8 +391,16 @@ def test_a_bot_whose_skill_changed_says_restart_due(authed_page: Page, life) -> 
     expect(allot).not_to_contain_text("skill changed")
 
 
-def test_the_skills_filter_narrows_and_persists(life) -> None:
+def test_every_skill_shows_and_the_filter_narrows_and_persists(life) -> None:
+    """With nothing in use every skill shows, unfolded; every Life sheet backs
+    out the same way and a row without the optional fields is byte-identical
+    (both read off the same load); then the filter narrows and persists."""
     page = life()
+    expect(page.locator("#lifeOsList .lifeos-fold")).to_have_count(0)
+    assert _visible_order(page) == ["garden-notes", "reading-list", "trip-planner"]
+    _assert_every_life_sheet_backs_out_the_same_way(page)
+    assert page.evaluate(_ROWS) == _GOLDEN
+
     flt = page.locator("#lifeOsFilterInput")
     expect(flt).to_have_attribute("placeholder", "Skills and conversations")
     flt.fill("READ")
@@ -442,7 +491,9 @@ def test_the_recap_is_one_glance_row_and_its_exception_heads_the_tab(
         expect(row.locator(".action-row-kebab")).to_have_count(0)
 
 
-def test_the_recap_verb_launches_with_the_toolbar(life) -> None:
+def test_the_recap_verb_launches_and_rename_goes_through_the_dialog(life) -> None:
+    """The recap verb launches with the toolbar's mode and model; then, on the
+    same load, the conversation log rename (see ``_rename_through_the_dialog``)."""
     page = life()
     posted: list = []
 
@@ -458,13 +509,13 @@ def test_the_recap_verb_launches_with_the_toolbar(life) -> None:
     page.locator("#lifeOsRecapLaunch").click()
     wait_until(page, lambda: len(posted) == 1, "the recap launch POST")
     assert posted[0] == {"mode": "remote", "model": "claude:sonnet"}, posted
+    _rename_through_the_dialog(page)
 
 
-def test_rename_goes_through_the_dialog(life) -> None:
+def _rename_through_the_dialog(page: Page) -> None:
     """The conversation log rename is the vendored dialog (#1439): prefilled
     with the name part, ✕ cancels without a request, Rename posts the slug.
     A native prompt() would surface as a page dialog event; none fires."""
-    page = life()
     native: list = []
     page.on("dialog", lambda d: (native.append(d.message), d.dismiss()))
     log = {
@@ -508,11 +559,10 @@ def test_rename_goes_through_the_dialog(life) -> None:
     assert native == [], native
 
 
-def test_every_life_sheet_backs_out_the_same_way(life) -> None:
+def _assert_every_life_sheet_backs_out_the_same_way(page: Page) -> None:
     """#1504: one back style everywhere. The conversation sheet, the reader,
     Browse and its document are all the vendored modal, each closed by its
     header ✕ (and a Done primary on the reading sheets), never a ‹ back."""
-    page = life()
     closes = page.locator(
         "#lifeOsConvoSheetClose, #lifeOsViewerClose, #lifeOsBrowserClose, #lifeOsDocClose")
     expect(closes).to_have_count(4)
@@ -559,13 +609,6 @@ _GOLDEN = [
 ]
 
 
-def test_a_row_without_the_optional_fields_is_byte_identical(
-    authed_page: Page, base_url: str
-) -> None:
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    assert authed_page.evaluate(_ROWS) == _GOLDEN
-
-
 # ---------------------------------------------- rows that sort and fold (#1503)
 def _skill(skill_id: str, **fields) -> dict:
     row = {"id": skill_id, "name": skill_id, "command": skill_id,
@@ -599,9 +642,26 @@ def _visible_order(page: Page) -> list:
       .filter((li) => li.offsetParent !== null).map((li) => li.dataset.id)""")
 
 
-def test_pinned_then_recent_then_the_rest_fold(authed_page: Page, life) -> None:
+def test_rows_say_when_last_used_then_sort_pinned_recent_and_fold(
+    authed_page: Page, life
+) -> None:
+    """Each row's meta and glyph, then pinned, recent and the fold, then a
+    skill with no conversation yet offers Resume last disabled."""
     _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _used())
     page = life()
+    for skill_id, meta in (
+        ("garden-notes", "used today · Telegram"), ("trip-planner", "used yesterday"),
+        ("pottery", "used 3 days ago"), ("bird-count", "used 3 months ago"),
+        ("yoga-log", "no conversations yet"),
+    ):
+        expect(_row(page, skill_id).locator(".action-row-meta")).to_have_text(meta)
+
+    # The avatar is the skill's glyph; a glyph the page's sprite lacks falls
+    # back to the monogram, as does none.
+    expect(_row(page, "garden-notes").locator(".avatar use")).to_have_attribute("href", "#i-sprout")
+    expect(_row(page, "pottery").locator(".avatar .lifeos-monogram")).to_have_text("P")
+    expect(_row(page, "trip-planner").locator(".avatar .lifeos-monogram")).to_have_text("T")
+
     # Pinned (even if old), then newest used, then the fold.
     expect(page.locator("#lifeOsList li.lifeos-item").first).to_have_attribute(
         "data-id", "reading-list")
@@ -630,30 +690,14 @@ def test_pinned_then_recent_then_the_rest_fold(authed_page: Page, life) -> None:
     expect(_row(page, "bird-count")).to_be_hidden()
     expect(fold).to_be_visible()
 
-
-def test_with_nothing_in_use_every_skill_shows(life) -> None:
-    page = life()
-    expect(page.locator("#lifeOsList .lifeos-fold")).to_have_count(0)
-    assert _visible_order(page) == ["garden-notes", "reading-list", "trip-planner"]
-
-
-def test_each_row_says_when_it_was_last_used_and_wears_its_glyph(
-    authed_page: Page, life
-) -> None:
-    _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _used())
-    page = life()
-    for skill_id, meta in (
-        ("garden-notes", "used today · Telegram"), ("trip-planner", "used yesterday"),
-        ("pottery", "used 3 days ago"), ("bird-count", "used 3 months ago"),
-        ("yoga-log", "no conversations yet"),
-    ):
-        expect(_row(page, skill_id).locator(".action-row-meta")).to_have_text(meta)
-
-    # The avatar is the skill's glyph; a glyph the page's sprite lacks falls
-    # back to the monogram, as does none.
-    expect(_row(page, "garden-notes").locator(".avatar use")).to_have_attribute("href", "#i-sprout")
-    expect(_row(page, "pottery").locator(".avatar .lifeos-monogram")).to_have_text("P")
-    expect(_row(page, "trip-planner").locator(".avatar .lifeos-monogram")).to_have_text("T")
+    # A skill with no conversation yet: Resume last is there, disabled, and
+    # the menu says why.
+    fold.click()
+    yoga = _row(page, "yoga-log")
+    yoga.locator(".action-row-kebab").click()
+    item = open_row_menu(page).locator("[data-item=lifeos-resume-last-btn]")
+    expect(item).to_be_disabled()
+    expect(open_row_menu(page).locator(".row-menu-head")).to_contain_text("No conversation yet")
 
 
 def _resume_latest_route(page: Page, reply: dict) -> list:
@@ -668,66 +712,58 @@ def _resume_latest_route(page: Page, reply: dict) -> list:
     return posted
 
 
-def test_the_kebab_resumes_the_last_conversation_on_its_own_model(
+def test_the_kebab_pins_resumes_starts_new_and_picks_a_session(
     authed_page: Page, life
 ) -> None:
+    """The kebab's launch items in their order, then each one on one load:
+    Pin to top, Pick a session, Resume last and Start new."""
     _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _used())
     page = life()
-    posted = _resume_latest_route(page, {
-        "conversation_action": "resume", "model": "claude-opus-5-5", "model_kept": True,
-        "session": {"session_id": "s-r", "kind": "remote"}})
-    # Detached so nothing opens a terminal; the combo shows Sonnet.
-    life_launch_switch(page, "#lifeOsDetached")
-    garden = _row(page, "garden-notes")
-    garden.locator(".action-row-kebab").click()
-    open_row_menu(page).locator("[data-item=lifeos-resume-last-btn]").click()
-    wait_until(page, lambda: len(posted) == 1, "the resume-latest POST")
-    assert posted[0]["url"].endswith("/api/life-os/skills/garden-notes/conversations/resume-latest")
-    # No model: the conversation keeps its own.
-    assert posted[0]["body"] == {"mode": "remote"}, posted
-    expect(page.locator("#toast")).to_contain_text("Resumed garden-notes (Opus) (detached)")
+    _kebab_lists_pick_a_session_after_start_new(page)
+    _pin_to_top_posts_the_pin_and_unpin_is_offered_back(page)
+    launched = _launch_route(page)
+    _pick_a_session_opens_claudes_picker_whatever_the_resume_switch_says(page, launched)
+    _resume_last_keeps_the_conversations_own_model(page)
+    _start_new_ignores_the_resume_switch(page, launched)
 
 
-def test_resume_last_is_disabled_with_no_conversation_yet(authed_page: Page, life) -> None:
-    _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _used())
-    page = life()
-    page.locator("#lifeOsList .lifeos-fold-btn").click()
-    yoga = _row(page, "yoga-log")
-    yoga.locator(".action-row-kebab").click()
-    item = open_row_menu(page).locator("[data-item=lifeos-resume-last-btn]")
-    expect(item).to_be_disabled()
-    expect(open_row_menu(page).locator(".row-menu-head")).to_contain_text("No conversation yet")
+def _kebab_lists_pick_a_session_after_start_new(page: Page) -> None:
+    """The item sits right after Start new conversation, and Start new still
+    posts resume: false (the existing #1503 contract is untouched)."""
+    page.locator("#lifeOsList .lifeos-item").first.locator(".action-row-kebab").click()
+    items = open_row_menu(page).locator("[data-item]")
+    keys = [items.nth(i).get_attribute("data-item") for i in range(3)]
+    assert keys == ["lifeos-resume-last-btn", "lifeos-start-new-btn", "lifeos-pick-session-btn"], keys
+    page.keyboard.press("Escape")
 
 
-def test_start_new_ignores_the_resume_switch(authed_page: Page, life) -> None:
-    _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _used())
-    page = life()
+def _pin_to_top_posts_the_pin_and_unpin_is_offered_back(page: Page) -> None:
     posted: list = []
 
-    def _launch(route):
-        posted.append(_json.loads(route.request.post_data or "{}"))
+    def _pin(route):
+        posted.append(route.request.post_data_json)
         route.fulfill(status=200, content_type="application/json",
-                      body=_json.dumps({"session": {"session_id": "s-n", "kind": "remote"}}))
+                      body=_json.dumps({"ok": True, "life_os_favorites": []}))
 
-    page.route(re.compile(r".*/api/life-os/skills/garden-notes/launch$"), _launch)
-    life_launch_switch(page, "#lifeOsDetached")
-    life_launch_switch(page, "#lifeOsResume")
+    page.route(re.compile(r".*/api/life-os/favorites$"), _pin)
     garden = _row(page, "garden-notes")
     garden.locator(".action-row-kebab").click()
-    open_row_menu(page).locator("[data-item=lifeos-start-new-btn]").click()
-    wait_until(page, lambda: len(posted) == 1, "the launch POST")
-    assert posted[0] == {"mode": "remote", "model": "claude:sonnet", "resume": False}, posted
+    expect(open_row_menu(page).locator("[data-item=lifeos-pin-btn]")).to_have_text("Pin to top")
+    open_row_menu(page).locator("[data-item=lifeos-pin-btn]").click()
+    wait_until(page, lambda: len(posted) == 1, "the pin POST")
+    assert posted == [{"id": "garden-notes", "favorite": True}], posted
+    reading = _row(page, "reading-list")
+    reading.locator(".action-row-kebab").click()
+    expect(open_row_menu(page).locator("[data-item=lifeos-pin-btn]")).to_have_text("Unpin")
+    page.keyboard.press("Escape")
 
 
-def test_pick_a_session_opens_claudes_picker_whatever_the_resume_switch_says(
-    authed_page: Page, life
+def _pick_a_session_opens_claudes_picker_whatever_the_resume_switch_says(
+    page: Page, posted: list
 ) -> None:
     """#1695: the kebab's "Pick a session…" posts resume: true with the Resume
     switch OFF, honours Detached either way, and its toast names the picker.
-    Detached first, then full control, on one page load."""
-    _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _used())
-    page = life()
-    posted = _launch_route(page)
+    Detached first, then full control."""
     toast = page.locator("#toast")
     for n, detached in enumerate((True, False), start=1):
         # The Detached switch is off at boot: on for the first pick, off again
@@ -748,37 +784,31 @@ def test_pick_a_session_opens_claudes_picker_whatever_the_resume_switch_says(
             + (r" \(detached\)" if detached else "") + "$"))
 
 
-def test_the_kebab_lists_pick_a_session_after_start_new(authed_page: Page, life) -> None:
-    """The item sits right after Start new conversation, and Start new still
-    posts resume: false (the existing #1503 contract is untouched)."""
-    _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _used())
-    page = life()
-    page.locator("#lifeOsList .lifeos-item").first.locator(".action-row-kebab").click()
-    items = open_row_menu(page).locator("[data-item]")
-    keys = [items.nth(i).get_attribute("data-item") for i in range(3)]
-    assert keys == ["lifeos-resume-last-btn", "lifeos-start-new-btn", "lifeos-pick-session-btn"], keys
-
-
-def test_pin_to_top_posts_the_pin_and_unpin_is_offered_back(authed_page: Page, life) -> None:
-    _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _used())
-    page = life()
-    posted: list = []
-
-    def _pin(route):
-        posted.append(route.request.post_data_json)
-        route.fulfill(status=200, content_type="application/json",
-                      body=_json.dumps({"ok": True, "life_os_favorites": []}))
-
-    page.route(re.compile(r".*/api/life-os/favorites$"), _pin)
+def _resume_last_keeps_the_conversations_own_model(page: Page) -> None:
+    posted = _resume_latest_route(page, {
+        "conversation_action": "resume", "model": "claude-opus-5-5", "model_kept": True,
+        "session": {"session_id": "s-r", "kind": "remote"}})
+    # Detached so nothing opens a terminal; the combo shows Sonnet.
+    life_launch_switch(page, "#lifeOsDetached")
     garden = _row(page, "garden-notes")
     garden.locator(".action-row-kebab").click()
-    expect(open_row_menu(page).locator("[data-item=lifeos-pin-btn]")).to_have_text("Pin to top")
-    open_row_menu(page).locator("[data-item=lifeos-pin-btn]").click()
-    wait_until(page, lambda: len(posted) == 1, "the pin POST")
-    assert posted == [{"id": "garden-notes", "favorite": True}], posted
-    reading = _row(page, "reading-list")
-    reading.locator(".action-row-kebab").click()
-    expect(open_row_menu(page).locator("[data-item=lifeos-pin-btn]")).to_have_text("Unpin")
+    open_row_menu(page).locator("[data-item=lifeos-resume-last-btn]").click()
+    wait_until(page, lambda: len(posted) == 1, "the resume-latest POST")
+    assert posted[0]["url"].endswith("/api/life-os/skills/garden-notes/conversations/resume-latest")
+    # No model: the conversation keeps its own.
+    assert posted[0]["body"] == {"mode": "remote"}, posted
+    expect(page.locator("#toast")).to_contain_text("Resumed garden-notes (Opus) (detached)")
+
+
+def _start_new_ignores_the_resume_switch(page: Page, posted: list) -> None:
+    """Detached is already on from the resume leg; Resume goes on here."""
+    before = len(posted)
+    life_launch_switch(page, "#lifeOsResume")
+    garden = _row(page, "garden-notes")
+    garden.locator(".action-row-kebab").click()
+    open_row_menu(page).locator("[data-item=lifeos-start-new-btn]").click()
+    wait_until(page, lambda: len(posted) == before + 1, "the launch POST")
+    assert posted[-1] == {"mode": "remote", "model": "claude:sonnet", "resume": False}, posted
 
 
 # --------------------------------------------- swipe actions (#1503, step D)
@@ -831,10 +861,10 @@ def _launch_route(page: Page) -> list:
 
 
 @pytest.mark.iphone
-def test_swipe_right_resumes_and_a_partial_swipe_left_rests_on_new(
+def test_a_swipe_resumes_or_rests_on_new_and_never_starts_from_a_scroll_a_mouse_or_the_edge(
     authed_page: Page, life
 ) -> None:
-    _json_route(authed_page, r".*/api/life-os/skills(\\?.*)?$", _used())
+    _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _used())
     _phone(authed_page)
     page = life()
     resumed = _resume_latest_route(page, {
@@ -877,16 +907,7 @@ def test_swipe_right_resumes_and_a_partial_swipe_left_rests_on_new(
     expect(row).not_to_have_attribute("data-swipe", re.compile(".*"))
     assert len(resumed) == 1
 
-
-@pytest.mark.iphone
-def test_a_swipe_never_starts_from_a_scroll_a_mouse_or_the_edge(
-    authed_page: Page, life
-) -> None:
-    _json_route(authed_page, r".*/api/life-os/skills(\\?.*)?$", _used())
-    _phone(authed_page)
-    page = life()
-    resumed = _resume_latest_route(page, {"conversation_action": "resume", "session": None})
-    launched = _launch_route(page)
+    # No swipe starts from a vertical scroll, a mouse or the back-gesture edge.
     for label, kwargs in (
         ("a vertical scroll", {"dx": 30, "dy": 200}),
         ("a mouse", {"dx": 330, "kind": "mouse", "pause": 16}),
@@ -902,42 +923,4 @@ def test_a_swipe_never_starts_from_a_scroll_a_mouse_or_the_edge(
     expect(_row(page, "yoga-log").locator(".swipe-pane--leading")).to_contain_text(
         "No conversation yet")
     flush_requests(page)
-    assert resumed == [] and launched == [], (resumed, launched)
-
-
-@pytest.mark.iphone
-def test_skill_rows_run_full_bleed_on_the_phone_only(authed_page: Page, life) -> None:
-    """The experiment the owner asked for: on the phone the Skills card runs
-    edge to edge, so a row and its panes span the screen, while its header,
-    toolbar and the rows' text keep the inset they had. Wide, it stays a
-    card."""
-    page = life()
-    measure = """el => {
-      if (!el.isConnected) return null;
-      const box = (n) => n.getBoundingClientRect();
-      const card = el.closest('.lifeos-list-card');
-      const row = el.querySelector("li[data-id='garden-notes']");
-      const app = el.closest('.app');
-      return {
-        // The content edge, without the desktop scrollbar a narrow window keeps.
-        edge: box(app).left + app.clientWidth,
-        card: box(card), row: box(row),
-        radius: getComputedStyle(card).borderTopLeftRadius,
-        head: box(card.querySelector('.collapse-main')),
-        filter: box(card.querySelector('.action-row-filter')),
-        avatar: box(row.querySelector('.avatar')),
-      };
-    }"""
-    page.set_viewport_size({"width": 390, "height": 844})
-    phone = stable_eval(page.locator("#lifeOsList"), measure)
-    assert round(phone["row"]["left"]) == 0, phone
-    assert abs(phone["row"]["right"] - phone["edge"]) <= 1, phone
-    assert phone["radius"] == "0px", phone
-    # The text keeps its inset (the gutter plus the card's 14px): header,
-    # filter and avatar line up, off the edge.
-    assert phone["filter"]["left"] >= 24, phone
-    for part in ("avatar", "head"):
-        assert abs(phone[part]["left"] - phone["filter"]["left"]) <= 2, (part, phone)
-    page.set_viewport_size({"width": 1024, "height": 800})
-    wide = stable_eval(page.locator("#lifeOsList"), measure)
-    assert wide["card"]["left"] > 0 and wide["radius"] != "0px", wide
+    assert len(resumed) == 1 and len(launched) == 1, (resumed, launched)
