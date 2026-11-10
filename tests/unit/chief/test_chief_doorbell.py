@@ -125,6 +125,14 @@ class TestDecide:
         assert bell.decide(_obs(status="waiting-on-task"), 0.0) == "debouncing"
         assert bell.decide(_obs(status="waiting-on-task"), DEBOUNCE_SECONDS) == "ring"
 
+    def test_rings_a_chief_stalled_on_its_own_waiter(self):
+        """The fallback waiter runs up to 30 minutes, so the chief reads
+        ``stalled`` once it outlives the dispatch threshold. Its composer is
+        free all the same: skipping it left lane completions unread."""
+        bell = Doorbell()
+        assert bell.decide(_obs(status="stalled"), 0.0) == "debouncing"
+        assert bell.decide(_obs(status="stalled"), DEBOUNCE_SECONDS) == "ring"
+
     @pytest.mark.parametrize("dirty, reason", [(True, "composer dirty"), (None, "composer unknown")])
     def test_a_waiting_chief_still_needs_a_clean_known_composer(self, dirty, reason):
         bell = Doorbell()
@@ -133,7 +141,7 @@ class TestDecide:
 
     @pytest.mark.parametrize(
         "status",
-        ["working", "tool-pending", "awaiting-decision", "stalled", "unknown"],
+        ["working", "tool-pending", "awaiting-decision", "unknown"],
     )
     def test_never_rings_a_chief_that_is_not_idle(self, status):
         """``tool-pending`` is a permission prompt and ``awaiting-decision`` a
@@ -236,7 +244,7 @@ class TestStaleWorking:
         for t in range(0, 300, 3):
             assert bell.decide(_obs(status="working", output_age=None), float(t)) != "ring"
 
-    @pytest.mark.parametrize("status", ["tool-pending", "awaiting-decision", "stalled", "unknown"])
+    @pytest.mark.parametrize("status", ["tool-pending", "awaiting-decision", "unknown"])
     def test_only_working_is_overridden(self, status):
         """A permission prompt or a picker is quiet by nature: typing there
         lands in the dialog, so old output proves nothing for them."""

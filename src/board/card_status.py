@@ -57,7 +57,9 @@ class CardStatus:
     at its prompt with nothing pending on screen. This differs from
     ``chief_resting`` on purpose. A decision picker is on screen, so typed text
     would answer it; a background waiter leaves the composer free, so a typed
-    line starts a new turn while the waiter keeps running.
+    line starts a new turn while the waiter keeps running. ``stalled`` rings
+    too: the chief's own fallback waiter outlives the dispatch threshold by
+    design, and the screen check keeps a picker from being typed into.
 
     ``screen_checked``: the needs-you split found no pending decision, but
     Claude can keep a pending ``ExitPlanMode`` call off disk while its picker
@@ -94,7 +96,9 @@ CARD_STATUSES: Dict[str, CardStatus] = {
         CardStatus(UNKNOWN),
         CardStatus(IDLE, chief_resting=True, doorbell_idle=True, turn_ended=True, quit_safe=True),
         CardStatus(WAITING_ON_TASK, doorbell_idle=True, turn_ended=True),
-        CardStatus(STALLED, needs_human=True, turn_ended=True),
+        CardStatus(
+            STALLED, needs_human=True, doorbell_idle=True, screen_checked=True, turn_ended=True,
+        ),
         CardStatus(AWAITING_DECISION, needs_human=True, chief_resting=True, turn_ended=True),
         CardStatus(TOOL_PENDING, screen_checked=True, turn_ended=True),
         CardStatus(
