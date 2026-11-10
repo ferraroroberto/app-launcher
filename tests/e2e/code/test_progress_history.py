@@ -111,9 +111,15 @@ def _tile(page: Page, key: str):
     return page.locator(f'#progressTiles .progress-tile[data-tile="{key}"]')
 
 
-def test_kebab_menu_keeps_usage_details_and_adds_history(authed_page: Page, base_url: str) -> None:
+def test_kebab_menu_keeps_usage_details_and_history_rereads_the_cache_by_bucket_and_range(
+    authed_page: Page, base_url: str
+) -> None:
+    """The kebab holds Usage details and History; a bucket or range change in
+    the History sheet rereads the cache only, never a new recalculation."""
     page = authed_page
-    _boot(page, base_url, _Progress(_payload(added=100), _payload(added=250)))
+    progress = _Progress(_payload(added=100, refreshing=False), _payload(added=100))
+    progress.released = True
+    _boot(page, base_url, progress)
 
     # The kebab opens the menu and does not open the Usage sheet under it.
     page.locator("#codingUsageKebab").click()
@@ -133,6 +139,18 @@ def test_kebab_menu_keeps_usage_details_and_adds_history(authed_page: Page, base
 
     _open_history(page)
     expect(page.locator("#progressSheetTitle")).to_have_text("History")
+    wait_until(page, lambda: any("refresh=true" in u for u in progress.requests), "the opening refresh")
+
+    before = len(progress.requests)
+    page.locator('#progressSheet [data-bucket="week"]').click()
+    wait_until(page, lambda: len(progress.requests) > before, "the week read")
+    assert "bucket=week" in progress.requests[-1]
+    assert "refresh=true" not in progress.requests[-1]
+
+    page.locator('#progressSheet [data-range="90"]').click()
+    wait_until(page, lambda: "bucket=week" in progress.requests[-1] and len(progress.requests) > before + 1, "the 90d read")
+    expect(page.locator('#progressSheet [data-range="90"]')).to_have_attribute("aria-pressed", "true")
+
     page.locator("#progressSheetClose").click()
     expect(page.locator("#progressSheet")).not_to_be_visible()
 
@@ -169,25 +187,6 @@ def test_cached_figures_show_at_once_then_update_in_place(authed_page: Page, bas
     assert len(asks) == 1, asks
 
 
-def test_bucket_and_range_reread_the_cache_only(authed_page: Page, base_url: str) -> None:
-    page = authed_page
-    progress = _Progress(_payload(added=100, refreshing=False), _payload(added=100))
-    progress.released = True
-    _boot(page, base_url, progress)
-    _open_history(page)
-    wait_until(page, lambda: any("refresh=true" in u for u in progress.requests), "the opening refresh")
-
-    before = len(progress.requests)
-    page.locator('#progressSheet [data-bucket="week"]').click()
-    wait_until(page, lambda: len(progress.requests) > before, "the week read")
-    assert "bucket=week" in progress.requests[-1]
-    assert "refresh=true" not in progress.requests[-1]
-
-    page.locator('#progressSheet [data-range="90"]').click()
-    wait_until(page, lambda: "bucket=week" in progress.requests[-1] and len(progress.requests) > before + 1, "the 90d read")
-    expect(page.locator('#progressSheet [data-range="90"]')).to_have_attribute("aria-pressed", "true")
-
-
 def test_unmeasured_figures_say_so_and_never_read_zero(authed_page: Page, base_url: str) -> None:
     page = authed_page
     down = _payload(added=100, tokens_state="unavailable")
@@ -210,32 +209,9 @@ def test_unmeasured_figures_say_so_and_never_read_zero(authed_page: Page, base_u
 
 
 @pytest.mark.iphone
-def test_legend_marks_are_the_agents_brand_colour_alone(authed_page: Page, base_url: str) -> None:
-    page = authed_page
-    progress = _Progress(_payload(added=100), _payload(added=100))
-    progress.released = True
-    _boot(page, base_url, progress)
-    _open_history(page)
-
-    marks = page.locator("#progressTokensLegend .progress-legend-mark")
-    expect(marks).to_have_count(1)
-    # Colour only: no icon, no letter.
-    expect(marks.first).to_have_text("")
-    expect(marks.first.locator("*")).to_have_count(0)
-    # The swatch is the agent's brand token, the one its chart series paints.
-    brand = page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--brand-claude').trim()")
-    assert brand, "--brand-claude must resolve"
-    swatch = marks.first.evaluate("m => getComputedStyle(m).backgroundColor")
-    probe = page.evaluate(
-        "c => { const e = document.createElement('i'); e.style.color = c; document.body.appendChild(e);"
-        " const v = getComputedStyle(e).color; e.remove(); return v; }", brand)
-    assert swatch == probe, (swatch, probe)
-    # The per-agent rows keep their icon.
-    expect(page.locator('#progressAgents .progress-agent-row[data-agent="claude"] .agent-icon')).to_have_count(1)
-
-
-@pytest.mark.iphone
-def test_sheet_fits_a_phone(authed_page: Page, base_url: str) -> None:
+def test_sheet_fits_a_phone_and_legend_marks_are_the_agents_brand_colour_alone(
+    authed_page: Page, base_url: str
+) -> None:
     page = authed_page
     page.set_viewport_size({"width": 390, "height": 844})
     progress = _Progress(_payload(added=100), _payload(added=100))
@@ -256,3 +232,19 @@ def test_sheet_fits_a_phone(authed_page: Page, base_url: str) -> None:
     assert fits["wide"] == [], fits
     done = page.locator("#progressSheetDone").bounding_box()
     assert done is not None and done["height"] >= 44, done
+
+    marks = page.locator("#progressTokensLegend .progress-legend-mark")
+    expect(marks).to_have_count(1)
+    # Colour only: no icon, no letter.
+    expect(marks.first).to_have_text("")
+    expect(marks.first.locator("*")).to_have_count(0)
+    # The swatch is the agent's brand token, the one its chart series paints.
+    brand = page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--brand-claude').trim()")
+    assert brand, "--brand-claude must resolve"
+    swatch = marks.first.evaluate("m => getComputedStyle(m).backgroundColor")
+    probe = page.evaluate(
+        "c => { const e = document.createElement('i'); e.style.color = c; document.body.appendChild(e);"
+        " const v = getComputedStyle(e).color; e.remove(); return v; }", brand)
+    assert swatch == probe, (swatch, probe)
+    # The per-agent rows keep their icon.
+    expect(page.locator('#progressAgents .progress-agent-row[data-agent="claude"] .agent-icon')).to_have_count(1)

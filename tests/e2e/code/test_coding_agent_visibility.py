@@ -163,9 +163,17 @@ def _reset_visibility(page: Page, base_url: str) -> None:
     )
 
 
-def test_hidden_agent_and_github_buttons_disappear_and_persist(
+def test_hidden_agent_and_github_buttons_disappear_and_persist_and_a_save_keeps_the_switches(
     authed_page: Page, base_url: str
 ) -> None:
+    """Toggling a switch drops its row from the ⋯ menu at once and persists.
+
+    A successful save must not rebuild the switch DOM (#732):
+    renderAgentVisibility() used to tear down and rebuild every switch
+    after every successful patchConfig() call, which opened a window for a
+    fast second tap to land on a detached element. A marker set on a switch
+    before the taps has to survive them.
+    """
     _install_routes(authed_page)
     _reset_visibility(authed_page, base_url)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
@@ -180,6 +188,12 @@ def test_hidden_agent_and_github_buttons_disappear_and_persist(
     expect(authed_page.locator('[data-visibility-toggle="vscode"]')).to_have_count(0)
     _expect_offered(authed_page, 1)
 
+    authed_page.evaluate(
+        """() => {
+            document.querySelector('[data-visibility-toggle="github"]')
+                .dataset.probeMarker = 'still-me';
+        }"""
+    )
     # Toggling off drops the row from the ⋯ menu with no reload.
     _open_visibility(authed_page)
     codex_toggle.click()
@@ -188,6 +202,16 @@ def test_hidden_agent_and_github_buttons_disappear_and_persist(
     expect(github_toggle).to_have_attribute("aria-checked", "false")
     _back_to_coding(authed_page)
     _expect_offered(authed_page, 0)
+    survived = authed_page.evaluate(
+        """() => {
+            const el = document.querySelector('[data-visibility-toggle="github"]');
+            return !!el && el.dataset.probeMarker === 'still-me';
+        }"""
+    )
+    assert survived, (
+        "renderAgentVisibility() rebuilt the switch DOM on a successful "
+        "save — the exact window issue #732's click race lands in"
+    )
     # The favourite's launch button stays on the row — it is the row's one
     # launch affordance, so it is not the visibility list's to hide (#1070).
     expect(
@@ -216,59 +240,6 @@ def test_hidden_agent_and_github_buttons_disappear_and_persist(
         expect(toggle).to_have_attribute("aria-checked", "true")
     _back_to_coding(authed_page)
     _expect_offered(authed_page, 1)
-
-
-def test_agent_visibility_switch_identity_survives_successful_save(
-    authed_page: Page, base_url: str
-) -> None:
-    """Regression pin for issue #732.
-
-    The flaky assertion in the test above only reproduces under full-suite
-    WebKit load: two back-to-back toggle taps race a click against a switch
-    element that a successful save's re-render had just detached. That race
-    itself isn't reliably forceable from a test, but its root cause is
-    deterministic and directly assertable — renderAgentVisibility() used to
-    tear down and rebuild every switch element (`host.innerHTML = ''`) after
-    *every* successful patchConfig() call, not just a failed one. This pins
-    that a switch element's identity survives a successful save, which is
-    what closes the window a fast second tap could land in.
-    """
-    _install_routes(authed_page)
-    _reset_visibility(authed_page, base_url)
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _open_surfaces(authed_page)
-
-    codex_toggle = authed_page.locator('[data-visibility-toggle="codex"]')
-    expect(codex_toggle).to_have_attribute("aria-checked", "true", timeout=5_000)
-
-    authed_page.evaluate(
-        """() => {
-            document.querySelector('[data-visibility-toggle="github"]')
-                .dataset.probeMarker = 'still-me';
-        }"""
-    )
-
-    _open_visibility(authed_page)
-    codex_toggle.click()
-    expect(codex_toggle).to_have_attribute("aria-checked", "false", timeout=5_000)
-    # The save is real (unmocked) and round-trips through GET /api/config;
-    # give any rebuild triggered by it time to run: the Codex row has left the
-    # ⋯ menu once it has. Closing the sheet leaves the switch DOM in place.
-    _back_to_coding(authed_page)
-    _open_menu(authed_page)
-    expect(_codex_btn(authed_page)).to_have_count(0)
-    _close_menu(authed_page)
-
-    survived = authed_page.evaluate(
-        """() => {
-            const el = document.querySelector('[data-visibility-toggle="github"]');
-            return !!el && el.dataset.probeMarker === 'still-me';
-        }"""
-    )
-    assert survived, (
-        "renderAgentVisibility() rebuilt the switch DOM on a successful "
-        "save — the exact window issue #732's click race lands in"
-    )
 
 
 @pytest.mark.iphone

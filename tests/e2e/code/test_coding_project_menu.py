@@ -246,11 +246,27 @@ def test_row_carries_three_controls_and_the_menu_holds_the_rest(
     expect(menu).to_be_hidden()
 
 
-def test_vscode_item_disabled_when_cli_missing_and_changes_hidden_for_non_git(
+def test_vscode_item_disabled_when_cli_missing_and_the_favorite_dropdown_moves_the_button(
     authed_page: Page, base_url: str
 ) -> None:
+    """The VS Code item is greyed with a hint when the `code` CLI is missing,
+    and Show changes is offered only for a git repository.
+
+    #1070 — the Favorite agent picker (Settings › Launch defaults since
+    #1435) owns the row button. The favourite is chosen explicitly, never
+    derived from usage: a button that relocates on its own is worse than one
+    in the wrong place. Changing it swaps which agent is on the row and drops
+    the previous favourite into the ⋯ menu, with no reload — and it persists,
+    because it is a config write like the visibility switches it sits beside.
+    The picker is generated from the live registry (the same contract as
+    renderAgentVisibility, #666): with /api/agents mocked to two agents, it
+    has exactly two options and no hand-written third.
+    """
     posted = _install_routes(authed_page, vscode_available=False)
     _reset_visibility(authed_page, base_url)
+    authed_page.request.post(
+        f"{base_url}/api/config", data={"coding_favorite_agent": "claude"}
+    )
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     _open_projects(authed_page)
 
@@ -269,75 +285,14 @@ def test_vscode_item_disabled_when_cli_missing_and_changes_hidden_for_non_git(
     expect(menu).to_be_visible()
     expect(menu.locator("[data-item=project-changes-btn]")).to_have_count(0)
     expect(menu.locator("[data-item=project-folder-btn]")).to_have_count(1)
+    authed_page.keyboard.press("Escape")
+
+    _assert_the_favorite_dropdown_moves_the_button(authed_page, base_url)
 
 
-def test_menu_is_not_hideable_and_a_stored_vscode_value_is_inert(
-    authed_page: Page, base_url: str
-) -> None:
-    """#1070 — the ⋯ menu stopped being hideable, deliberately.
-
-    Under #666 the `vscode` pseudo-id hid the whole menu, which was safe
-    while the menu held only VS Code / Show changes / Open folder. It now
-    also holds a launch row for every non-favourite agent and the GitHub
-    row, so hiding it would strand them with no other route. The switch is
-    therefore gone from the Visible-agents list, and a `vscode` value left
-    in an existing config is honoured as a no-op rather than migrated away
-    — that is what this asserts, because "hidden list still contains
-    vscode" is the state every launcher that ran #666 is actually in.
-
-    This replaces test_menu_is_hideable_and_persists, which pinned the
-    opposite requirement.
-    """
-    _install_routes(authed_page, vscode_available=True)
-    # The state an existing launcher is in: `vscode` sitting in the stored
-    # hidden list from #666.
-    authed_page.request.post(
-        f"{base_url}/api/config", data={"coding_hidden_agents": ["vscode"]}
-    )
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _open_surfaces(authed_page)
-
-    # No switch offers to hide it any more …
-    expect(authed_page.locator('[data-visibility-toggle="claude"]')).to_have_count(
-        1, timeout=5_000
-    )
-    expect(authed_page.locator('[data-visibility-toggle="vscode"]')).to_have_count(0)
-    # … and the stored value does not hide it either.
-    expect(_anchor(authed_page)).to_have_count(1)
-    menu = _menu(authed_page)
-    _anchor(authed_page).click()
-    expect(menu).to_be_visible()
-    expect(menu.locator("[data-item=project-vscode-btn]")).to_have_count(1)
-
-    # The stored value survives untouched — nothing migrated it away.
-    stored = authed_page.request.get(f"{base_url}/api/config").json()
-    assert "vscode" in stored["coding_hidden_agents"], stored["coding_hidden_agents"]
-
-
-def test_favorite_agent_dropdown_moves_the_button_with_no_reload(
-    authed_page: Page, base_url: str
-) -> None:
-    """#1070 — the Favorite agent picker (Settings › Launch defaults since
-    #1435) owns the row button.
-
-    The favourite is chosen explicitly, never derived from usage: a button
-    that relocates on its own is worse than one in the wrong place. Changing
-    it swaps which agent is on the row and drops the previous favourite into
-    the ⋯ menu, with no reload — and it persists, because it is a config
-    write like the visibility switches it sits beside.
-
-    The picker is generated from the live registry (the same contract as
-    renderAgentVisibility, #666): with /api/agents mocked to two agents, it
-    has exactly two options and no hand-written third.
-    """
-    _install_routes(authed_page, vscode_available=True)
-    _reset_visibility(authed_page, base_url)
-    authed_page.request.post(
-        f"{base_url}/api/config", data={"coding_favorite_agent": "claude"}
-    )
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _open_surfaces(authed_page)
-
+def _assert_the_favorite_dropdown_moves_the_button(authed_page: Page, base_url: str) -> None:
+    """Swap the favourite from Claude to Codex in Settings and read the row,
+    the ⋯ menu and the stored config."""
     open_settings_sheet(authed_page, "launchDefaultsSheet")
     picker = authed_page.locator("#codingFavoriteAgent")
     expect(picker).to_have_value("claude", timeout=5_000)
@@ -376,28 +331,60 @@ def test_favorite_agent_dropdown_moves_the_button_with_no_reload(
     assert stored["coding_favorite_agent"] == "codex", stored["coding_favorite_agent"]
 
 
-def test_favorite_agent_stays_on_the_row_even_when_hidden(
+def test_menu_is_not_hideable_and_the_favorite_stays_on_the_row_when_hidden(
     authed_page: Page, base_url: str
 ) -> None:
-    """#1070 — "Visible agents" governs the menu, not the row's one button.
+    """#1070 — the ⋯ menu stopped being hideable, deliberately.
 
-    Hiding the favourite would otherwise leave the row with no launch
-    affordance at all, which is the failure #1040 had to repair on the
-    session row: a green gate over a row whose options had silently
-    vanished. The favourite is rendered regardless of the hidden list.
+    Under #666 the `vscode` pseudo-id hid the whole menu, which was safe
+    while the menu held only VS Code / Show changes / Open folder. It now
+    also holds a launch row for every non-favourite agent and the GitHub
+    row, so hiding it would strand them with no other route. The switch is
+    therefore gone from the Visible-agents list, and a `vscode` value left
+    in an existing config is honoured as a no-op rather than migrated away
+    — that is what this asserts, because "hidden list still contains
+    vscode" is the state every launcher that ran #666 is actually in.
+
+    "Visible agents" governs the menu, not the row's one button: hiding the
+    favourite would otherwise leave the row with no launch affordance at
+    all, which is the failure #1040 had to repair on the session row. The
+    favourite is rendered regardless of the hidden list.
     """
     _install_routes(authed_page, vscode_available=True)
+    # The state an existing launcher is in: `vscode` sitting in the stored
+    # hidden list from #666.
     authed_page.request.post(
-        f"{base_url}/api/config",
-        data={"coding_hidden_agents": ["claude", "codex", "github"]},
+        f"{base_url}/api/config", data={"coding_hidden_agents": ["vscode"]}
     )
     authed_page.request.post(
         f"{base_url}/api/config", data={"coding_favorite_agent": "claude"}
     )
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _open_projects(authed_page)
+    _open_surfaces(authed_page)
 
-    # Hidden everywhere else, still the row's own launch.
+    # No switch offers to hide it any more …
+    expect(authed_page.locator('[data-visibility-toggle="claude"]')).to_have_count(
+        1, timeout=5_000
+    )
+    expect(authed_page.locator('[data-visibility-toggle="vscode"]')).to_have_count(0)
+    # … and the stored value does not hide it either.
+    expect(_anchor(authed_page)).to_have_count(1)
+    menu = _menu(authed_page)
+    _anchor(authed_page).click()
+    expect(menu).to_be_visible()
+    expect(menu.locator("[data-item=project-vscode-btn]")).to_have_count(1)
+
+    # The stored value survives untouched — nothing migrated it away.
+    stored = authed_page.request.get(f"{base_url}/api/config").json()
+    assert "vscode" in stored["coding_hidden_agents"], stored["coding_hidden_agents"]
+
+    # Every agent hidden: the favourite is still the row's own launch.
+    authed_page.request.post(
+        f"{base_url}/api/config",
+        data={"coding_hidden_agents": ["claude", "codex", "github"]},
+    )
+    authed_page.reload(wait_until="domcontentloaded")
+    _open_projects(authed_page)
     expect(
         authed_page.locator(
             '.coding-item[data-id="alpha"] .action-row-main[data-agent="claude"]'

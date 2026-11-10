@@ -353,49 +353,63 @@ def test_coding_model_combo_syncs_with_settings_control(
 def test_server_catalog_populates_shared_model_selectors(
     authed_page: Page, base_url: str
 ) -> None:
-    """#845/#851: every model surface uses the shared catalog-backed picker."""
-    # Every catalog model on, whatever the copied config hides.
-    authed_page.request.post(f"{base_url}/api/config", data={"hidden_models": []})
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _open_projects(authed_page)
+    """#845/#851: every model surface uses the shared catalog-backed picker,
+    and Settings › Models governs which models the dropdowns offer."""
+    # The disposable webapp boots from a copy of the real config, so the
+    # baseline is set rather than assumed.
+    authed_page.request.post(f"{base_url}/api/config", data={"hidden_models": list(DEFAULT_HIDDEN_MODELS)})
+    try:
+        authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+        _assert_switching_a_model_on_offers_it_in_every_dropdown(authed_page, base_url)
 
-    coding = authed_page.locator("#codingModelMenu button[data-value]")
-    expect(coding).to_have_count(7, timeout=5_000)
-    expect(
-        authed_page.locator("#codingModelMenu [data-value='codex:gpt-6-luna']")
-    ).to_have_text("Codex · Luna")
-    expect(
-        authed_page.locator("#codingModelMenu [data-value='codex:gpt-6-astra']")
-    ).to_be_enabled()
+        # Every catalog model on, whatever the copied config hides.
+        authed_page.request.post(f"{base_url}/api/config", data={"hidden_models": []})
+        authed_page.reload(wait_until="domcontentloaded")
+        _open_projects(authed_page)
 
-    shared = (
-        "#codingModelCombo, #claudeModel, #codexModel, #piModel, "
-        "#lifeOsModelCombo, #boardDispatchModel, #chiefModelSelect"
-    )
-    expect(authed_page.locator(shared)).to_have_count(7)
-    for selector in shared.split(", "):
-        root = authed_page.locator(selector)
-        expect(root).to_have_class(re.compile(r"\bmodel-combo\b"))
-        expect(root.locator(".model-combo-trigger")).to_have_count(1)
-        # One model listbox each: the menu itself, or (Life's, which also
-        # holds the launch switches, #1503) a list inside it.
-        expect(root.locator("[role='listbox']")).to_have_count(1)
-        expect(root.locator(".model-combo-menu")).to_have_count(1)
+        coding = authed_page.locator("#codingModelMenu button[data-value]")
+        expect(coding).to_have_count(7, timeout=5_000)
+        expect(
+            authed_page.locator("#codingModelMenu [data-value='codex:gpt-6-luna']")
+        ).to_have_text("Codex · Luna")
+        expect(
+            authed_page.locator("#codingModelMenu [data-value='codex:gpt-6-astra']")
+        ).to_be_enabled()
 
-    board = authed_page.locator("#boardDispatchModel")
-    # Grok Build is offered only where its CLI is installed, so count without it.
-    expect(
-        board.locator("[role='option']:not([data-value^='grok:'])")
-    ).to_have_count(7)
-    expect(
-        board.locator("[data-value='codex:gpt-6-astra']")
-    ).to_be_enabled()
+        shared = (
+            "#codingModelCombo, #claudeModel, #codexModel, #piModel, "
+            "#lifeOsModelCombo, #boardDispatchModel, #chiefModelSelect"
+        )
+        expect(authed_page.locator(shared)).to_have_count(7)
+        for selector in shared.split(", "):
+            root = authed_page.locator(selector)
+            expect(root).to_have_class(re.compile(r"\bmodel-combo\b"))
+            expect(root.locator(".model-combo-trigger")).to_have_count(1)
+            # One model listbox each: the menu itself, or (Life's, which also
+            # holds the launch switches, #1503) a list inside it.
+            expect(root.locator("[role='listbox']")).to_have_count(1)
+            expect(root.locator(".model-combo-menu")).to_have_count(1)
 
-    # The three agents' pickers share one sheet (#1435) but only the chosen
-    # agent's group is un-hidden, so each sheet is opened in turn and its own
-    # trigger measured while visible — a hidden element would compare as
-    # all-zero geometry. Collect one signature per agent per theme, then
-    # require them all to match.
+        board = authed_page.locator("#boardDispatchModel")
+        # Grok Build is offered only where its CLI is installed, so count without it.
+        expect(
+            board.locator("[role='option']:not([data-value^='grok:'])")
+        ).to_have_count(7)
+        expect(
+            board.locator("[data-value='codex:gpt-6-astra']")
+        ).to_be_enabled()
+
+        _assert_settings_pickers_share_one_style(authed_page)
+    finally:
+        authed_page.request.post(f"{base_url}/api/config", data={"hidden_models": list(DEFAULT_HIDDEN_MODELS)})
+
+
+def _assert_settings_pickers_share_one_style(authed_page: Page) -> None:
+    """The three agents' pickers share one sheet (#1435) but only the chosen
+    agent's group is un-hidden, so each sheet is opened in turn and its own
+    trigger measured while visible — a hidden element would compare as
+    all-zero geometry. Collect one signature per agent per theme, then
+    require them all to match."""
     for theme in ("light", "dark"):
         authed_page.evaluate(
             "value => document.documentElement.dataset.theme = value", theme
@@ -418,35 +432,37 @@ def test_server_catalog_populates_shared_model_selectors(
 
 
 @pytest.mark.iphone
-@pytest.mark.parametrize("installed", [True, False])
 def test_grok_is_offered_by_the_board_dispatch_picker_only(
-    authed_page: Page, base_url: str, installed: bool
+    authed_page: Page, base_url: str
 ) -> None:
     """Grok Build joins the Board's "Start with" picker when the server reports
-    it installed; the Coding tab and Life OS pickers never carry it."""
+    it installed, and leaves it when it is not; the Coding tab and Life OS
+    pickers never carry it."""
     body = _config("sonnet", "claude:sonnet")
-    body["board_dispatch_models"] = {
-        "grok": [{"value": "grok-4.7", "label": "4.7", "available": True}] if installed else []
-    }
     authed_page.route(
         re.compile(r".*/api/config$"),
         lambda route: route.fulfill(
             status=200, content_type="application/json", body=_json.dumps(body)
         ),
     )
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _open_projects(authed_page)
-    expect(
-        authed_page.locator("#codingModelMenu button[data-value='claude:sonnet']")
-    ).to_have_count(1, timeout=5_000)
-
     grok = authed_page.locator("#boardDispatchModel [data-value='grok:grok-4.7']")
-    expect(grok).to_have_count(1 if installed else 0)
-    if installed:
-        expect(grok).to_have_text("Grok · 4.7")
-        expect(grok).to_be_enabled()
-    expect(authed_page.locator("#codingModelMenu [data-value^='grok:']")).to_have_count(0)
-    expect(authed_page.locator("#lifeOsModelCombo [data-value^='grok:']")).to_have_count(0)
+    for installed in (True, False):
+        body["board_dispatch_models"] = {
+            "grok": [{"value": "grok-4.7", "label": "4.7", "available": True}] if installed else []
+        }
+        authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+        _open_projects(authed_page)
+        expect(
+            authed_page.locator("#codingModelMenu button[data-value='claude:sonnet']")
+        ).to_have_count(1, timeout=5_000)
+
+        expect(grok).to_have_count(1 if installed else 0)
+        if installed:
+            expect(grok).to_have_text("Grok · 4.7")
+            expect(grok).to_be_enabled()
+        expect(authed_page.locator("#codingModelMenu [data-value^='grok:']")).to_have_count(0)
+        expect(authed_page.locator("#lifeOsModelCombo [data-value^='grok:']")).to_have_count(0)
+
 
 
 def _install_model_save_harness(authed_page: Page, config: dict) -> None:
@@ -604,28 +620,23 @@ def _offered(page: Page, value: str):
     return [page.locator(f"{picker} [role=option][data-value='{value}']") for picker in VISIBILITY_PICKERS]
 
 
-def test_switching_a_model_on_offers_it_in_every_dropdown(authed_page: Page, base_url: str) -> None:
-    # The disposable webapp boots from a copy of the real config, so the
-    # baseline is set rather than assumed.
-    authed_page.request.post(f"{base_url}/api/config", data={"hidden_models": list(DEFAULT_HIDDEN_MODELS)})
-    try:
-        authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-        for option in _offered(authed_page, "codex:gpt-6-luna"):
-            expect(option).to_have_count(1)
-        for option in _offered(authed_page, "codex:gpt-5.6-sol"):
-            expect(option).to_have_count(0)
+def _assert_switching_a_model_on_offers_it_in_every_dropdown(authed_page: Page, base_url: str) -> None:
+    """From the default hidden set, switch Sol on in Settings › Launch
+    defaults: it joins all three pickers and the save reaches the server."""
+    for option in _offered(authed_page, "codex:gpt-6-luna"):
+        expect(option).to_have_count(1)
+    for option in _offered(authed_page, "codex:gpt-5.6-sol"):
+        expect(option).to_have_count(0)
 
-        open_settings_sheet(authed_page, "launchDefaultsSheet")
-        sol = authed_page.locator('[data-model-toggle="codex:gpt-5.6-sol"]')
-        expect(authed_page.locator('[data-model-toggle="codex:gpt-6-luna"]')).to_have_attribute("aria-checked", "true")
-        expect(sol).to_have_attribute("aria-checked", "false")
-        sol.click()
-        expect(sol).to_have_attribute("aria-checked", "true")
-        close_settings_sheets(authed_page)
+    open_settings_sheet(authed_page, "launchDefaultsSheet")
+    sol = authed_page.locator('[data-model-toggle="codex:gpt-5.6-sol"]')
+    expect(authed_page.locator('[data-model-toggle="codex:gpt-6-luna"]')).to_have_attribute("aria-checked", "true")
+    expect(sol).to_have_attribute("aria-checked", "false")
+    sol.click()
+    expect(sol).to_have_attribute("aria-checked", "true")
+    close_settings_sheets(authed_page)
 
-        for option in _offered(authed_page, "codex:gpt-5.6-sol"):
-            expect(option).to_have_count(1)
-        saved = authed_page.request.get(f"{base_url}/api/config").json()["hidden_models"]
-        assert "codex:gpt-5.6-sol" not in saved
-    finally:
-        authed_page.request.post(f"{base_url}/api/config", data={"hidden_models": list(DEFAULT_HIDDEN_MODELS)})
+    for option in _offered(authed_page, "codex:gpt-5.6-sol"):
+        expect(option).to_have_count(1)
+    saved = authed_page.request.get(f"{base_url}/api/config").json()["hidden_models"]
+    assert "codex:gpt-5.6-sol" not in saved
