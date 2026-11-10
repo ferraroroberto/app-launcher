@@ -307,12 +307,8 @@ def test_life_os_search_start_new_across_every_skill_is_a_plain_plus_that_opens_
 ) -> None:
     """#1588: spanning every skill, Start new opens the skill list instead and
     the owner taps one; the sheet closes and that skill starts fresh. It is
-    there for a search with no hits, and ✕ leaves everything unlaunched.
-
-    #1588 round 2: Start new is an unpainted vendored icon-button (a `+`
-    glyph, no fill or border at rest, a 44px invisible target) at the trailing
-    end of the Conversations head, and the sort control spans the content
-    width like the search field, in both themes."""
+    there for a search with no hits, and ✕ leaves everything unlaunched. The
+    + itself is checked by ``_assert_a_plain_plus_and_a_full_width_sort``."""
     page = authed_page
     _mock_skills(page)
     seen: list = []
@@ -330,44 +326,7 @@ def test_life_os_search_start_new_across_every_skill_is_a_plain_plus_that_opens_
     expect(start).to_have_accessible_name("Start new conversation")
     expect(start).to_have_attribute("aria-haspopup", "dialog")
 
-    expect(start).to_have_class(re.compile(r"(^|\s)icon-button(\s|$)"))
-    expect(start).not_to_have_class(re.compile(r"button-tint"))
-    expect(start.locator("svg use")).to_have_attribute("href", "#i-plus")
-    expect(start).to_have_text("")
-    for theme in ("light", "dark"):
-        page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
-        assert_min_target(start)
-        assert_no_overlap([page.locator("#lifeOsConvoHead"), start])
-        # Unpainted at rest: transparent fill, no border, no shadow.
-        expect(start).to_have_css("background-color", "rgba(0, 0, 0, 0)")
-        expect(start).to_have_css("border-top-width", "0px")
-        expect(start).to_have_css("box-shadow", "none")
-        head_w = stable_eval(page.locator("#lifeOsConvoHead"), "h => h.getBoundingClientRect().width")
-        assert head_w > 80, head_w
-        fit = stable_eval(
-            page.locator("#lifeOsConvoGroup"),
-            "g => { const r = g.getBoundingClientRect(),"
-            " b = g.querySelector('#lifeOsConvoStartNew').getBoundingClientRect();"
-            " return b.left >= r.left && b.right <= r.right; }")
-        assert fit, "Start new spills out of the Conversations group"
-        # The sort track runs the head's full width on a phone, three equal
-        # segments; a wide card keeps the track at a phone's width (360px).
-        for width in (390, 430, 1280):
-            page.set_viewport_size({"width": width, "height": 844})
-            geo = stable_eval(
-                page.locator("#lifeOsConvoGroup"),
-                "g => { const q = s => g.querySelector(s).getBoundingClientRect(),"
-                " bar = q('.lifeos-group-bar'), sort = q('#lifeOsConvoSort'),"
-                " segs = [...g.querySelectorAll('#lifeOsConvoSort .segmented-item')]"
-                ".map(e => e.getBoundingClientRect().width);"
-                " return {sortL: sort.left, sortR: sort.right, barL: bar.left,"
-                " barR: bar.right, segs}; }")
-            assert abs(geo["sortL"] - geo["barL"]) <= 1, (width, geo)
-            if width <= 430:
-                assert abs(geo["sortR"] - geo["barR"]) <= 1, (width, geo)
-            else:
-                assert geo["sortR"] - geo["sortL"] <= 361, (width, geo)
-            assert max(geo["segs"]) - min(geo["segs"]) <= 1, (width, geo)
+    _assert_a_plain_plus_and_a_full_width_sort(page, start)
     page.set_viewport_size({"width": 390, "height": 844})
 
     start.click()
@@ -436,3 +395,48 @@ def test_life_os_search_failure_stays_in_its_group(
         expect(authed_page.locator("#toast")).to_be_hidden()
         expect(authed_page.locator("#lifeOsList li.lifeos-item:visible")).to_have_count(1)
         expect(authed_page.locator("#lifeOsSkillsHead")).to_have_text("Skills (1)")
+
+
+def _assert_a_plain_plus_and_a_full_width_sort(page: Page, start) -> None:
+    """#1588 round 2: Start new is an unpainted vendored icon-button (a `+`
+    glyph, no fill or border at rest, a 44px invisible target) at the trailing
+    end of the Conversations head, and the sort control spans the content
+    width like the search field, in both themes."""
+    expect(start).to_have_class(re.compile(r"(^|\s)icon-button(\s|$)"))
+    expect(start).not_to_have_class(re.compile(r"button-tint"))
+    expect(start.locator("svg use")).to_have_attribute("href", "#i-plus")
+    expect(start).to_have_text("")
+    for theme in ("light", "dark"):
+        page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
+        assert_min_target(start)
+        assert_no_overlap([page.locator("#lifeOsConvoHead"), start])
+        # Unpainted at rest: transparent fill, no border, no shadow.
+        expect(start).to_have_css("background-color", "rgba(0, 0, 0, 0)")
+        expect(start).to_have_css("border-top-width", "0px")
+        expect(start).to_have_css("box-shadow", "none")
+        head_w = stable_eval(page.locator("#lifeOsConvoHead"), "h => h.getBoundingClientRect().width")
+        assert head_w > 80, head_w
+        fit = stable_eval(
+            page.locator("#lifeOsConvoGroup"),
+            "g => { const r = g.getBoundingClientRect(),"
+            " b = g.querySelector('#lifeOsConvoStartNew').getBoundingClientRect();"
+            " return b.left >= r.left && b.right <= r.right; }")
+        assert fit, "Start new spills out of the Conversations group"
+        # The sort track runs the head's full width on a phone, three equal
+        # segments; a wide card keeps the track at a phone's width (360px).
+        for width in (390, 430, 1280):
+            page.set_viewport_size({"width": width, "height": 844})
+            geo = stable_eval(
+                page.locator("#lifeOsConvoGroup"),
+                "g => { const q = s => g.querySelector(s).getBoundingClientRect(),"
+                " bar = q('.lifeos-group-bar'), sort = q('#lifeOsConvoSort'),"
+                " segs = [...g.querySelectorAll('#lifeOsConvoSort .segmented-item')]"
+                ".map(e => e.getBoundingClientRect().width);"
+                " return {sortL: sort.left, sortR: sort.right, barL: bar.left,"
+                " barR: bar.right, segs}; }")
+            assert abs(geo["sortL"] - geo["barL"]) <= 1, (width, geo)
+            if width <= 430:
+                assert abs(geo["sortR"] - geo["barR"]) <= 1, (width, geo)
+            else:
+                assert geo["sortR"] - geo["sortL"] <= 361, (width, geo)
+            assert max(geo["segs"]) - min(geo["segs"]) <= 1, (width, geo)
