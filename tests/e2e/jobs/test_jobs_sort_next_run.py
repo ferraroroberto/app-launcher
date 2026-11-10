@@ -178,24 +178,43 @@ def test_jobs_default_to_next_run_order_with_countdown(
     expect(sheet).to_be_hidden()
 
 
-def test_external_schedule_card_only_offers_history(
+def test_external_schedule_and_manual_run_rows_say_what_they_allow(
     authed_page: Page, base_url: str
 ) -> None:
+    """An externally scheduled job and a manually started one on one list
+    (#1215): neither check reads the row order, so they share a page."""
     # Computed at call time (#646) — see _wire_jobs for why.
+    now = int(time.time())
     external = _job(
         "HWiNFO restart",
         job_id="hwinfo-restart",
-        next_epoch=int(time.time()) + 3600,
+        next_epoch=now + 3600,
         chip="every 8 h",
         sched={"type": "hourly", "every": 8},
         elevated=True,
     )
+    running = _job(
+        "LI scrape",
+        job_id="linkedin-scrape",
+        next_epoch=now + 14 * 60,
+        chip="daily 06:15 12:00 18:00",
+        sched={"type": "daily_times", "at": ["06:15", "12:00", "18:00"]},
+    )
+    running["running"] = True
+    running["next_run"] = "2026-07-16 06:15"
+    running["last_run"] = {
+        "run_id": "20260716T060156",
+        "status": "running",
+        "started_at": "2026-07-16T06:01:57",
+        "trigger": "manual",
+        "duration_seconds": None,
+    }
     authed_page.route(
         re.compile(r".*/api/jobs(\?.*)?$"),
         lambda route: route.fulfill(
             status=200,
             content_type="application/json",
-            body=_json.dumps({"jobs": [external]}),
+            body=_json.dumps({"jobs": [external, running]}),
         ),
     )
 
@@ -219,39 +238,10 @@ def test_external_schedule_card_only_offers_history(
         "external schedule"
     )
     expect(authed_page.locator("#jobSheetRun")).to_be_disabled()
+    authed_page.locator("#jobSheetClose").click()
+    expect(authed_page.locator("#jobSheet")).to_be_hidden()
 
-
-def test_manual_run_state_is_distinct_from_next_scheduled_fire(
-    authed_page: Page, base_url: str
-) -> None:
-    # Computed at call time (#646) — see _wire_jobs for why.
-    running = _job(
-        "LI scrape",
-        job_id="linkedin-scrape",
-        next_epoch=int(time.time()) + 14 * 60,
-        chip="daily 06:15 12:00 18:00",
-        sched={"type": "daily_times", "at": ["06:15", "12:00", "18:00"]},
-    )
-    running["running"] = True
-    running["next_run"] = "2026-07-16 06:15"
-    running["last_run"] = {
-        "run_id": "20260716T060156",
-        "status": "running",
-        "started_at": "2026-07-16T06:01:57",
-        "trigger": "manual",
-        "duration_seconds": None,
-    }
-    authed_page.route(
-        re.compile(r".*/api/jobs(\?.*)?$"),
-        lambda route: route.fulfill(
-            status=200,
-            content_type="application/json",
-            body=_json.dumps({"jobs": [running]}),
-        ),
-    )
-
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    authed_page.locator("#tabJobs").click()
+    # -- was test_manual_run_state_is_distinct_from_next_scheduled_fire --
     row = authed_page.locator("#jobsList li[data-id='linkedin-scrape']")
     # Since #1438 the row's meta line says "running now" in place of the
     # countdown (the avatar's alive badge says it too); the *next scheduled
@@ -261,7 +251,7 @@ def test_manual_run_state_is_distinct_from_next_scheduled_fire(
         re.compile(r"^running now · Daily 06:15 12:00 18:00$"))
     expect(row.locator(".job-avatar")).to_have_attribute("data-badge", "alive")
     row.locator(".action-row-main").click()
-    details = authed_page.locator("#jobSheetBody [data-role='job-details']")
+    expect(authed_page.locator("#jobSheetTitle")).to_have_text("LI scrape")
     expect(details.locator(".job-detail-row", has_text="Last run")).to_contain_text(
         "running now")
     expect(details.locator(".job-detail-row", has_text="Next run")).to_contain_text(
