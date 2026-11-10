@@ -131,6 +131,8 @@ def _no_sideways_spill(page: Page) -> None:
 
 @pytest.mark.iphone
 def test_row_and_sheet_draw_each_period(authed_page: Page, base_url: str) -> None:
+    """The row and each period's report; the drawn week holds its fills and
+    text in both themes."""
     page = authed_page
     page.set_viewport_size({"width": 390, "height": 844})
     seen = _route_usage(page)
@@ -188,6 +190,7 @@ def test_row_and_sheet_draw_each_period(authed_page: Page, base_url: str) -> Non
     # PC is solid, phone striped: the second channel is the pattern.
     assert heights[0]["image"] == "none" and "gradient" in heights[1]["image"], heights
     _no_sideways_spill(page)
+    _assert_fills_and_text_hold_in_both_themes(page)
 
     # A month: thirty bars, about four labels, the last under today.
     sheet.locator('#screenTimeRange [data-days="30"]').click()
@@ -230,18 +233,10 @@ def test_no_data_and_a_failed_read_are_their_own_states(authed_page: Page, base_
     expect(page.locator("#screenTimeChart .screen-time-bar")).to_have_count(7)
 
 
-@pytest.mark.iphone
-def test_fills_and_text_hold_in_both_themes(authed_page: Page, base_url: str) -> None:
-    """Both themes on one page load: the theme is a ``data-theme`` switch on
-    the root, so the drawn chart re-reads its tokens without a reload."""
-    page = authed_page
-    page.set_viewport_size({"width": 390, "height": 844})
-    _route_usage(page)
-    page.add_init_script("localStorage.setItem('launcher.theme', 'light')")
-    page.goto(base_url, wait_until="domcontentloaded")
-    page.evaluate("document.documentElement.dataset.theme = 'light'")
-    open_settings_sheet(page, "screenTimeSheet")
-    page.locator('#screenTimeRange [data-days="7"]').click()
+def _assert_fills_and_text_hold_in_both_themes(page: Page) -> None:
+    """Both themes on the drawn week: the theme is a ``data-theme`` switch on
+    the root, so the drawn chart re-reads its tokens without a reload. Light
+    is put back afterwards."""
     expect(page.locator("#screenTimeChart .screen-time-bar")).to_have_count(7)
     hex_to_rgb = {"#0969da": "rgb(9, 105, 218)", "#2f81f7": "rgb(47, 129, 247)"}
     for theme, expected in (("light", "#0969da"), ("dark", "#2f81f7")):
@@ -260,10 +255,32 @@ def test_fills_and_text_hold_in_both_themes(authed_page: Page, base_url: str) ->
         assert read["desktop"] == hex_to_rgb[expected] or read["accent"].startswith("oklch"), (theme, read)
         assert read["total"] == read["fg"], (theme, read)
         _no_sideways_spill(page)
+    page.evaluate("document.documentElement.dataset.theme = 'light'")
+
+
+def _assert_the_toast_sits_inside_the_sheet_above_send(page: Page, width: int) -> None:
+    """The sheet's own toast is placed against the sheet, never the viewport:
+    its whole box (border and radius included) sits inside the sheet's and
+    clear of the Send button. Read while the toast is up."""
+    toast = page.locator("#screenTimeToast")
+    expect(toast).to_be_visible()
+    box = stable_eval(toast, """t => {
+      const r = (el) => { const b = el.getBoundingClientRect();
+        return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
+      const sheet = t.closest('dialog');
+      return { toast: r(t), sheet: r(sheet), send: r(sheet.querySelector('#screenTimeSend')) };
+    }""")
+    toast_box, sheet_box, send_box = box["toast"], box["sheet"], box["send"]
+    assert toast_box["l"] >= sheet_box["l"] - 0.5, (width, box)
+    assert toast_box["r"] <= sheet_box["r"] + 0.5, (width, box)
+    assert toast_box["t"] >= sheet_box["t"] - 0.5, (width, box)
+    assert toast_box["b"] <= send_box["t"] + 0.5, (width, box)
 
 
 @pytest.mark.iphone
 def test_send_to_task_os_reports_each_outcome(authed_page: Page, base_url: str) -> None:
+    """Each send's outcome toasts and the line above Send follows it; the
+    toast sits inside the sheet above Send at 390px and at 430px."""
     page = authed_page
     page.set_viewport_size({"width": 390, "height": 844})
     _route_usage(page)
@@ -290,13 +307,17 @@ def test_send_to_task_os_reports_each_outcome(authed_page: Page, base_url: str) 
     expect(send).to_be_enabled()
     assert seen.count("POST") == 1, seen
     _no_sideways_spill(page)
+    _assert_the_toast_sits_inside_the_sheet_above_send(page, 390)
 
     # An immediate second press is never silent either: it says nothing was new.
     nothing = "Nothing new to send. Today and the last 7 days are up to date in task-os."
     post[1]["result"]["summary"] = nothing
+    page.set_viewport_size({"width": 430, "height": 844})
     send.click()
     expect(toast).to_have_text(nothing)
     wait_until(page, lambda: seen.count("POST") == 2, "the second send")
+    _assert_the_toast_sits_inside_the_sheet_above_send(page, 430)
+    page.set_viewport_size({"width": 390, "height": 844})
 
     # task-os down: an error toast, and the line shows the newer failure.
     post[:] = [503, {"detail": "task-os is not reachable"}]
@@ -318,45 +339,3 @@ def test_send_to_task_os_reports_each_outcome(authed_page: Page, base_url: str) 
     expect(toast).to_have_text("Send failed: set task_os_person in webapp_config.json")
 
 
-@pytest.mark.iphone
-def test_send_toast_stays_inside_the_sheet_above_send(
-    authed_page: Page, base_url: str,
-) -> None:
-    """The sheet's own toast is placed against the sheet, never the viewport:
-    its whole box (border and radius included) sits inside the sheet's and
-    clear of the Send button. Two phone widths on one page load, one send
-    each, so the toast is up when it is measured."""
-    page = authed_page
-    page.set_viewport_size({"width": 390, "height": 844})
-    _route_usage(page)
-    nothing = "Nothing new to send. Today and the last 7 days are up to date in task-os."
-    ok = {"at": _now_iso(), "first": "2026-10-11", "last": "2026-10-18", "days": 8,
-          "total_minutes": 300, "dry_run": False, "put": 0, "deleted": 0, "unchanged": 8,
-          "summary": nothing}
-    status = {"configured": True, "last_ok": None, "last_error": None}
-    post = [200, {"result": {k: v for k, v in ok.items() if k != "at"},
-                  "configured": True, "last_ok": ok, "last_error": None}]
-    seen = _route_export(page, status, post)
-    page.goto(base_url, wait_until="domcontentloaded")
-    open_settings_sheet(page, "screenTimeSheet")
-    toast = page.locator("#screenTimeToast")
-    for n, width in enumerate((390, 430), start=1):
-        page.set_viewport_size({"width": width, "height": 844})
-        # Emptied first, so the wait below reads this send's toast and not
-        # the last one, whose timer may be hiding it.
-        toast.evaluate("el => { el.textContent = ''; }")
-        page.locator("#screenTimeSend").click()
-        wait_until(page, lambda n=n: seen.count("POST") == n, f"the send at {width}px")
-        expect(toast).to_have_text(nothing)
-        expect(toast).to_be_visible()
-        box = stable_eval(toast, """t => {
-          const r = (el) => { const b = el.getBoundingClientRect();
-            return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
-          const sheet = t.closest('dialog');
-          return { toast: r(t), sheet: r(sheet), send: r(sheet.querySelector('#screenTimeSend')) };
-        }""")
-        toast_box, sheet_box, send_box = box["toast"], box["sheet"], box["send"]
-        assert toast_box["l"] >= sheet_box["l"] - 0.5, (width, box)
-        assert toast_box["r"] <= sheet_box["r"] + 0.5, (width, box)
-        assert toast_box["t"] >= sheet_box["t"] - 0.5, (width, box)
-        assert toast_box["b"] <= send_box["t"] + 0.5, (width, box)

@@ -95,24 +95,13 @@ def _expected(days: int) -> list[tuple[str, str]]:
     return [(label, str(total)) for label, total in sorted(rows, key=lambda r: -r[1])]
 
 
-@pytest.mark.parametrize("theme", ["light", "dark"])
-def test_by_feature_draws_each_period_split_by_device(
-    authed_page: Page, base_url: str, theme: str
-) -> None:
-    page = authed_page
+def _assert_each_period_draws_split_by_device(page: Page, theme: str) -> None:
+    """Each period's rows busiest first, a month's top row split by device
+    on the chart's fills, and nothing spilling sideways at 390px, 320px and
+    1280px, read in ``theme``."""
     page.set_viewport_size({"width": 390, "height": 844})
-    _route_usage(page)
-    _route_export(page, {"configured": True, "last_ok": None, "last_error": None})
-    seen = _route_features(page)
-    page.add_init_script(f"localStorage.setItem('launcher.theme', '{theme}')")
-    page.goto(base_url, wait_until="domcontentloaded")
     page.evaluate(f"document.documentElement.dataset.theme = '{theme}'")
-    open_settings_sheet(page, "screenTimeSheet")
     sheet = page.locator("#screenTimeSheet")
-
-    # It sits under "By section", with its own heading.
-    headings = sheet.locator(".screen-time-report .opt-group-title")
-    expect(headings).to_have_text(["By section", "By feature"])
     labels = page.locator("#screenTimeFeatures .screen-time-row-label")
     values = page.locator("#screenTimeFeatures .screen-time-row-value")
 
@@ -123,7 +112,6 @@ def test_by_feature_draws_each_period_split_by_device(
         expect(labels).to_have_text([label for label, _ in want])
         expect(values).to_have_text([total for _, total in want])
         _no_sideways_spill(page)
-    assert {1, 7, 30} <= set(seen), seen
 
     # A month's busiest row: 42 typed sends, PC 30 and phone 12, each device
     # on its own fill, the phone's striped; the row says the split too.
@@ -133,10 +121,10 @@ def test_by_feature_draws_each_period_split_by_device(
       .map((s) => ({ device: s.dataset.device, w: s.getBoundingClientRect().width,
                      image: getComputedStyle(s).backgroundImage,
                      color: getComputedStyle(s).backgroundColor }))""")
-    assert [s["device"] for s in segs] == ["desktop", "phone"], segs
-    assert abs(segs[0]["w"] / segs[1]["w"] - 30 / 12) < 0.15, segs
-    assert segs[0]["image"] == "none" and "gradient" in segs[1]["image"], segs
-    assert segs[0]["color"] != "rgba(0, 0, 0, 0)", segs
+    assert [s["device"] for s in segs] == ["desktop", "phone"], (theme, segs)
+    assert abs(segs[0]["w"] / segs[1]["w"] - 30 / 12) < 0.15, (theme, segs)
+    assert segs[0]["image"] == "none" and "gradient" in segs[1]["image"], (theme, segs)
+    assert segs[0]["color"] != "rgba(0, 0, 0, 0)", (theme, segs)
 
     for width, height in ((320, 700), (1280, 900)):
         page.set_viewport_size({"width": width, "height": height})
@@ -144,12 +132,36 @@ def test_by_feature_draws_each_period_split_by_device(
         expect(labels).to_have_text([label for label, _ in _expected(30)])
 
 
-def test_a_failed_feature_read_hides_only_that_block(authed_page: Page, base_url: str) -> None:
+def test_by_feature_draws_each_period_split_by_device_and_a_failed_read_hides_it(
+    authed_page: Page, base_url: str
+) -> None:
+    """The block draws each period in light, then again in dark on the same
+    page (the theme is a ``data-theme`` switch, so the fills re-read their
+    tokens). Then the feature read fails and only that block hides."""
     page = authed_page
+    page.set_viewport_size({"width": 390, "height": 844})
     _route_usage(page)
-    _route_features(page, status=503)
+    _route_export(page, {"configured": True, "last_ok": None, "last_error": None})
+    seen = _route_features(page)
+    page.add_init_script("localStorage.setItem('launcher.theme', 'light')")
     page.goto(base_url, wait_until="domcontentloaded")
     open_settings_sheet(page, "screenTimeSheet")
+
+    # It sits under "By section", with its own heading.
+    headings = page.locator("#screenTimeSheet .screen-time-report .opt-group-title")
+    expect(headings).to_have_text(["By section", "By feature"])
+    for theme in ("light", "dark"):
+        _assert_each_period_draws_split_by_device(page, theme)
+    assert {1, 7, 30} <= set(seen), seen
+
+    page.unroute(_FEATURES_RE)
+    _route_features(page, status=503)
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.locator('#screenTimeSheet #screenTimeRange [data-days="1"]').click()
+    _assert_a_failed_feature_read_hides_only_that_block(page)
+
+
+def _assert_a_failed_feature_read_hides_only_that_block(page: Page) -> None:
     expect(page.locator("#screenTimeTotal")).to_have_text("1 h 25 m")
     expect(page.locator("#screenTimeSections .screen-time-row")).not_to_have_count(0)
     expect(page.locator("#screenTimeFeaturesBlock")).to_be_hidden()

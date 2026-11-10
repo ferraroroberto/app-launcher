@@ -245,45 +245,13 @@ def test_settings_pane_controls_and_theme_toggle(
     assert after != before
 
 
-def test_terminal_history_lines_field_loads_and_saves(
-    authed_page: Page, base_url: str
-) -> None:
-    """The scrollback-depth field (issue #435 follow-up) loads pre-filled
-    from GET /api/config and a new value survives leaving the field (it saves
-    on blur, #1435 — no Save button) and a page reload."""
-    authed_page.goto(base_url, wait_until="domcontentloaded")
-    open_settings_sheet(authed_page, "terminalSheet")
-    field = authed_page.locator("#terminalHistoryLines")
-    expect(field).to_be_visible()
-    # Pre-filled from the server default, not left blank.
-    expect(field).not_to_have_value("")
-
-    # A value that differs from the stored one, so the field fires `change`.
-    new_value = "5000" if field.input_value() != "5000" else "5100"
-    field.fill(new_value)
-    # patchConfig() round-trips through GET /api/config on success.
-    with authed_page.expect_response(lambda r: _is_config_post(r.request)):
-        field.press("Tab")
-    expect(authed_page.locator("#toast")).to_contain_text("Terminal history saved.")
-    expect(field).to_have_value(new_value)
-
-    # Reload to confirm it actually persisted server-side, not just DOM.
-    authed_page.goto(base_url, wait_until="domcontentloaded")
-    open_settings_sheet(authed_page, "terminalSheet")
-    expect(authed_page.locator("#terminalHistoryLines")).to_have_value(new_value)
-
-
-def test_save_settings_does_not_report_success_after_a_failed_patch(
-    authed_page: Page, base_url: str
-) -> None:
+def _assert_a_failed_patch_does_not_report_success(authed_page: Page) -> None:
     """Regression for #832: the save handler used to discard `patchConfig`'s
     verdict and always toast success, so a rejected save (POST /api/config
     400) showed the red "Save failed" toast and then immediately overwrote
     it with a green success toast — reporting a failed save as succeeded.
     `patchConfig` already documents that callers must branch on its resolved
     boolean; this proves the per-field save (#1435) now does."""
-    authed_page.goto(base_url, wait_until="domcontentloaded")
-    open_settings_sheet(authed_page, "terminalSheet")
     field = authed_page.locator("#terminalHistoryLines")
     expect(field).not_to_have_value("")
 
@@ -318,15 +286,66 @@ def test_save_settings_does_not_report_success_after_a_failed_patch(
     expect(toast).not_to_contain_text("saved.")
 
 
-def test_boot_autostart_toggle_writes_and_removes_startup_bat(
+def test_terminal_history_lines_field_loads_saves_and_reports_a_failed_save(
     authed_page: Page, base_url: str
 ) -> None:
-    """The "Start app-launcher at log on" switch (issue #456 part 1/2) is a
-    real filesystem side effect (a Startup-folder wrapper bat), not a plain
-    config field — click it on, reload, and confirm the switch survives from
-    a fresh GET /api/config (not just the optimistic click); then click it
-    off and confirm the same across a reload. The switch stays inline on the
-    Settings pane (#1435), so no sheet is opened."""
+    """The scrollback-depth field (issue #435 follow-up) loads pre-filled
+    from GET /api/config and a new value survives leaving the field (it saves
+    on blur, #1435 — no Save button) and a page reload. On the reloaded page
+    a refused save then reports the failure and never a success."""
+    authed_page.goto(base_url, wait_until="domcontentloaded")
+    open_settings_sheet(authed_page, "terminalSheet")
+    field = authed_page.locator("#terminalHistoryLines")
+    expect(field).to_be_visible()
+    # Pre-filled from the server default, not left blank.
+    expect(field).not_to_have_value("")
+
+    # A value that differs from the stored one, so the field fires `change`.
+    new_value = "5000" if field.input_value() != "5000" else "5100"
+    field.fill(new_value)
+    # patchConfig() round-trips through GET /api/config on success.
+    with authed_page.expect_response(lambda r: _is_config_post(r.request)):
+        field.press("Tab")
+    expect(authed_page.locator("#toast")).to_contain_text("Terminal history saved.")
+    expect(field).to_have_value(new_value)
+
+    # Reload to confirm it actually persisted server-side, not just DOM.
+    authed_page.goto(base_url, wait_until="domcontentloaded")
+    open_settings_sheet(authed_page, "terminalSheet")
+    expect(authed_page.locator("#terminalHistoryLines")).to_have_value(new_value)
+
+    _assert_a_failed_patch_does_not_report_success(authed_page)
+
+
+def test_boot_autostart_and_remote_power_guard_switches(
+    authed_page: Page, base_url: str
+) -> None:
+    """The two inline switches on the Settings pane (#1435: no sheet).
+
+    "Start app-launcher at log on" (issue #456 part 1/2) is a real
+    filesystem side effect (a Startup-folder wrapper bat), not a plain config
+    field — click it on, reload, and confirm the switch survives from a fresh
+    GET /api/config (not just the optimistic click); then click it off and
+    confirm the same across a reload.
+
+    The remote power guard switch shows the live state (autoboot aims it at a
+    task that never exists, so "off") and a tap that Windows refuses opens
+    the elevated-command sheet instead of a failure toast. The POST is
+    answered here, so no test run can ever reach the real guard."""
+    posts = []
+
+    def _refuse(route) -> None:
+        posts.append(route.request.post_data_json)
+        route.fulfill(
+            status=409,
+            content_type="application/json",
+            body=(
+                '{"detail": {"elevation_required": true, "message": "needs elevation",'
+                ' "command": "python -m src.remote_power_guard enable"}}'
+            ),
+        )
+
+    authed_page.route("**/api/settings/remote-power-guard", _refuse)
     authed_page.goto(base_url, wait_until="domcontentloaded")
     open_settings(authed_page)
     toggle = authed_page.locator("#bootAutostartToggle")
@@ -351,35 +370,11 @@ def test_boot_autostart_toggle_writes_and_removes_startup_bat(
         "aria-checked", "false"
     )
 
-
-def test_remote_power_guard_switch_opens_command_sheet_on_409(
-    authed_page: Page, base_url: str
-) -> None:
-    """The remote power guard switch shows the live state (autoboot aims it at
-    a task that never exists, so "off") and a tap that Windows refuses opens
-    the elevated-command sheet instead of a failure toast. The POST is
-    answered here, so no test run can ever reach the real guard."""
-    posts = []
-
-    def _refuse(route) -> None:
-        posts.append(route.request.post_data_json)
-        route.fulfill(
-            status=409,
-            content_type="application/json",
-            body=(
-                '{"detail": {"elevation_required": true, "message": "needs elevation",'
-                ' "command": "python -m src.remote_power_guard enable"}}'
-            ),
-        )
-
-    authed_page.route("**/api/settings/remote-power-guard", _refuse)
-    authed_page.goto(base_url, wait_until="domcontentloaded")
-    open_settings(authed_page)
-    toggle = authed_page.locator("#remotePowerGuardToggle")
-    expect(toggle).to_have_attribute("aria-checked", "false")
+    guard = authed_page.locator("#remotePowerGuardToggle")
+    expect(guard).to_have_attribute("aria-checked", "false")
     expect(authed_page.locator("#remotePowerGuardStatus")).to_be_hidden()
 
-    toggle.click()
+    guard.click()
     sheet = authed_page.locator("#remotePowerGuardSheet")
     expect(sheet).to_be_visible()
     expect(authed_page.locator("#remotePowerGuardCommand")).to_have_text(
@@ -389,7 +384,7 @@ def test_remote_power_guard_switch_opens_command_sheet_on_409(
     expect(authed_page.locator("#remotePowerGuardCopy")).to_be_visible()
     assert posts == [{"enabled": True}]
     close_settings_sheets(authed_page)
-    expect(toggle).to_have_attribute("aria-checked", "false")
+    expect(guard).to_have_attribute("aria-checked", "false")
 
 
 def _open_chief_sheet(page: Page, base_url: str) -> None:
@@ -405,10 +400,59 @@ def _open_chief_sheet(page: Page, base_url: str) -> None:
     open_settings_sheet(page, "chiefSheet")
 
 
-def test_chief_auto_compact_threshold_saves_reloads_and_turns_off(
+
+# (toggle id, config key, toast label, a word its help line carries, default)
+_CHIEF_SWITCHES = [
+    ("grokbotEnabled", "grokbot_enabled", "Grok Bot", "relay", True),
+    ("chiefAutoDrain", "chief_auto_drain", "Auto-drain queue", "worker slot", True),
+    ("chiefDoorbell", "chief_doorbell", "Chief doorbell", "mailbox", False),
+    ("grokAutoSwitch", "grok_auto_switch", "Grok auto-switch", "Opus lanes never switch", False),
+    ("chiefJobSelfHeal", "chief_job_self_heal", "Job self-heal", "repair a Job", False),
+    ("chiefWeeklyProposals", "chief_weekly_proposals", "Weekly proposals", "weekly proposals", False),
+]
+
+
+def _state(on: bool) -> str:
+    return "true" if on else "false"
+
+
+def _assert_chief_switches_save_flip_and_reload(page: Page, base_url: str, posts: list, saving) -> None:
+    """Each Chief switch sits at its default, saves at once through the
+    ordinary /api/config POST, survives a reload and flips back to the
+    default so the shared webapp is left as found. The doorbell doubles as
+    the phone kill switch; the chief reads Auto-drain queue as
+    ``auto_drain``. The gate's disposable webapp is not canonical, so its
+    doorbell never rings."""
+    _open_chief_sheet(page, base_url)
+    for toggle, key, label, help_word, default in _CHIEF_SWITCHES:
+        switch = page.locator(f"#{toggle}Toggle")
+        expect(switch).to_have_attribute("aria-checked", _state(default))
+        expect(page.locator(f"#{toggle}Help")).to_contain_text(help_word)
+        saving(switch.click)
+        expect(switch).to_have_attribute("aria-checked", _state(not default))
+        expect(page.locator("#toast")).to_contain_text(f"{label} {'off' if default else 'on'}")
+        assert posts[-1] == {key: not default}, (toggle, posts)
+
+    _open_chief_sheet(page, base_url)
+    for toggle, key, label, _help, default in _CHIEF_SWITCHES:
+        switch = page.locator(f"#{toggle}Toggle")
+        expect(switch).to_have_attribute("aria-checked", _state(not default))
+        saving(switch.click)
+        expect(switch).to_have_attribute("aria-checked", _state(default))
+        expect(page.locator("#toast")).to_contain_text(f"{label} {'on' if default else 'off'}")
+        assert posts[-1] == {key: default}, (toggle, posts)
+
+    _open_chief_sheet(page, base_url)
+    for toggle, _key, _label, _help, default in _CHIEF_SWITCHES:
+        expect(page.locator(f"#{toggle}Toggle")).to_have_attribute("aria-checked", _state(default))
+
+
+def test_chief_sheet_switches_and_auto_compact_threshold_save_and_reload(
     authed_page: Page, base_url: str
 ) -> None:
-    """#1298: Settings' Chief sheet sets the chief's auto-compact threshold
+    """Settings' Chief sheet, every control on one page.
+
+    #1298: the sheet sets the chief's auto-compact threshold
     (fleet-config#1052), through the ordinary /api/config save. It loads the
     default 30, refuses a value outside 10-90 with a plain message and saves
     nothing, saves and reloads a valid one, and its switch turns the
@@ -473,55 +517,4 @@ def test_chief_auto_compact_threshold_saves_reloads_and_turns_off(
     expect(field).to_be_enabled()
     assert posts[-1] == {"chief_auto_compact_threshold": 30}, posts
 
-
-@pytest.mark.parametrize(("toggle", "key", "label", "help_word", "default"), [
-    ("grokbotEnabled", "grokbot_enabled", "Grok Bot", "relay", True),
-    ("chiefAutoDrain", "chief_auto_drain", "Auto-drain queue", "worker slot", True),
-    ("chiefDoorbell", "chief_doorbell", "Chief doorbell", "mailbox", False),
-    ("grokAutoSwitch", "grok_auto_switch", "Grok auto-switch", "Opus lanes never switch", False),
-    ("chiefJobSelfHeal", "chief_job_self_heal", "Job self-heal", "repair a Job", False),
-    ("chiefWeeklyProposals", "chief_weekly_proposals", "Weekly proposals", "weekly proposals", False),
-], ids=["grokbot", "auto-drain", "doorbell", "grok-auto-switch", "job-self-heal", "weekly-proposals"])
-def test_chief_switch_saves_flips_and_reloads(
-    authed_page: Page, base_url: str, toggle: str, key: str, label: str,
-    help_word: str, default: bool,
-) -> None:
-    """A Chief switch sits at its default, saves at once through the ordinary
-    /api/config POST, survives a reload and flips back to the default so the
-    shared webapp is left as found. The doorbell doubles as the phone kill
-    switch; the chief reads Auto-drain queue as ``auto_drain``. The gate's
-    disposable webapp is not canonical, so its doorbell never rings."""
-    page = authed_page
-    posts: list = []
-    page.on("request", lambda req: posts.append(req.post_data_json)
-            if _is_config_post(req) else None)
-
-    def saving(act) -> None:
-        with page.expect_response(
-            lambda r: r.url.endswith("/api/config") and r.request.method == "GET"
-        ):
-            act()
-
-    def state(on: bool) -> str:
-        return "true" if on else "false"
-
-    _open_chief_sheet(page, base_url)
-    switch = page.locator(f"#{toggle}Toggle")
-    expect(switch).to_have_attribute("aria-checked", state(default))
-    expect(page.locator(f"#{toggle}Help")).to_contain_text(help_word)
-
-    saving(switch.click)
-    expect(switch).to_have_attribute("aria-checked", state(not default))
-    expect(page.locator("#toast")).to_contain_text(f"{label} {'off' if default else 'on'}")
-    assert posts[-1] == {key: not default}, posts
-
-    _open_chief_sheet(page, base_url)
-    expect(switch).to_have_attribute("aria-checked", state(not default))
-
-    saving(switch.click)
-    expect(switch).to_have_attribute("aria-checked", state(default))
-    expect(page.locator("#toast")).to_contain_text(f"{label} {'on' if default else 'off'}")
-    assert posts[-1] == {key: default}, posts
-
-    _open_chief_sheet(page, base_url)
-    expect(switch).to_have_attribute("aria-checked", state(default))
+    _assert_chief_switches_save_flip_and_reload(page, base_url, posts, saving)

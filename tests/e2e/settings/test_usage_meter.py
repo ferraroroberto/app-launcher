@@ -21,7 +21,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e.fixtures.ui import close_settings_sheets, open_settings_sheet
-from tests.e2e.fixtures.waits import stable_eval
+from tests.e2e.fixtures.waits import boot_retrying_static_failure, stable_eval
 
 pytestmark = pytest.mark.smoke
 
@@ -108,19 +108,10 @@ def _no_page_overflow(page: Page) -> None:
     assert widths[1] <= widths[0], f"the meter widens the page: {widths}"
 
 
-@pytest.mark.iphone
-def test_usage_meter_on_code_opens_the_sheet_and_is_not_on_the_board(
-    authed_page: Page, base_url: str
-) -> None:
+def _assert_the_full_meter_and_its_sheet(page: Page) -> None:
     """The meter renders the reading from /api/rate-limits, colour follows
-    pace, and it opens the Usage sheet (✕ and Done close it). The Board has
-    no usage line since #1436."""
-    authed_page.add_init_script(_QUOTA_SHIM)
-    _mock_board(authed_page)
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-
-    # -- full, on the Coding tab --
-    full = authed_page.locator("#codingUsage .usage-meter-full")
+    pace, and it opens the Usage sheet (✕ and Done close it)."""
+    full = page.locator("#codingUsage .usage-meter-full")
     expect(full).to_be_visible(timeout=10_000)
     expect(full).to_have_attribute("data-tone", "attention")
     # Claude Code has no 5h window: its one row is the week.
@@ -137,11 +128,11 @@ def test_usage_meter_on_code_opens_the_sheet_and_is_not_on_the_board(
     bar = stable_eval(rows.nth(0).locator(".um-bar"),
                       "el => el.isConnected ? el.getBoundingClientRect().height : null")
     assert bar == 6, f"week bar is {bar}px tall"
-    _no_page_overflow(authed_page)
+    _no_page_overflow(page)
 
     # Tap -> the Usage sheet: exact resets, week elapsed, Codex, filter savings.
     full.click()
-    sheet = authed_page.locator("#usageSheet")
+    sheet = page.locator("#usageSheet")
     expect(sheet).to_be_visible()
     body = sheet.locator("#usageSheetBody")
     expect(body.locator('[data-row="claude-5h"]')).to_have_count(0)
@@ -165,19 +156,113 @@ def test_usage_meter_on_code_opens_the_sheet_and_is_not_on_the_board(
     sheet.locator("#usageSheetDone").click()
     expect(sheet).to_be_hidden()
 
+
+def _assert_rows_share_the_cards_edges(page: Page) -> None:
+    """#1541: the Week label starts on the card's content edge, level with
+    the heading icon and the context-filter footer, and the reset column ends
+    where the heading's right-hand control (the ⋮ glyph) ends. The meter used
+    to inset its rows 4px on both sides. Read in one stable_eval (#1346)."""
+    card = page.locator("#codingUsageCard")
+    expect(card.locator("#codingUsage .um-row")).to_have_count(1, timeout=10_000)
+    # The static placeholder has the row but an empty heading until the first poll.
+    expect(card.locator("#codingUsageMeta")).to_have_text(re.compile(r"\S"))
+    expect(card.locator("#codingUsageFooter")).to_be_visible()
+    m = stable_eval(card, """card => {
+      if (!card.isConnected) return null;
+      const text = (el) => {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        return range.getBoundingClientRect();
+      };
+      const rows = Array.from(card.querySelectorAll('.um-row'));
+      return {
+        icon: card.querySelector('#codingUsageTitle .icon').getBoundingClientRect().left,
+        footer: text(card.querySelector('#codingUsageFooter')).left,
+        labels: rows.map(r => text(r.querySelector('.um-label')).left),
+        kebab: card.querySelector('#codingUsageKebab .icon').getBoundingClientRect().right,
+        resets: rows.map(r => r.querySelector('.um-reset').getBoundingClientRect().right),
+      };
+    }""")
+    for left in m["labels"]:
+        assert abs(left - m["footer"]) <= 1, f"row label vs footer text: {m}"
+        assert abs(left - m["icon"]) <= 1, f"row label vs heading icon: {m}"
+    for right in m["resets"]:
+        assert abs(right - m["kebab"]) <= 1, f"reset column vs heading kebab: {m}"
+
+
+@pytest.mark.iphone
+def test_code_usage_card_leads_names_the_pace_and_opens_the_sheet(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1434: the full meter sits in the Code tab's first card. Its summary
+    names the pace in its tone (the shim's week is ahead of pace), its
+    footer carries the context filter's savings (the green badge is gone),
+    and a tap anywhere on the card opens the Usage sheet. The same page then
+    reads the meter and its sheet, the rows' edges at 390px, and the Board,
+    which has no usage line since #1436."""
+    authed_page.add_init_script(_QUOTA_SHIM)
+    _mock_board(authed_page)
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+
+    card = authed_page.locator("#codingUsageCard")
+    expect(card.locator("#codingUsage .usage-meter-full")).to_be_visible(timeout=10_000)
+    meta = card.locator("#codingUsageMeta")
+    expect(meta).to_have_text("ahead of pace")
+    expect(meta).to_have_attribute("data-tone", "attention")
+    expect(card.locator("#codingUsageFooter")).to_have_text(
+        "Context filter saved 12.3k tokens today")
+
+    # The card's title is part of the tap, not only the meter.
+    card.locator("#codingUsageTitle").click()
+    sheet = authed_page.locator("#usageSheet")
+    expect(sheet).to_be_visible()
+    sheet.locator("#usageSheetDone").click()
+    expect(sheet).to_be_hidden()
+
+    _assert_the_full_meter_and_its_sheet(authed_page)
+
+    authed_page.set_viewport_size({"width": 390, "height": 844})
+    _assert_rows_share_the_cards_edges(authed_page)
+
     # -- not on the Board (#1436): usage stays on Code --
     authed_page.locator("#tabBoard").click()
     expect(authed_page.locator("#paneBoard")).to_be_visible()
     expect(authed_page.locator("#paneBoard .usage-meter, #boardUsage")).to_have_count(0)
 
 
+def _assert_a_single_harness_keeps_its_chip(page: Page, shown: str) -> None:
+    """#1510: with one harness shown the heading row is gone, but a chip on
+    that reading (stale) is still visible, ahead of the windows."""
+    page.evaluate("""async (shown) => {
+      const m = await import('/static/usage-meter.js');
+      const nowS = Date.now() / 1000;
+      const win = (pct) => ({used_percentage: pct, resets_at: nowS + 3600, duration_minutes: 300});
+      m.setUsageShows([shown]);
+      m.renderUsage([
+        {harness: 'claude', label: 'Claude Code', state: 'stale', stale: true,
+         weekly: win(20)},
+        {harness: 'codex', label: 'Codex', state: 'stale', stale: true,
+         five_hour: win(40), weekly: win(20)},
+      ]);
+    }""", shown)
+
+    full = page.locator("#codingUsage .usage-meter-full")
+    # Codex reports a 5h and a week window; Claude only a week.
+    expect(full.locator(".um-row")).to_have_count(2 if shown == "codex" else 1)
+    expect(full.locator(".um-head .chip")).to_have_text("stale")
+    expect(full.locator(".um-name")).to_have_count(0)
+    expect(full.locator(".um-mark")).to_have_count(0)
+    _no_page_overflow(page)
+
+
 @pytest.mark.iphone
-def test_usage_meter_dims_stale_and_keeps_unknown_text(
+def test_usage_meter_dims_stale_keeps_unknown_text_and_one_harness_keeps_its_chip(
     authed_page: Page, base_url: str
 ) -> None:
     """A stale reading dims and carries a chip; nothing measured keeps the
     state word as text; 90%+ is danger; a reading that goes unknown keeps the
-    last numbers, dimmed, chipped "unknown"."""
+    last numbers, dimmed, chipped "unknown". Then each harness shown alone
+    keeps its chip without the heading."""
     # The app's own poll never answers, so only the renders below paint.
     authed_page.add_init_script(_NEVER_ANSWER_RATE_LIMITS)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
@@ -245,105 +330,8 @@ def test_usage_meter_dims_stale_and_keeps_unknown_text(
     }""")
     assert never == {"note": "Quota unknown", "codex": "unavailable", "bars": 0}, never
 
-
-@pytest.mark.iphone
-@pytest.mark.parametrize("shown", ["claude", "codex"])
-def test_usage_meter_single_harness_keeps_its_chip_without_the_heading(
-    authed_page: Page, base_url: str, shown: str
-) -> None:
-    """#1510: with one harness shown the heading row is gone, but a chip on
-    that reading (stale) is still visible, ahead of the windows."""
-    authed_page.add_init_script(_NEVER_ANSWER_RATE_LIMITS)
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    expect(authed_page.locator("#codingUsage")).to_be_attached()
-
-    authed_page.evaluate("""async (shown) => {
-      const m = await import('/static/usage-meter.js');
-      const nowS = Date.now() / 1000;
-      const win = (pct) => ({used_percentage: pct, resets_at: nowS + 3600, duration_minutes: 300});
-      m.setUsageShows([shown]);
-      m.renderUsage([
-        {harness: 'claude', label: 'Claude Code', state: 'stale', stale: true,
-         weekly: win(20)},
-        {harness: 'codex', label: 'Codex', state: 'stale', stale: true,
-         five_hour: win(40), weekly: win(20)},
-      ]);
-    }""", shown)
-
-    full = authed_page.locator("#codingUsage .usage-meter-full")
-    expect(full.locator(".um-head .chip")).to_have_text("stale")
-    expect(full.locator(".um-name")).to_have_count(0)
-    expect(full.locator(".um-mark")).to_have_count(0)
-    # Codex reports a 5h and a week window; Claude only a week.
-    expect(full.locator(".um-row")).to_have_count(2 if shown == "codex" else 1)
-    _no_page_overflow(authed_page)
-
-
-def test_code_usage_card_leads_names_the_pace_and_opens_the_sheet(
-    authed_page: Page, base_url: str
-) -> None:
-    """#1434: the full meter sits in the Code tab's first card. Its summary
-    names the pace in its tone (the shim's week is ahead of pace), its
-    footer carries the context filter's savings (the green badge is gone),
-    and a tap anywhere on the card opens the Usage sheet."""
-    authed_page.add_init_script(_QUOTA_SHIM)
-    _mock_board(authed_page)
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-
-    card = authed_page.locator("#codingUsageCard")
-    expect(card.locator("#codingUsage .usage-meter-full")).to_be_visible(timeout=10_000)
-    meta = card.locator("#codingUsageMeta")
-    expect(meta).to_have_text("ahead of pace")
-    expect(meta).to_have_attribute("data-tone", "attention")
-    expect(card.locator("#codingUsageFooter")).to_have_text(
-        "Context filter saved 12.3k tokens today")
-
-    # The card's title is part of the tap, not only the meter.
-    card.locator("#codingUsageTitle").click()
-    sheet = authed_page.locator("#usageSheet")
-    expect(sheet).to_be_visible()
-    sheet.locator("#usageSheetDone").click()
-    expect(sheet).to_be_hidden()
-
-
-@pytest.mark.iphone
-def test_usage_rows_share_the_cards_left_and_right_edges(
-    authed_page: Page, base_url: str
-) -> None:
-    """#1541: the Week label starts on the card's content edge, level
-    with the heading icon and the context-filter footer, and the reset column
-    ends where the heading's right-hand control (the ⋮ glyph) ends. The meter used to inset
-    its rows 4px on both sides. Read in one stable_eval (#1346)."""
-    authed_page.add_init_script(_QUOTA_SHIM)
-    _mock_board(authed_page)
-    authed_page.set_viewport_size({"width": 390, "height": 844})
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    card = authed_page.locator("#codingUsageCard")
-    expect(card.locator("#codingUsage .um-row")).to_have_count(1, timeout=10_000)
-    # The static placeholder has the row but an empty heading until the first poll.
-    expect(card.locator("#codingUsageMeta")).to_have_text(re.compile(r"\S"))
-    expect(card.locator("#codingUsageFooter")).to_be_visible()
-    m = stable_eval(card, """card => {
-      if (!card.isConnected) return null;
-      const text = (el) => {
-        const range = document.createRange();
-        range.selectNodeContents(el);
-        return range.getBoundingClientRect();
-      };
-      const rows = Array.from(card.querySelectorAll('.um-row'));
-      return {
-        icon: card.querySelector('#codingUsageTitle .icon').getBoundingClientRect().left,
-        footer: text(card.querySelector('#codingUsageFooter')).left,
-        labels: rows.map(r => text(r.querySelector('.um-label')).left),
-        kebab: card.querySelector('#codingUsageKebab .icon').getBoundingClientRect().right,
-        resets: rows.map(r => r.querySelector('.um-reset').getBoundingClientRect().right),
-      };
-    }""")
-    for left in m["labels"]:
-        assert abs(left - m["footer"]) <= 1, f"row label vs footer text: {m}"
-        assert abs(left - m["icon"]) <= 1, f"row label vs heading icon: {m}"
-    for right in m["resets"]:
-        assert abs(right - m["kebab"]) <= 1, f"reset column vs heading kebab: {m}"
+    for shown in ("claude", "codex"):
+        _assert_a_single_harness_keeps_its_chip(authed_page, shown)
 
 
 def _serve_usage_shows(page: Page, current: dict) -> list:
@@ -372,34 +360,25 @@ def _serve_usage_shows(page: Page, current: dict) -> list:
 
 _NAMES = {"claude": "Claude Code", "codex": "Codex", "grok": "Grok"}
 
-
-@pytest.mark.parametrize("providers", [
+_PROVIDER_SETS = [
     ["claude"], ["codex"], ["claude", "codex"], [], ["claude", "codex", "grok"], ["grok"],
-])
-def test_usage_shows_draws_only_the_chosen_providers(
-    authed_page: Page, base_url: str, providers: list
-) -> None:
-    """The "Usage shows" switches. A provider switched off leaves no row, mark
-    or word in the card or its accessible name; all off hides the Code tab's
-    Usage card, with the rest of the tab intact. Grok never draws a bar: its
-    row is today's spend."""
-    errors: list = []
-    authed_page.on("pageerror", lambda exc: errors.append(str(exc)))
-    authed_page.add_init_script(_QUOTA_SHIM)
-    _mock_board(authed_page)
-    _serve_usage_shows(authed_page, {"usage_providers": providers})
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+]
 
-    card = authed_page.locator("#codingUsageCard")
-    full = authed_page.locator("#codingUsage .usage-meter-full")
+
+def _assert_the_card_draws_only(page: Page, providers: list, errors: list) -> None:
+    """A provider switched off leaves no row, mark or word in the card or its
+    accessible name; all off hides the Code tab's Usage card, with the rest of
+    the tab intact. Grok never draws a bar: its row is today's spend."""
+    card = page.locator("#codingUsageCard")
+    full = page.locator("#codingUsage .usage-meter-full")
     if not providers:
         # The poll lands, then the card stays hidden: wait on the poll.
-        authed_page.wait_for_function("window.__rateLimitPolls >= 1")
+        page.wait_for_function("window.__rateLimitPolls >= 1")
         expect(card).to_be_hidden()
-        expect(authed_page.locator("#codingUsage .usage-meter")).to_have_count(0)
-        expect(authed_page.locator("#codingUsageMeta")).to_have_text("")
+        expect(page.locator("#codingUsage .usage-meter")).to_have_count(0)
+        expect(page.locator("#codingUsageMeta")).to_have_text("")
         # Nothing else on the tab breaks: the rest of the pane still renders.
-        expect(authed_page.locator("#paneClaude")).to_be_visible()
+        expect(page.locator("#paneClaude")).to_be_visible()
         assert errors == [], errors
         return
 
@@ -448,31 +427,24 @@ def test_usage_shows_draws_only_the_chosen_providers(
 
     # The sheet follows: a provider switched off has no rows in it.
     full.click()
-    body = authed_page.locator("#usageSheetBody")
+    body = page.locator("#usageSheetBody")
     expect(body.locator('[data-row^="claude-"]')).to_have_count(1 if "claude" in providers else 0)
     expect(body.locator('[data-row^="codex-"]')).to_have_count(2 if "codex" in providers else 0)
     expect(body.locator('[data-row^="grok-"]')).to_have_count(2 if "grok" in providers else 0)
-    authed_page.locator("#usageSheetClose").click()
+    page.locator("#usageSheetClose").click()
     assert errors == [], errors
 
 
-def test_usage_shows_setting_saves_and_repaints_the_card(
-    authed_page: Page, base_url: str
-) -> None:
+def _assert_the_setting_saves_and_repaints_the_card(page: Page, posted: list) -> None:
     """The Settings control is one switch per provider in its own sheet
     (#1435: Settings > Usage meter). Claude and Codex start on, Grok off; a
     tap saves the whole set at once as one POST, and the Usage card repaints
     without a reload (all off hides it, Grok alone brings it back)."""
-    authed_page.add_init_script(_QUOTA_SHIM)
-    _mock_board(authed_page)
-    current = {"usage_providers": ["claude", "codex"]}
-    posted = _serve_usage_shows(authed_page, current)
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    expect(authed_page.locator("#codingUsage .usage-meter-full")).to_be_visible(timeout=10_000)
+    expect(page.locator("#codingUsage .usage-meter-full")).to_be_visible(timeout=10_000)
 
-    open_settings_sheet(authed_page, "usageShowsSheet")
+    open_settings_sheet(page, "usageShowsSheet")
     switch = {
-        p: authed_page.locator(f'#usageShows [data-provider="{p}"]')
+        p: page.locator(f'#usageShows [data-provider="{p}"]')
         for p in ("claude", "codex", "grok")
     }
     expect(switch["claude"]).to_have_attribute("aria-checked", "true")
@@ -487,18 +459,49 @@ def test_usage_shows_setting_saves_and_repaints_the_card(
         {"usage_providers": ["codex"]}, {"usage_providers": []},
     ], posted
     # The Code pane is not showing, so read the card's own hidden state.
-    card = authed_page.locator("#codingUsageCard")
+    card = page.locator("#codingUsageCard")
     expect(card).to_have_attribute("hidden", "")
 
     switch["grok"].click()
     expect(switch["grok"]).to_have_attribute("aria-checked", "true")
     expect(card).not_to_have_attribute("hidden", "")
     # An open sheet makes the nav inert: close it before leaving Settings.
-    close_settings_sheets(authed_page)
-    authed_page.locator("#tabClaude").click()
+    close_settings_sheets(page)
+    page.locator("#tabClaude").click()
     expect(card).to_be_visible()
-    expect(authed_page.locator("#codingUsage .um-codex")).to_have_count(0)
-    expect(authed_page.locator("#codingUsage .um-note")).to_have_text("$15.66 today")
+    expect(page.locator("#codingUsage .um-codex")).to_have_count(0)
+    expect(page.locator("#codingUsage .um-note")).to_have_text("$15.66 today")
+
+
+def test_usage_shows_draws_only_the_chosen_providers_and_the_setting_repaints(
+    authed_page: Page, base_url: str
+) -> None:
+    """The "Usage shows" switches: one page, loaded once per provider set
+    (each load reads the set from /api/config), then the Settings control
+    saving the set and repainting the card without a reload."""
+    errors: list = []
+    authed_page.on("pageerror", lambda exc: errors.append(str(exc)))
+    authed_page.add_init_script(_QUOTA_SHIM)
+    _mock_board(authed_page)
+    current: dict = {"usage_providers": []}
+    posted = _serve_usage_shows(authed_page, current)
+
+    def boot(providers: list) -> None:
+        # Back-to-back loads of the whole app can drop a /static/ module
+        # load, leaving the page half-built for its life; that boot is
+        # retried once, and its errors are not this leg's.
+        current["usage_providers"] = providers
+        boot_retrying_static_failure(
+            authed_page, lambda: authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+        )
+        errors.clear()
+
+    for providers in _PROVIDER_SETS:
+        boot(providers)
+        _assert_the_card_draws_only(authed_page, providers, errors)
+
+    boot(["claude", "codex"])
+    _assert_the_setting_saves_and_repaints_the_card(authed_page, posted)
 
 
 # Holds the /api/rate-limits answer until the test releases it, so the Board

@@ -67,22 +67,7 @@ def _value(page: Page, key: str):
     return page.locator(f'#paneSettings [data-settings-value="{key}"]')
 
 
-@pytest.mark.iphone
-def test_groups_render_with_values_matching_the_saved_config(
-    authed_page: Page, base_url: str, auth_token: str
-) -> None:
-    cfg = _config(base_url, auth_token)
-    # The Voice group shows only in a Remote Desktop session; pin this PC's
-    # session so the group list does not depend on how the box is reached.
-    authed_page.route(
-        "**/api/desktop-session",
-        lambda route: route.fulfill(
-            status=200, content_type="application/json", body='{"state": "local", "this_pc": true}'
-        ),
-    )
-    authed_page.goto(base_url, wait_until="domcontentloaded")
-    open_settings(authed_page)
-
+def _assert_groups_render_with_values_matching_the_saved_config(authed_page: Page, cfg: dict) -> None:
     expect(authed_page.locator("#paneSettings .settings-overline:visible")).to_have_text(_GROUPS)
     expect(authed_page.locator("#paneSettings button.settings-row[data-sheet]")).to_have_count(len(_SHEETS))
     # Every row is at least the one-line row height and its value sits in
@@ -126,13 +111,26 @@ def test_groups_render_with_values_matching_the_saved_config(
     toggle = authed_page.locator("#paneSettings .settings-row--inline #bootAutostartToggle")
     expect(toggle).to_have_attribute("role", "switch")
     expect(toggle).to_have_class("toggle" if toggle.get_attribute("aria-checked") != "true" else "toggle on")
-    surface(authed_page, "settings.pane")
 
 
 @pytest.mark.iphone
-def test_every_sheet_opens_and_closes(authed_page: Page, base_url: str) -> None:
+def test_every_sheet_opens_and_closes(authed_page: Page, base_url: str, auth_token: str) -> None:
+    """The groups and rows render with the saved config's values, then every
+    sheet opens and closes on the same page."""
+    cfg = _config(base_url, auth_token)
+    # The Voice group shows only in a Remote Desktop session; pin this PC's
+    # session so the group list does not depend on how the box is reached.
+    authed_page.route(
+        "**/api/desktop-session",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body='{"state": "local", "this_pc": true}'
+        ),
+    )
     authed_page.goto(base_url, wait_until="domcontentloaded")
     open_settings(authed_page)
+    _assert_groups_render_with_values_matching_the_saved_config(authed_page, cfg)
+    surface(authed_page, "settings.pane")
+
     for sheet_id in _SHEETS:
         sheet = authed_page.locator(f"#{sheet_id}")
         # Modal contract (#545): a header ✕ and one full-width primary.
@@ -168,67 +166,67 @@ def test_every_sheet_opens_and_closes(authed_page: Page, base_url: str) -> None:
     expect(authed_page.locator("#paneSettings")).to_be_visible()
 
 
-@pytest.mark.parametrize(
-    "trigger, sheet_id, field_id",
-    [
-        (("#claudeEmptyAction",), "foldersSheet", "projectsDir"),
-        (("#lifeOsEmptyAction",), "foldersSheet", "lifeOsDir"),
-        # The Code tab's chief row kebab item (#1434; the Board's gear went
-        # with its chief card in #1436). The menu is in the document only
-        # while open (#1565), so the kebab comes first.
-        (("#sessionsList li.session-item-chief .session-kebab",
-          ".session-menu [data-item=chief-settings-btn]"), "chiefSheet", None),
-    ],
-)
-def test_open_settings_at_callers_land_in_their_sheet(
-    authed_page: Page, base_url: str, trigger: tuple, sheet_id: str, field_id: str | None
+_OPEN_SETTINGS_AT_CALLERS = [
+    # The Code tab's chief row kebab item (#1434; the Board's gear went
+    # with its chief card in #1436). The menu is in the document only
+    # while open (#1565), so the kebab comes first. It leads, while the
+    # Code tab still shows.
+    (("#sessionsList li.session-item-chief .session-kebab",
+      ".session-menu [data-item=chief-settings-btn]"), "chiefSheet", None),
+    (("#claudeEmptyAction",), "foldersSheet", "projectsDir"),
+    (("#lifeOsEmptyAction",), "foldersSheet", "lifeOsDir"),
+]
+
+
+def test_no_save_button_is_left_and_open_settings_at_callers_land_in_their_sheet(
+    authed_page: Page, base_url: str
 ) -> None:
-    """Each caller is clicked through its own listener (a dispatched click:
-    the empty states only show when their list is empty)."""
-    authed_page.goto(base_url, wait_until="domcontentloaded")
-    for selector in trigger:
-        expect(authed_page.locator(selector)).to_be_attached()
-        authed_page.locator(selector).dispatch_event("click")
-    expect(authed_page.locator("#paneSettings")).to_be_visible()
-    expect(authed_page.locator(f"#{sheet_id}")).to_be_visible()
-    expect(authed_page.locator("dialog.settings-sheet[open]")).to_have_count(1)
-    if field_id:
-        expect(authed_page.locator(f"#{field_id}")).to_be_focused()
-
-
-def test_no_save_button_is_left(authed_page: Page, base_url: str) -> None:
-    """Every Settings field saves as it changes (#1435)."""
+    """Every Settings field saves as it changes (#1435), so no Save button is
+    left. Then each ``openSettingsAt`` caller is clicked through its own
+    listener (a dispatched click: the empty states only show when their list
+    is empty), closing the sheet it opened before the next."""
     authed_page.goto(base_url, wait_until="domcontentloaded")
     scope = authed_page.locator("#paneSettings button, dialog.settings-sheet button")
     texts = [t.strip() for t in scope.all_text_contents()]
     assert not [t for t in texts if t == "Save"], texts
     expect(authed_page.locator("#saveSettings, #saveChiefSettings, #chiefSettingsDialog, #codingOptions")).to_have_count(0)
 
+    for trigger, sheet_id, field_id in _OPEN_SETTINGS_AT_CALLERS:
+        for selector in trigger:
+            expect(authed_page.locator(selector)).to_be_attached()
+            authed_page.locator(selector).dispatch_event("click")
+        expect(authed_page.locator("#paneSettings")).to_be_visible()
+        expect(authed_page.locator(f"#{sheet_id}")).to_be_visible()
+        expect(authed_page.locator("dialog.settings-sheet[open]")).to_have_count(1)
+        if field_id:
+            expect(authed_page.locator(f"#{field_id}")).to_be_focused()
+        close_settings_sheets(authed_page)
 
-def test_passkeys_sheet_lists_removes_and_enrols(authed_page: Page, base_url: str) -> None:
-    """Passkeys moved out of General into their own sheet (#1435): the row
-    counts the devices, and remove and enrol still reach their endpoints."""
-    page = authed_page
+
+def _route_passkeys(page: Page) -> dict:
+    """Answer the passkey routes from memory; returns what each one saw."""
     status = {
         "configured": True, "enrollment_open": True, "enrollment_seconds_left": 60,
         "devices": [{"id": "dev-1", "label": "Test phone", "added_at": "2026-01-01", "last_used": None}],
     }
+    seen: dict = {"deletes": [], "begins": [], "native": []}
     page.route("**/api/webauthn/status", lambda route: route.fulfill(json=status))
-    deletes: list = []
     page.route(
         "**/api/webauthn/devices/*",
-        lambda route: (deletes.append(route.request.method), route.fulfill(json={"ok": True})),
+        lambda route: (seen["deletes"].append(route.request.method), route.fulfill(json={"ok": True})),
     )
-    begins: list = []
     page.route(
         "**/api/webauthn/enroll/begin",
-        lambda route: (begins.append(route.request.post_data_json),
+        lambda route: (seen["begins"].append(route.request.post_data_json),
                        route.fulfill(status=400, json={"detail": "stop here"})),
     )
-    native: list = []
-    page.on("dialog", lambda d: (native.append(d.message), d.dismiss()))
-    page.goto(base_url, wait_until="domcontentloaded")
-    open_settings(page)
+    page.on("dialog", lambda d: (seen["native"].append(d.message), d.dismiss()))
+    return seen
+
+
+def _assert_passkeys_list_remove_and_enrol(page: Page, seen: dict) -> None:
+    """Passkeys moved out of General into their own sheet (#1435): the row
+    counts the devices, and remove and enrol still reach their endpoints."""
     expect(_value(page, "passkeys")).to_have_text("1 device")
 
     open_settings_sheet(page, "passkeysSheet")
@@ -239,7 +237,7 @@ def test_passkeys_sheet_lists_removes_and_enrols(authed_page: Page, base_url: st
     expect(page.locator("#confirmDialogTitle")).to_have_text('Remove passkey "Test phone"?')
     page.locator("#confirmDialogOk").click()
     expect(page.locator("#toast")).to_contain_text("Removed Test phone")
-    assert deletes == ["DELETE"]
+    assert seen["deletes"] == ["DELETE"]
 
     page.locator("#enrollDeviceBtn").click()
     expect(page.locator("#confirmDialogTitle")).to_have_text("Name this device")
@@ -249,8 +247,9 @@ def test_passkeys_sheet_lists_removes_and_enrols(authed_page: Page, base_url: st
     field.fill("Second phone")
     page.locator("#confirmDialogOk").click()
     expect(page.locator("#toast")).to_contain_text("Enrollment failed")
-    assert begins == [{"label": "Second phone"}]
-    assert native == [], f"a native dialog was raised: {native}"
+    assert seen["begins"] == [{"label": "Second phone"}]
+    assert seen["native"] == [], f"a native dialog was raised: {seen['native']}"
+    close_settings_sheets(page)
 
 
 def _channel_profile(label: str, ready: bool) -> dict:
@@ -261,15 +260,8 @@ def _channel_profile(label: str, ready: bool) -> dict:
     }
 
 
-def test_telegram_reads_plain_and_only_exceptions_wear_a_chip(
-    authed_page: Page, base_url: str
-) -> None:
-    """Settings › Telegram finishes the contract (#1506): a healthy check or
-    profile is a plain value, the profiles file's path shows only in a
-    failing check's fix-it line, the row counts profiles and turns attention
-    only while one needs setup, and the checks' muted text holds 4.5:1 on
-    the sheet in both themes."""
-    page = authed_page
+def _route_channels(page: Page) -> dict:
+    """Serve the Telegram checks from a mutable payload."""
     channels = {
         "profiles": [_channel_profile("Alpha", True), _channel_profile("Beta", True)],
         "problems": [],
@@ -278,8 +270,15 @@ def test_telegram_reads_plain_and_only_exceptions_wear_a_chip(
     }
     page.route(re.compile(r".*/api/life-os/channels$"),
                lambda route: route.fulfill(json=channels))
-    page.goto(base_url, wait_until="domcontentloaded")
-    open_settings(page)
+    return channels
+
+
+def _assert_telegram_reads_plain_and_only_exceptions_wear_a_chip(page: Page, channels: dict) -> None:
+    """Settings › Telegram finishes the contract (#1506): a healthy check or
+    profile is a plain value, the profiles file's path shows only in a
+    failing check's fix-it line, the row counts profiles and turns attention
+    only while one needs setup, and the checks' muted text holds 4.5:1 on
+    the sheet in both themes."""
     value = _value(page, "telegram")
     expect(value).to_have_text("2 profiles")
     assert not value.evaluate("(el) => el.hasAttribute('data-tone')")
@@ -321,6 +320,47 @@ def test_telegram_reads_plain_and_only_exceptions_wear_a_chip(
     close_settings_sheets(page)
     expect(value).to_have_text("1 needs setup")
     expect(value).to_have_attribute("data-tone", "attention")
+
+
+def _assert_pc_load_saves_the_night_restart_switch_and_window(
+    page: Page, base_url: str, auth_token: str
+) -> None:
+    """Off by default, 21:00-05:00; the switch and each time save as they change
+    and the Settings row's value follows (the autouse fixture puts the config back)."""
+    cfg = _config(base_url, auth_token)
+    assert cfg["process_auto_restart"] is False
+    assert (cfg["process_auto_restart_start"], cfg["process_auto_restart_end"]) == ("21:00", "05:00")
+    expect(_value(page, "pc-load")).to_have_text("Manual")
+    open_settings_sheet(page, "pcLoadSheet")
+    toggle = page.locator("#processAutoRestartToggle")
+    expect(toggle).to_have_attribute("aria-checked", "false")
+    expect(page.locator("#processAutoRestartStart")).to_have_value("21:00")
+    toggle.click()
+    expect(toggle).to_have_attribute("aria-checked", "true")
+    page.locator("#processAutoRestartEnd").fill("06:30")
+    page.locator("#processAutoRestartEnd").dispatch_event("change")
+    expect(page.locator("#toast")).to_contain_text("Restart window end saved.")
+    saved = _config(base_url, auth_token)
+    assert saved["process_auto_restart"] is True and saved["process_auto_restart_end"] == "06:30"
+
+
+def test_pc_load_passkeys_and_telegram_sheets(
+    authed_page: Page, base_url: str, auth_token: str
+) -> None:
+    """Three sheets on one page load, each closed before the next opens:
+    PC load saves as it changes, Passkeys remove and enrol, and Telegram reads
+    plain with only its exceptions chipped (last: it flips the theme)."""
+    page = authed_page
+    passkeys = _route_passkeys(page)
+    channels = _route_channels(page)
+    page.goto(base_url, wait_until="domcontentloaded")
+    open_settings(page)
+    _assert_pc_load_saves_the_night_restart_switch_and_window(page, base_url, auth_token)
+    surface(page, "settings.pc-load-on")
+    close_settings_sheets(page)
+    expect(_value(page, "pc-load")).to_have_text("Night restart 21:00–06:30")
+    _assert_passkeys_list_remove_and_enrol(page, passkeys)
+    _assert_telegram_reads_plain_and_only_exceptions_wear_a_chip(page, channels)
 
 
 @pytest.mark.iphone
@@ -372,29 +412,3 @@ def test_chat_file_folders_add_remove_and_refuse(
         # The last folder cannot be removed: an empty list reads as unset.
         expect(rows.first.locator(".icon-button")).to_be_disabled()
 
-
-def test_pc_load_sheet_saves_the_night_restart_switch_and_window(
-    authed_page: Page, base_url: str, auth_token: str
-) -> None:
-    """Off by default, 21:00-05:00; the switch and each time save as they change
-    and the Settings row's value follows (the autouse fixture puts the config back)."""
-    authed_page.goto(base_url, wait_until="domcontentloaded")
-    open_settings(authed_page)
-    cfg = _config(base_url, auth_token)
-    assert cfg["process_auto_restart"] is False
-    assert (cfg["process_auto_restart_start"], cfg["process_auto_restart_end"]) == ("21:00", "05:00")
-    expect(_value(authed_page, "pc-load")).to_have_text("Manual")
-    open_settings_sheet(authed_page, "pcLoadSheet")
-    toggle = authed_page.locator("#processAutoRestartToggle")
-    expect(toggle).to_have_attribute("aria-checked", "false")
-    expect(authed_page.locator("#processAutoRestartStart")).to_have_value("21:00")
-    toggle.click()
-    expect(toggle).to_have_attribute("aria-checked", "true")
-    authed_page.locator("#processAutoRestartEnd").fill("06:30")
-    authed_page.locator("#processAutoRestartEnd").dispatch_event("change")
-    expect(authed_page.locator("#toast")).to_contain_text("Restart window end saved.")
-    saved = _config(base_url, auth_token)
-    assert saved["process_auto_restart"] is True and saved["process_auto_restart_end"] == "06:30"
-    surface(authed_page, "settings.pc-load-on")
-    close_settings_sheets(authed_page)
-    expect(_value(authed_page, "pc-load")).to_have_text("Night restart 21:00–06:30")
