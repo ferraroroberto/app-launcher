@@ -445,12 +445,16 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
 .board-owner-group > .board-plan-heading,
 .board-owner-state,
 .board-owner-detail { padding-inline: var(--board-card-inset, 14px); }
-.board-owner-answer-group {
+/* A fold's answer button (plan questions, an owner-check group) takes the rows' inset. */
+.board-plan-fold > .board-plan-answer {
   width: calc(100% - 2 * var(--board-card-inset, 14px));
   margin-inline: var(--board-card-inset, 14px);
 }
+/* The detail sits inside the shared action-row's 4px side padding; it takes
+   that back so its inset equals the group button's. */
 .board-owner-detail {
-  flex: 0 0 100%;
+  flex: 0 0 calc(100% + 8px);
+  margin-inline: -4px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
