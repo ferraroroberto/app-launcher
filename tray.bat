@@ -118,8 +118,18 @@ set "VERSION_URL="
 set "RESTART_ARG="
 if defined WANT_RESTART set "RESTART_ARG=-Restart"
 
+REM  Every run that gets this far leaves a line in webapp\restart.log, entry and
+REM  exit code, so a restart that never reached this script (Git Bash's
+REM  `cmd.exe /c` opens an interactive prompt instead) is told apart from one
+REM  that ran: no entry line means tray.bat was never entered.
+set "RESTART_LOG=%SCRIPT_DIR%webapp\restart.log"
+if not exist "%SCRIPT_DIR%webapp\" md "%SCRIPT_DIR%webapp" 2>nul
+>>"%RESTART_LOG%" echo %DATE% %TIME% tray.bat entered args=[%*]
+
 %PS% -NoProfile -NonInteractive -File "%TRAY_PS%" launch -AppName "%TRAY_APP_NAME%" -ScriptDir "%SCRIPT_DIR_ARG%" -VenvDir "%TRAY_VENV%" -TrayMatch "launcher\.py\s+tray" -Ports "%OWNED_PORTS%" -TrayLaunch "%TRAY_LAUNCH%" -VersionUrl "%VERSION_URL%" !RESTART_ARG!
-exit /b %ERRORLEVEL%
+set "TRAY_RC=%ERRORLEVEL%"
+>>"%RESTART_LOG%" echo %DATE% %TIME% tray.bat helper exit=!TRAY_RC!
+exit /b !TRAY_RC!
 
 REM  Standalone start (project-scaffolding#345): the shared helper is missing,
 REM  e.g. this app was moved to a PC that has none of the other fleet repos, and

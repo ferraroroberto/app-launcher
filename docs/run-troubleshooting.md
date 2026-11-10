@@ -13,7 +13,8 @@ Build: 35caad4 · 2026-05-19 21:34
 ```
 
 - **`git_sha`** — `git rev-parse --short HEAD` at the moment the webapp process started. Changes only across commits.
-- **`built_at`** — process start time. Changes on **every** restart, even with no code change — useful as a "did the tray actually restart?" anchor.
+- **`built_at`** — webapp process start time. Changes on **every** webapp start, even with no code change, but also on a webapp-only restart (the tray's Restart webapp item, a self-heal), so it does not prove `tray.bat --restart` ran.
+- **`pid`** — the serving webapp process id. Changes only with a new process; the restart check (`python -m src.launching.restart_check`, see [`restart-and-liveness.md`](restart-and-liveness.md)) compares it before and after.
 
 Backed by `GET /api/version`, which also returns the current `asset_hash` for quick diff against the PC. The line updates only when the webapp module re-imports (i.e., tray restart or 🔄 Restart webapp) — a phone refresh alone won't move it.
 

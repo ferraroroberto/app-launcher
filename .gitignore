@@ -51,6 +51,7 @@ webapp/outbox/
 webapp/jobs/
 # durable chief-conversation pointer (issue #675) — machine-written state
 webapp/chief-pointer.json
+webapp/restart-baseline.json
 # the Board's answered marks on the chief's plan (issue #1487) — machine-written state
 webapp/chief-answered.json
 # Failed job runs the owner dismissed from the Board (issue #1669) — machine-written state
