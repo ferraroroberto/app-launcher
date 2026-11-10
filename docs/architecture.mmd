@@ -156,6 +156,7 @@ read over loopback and cached behind /api/system/health"]
     GHCLIENT["clients/github.py\ngh CLI reads, cached snapshot"]
     PROOFREPORTS["board/proof_reports.py\nread-only view of each repo's\n.proof visual-proof store"]
     OWNERCHECKS["board/owner_checks.py\nowner-check list cache + Later/Problem marks,\nvia fleet-config's owner_check CLI"]
+    CIRUNS["board/ci_runs.py + chief/ci_failed.py\nred default-branch CI per fleet repo,\nci-failed chief mailbox events"]
     NOTIFY["notifications.py\nPushover/Telegram on job failure"]
     WEBAPPCFG["webapp_config.py\nconfig/webapp_config.json"]
     LAUNCHFLAGS["launching/flags.py\nper-agent CLI flag builders"]
@@ -252,6 +253,7 @@ read over loopback and cached behind /api/system/health"]
   BOARD --> GHCLIENT
   R_BOARD -->|"Done Issue/PR/Proof + report route"| PROOFREPORTS
   R_BOARD -->|"Your turn owner checks + answers"| OWNERCHECKS
+  R_BOARD -->|"red CI cards + sweep on refresh"| CIRUNS
   BOARD -->|reads| SESSSTATE["~/.claude/hooks/state/sessions-state.json\n(fleet-config session_state hook)"]
   BOARD -->|reads| ACTIVEISSUES["~/.claude/hooks/state/active-issues.json\n(fleet-config issue workflows)"]
   R_BOARD -->|"reads + writes\n(which conversation the chief is, #675)"| CHIEFPTR["src/chief/pointer.py →\nwebapp/chief-pointer.json"]

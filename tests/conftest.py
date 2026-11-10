@@ -385,6 +385,21 @@ def _isolated_chief_pointer(request, tmp_path, monkeypatch):
         raise owner_checks_mod.github_client.GhError("tests never read a real issue body")
 
     monkeypatch.setattr(owner_checks_mod, "_fetch_body", _no_real_body)
+
+    # A GitHub refresh starts the CI sweep too: never the real Actions API,
+    # never the real seen-runs file. Tests that read CI fake workflow_runs.
+    from src.board import ci_runs as ci_runs_mod
+    from src.chief import ci_failed as ci_failed_mod
+    monkeypatch.setattr(ci_failed_mod, "SEEN_FILE", tmp_path / "ci-failed-seen.json")
+    ci_runs_mod.reset_cache()
+    # A sweep thread would outlive the test and its patches, so a refresh in
+    # a test never starts one: the cooldown reads as just used.
+    monkeypatch.setattr(ci_runs_mod, "_last_refresh_started", float("inf"))
+
+    def _no_real_runs(*_args, **_kwargs):
+        raise ci_runs_mod.github_client.GhError("tests never read real CI runs")
+
+    monkeypatch.setattr(ci_runs_mod.github_client, "workflow_runs", _no_real_runs)
     # The write-side memo is module-level and would otherwise leak one test's
     # chief into the next (a second test would then observe "no write").
     monkeypatch.setattr(chief_router, "_last_noted_chief_conversation", "")

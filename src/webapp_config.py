@@ -287,6 +287,10 @@ class WebappConfig:
     # run. On by default: the event only lands while a chief is live, and
     # the doorbell above decides whether the chief is woken for it.
     chief_job_failures: bool = True
+    # Publish one ci-failed event per newly red default-branch GitHub CI run,
+    # found by the Board's GitHub refresh. On by default, gated like the
+    # job switch above; off, red CI shows only on the Board.
+    chief_ci_failures: bool = True
     # Two switches fleet-config's chief reads over loopback from
     # GET /api/board/chief/settings; the app starts nothing for either. Off
     # by default: each lets the chief act on its own, so the owner opts in.

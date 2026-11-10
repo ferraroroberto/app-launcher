@@ -11,7 +11,8 @@
     POST /api/board/chief-plan/prune      → clear the plan's merged rows through
                                             fleet-config's writer (Tailscale + passkey)
     POST /api/board/github/refresh        → run the gh searches now, and start the
-                                            owner-check list's refresh (token-gated)
+                                            owner-check list's and the CI sweep's
+                                            refresh (token-gated)
     POST /api/board/owner-checks/answer   → answer owner checks (board_owner.py;
                                             Tailscale + passkey)
     POST /api/board/issues/file           → file a GitHub issue, nothing spawned
@@ -82,9 +83,10 @@ from app.webapp.routers.board_spawn import (
     dispatch_effort,
 )
 from src import agents, audit, board, fleet_scope
-from src.board import active_issue_claims, backlog_buckets, owner_checks, proof_reports
+from src.board import active_issue_claims, backlog_buckets, ci_runs, owner_checks, proof_reports
 from src.board.exchange import resolve_exchange, unavailable
 from src.chief import answers as chief_answers
+from src.chief import ci_failed
 from src.chief import dispatch_brief, plan_prune
 from src.chief import plan as chief_plan
 from src.clients import github as github_client
@@ -326,6 +328,8 @@ async def _build_board_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[str
     # Board poll re-uses whatever the (identically-paced) sessions poll found.
     await steps.run("attach_provider_web_urls", attach_provider_web_urls, session_cards)
     columns = board.build_board(session_cards, github, job_cards)
+    ci_snap = ci_runs.snapshot()
+    columns["other"].extend(ci_runs.board_cards(ci_snap))
     columns["done"] = await steps.run(
         "annotate_proof", proof_reports.annotate, columns["done"], cfg.projects_dir)
     _mark_active_backlog(columns, active_issues["rows"], claim_states)
@@ -341,6 +345,9 @@ async def _build_board_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[str
         .replace("+00:00", "Z"),
         "columns": columns,
         "github": _github_section(github),
+        # Red default-branch CI per fleet repo, from its own cache: the CI
+        # cards in ``other`` are unknown, not absent, while this is false.
+        "ci": ci_runs.section(ci_snap),
         # ``available: false`` means the session-host could not be read, so
         # Claude's turn and Your turn are unknown, not empty — the
         # same contract as ``github.available``.
@@ -521,11 +528,17 @@ async def get_rate_limits(request: Request) -> Dict[str, Any]:
 async def refresh_github(request: Request) -> Dict[str, Any]:
     """Run the fleet-wide gh searches now (subprocess-heavy, on demand only).
 
-    The owner-check list (two ``gh`` calls per repo) refreshes beside it in a
-    background thread, so the ↻ never waits on it; the poll shows it landing.
+    The owner-check list (two ``gh`` calls per repo) and the CI sweep (one
+    per repo with a workflow, then the chief's ci-failed events) refresh
+    beside it in background threads, so the ↻ never waits on them; the poll
+    shows them landing.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     owner_checks.start_refresh(cfg.fleet_config_dir, cfg.github_owner)
+    ci_runs.start_refresh(
+        cfg.github_owner, cfg.fleet_config_dir, cfg.projects_dir,
+        functools.partial(ci_failed.observe, cfg),
+    )
     snap = await asyncio.to_thread(github_client.refresh, cfg.github_owner)
     return _github_section(snap)
 

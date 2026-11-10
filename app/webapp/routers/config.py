@@ -115,6 +115,8 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "chief_auto_drain": cfg.chief_auto_drain,
         # Failed Job runs reach the chief mailbox; on by default.
         "chief_job_failures": cfg.chief_job_failures,
+        # Red default-branch GitHub CI reaches the chief mailbox; on by default.
+        "chief_ci_failures": cfg.chief_ci_failures,
         # Chief automations fleet-config reads; off by default.
         "chief_job_self_heal": cfg.chief_job_self_heal,
         "chief_weekly_proposals": cfg.chief_weekly_proposals,
@@ -278,6 +280,7 @@ _SWITCH_KEYS = (
     "chief_doorbell",
     "chief_auto_drain",
     "chief_job_failures",
+    "chief_ci_failures",
     "chief_job_self_heal",
     "chief_weekly_proposals",
     "grokbot_enabled",
@@ -315,6 +318,7 @@ _PATCH_KEYS = frozenset({
     "chief_doorbell",
     "chief_auto_drain",
     "chief_job_failures",
+    "chief_ci_failures",
     "chief_job_self_heal",
     "chief_weekly_proposals",
     "grokbot_enabled",

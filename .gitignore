@@ -56,6 +56,8 @@ webapp/restart-baseline.json
 webapp/chief-answered.json
 # Failed job runs the owner dismissed from the Board (issue #1669) — machine-written state
 webapp/jobs-dismissed.json
+# Red CI runs already seen by the chief's ci-failed feed — machine-written state
+webapp/ci-failed-seen.json
 # The Board's Later and Problem marks on owner checks — machine-written state
 webapp/owner-check-marks.json
 # Fleet daily GitHub totals (lines, PRs, issues) — machine-written cache

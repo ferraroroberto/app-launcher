@@ -546,6 +546,7 @@ export const els = {
   chiefDoorbellToggle: document.getElementById('chiefDoorbellToggle'),
   chiefAutoDrainToggle: document.getElementById('chiefAutoDrainToggle'),
   chiefJobFailuresToggle: document.getElementById('chiefJobFailuresToggle'),
+  chiefCiFailuresToggle: document.getElementById('chiefCiFailuresToggle'),
   chiefJobSelfHealToggle: document.getElementById('chiefJobSelfHealToggle'),
   chiefWeeklyProposalsToggle: document.getElementById('chiefWeeklyProposalsToggle'),
   grokbotEnabledToggle: document.getElementById('grokbotEnabledToggle'),

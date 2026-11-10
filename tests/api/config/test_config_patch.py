@@ -340,20 +340,21 @@ class TestPatchConfig:
         assert resp.status_code == 200
         assert load_webapp_config(cfg_path).chief_doorbell is False
 
-    def test_chief_job_failures_defaults_on_and_round_trips(self, webapp_client):
-        """chief_job_failures (#1783): the swap on app.state is what the next
-        failed run reads, and the save reaches disk."""
+    @pytest.mark.parametrize("key", ["chief_job_failures", "chief_ci_failures"])
+    def test_chief_failure_feeds_default_on_and_round_trip(self, webapp_client, key):
+        """The job (#1783) and CI (#2290) feeds: the swap on app.state is what
+        the next failed run or CI sweep reads, and the save reaches disk."""
         from src.webapp_config import load_webapp_config
 
         client, app, overrides = webapp_client
-        assert client.get("/api/config").json()["chief_job_failures"] is True
+        assert client.get("/api/config").json()[key] is True
 
-        resp = client.post("/api/config", json={"chief_job_failures": False})
+        resp = client.post("/api/config", json={key: False})
         assert resp.status_code == 200
-        assert app.state.webapp_config.chief_job_failures is False
+        assert getattr(app.state.webapp_config, key) is False
         cfg_path = overrides["tmp_webapp_cfg_path"]
-        assert load_webapp_config(cfg_path).chief_job_failures is False
-        assert client.get("/api/config").json()["chief_job_failures"] is False
+        assert getattr(load_webapp_config(cfg_path), key) is False
+        assert client.get("/api/config").json()[key] is False
 
     @pytest.mark.parametrize("key", ["chief_job_self_heal", "chief_weekly_proposals"])
     def test_new_chief_automations_default_off_and_round_trip(self, webapp_client, key):
@@ -433,12 +434,13 @@ class TestPatchConfig:
         assert client.post("/api/config", json={"grok_auto_switch": "true"}).status_code == 400
         assert app.state.webapp_config.grok_auto_switch is True
 
+    @pytest.mark.parametrize("key", ["chief_job_failures", "chief_ci_failures"])
     @pytest.mark.parametrize("junk", ["false", 0, None])
-    def test_chief_job_failures_rejects_non_booleans(self, webapp_client, junk):
+    def test_chief_failure_feeds_reject_non_booleans(self, webapp_client, key, junk):
         client, app, _ = webapp_client
-        resp = client.post("/api/config", json={"chief_job_failures": junk})
+        resp = client.post("/api/config", json={key: junk})
         assert resp.status_code == 400
-        assert app.state.webapp_config.chief_job_failures is True
+        assert getattr(app.state.webapp_config, key) is True
 
     @pytest.mark.parametrize("junk", ["true", "yes", 0, 1, None, []])
     def test_chief_doorbell_rejects_non_booleans(self, webapp_client, junk):
