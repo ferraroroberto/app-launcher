@@ -46,7 +46,7 @@
 .idea-sheet-attr dt { color: var(--muted); }
 .idea-sheet-attr dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .idea-sheet-link { color: var(--accent-text); }
-.idea-sheet-section {
+.idea-sheet-overline {
   margin: 10px 0 0;
   font-size: var(--font-caption);
   font-weight: 600;

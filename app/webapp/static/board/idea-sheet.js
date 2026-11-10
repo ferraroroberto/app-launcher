@@ -91,7 +91,7 @@ export function repoChoices(projects, suggested) {
 // ------------------------------------------------------------- render
 
 function section(title) {
-  return el('p', 'idea-sheet-section', title);
+  return el('p', 'idea-sheet-overline', title);
 }
 
 function attribution(entry) {
