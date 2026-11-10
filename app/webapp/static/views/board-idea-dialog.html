@@ -1,0 +1,28 @@
+    <!-- One inspiration idea (board/idea-sheet.js): its attribution, the repo
+         to file in, the editable /issue-add prompt, files and a note, and the
+         decision for the chief. Built when it opens; File it is the one
+         primary action. -->
+    <dialog id="ideaSheetDialog" class="detail-dialog idea-sheet-dialog" data-track-view="sheet.board-idea" aria-labelledby="ideaSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2 id="ideaSheetTitle"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sprout"></use></svg> <span>Idea</span></h2>
+          <button data-track="idea-sheet.close" type="button" id="ideaSheetClose" class="icon-button detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div id="ideaSheetBody" class="idea-sheet-body"></div>
+        <!-- The sheet's paperclip (answer-files.js) is cloned from this, so its
+             tracking id is a constant in markup. -->
+        <template id="ideaAttachTemplate">
+          <button type="button" class="icon-button tr-ask-attach" data-track="idea-sheet.attach"></button>
+        </template>
+        <div id="ideaSheetActions" class="detail-actions idea-sheet-actions">
+          <p id="ideaSheetNote" class="muted small idea-sheet-note" role="status" hidden></p>
+          <button data-track="idea-sheet.file" type="button" id="ideaSheetFile" class="button-primary detail-save-btn">File it</button>
+          <div class="idea-sheet-more">
+            <button data-track="idea-sheet.drop" type="button" id="ideaSheetDrop" class="button-tint">Drop it</button>
+            <button data-track="idea-sheet.later" type="button" id="ideaSheetLater" class="button-ghost">Later</button>
+          </div>
+        </div>
+      </div>
+    </dialog>

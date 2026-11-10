@@ -1,10 +1,12 @@
-"""Settings › Inspiration: the /inspiration-scan source list and the X login.
+"""Settings › Inspiration and the Board Ideas card: the /inspiration-scan data.
 
 ``GET /api/inspiration/sources`` -> the source list, a ``revision`` for the
 next save, the latest digest's status and whether the file can be edited.
 ``PUT /api/inspiration/sources`` with ``{revision, likes, newsletter, youtube,
 x}`` -> the same payload, after a validated, atomic save (or a 4xx whose
 ``detail`` says why and leaves the file unchanged).
+``GET /api/inspiration/ideas`` -> the Board Ideas card: the undecided ideas, the
+ledger of decided ones and the latest digest status (``src.inspiration.ideas``).
 ``GET`` / ``POST /api/inspiration/login-x`` -> whether the X login window is
 open, closed or failed; the POST opens it on this PC.
 
@@ -21,6 +23,7 @@ from typing import Any, Dict
 from fastapi import APIRouter, HTTPException, Request
 
 from app.webapp.routers._helpers import maybe_json
+from src.inspiration import ideas as inspiration_ideas
 from src.inspiration import login as inspiration_login
 from src.inspiration import sources as inspiration_sources
 from src.webapp_config import WebappConfig
@@ -56,3 +59,9 @@ async def post_login_x(request: Request) -> Dict[str, Any]:
         return await asyncio.to_thread(inspiration_login.start, cfg.fleet_config_dir)
     except inspiration_login.LoginStartError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+
+
+@router.get("/api/inspiration/ideas")
+async def get_ideas(request: Request) -> Dict[str, Any]:
+    cfg: WebappConfig = request.app.state.webapp_config
+    return await asyncio.to_thread(inspiration_ideas.read_board_ideas, cfg.fleet_config_dir, cfg.github_owner)
