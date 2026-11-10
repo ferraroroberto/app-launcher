@@ -301,6 +301,15 @@ class TestDigestStatus:
         assert inspiration_sources.read_state(fc)["digest"] == {"state": "unreadable", "date": "2026-11-10"}
 
 
+def _reset_login() -> None:
+    """Forget any recorded login so each test starts from idle."""
+    inspiration_login._proc = None
+    inspiration_login._stderr = None
+    inspiration_login._started_at = 0.0
+    inspiration_login._ended_at = 0.0
+    inspiration_login._result = {"state": inspiration_login.IDLE, "detail": ""}
+
+
 class _FakeProc:
     def __init__(self, code=None):
         self.code = code
@@ -312,9 +321,9 @@ class _FakeProc:
 class TestLogin:
     @pytest.fixture(autouse=True)
     def _clean(self):
-        inspiration_login.reset_for_tests()
+        _reset_login()
         yield
-        inspiration_login.reset_for_tests()
+        _reset_login()
 
     def _ready(self, tmp_path) -> str:
         root = _checkout(tmp_path / "fc2")
@@ -375,7 +384,7 @@ class TestRoutes:
         client, app, _ = webapp_client
         fc, path = env
         app.state.webapp_config.fleet_config_dir = fc
-        inspiration_login.reset_for_tests()
+        _reset_login()
         return client, path
 
     def test_get_put_round_trip(self, api):
@@ -404,7 +413,7 @@ class TestRoutes:
 
     def test_login_x_starts_and_reports(self, webapp_client, tmp_path, monkeypatch):
         client, app, _ = webapp_client
-        inspiration_login.reset_for_tests()
+        _reset_login()
         assert client.get("/api/inspiration/login-x").json()["state"] == "idle"
         app.state.webapp_config.fleet_config_dir = str(tmp_path / "none")
         refused = client.post("/api/inspiration/login-x")
@@ -417,4 +426,4 @@ class TestRoutes:
         monkeypatch.setattr(inspiration_login.subprocess, "Popen", lambda cmd, **kw: _FakeProc())
         assert client.post("/api/inspiration/login-x").json()["state"] == "running"
         assert client.get("/api/inspiration/login-x").json()["state"] == "running"
-        inspiration_login.reset_for_tests()
+        _reset_login()

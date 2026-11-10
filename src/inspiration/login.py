@@ -128,13 +128,3 @@ def start(fleet_config_dir: str) -> Dict[str, Any]:
 
 def _locked_status() -> Dict[str, Any]:
     return {"state": RUNNING, "detail": "", "started_at": _started_at or None, "ended_at": None}
-
-
-def reset_for_tests() -> None:
-    """Forget any recorded login (tests only)."""
-    global _proc, _stderr, _started_at, _ended_at, _result
-    with _lock:
-        if _stderr is not None:
-            _stderr.close()
-        _proc, _stderr, _started_at, _ended_at = None, None, 0.0, 0.0
-        _result = {"state": IDLE, "detail": ""}
