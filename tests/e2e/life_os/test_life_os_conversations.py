@@ -173,30 +173,6 @@ def test_life_os_conversations_empty_state_when_no_index(
     expect(authed_page.locator("#toast")).to_be_hidden()
 
 
-@pytest.mark.iphone
-def test_life_os_conversation_controls_are_full_targets(
-    authed_page: Page, base_url: str
-) -> None:
-    """#1528/#1504: the field's scope chip, each conversation row and the
-    sheet's ✕, link rows and Resume are 44px targets, and the chip never
-    shares a pixel with the box it sits in."""
-    _mock_skills(authed_page)
-    _mock_conversations(authed_page)
-    _open_conversations(authed_page, base_url)
-
-    scope = authed_page.locator("#lifeOsConvoScope")
-    assert_min_target(scope)
-    assert_min_target(_convo_rows(authed_page).first.locator(".action-row-main"))
-    assert_no_overlap([authed_page.locator("#lifeOsFilterInput"), scope])
-    sheet = _open_sheet(authed_page, 0)
-    assert_min_target(authed_page.locator("#lifeOsConvoSheetClose"))
-    links = sheet.locator(".settings-row:visible")
-    expect(links).to_have_count(5)   # Read, Rename, Copy link, Open raw, Delete
-    for i in range(5):
-        assert_min_target(links.nth(i))
-    assert_min_target(authed_page.locator("#lifeOsConvoSheetResume"))
-
-
 # Every text size in a conversation row (its avatar's monogram aside), in one
 # read, and the sheet's width against the viewport's.
 _MEASURE_ROWS = """root => {
@@ -220,30 +196,108 @@ _MEASURE_SHEET = """d => {
 
 
 @pytest.mark.iphone
-def test_life_os_conversation_rows_and_sheet_fit_the_phone(
+def test_life_os_conversation_sheet_offers_resume_links_and_fits_the_phone(
     authed_page: Page, base_url: str
 ) -> None:
+    """One load of journal-daily's list at 390px, then each leg below:
+    full targets, the unresumable note, the sheet's actions and the fit."""
+    authed_page.set_viewport_size({"width": 390, "height": 844})
+    _mock_skills(authed_page)
+    _mock_conversations(authed_page)
+    authed_page.add_init_script(_CLIPBOARD_MOCK)
+    _open_conversations(authed_page, base_url)
+    expect(_convo_rows(authed_page)).to_have_count(2)
+    _conversation_controls_are_full_targets(authed_page)
+    _unresumable_conversation_says_so(authed_page)
+    _sheet_has_resume_primary_and_link_rows(authed_page, base_url)
+    _conversation_rows_and_sheet_fit_the_phone(authed_page)
+
+
+def _conversation_controls_are_full_targets(page: Page) -> None:
+    """#1528/#1504: the field's scope chip, each conversation row and the
+    sheet's ✕, link rows and Resume are 44px targets, and the chip never
+    shares a pixel with the box it sits in."""
+    scope = page.locator("#lifeOsConvoScope")
+    assert_min_target(scope)
+    assert_min_target(_convo_rows(page).first.locator(".action-row-main"))
+    assert_no_overlap([page.locator("#lifeOsFilterInput"), scope])
+    sheet = _open_sheet(page, 0)
+    assert_min_target(page.locator("#lifeOsConvoSheetClose"))
+    links = sheet.locator(".settings-row:visible")
+    expect(links).to_have_count(5)   # Read, Rename, Copy link, Open raw, Delete
+    for i in range(5):
+        assert_min_target(links.nth(i))
+    assert_min_target(page.locator("#lifeOsConvoSheetResume"))
+    _close_sheet(page)
+
+
+def _unresumable_conversation_says_so(page: Page) -> None:
+    """#727, in the sheet since #1504: a capture with no stored session id is
+    readable but cannot be reopened. A phone has no hover, so the reason is a
+    visible note and Resume stays, disabled — and roughly a quarter of the
+    archive is in this state, so it must not read as breakage."""
+    resume = page.locator("#lifeOsConvoSheetResume")
+    note = page.locator("#lifeOsConvoSheetNote")
+    _open_sheet(page, 1)
+    expect(note).to_be_visible()
+    expect(note).to_contain_text("readable only")
+    expect(resume).to_be_disabled()
+    expect(page.locator("#lifeOsConvoSheet .lifeos-convo-read")).to_be_visible()
+    _close_sheet(page)
+
+    # The resumable row is the contrast: it offers the action, and says
+    # nothing about why it could not.
+    _open_sheet(page, 0)
+    expect(note).to_be_hidden()
+    expect(resume).to_be_enabled()
+    _close_sheet(page)
+
+
+def _sheet_has_resume_primary_and_link_rows(page: Page, base_url: str) -> None:
+    """#1504: the sheet's one primary is Resume, and every other action of the
+    old row menu and reader menu is a link row — Read, Rename, Copy link,
+    Open raw — with Delete alone last in the danger tone. With the
+    toolbar on the conversation's own harness there is no handoff to offer.
+    Copy link writes the ?convo= link (#1170)."""
+    sheet = _open_sheet(page, 0)
+    expect(page.locator("#lifeOsConvoSheetTitle")).to_have_text("booking the ferry")
+    resume = page.locator("#lifeOsConvoSheetResume")
+    expect(resume).to_have_text("Resume")
+    expect(resume).to_have_class(re.compile(r"\bbutton-primary\b"))
+    expect(sheet.locator(".detail-actions button")).to_have_count(1)
+    expect(sheet.locator(".settings-row:visible .settings-row-label")).to_have_text(
+        ["Read the conversation", "Rename", "Copy link", "Open raw", "Delete"])
+    expect(sheet.locator(".lifeos-convo-handoff")).to_be_hidden()
+    delete = sheet.locator(".lifeos-convo-delete")
+    expect(delete).to_have_class(re.compile(r"\blifeos-sheet-danger\b"))
+    # Delete is alone in the last box, after every other row.
+    expect(delete.locator("xpath=..")).to_have_class(re.compile(r"\blifeos-sheet-links\b"))
+    expect(delete.locator("xpath=../button")).to_have_count(1)
+
+    sheet.locator(".lifeos-convo-copy-link").click()
+    page.wait_for_function(
+        "() => Array.isArray(window.__copied) && window.__copied.length > 0")
+    assert page.evaluate("() => window.__copied[0]") == (
+        f"{base_url}/?convo=journal-daily/2026-08-01-0900-ferry-booking.md")
+    _close_sheet(page)
+
+
+def _conversation_rows_and_sheet_fit_the_phone(page: Page) -> None:
     """#1528: a row uses two type sizes only, 16px for its title and 14px for
     everything else. #1504: at 390px the conversation sheet sits inside the
     screen with nothing to scroll sideways, and Resume runs the width of its
     footer, in light and dark."""
-    authed_page.set_viewport_size({"width": 390, "height": 844})
-    _mock_skills(authed_page)
-    _mock_conversations(authed_page)
-    _open_conversations(authed_page, base_url)
-    expect(_convo_rows(authed_page)).to_have_count(2)
-
-    sizes = stable_eval(authed_page.locator("#lifeOsConvoList"), _MEASURE_ROWS)
+    sizes = stable_eval(page.locator("#lifeOsConvoList"), _MEASURE_ROWS)
     assert sizes == ["14px", "16px"], f"a row mixes other type sizes: {sizes}"
 
-    sheet = _open_sheet(authed_page, 0)
+    sheet = _open_sheet(page, 0)
     # A long name ellipsizes: the header h2 is a flex row, where
     # text-overflow does nothing and the title was cut mid-letter.
-    title = authed_page.locator("#lifeOsConvoSheetTitle")
+    title = page.locator("#lifeOsConvoSheetTitle")
     expect(title).to_have_css("display", "block")
     expect(title).to_have_css("text-overflow", "ellipsis")
     for theme in ("light", "dark"):
-        authed_page.evaluate("t => document.documentElement.dataset.theme = t", theme)
+        page.evaluate("t => document.documentElement.dataset.theme = t", theme)
         m = sheet.evaluate(_MEASURE_SHEET)
         assert m["left"] >= 0 and m["right"] <= m["vw"] + 0.5, (theme, m)
         assert m["overflow"] <= 0, (theme, m)
@@ -290,68 +344,6 @@ def test_life_os_sheet_summary_is_one_paragraph_for_both_index_shapes(
     _open_sheet(authed_page, 2)
     expect(summary).to_be_hidden()
     expect(meta).to_contain_text("4 messages")
-
-
-def test_life_os_unresumable_conversation_says_so(
-    authed_page: Page, base_url: str
-) -> None:
-    """#727, in the sheet since #1504: a capture with no stored session id is
-    readable but cannot be reopened. A phone has no hover, so the reason is a
-    visible note and Resume stays, disabled — and roughly a quarter of the
-    archive is in this state, so it must not read as breakage."""
-    _mock_skills(authed_page)
-    _mock_conversations(authed_page)
-    _open_conversations(authed_page, base_url)
-
-    resume = authed_page.locator("#lifeOsConvoSheetResume")
-    note = authed_page.locator("#lifeOsConvoSheetNote")
-    _open_sheet(authed_page, 1)
-    expect(note).to_be_visible()
-    expect(note).to_contain_text("readable only")
-    expect(resume).to_be_disabled()
-    expect(authed_page.locator("#lifeOsConvoSheet .lifeos-convo-read")).to_be_visible()
-    _close_sheet(authed_page)
-
-    # The resumable row is the contrast: it offers the action, and says
-    # nothing about why it could not.
-    _open_sheet(authed_page, 0)
-    expect(note).to_be_hidden()
-    expect(resume).to_be_enabled()
-
-
-def test_life_os_sheet_has_resume_primary_and_link_rows(
-    authed_page: Page, base_url: str
-) -> None:
-    """#1504: the sheet's one primary is Resume, and every other action of the
-    old row menu and reader menu is a link row — Read, Rename, Copy link,
-    Open raw — with Delete alone last in the danger tone. With the
-    toolbar on the conversation's own harness there is no handoff to offer.
-    Copy link writes the ?convo= link (#1170)."""
-    _mock_skills(authed_page)
-    _mock_conversations(authed_page)
-    authed_page.add_init_script(_CLIPBOARD_MOCK)
-    _open_conversations(authed_page, base_url)
-
-    sheet = _open_sheet(authed_page, 0)
-    expect(authed_page.locator("#lifeOsConvoSheetTitle")).to_have_text("booking the ferry")
-    resume = authed_page.locator("#lifeOsConvoSheetResume")
-    expect(resume).to_have_text("Resume")
-    expect(resume).to_have_class(re.compile(r"\bbutton-primary\b"))
-    expect(sheet.locator(".detail-actions button")).to_have_count(1)
-    expect(sheet.locator(".settings-row:visible .settings-row-label")).to_have_text(
-        ["Read the conversation", "Rename", "Copy link", "Open raw", "Delete"])
-    expect(sheet.locator(".lifeos-convo-handoff")).to_be_hidden()
-    delete = sheet.locator(".lifeos-convo-delete")
-    expect(delete).to_have_class(re.compile(r"\blifeos-sheet-danger\b"))
-    # Delete is alone in the last box, after every other row.
-    expect(delete.locator("xpath=..")).to_have_class(re.compile(r"\blifeos-sheet-links\b"))
-    expect(delete.locator("xpath=../button")).to_have_count(1)
-
-    sheet.locator(".lifeos-convo-copy-link").click()
-    authed_page.wait_for_function(
-        "() => Array.isArray(window.__copied) && window.__copied.length > 0")
-    assert authed_page.evaluate("() => window.__copied[0]") == (
-        f"{base_url}/?convo=journal-daily/2026-08-01-0900-ferry-booking.md")
 
 
 def test_life_os_convo_link_opens_the_sheet_and_the_reader(

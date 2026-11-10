@@ -32,19 +32,23 @@ _TRANSCRIPT = {
 }
 
 
-def _mock_archive(page: Page, restore_status: int, restore_body: dict) -> list:
-    """The backup holds one entry until a restore answers 200; returns the restore calls."""
+def _mock_archive(page: Page, answers: list) -> list:
+    """The backup holds one entry until a restore answers 200; each restore
+    takes the next ``(status, body)`` from ``answers``. Returns the restore calls."""
     restores: list = []
+    restored = {"done": False}
 
     def _list(route):
-        rows = [] if restores and restore_status == 200 else [_ENTRY]
+        rows = [] if restored["done"] else [_ENTRY]
         route.fulfill(status=200, content_type="application/json",
                       body=_json.dumps({"archived": rows}))
 
     def _restore(route):
         restores.append(route.request.method)
-        route.fulfill(status=restore_status, content_type="application/json",
-                      body=_json.dumps(restore_body))
+        status, body = answers[len(restores) - 1]
+        restored["done"] = status == 200
+        route.fulfill(status=status, content_type="application/json",
+                      body=_json.dumps(body))
 
     page.route(_ARCHIVED_URL, _list)
     page.route(re.compile(re.escape(_ENTRY_URL) + "/transcript$"), lambda route: route.fulfill(
@@ -78,23 +82,15 @@ def _search_and_open_archived(page: Page, base_url: str) -> None:
     expect(page.locator("#lifeOsViewerDone")).to_have_text("Restore")
 
 
-def test_an_archived_search_hit_reads_and_restores(authed_page: Page, base_url: str) -> None:
-    restores = _mock_archive(authed_page, 200, {"status": "restored"})
+def test_an_archived_search_hit_reads_and_a_refused_restore_says_why_then_restores(
+    authed_page: Page, base_url: str
+) -> None:
+    restores = _mock_archive(authed_page, [
+        (409, {"detail": "a capture with this name already exists"}),
+        (200, {"status": "restored"}),
+    ])
     _search_and_open_archived(authed_page, base_url)
-    authed_page.locator("#lifeOsViewerDone").click()
-    expect(authed_page.locator("#lifeOsConvoViewer")).to_be_hidden(timeout=5_000)
-    expect(authed_page.locator("#toast")).to_contain_text("Restored ferry plans")
-    assert restores == ["POST"], restores
-    # The refresh after the restore finds the backup empty: the group goes.
-    expect(authed_page.locator("#lifeOsArchived")).to_be_hidden(timeout=5_000)
-    # Clearing the search hides the whole group.
-    authed_page.locator("#lifeOsFilterInput").fill("")
-    expect(authed_page.locator("#lifeOsConvoGroup")).to_be_hidden(timeout=5_000)
-
-
-def test_a_refused_restore_says_why_and_stays_open(authed_page: Page, base_url: str) -> None:
-    _mock_archive(authed_page, 409, {"detail": "a capture with this name already exists"})
-    _search_and_open_archived(authed_page, base_url)
+    # A refused restore says why and leaves the reader open on Restore.
     done = authed_page.locator("#lifeOsViewerDone")
     done.click()
     expect(authed_page.locator("#toast")).to_contain_text("a capture with this name already exists")
@@ -102,3 +98,13 @@ def test_a_refused_restore_says_why_and_stays_open(authed_page: Page, base_url: 
     expect(done).to_have_text("Restore")
     expect(done).to_be_enabled()
     expect(authed_page.locator("#lifeOsArchivedCount")).to_have_text("(1)")
+
+    done.click()
+    expect(authed_page.locator("#lifeOsConvoViewer")).to_be_hidden(timeout=5_000)
+    expect(authed_page.locator("#toast")).to_contain_text("Restored ferry plans")
+    assert restores == ["POST", "POST"], restores
+    # The refresh after the restore finds the backup empty: the group goes.
+    expect(authed_page.locator("#lifeOsArchived")).to_be_hidden(timeout=5_000)
+    # Clearing the search hides the whole group.
+    authed_page.locator("#lifeOsFilterInput").fill("")
+    expect(authed_page.locator("#lifeOsConvoGroup")).to_be_hidden(timeout=5_000)

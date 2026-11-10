@@ -43,26 +43,56 @@ _QUESTION_TRANSCRIPT = dict(_FAKE_TRANSCRIPT, entries=_FAKE_TRANSCRIPT["entries"
 ])
 
 
-def test_capture_opens_in_the_chat_transcript_view(
+_LONG_TRANSCRIPT = dict(_FAKE_TRANSCRIPT, entries=[
+    {"kind": "user" if i % 2 == 0 else "assistant",
+     "text": f"synthetic turn {i} " + "about ferry timetables and ticket prices " * 3,
+     "offset": i * 100, "timestamp": None, "truncated": False}
+    for i in range(40)
+])
+
+_UNPARSEABLE_TRANSCRIPT = {
+    "path": _FAKE_TRANSCRIPT["path"], "name": _FAKE_TRANSCRIPT["name"],
+    "available": False, "reason": "no_turns", "agent": "", "entries": [],
+}
+
+
+def test_the_reader_renders_a_capture_jumps_to_its_end_and_falls_back_to_raw(
     authed_page: Page, base_url: str
 ) -> None:
-    """#1119: Read opens the capture in the session overlay's own Chat
-    renderer — real turn cards, the user's prompt as plain text and the reply
-    through markdown — not the raw document viewer. One surface, two mounts
-    (#979), so the assertion is on that renderer's own classes. #1149: a
-    question card renders here too, and read-only. #1504: the reader is a
-    sheet over the conversation sheet, which keeps Open raw."""
+    """Three captures read on one load of journal-daily's list: the reader
+    is fetched afresh on every open, so the stub's answer changes per leg."""
     _mock_skills(authed_page)
     _mock_conversations(authed_page)
-    _mock_transcript(authed_page, _QUESTION_TRANSCRIPT)
+    answer = {"body": _QUESTION_TRANSCRIPT}
+    authed_page.route(re.compile(r".*/api/life-os/file/transcript.*"), lambda route: route.fulfill(
+        status=200, content_type="application/json", body=_json.dumps(
+            answer["body"](route.request.url) if callable(answer["body"]) else answer["body"])))
     authed_page.route(re.compile(r".*/api/life-os/file\?.*$"), lambda route: route.fulfill(
         status=200, content_type="application/json", body=_json.dumps(
             {"path": "x", "name": "2026-08-01-0900-ferry-booking.md",
              "content": "You: book the ferry", "truncated": False})))
     _open_conversations(authed_page, base_url)
 
-    viewer_list = _open_viewer(authed_page, 0)
-    expect(authed_page.locator("#lifeOsViewerTitle")).to_have_text("booking the ferry")
+    _capture_opens_in_the_chat_transcript_view(authed_page)
+    _close_sheet(authed_page)
+    # The first row's capture is long, the second's two turns.
+    answer["body"] = lambda url: _LONG_TRANSCRIPT if "ferry-booking" in url else _FAKE_TRANSCRIPT
+    _viewer_latest_pill_jumps_to_the_last_turn(authed_page)
+    authed_page.locator("#lifeOsViewerClose").click()
+    _close_sheet(authed_page)
+    answer["body"] = _UNPARSEABLE_TRANSCRIPT
+    _unparseable_capture_falls_back_to_the_raw_view(authed_page)
+
+
+def _capture_opens_in_the_chat_transcript_view(page: Page) -> None:
+    """#1119: Read opens the capture in the session overlay's own Chat
+    renderer — real turn cards, the user's prompt as plain text and the reply
+    through markdown — not the raw document viewer. One surface, two mounts
+    (#979), so the assertion is on that renderer's own classes. #1149: a
+    question card renders here too, and read-only. #1504: the reader is a
+    sheet over the conversation sheet, which keeps Open raw."""
+    viewer_list = _open_viewer(page, 0)
+    expect(page.locator("#lifeOsViewerTitle")).to_have_text("booking the ferry")
     turns = viewer_list.locator(".tr-turn")
     expect(turns).to_have_count(2)
     expect(turns.first).to_have_class(re.compile(r"\btr-user\b"))
@@ -71,7 +101,7 @@ def test_capture_opens_in_the_chat_transcript_view(
     # The reply goes through the markdown renderer; the prompt does not.
     expect(turns.nth(1).locator(".tr-md strong")).to_have_text("07:40")
     # Read-only: no composer anywhere in the reader.
-    expect(authed_page.locator("#lifeOsConvoViewer .composer")).to_have_count(0)
+    expect(page.locator("#lifeOsConvoViewer .composer")).to_have_count(0)
     # #1149: the question renders as its card, beside the turns rather than
     # in a group, with no live control — not one enabled option, no text
     # field — and says it holds no answer instead of offering one.
@@ -92,48 +122,30 @@ def test_capture_opens_in_the_chat_transcript_view(
     expect(plan.locator("button")).to_have_count(0)
     # Done comes back to the sheet; its Open raw stacks the raw document over
     # it, and the document's ✕ comes back to the sheet again.
-    authed_page.locator("#lifeOsViewerDone").click()
-    expect(authed_page.locator("#lifeOsConvoViewer")).to_be_hidden()
-    sheet = authed_page.locator("#lifeOsConvoSheet")
+    page.locator("#lifeOsViewerDone").click()
+    expect(page.locator("#lifeOsConvoViewer")).to_be_hidden()
+    sheet = page.locator("#lifeOsConvoSheet")
     expect(sheet).to_be_visible()
     sheet.locator(".lifeos-convo-open-raw").click()
-    expect(authed_page.locator("#lifeOsDoc")).to_be_visible()
-    expect(authed_page.locator("#lifeOsFileContent")).to_contain_text("book the ferry")
-    authed_page.locator("#lifeOsDocClose").click()
-    expect(authed_page.locator("#lifeOsDoc")).to_be_hidden()
+    expect(page.locator("#lifeOsDoc")).to_be_visible()
+    expect(page.locator("#lifeOsFileContent")).to_contain_text("book the ferry")
+    page.locator("#lifeOsDocClose").click()
+    expect(page.locator("#lifeOsDoc")).to_be_hidden()
     expect(sheet).to_be_visible()
 
 
-_LONG_TRANSCRIPT = dict(_FAKE_TRANSCRIPT, entries=[
-    {"kind": "user" if i % 2 == 0 else "assistant",
-     "text": f"synthetic turn {i} " + "about ferry timetables and ticket prices " * 3,
-     "offset": i * 100, "timestamp": None, "truncated": False}
-    for i in range(40)
-])
-
-
-def test_viewer_latest_pill_jumps_to_the_last_turn(
-    authed_page: Page, base_url: str
-) -> None:
+def _viewer_latest_pill_jumps_to_the_last_turn(page: Page) -> None:
     """#1140: the shared ↓ Latest pill on the conversation reader. A capture
     that fits has no end to jump to. A long one still opens at its start — it
     reads top-down — but shows the pill straight away, and one tap reaches
     the last turn."""
-    _mock_skills(authed_page)
-    _mock_conversations(authed_page)
-    # The first row's capture is long, the second's two turns.
-    authed_page.route(re.compile(r".*/api/life-os/file/transcript.*"), lambda route: route.fulfill(
-        status=200, content_type="application/json", body=_json.dumps(
-            _LONG_TRANSCRIPT if "ferry-booking" in route.request.url else _FAKE_TRANSCRIPT)))
-    _open_conversations(authed_page, base_url)
-
-    pill = authed_page.locator("#lifeOsViewerLatest")
-    expect(_open_viewer(authed_page, 1).locator(".tr-turn")).to_have_count(2)
+    pill = page.locator("#lifeOsViewerLatest")
+    expect(_open_viewer(page, 1).locator(".tr-turn")).to_have_count(2)
     expect(pill).to_be_hidden()
-    authed_page.locator("#lifeOsViewerClose").click()
-    _close_sheet(authed_page)
+    page.locator("#lifeOsViewerClose").click()
+    _close_sheet(page)
 
-    turns = _open_viewer(authed_page, 0).locator(".tr-turn")
+    turns = _open_viewer(page, 0).locator(".tr-turn")
     expect(turns).to_have_count(40)
     expect(turns.first).to_be_in_viewport()
     expect(pill).to_be_visible()
@@ -141,6 +153,21 @@ def test_viewer_latest_pill_jumps_to_the_last_turn(
     pill.click()
     expect(turns.last).to_be_in_viewport()
     expect(pill).to_be_hidden()
+
+
+def _unparseable_capture_falls_back_to_the_raw_view(page: Page) -> None:
+    """#1119: a capture the parser can make nothing of says so in one line and
+    offers the raw file — never a blank pane, and never an empty conversation
+    passed off as a read one."""
+    viewer_list = _open_viewer(page, 0)
+    expect(viewer_list.locator(".tr-turn")).to_have_count(0)
+    state = page.locator("#lifeOsViewerState")
+    expect(state).to_be_visible()
+    expect(state).to_contain_text("no turns this view can read")
+    # Passive status belongs beside the surface, not in a toast.
+    expect(page.locator("#toast")).to_be_hidden()
+    state.locator(".lifeos-viewer-raw").click()
+    expect(page.locator("#lifeOsDoc")).to_be_visible()
 
 
 _MEASURE_PILL = """
@@ -210,28 +237,3 @@ def _open_viewer_from_sheet(page: Page) -> Locator:
     page.locator("#lifeOsConvoSheet .lifeos-convo-read").click()
     expect(page.locator("#lifeOsConvoViewer")).to_be_visible(timeout=5_000)
     return page.locator("#lifeOsViewerList")
-
-
-def test_unparseable_capture_falls_back_to_the_raw_view(
-    authed_page: Page, base_url: str
-) -> None:
-    """#1119: a capture the parser can make nothing of says so in one line and
-    offers the raw file — never a blank pane, and never an empty conversation
-    passed off as a read one."""
-    _mock_skills(authed_page)
-    _mock_conversations(authed_page)
-    _mock_transcript(authed_page, {
-        "path": _FAKE_TRANSCRIPT["path"], "name": _FAKE_TRANSCRIPT["name"],
-        "available": False, "reason": "no_turns", "agent": "", "entries": [],
-    })
-    _open_conversations(authed_page, base_url)
-
-    viewer_list = _open_viewer(authed_page, 0)
-    expect(viewer_list.locator(".tr-turn")).to_have_count(0)
-    state = authed_page.locator("#lifeOsViewerState")
-    expect(state).to_be_visible()
-    expect(state).to_contain_text("no turns this view can read")
-    # Passive status belongs beside the surface, not in a toast.
-    expect(authed_page.locator("#toast")).to_be_hidden()
-    state.locator(".lifeos-viewer-raw").click()
-    expect(authed_page.locator("#lifeOsDoc")).to_be_visible()

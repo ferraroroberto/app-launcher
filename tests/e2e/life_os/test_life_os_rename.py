@@ -69,14 +69,21 @@ def _mock_renamable_conversations(page: Page):
     return patches, titles
 
 
-def test_life_os_sheet_rename_survives_a_reload_and_clears_back_to_the_topic(
+@pytest.mark.iphone
+def test_life_os_sheet_rename_fits_survives_a_reload_and_clears_back_to_the_topic(
     authed_page: Page, base_url: str
 ) -> None:
     """#1495, from the sheet since #1504: Rename opens the rename dialog over
     the sheet (never a native prompt()), Save sends one PATCH with the typed
     name, and the sheet and the list show it — and only it: #1528 dropped
     the digest topic's muted second line. Reopened, the list still shows it,
-    and saving the field empty clears it back to the topic."""
+    and saving the field empty clears it back to the topic.
+
+    #1953: at 390 px the pre-filled topic sits whole inside the input and
+    the input inside the sheet's card (the theme moves no box). Set
+    E2E_SHOT_DIR to keep a screenshot of each (local review only; stubbed
+    data)."""
+    authed_page.set_viewport_size({"width": 390, "height": 844})
     _mock_skills(authed_page)
     patches, titles = _mock_renamable_conversations(authed_page)
     native: list = []
@@ -95,6 +102,7 @@ def test_life_os_sheet_rename_survives_a_reload_and_clears_back_to_the_topic(
     expect(authed_page.locator("#confirmDialogInput")).to_have_value("booking the ferry")
     expect(authed_page.locator("#confirmDialogInput")).to_be_focused()
     assert _selection(authed_page) == (0, len("booking the ferry"))
+    _assert_prefill_fits_the_phone(authed_page)
     # The header ✕ cancels without a request, back on the sheet.
     authed_page.locator("#confirmDialogClose").click()
     expect(dialog).to_be_hidden()
@@ -145,21 +153,8 @@ def test_life_os_sheet_rename_survives_a_reload_and_clears_back_to_the_topic(
     assert native == [], native
 
 
-@pytest.mark.iphone
-def test_life_os_rename_sheet_prefill_fits_at_phone_width(
-    authed_page: Page, base_url: str
-) -> None:
-    """#1953: at 390 px the pre-filled topic sits whole inside the input and
-    the input inside the sheet's card (the theme moves no box). Set E2E_SHOT_DIR to
-    keep a screenshot of each (local review only; stubbed data)."""
-    authed_page.set_viewport_size({"width": 390, "height": 844})
-    _mock_skills(authed_page)
-    _mock_renamable_conversations(authed_page)
-    _open_conversations(authed_page, base_url)
-    _open_sheet(authed_page, 0).locator(".lifeos-convo-rename").click()
-    field = authed_page.locator("#confirmDialogInput")
-    expect(field).to_have_value("booking the ferry")
-    assert _selection(authed_page) == (0, len("booking the ferry"))
+def _assert_prefill_fits_the_phone(page: Page) -> None:
+    field = page.locator("#confirmDialogInput")
     fit = field.evaluate("""el => {
         const box = el.getBoundingClientRect();
         const card = el.closest('.detail-card').getBoundingClientRect();
@@ -173,9 +168,9 @@ def test_life_os_rename_sheet_prefill_fits_at_phone_width(
     shot_dir = os.environ.get("E2E_SHOT_DIR")
     if shot_dir:
         for theme in ("light", "dark"):
-            authed_page.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
-            authed_page.screenshot(
-                path=os.path.join(shot_dir, f"rename-prefill-{theme}.png"))
+            page.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
+            page.screenshot(path=os.path.join(shot_dir, f"rename-prefill-{theme}.png"))
+        page.evaluate("() => { delete document.documentElement.dataset.theme; }")
 
 
 @pytest.mark.iphone
@@ -217,11 +212,17 @@ def test_life_os_rename_prefill_of_a_long_topic_is_cut_to_the_title_limit(
     assert patches == []
 
 
-def test_life_os_rename_refusal_keeps_the_row_and_says_why(
+def test_life_os_rename_refusal_says_why_and_resume_posts_the_session_id(
     authed_page: Page, base_url: str
 ) -> None:
     """#1495: a refused rename (the title writer says no) toasts the server's
-    reason and leaves the name unchanged."""
+    reason and leaves the name unchanged.
+
+    #727, the point of the whole feature: the same sheet's Resume then posts
+    that exact capture — no native picker — honouring the Skills toolbar's
+    Detached switch like every other Life OS launch, and keeping the
+    conversation's own model (#1503) whatever the toolbar's model says. The
+    sheet closes as the launch lands."""
     _mock_skills(authed_page)
     _mock_conversations(authed_page)
     authed_page.route(
@@ -230,26 +231,6 @@ def test_life_os_rename_refusal_keeps_the_row_and_says_why(
             status=404, content_type="application/json",
             body=_json.dumps({"detail": "That conversation is no longer in the index; refresh the list."}))
         if route.request.method == "PATCH" else route.fallback())
-    _open_conversations(authed_page, base_url)
-    first = _convo_rows(authed_page).first
-    _open_sheet(authed_page, 0).locator(".lifeos-convo-rename").click()
-    authed_page.locator("#confirmDialogInput").fill("Nope")
-    authed_page.locator("#confirmDialogOk").click()
-    expect(authed_page.locator("#toast")).to_contain_text("no longer in the index")
-    expect(authed_page.locator("#lifeOsConvoSheetTitle")).to_have_text("booking the ferry")
-    expect(first.locator(".action-row-title")).to_have_text("booking the ferry")
-
-
-def test_life_os_conversation_resume_posts_the_session_id(
-    authed_page: Page, base_url: str
-) -> None:
-    """#727, the point of the whole feature: the sheet's Resume posts that
-    exact capture — no native picker — honouring the Skills toolbar's
-    Detached switch like every other Life OS launch, and keeping the
-    conversation's own model (#1503) whatever the toolbar's model says. The
-    sheet closes as the launch lands."""
-    _mock_skills(authed_page)
-    _mock_conversations(authed_page)
     launches: list = []
 
     def _fulfill_launch(route):
@@ -275,7 +256,14 @@ def test_life_os_conversation_resume_posts_the_session_id(
     _pick_life_model(authed_page, "claude:opus")
     _skill_menu_item(authed_page, "journal-daily", "[data-item=lifeos-convo-btn]").click()
 
-    _open_sheet(authed_page, 0)
+    first = _convo_rows(authed_page).first
+    _open_sheet(authed_page, 0).locator(".lifeos-convo-rename").click()
+    authed_page.locator("#confirmDialogInput").fill("Nope")
+    authed_page.locator("#confirmDialogOk").click()
+    expect(authed_page.locator("#toast")).to_contain_text("no longer in the index")
+    expect(authed_page.locator("#lifeOsConvoSheetTitle")).to_have_text("booking the ferry")
+    expect(first.locator(".action-row-title")).to_have_text("booking the ferry")
+
     authed_page.locator("#lifeOsConvoSheetResume").click()
     wait_until(authed_page, lambda: len(launches) == 1, "the resume POST")
     # The resume keeps the conversation's own model (#1503): the server
