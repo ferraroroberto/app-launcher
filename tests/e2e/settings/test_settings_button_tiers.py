@@ -73,24 +73,35 @@ _CONTRAST = """
 """
 
 
-def _open_settings(page: Page, base_url: str, theme: str) -> None:
-    page.add_init_script(f"localStorage.setItem('launcher.theme', '{theme}')")
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    page.evaluate(f"document.documentElement.dataset.theme = '{theme}'")
-    open_settings(page)
-
-
-@pytest.mark.parametrize("theme", ["light", "dark"])
-def test_done_is_the_primary_tier(authed_page: Page, base_url: str, theme: str) -> None:
-    """Each sheet's Done tier and contrast per theme, plus (merged in #1215,
-    all read-only) the class-level and divider checks that used to open the
-    same pane in a test of their own. Those are theme- and viewport-agnostic —
+def test_done_is_the_primary_tier(authed_page: Page, base_url: str) -> None:
+    """Each sheet's Done tier and contrast in each theme, both on one page
+    load (the theme is a ``data-theme`` switch on the root, so the computed
+    colours follow it without a reload), plus (merged in #1215, all
+    read-only) the class-level and divider checks that used to open the same
+    pane in a test of their own. Those are theme- and viewport-agnostic —
     class names, a node count, and a ``border-top-style`` from a top-level
-    ``.settings-section`` rule no media query touches — so running them in
-    both themes at 390px keeps every assertion as strong."""
+    ``.settings-section`` rule no media query touches."""
     authed_page.set_viewport_size({"width": 390, "height": 844})
-    _open_settings(authed_page, base_url, theme)
+    authed_page.add_init_script("localStorage.setItem('launcher.theme', 'light')")
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    open_settings(authed_page)
+    for theme in ("light", "dark"):
+        authed_page.evaluate(f"document.documentElement.dataset.theme = '{theme}'")
+        _assert_each_done_is_the_primary_tier(authed_page, theme)
 
+    # -- was test_the_ghost_accent_hybrid_is_gone --
+    expect(authed_page.locator("#tokenMintBtn")).to_have_class("button-tint")
+    assert authed_page.evaluate(
+        "() => document.querySelectorAll('.button-ghost.accent-btn').length"
+    ) == 0, "the button-ghost/accent-btn hybrid is back"
+
+    # -- was test_settings_sections_divide_on_a_hairline --
+    assert authed_page.evaluate(
+        "() => document.querySelectorAll('#paneSettings hr, dialog.settings-sheet hr').length"
+    ) == 0, "a bare <hr> is back in Settings"
+
+
+def _assert_each_done_is_the_primary_tier(authed_page: Page, theme: str) -> None:
     for sheet_id in _SHEETS:
         open_settings_sheet(authed_page, sheet_id)
         selector = f"#{sheet_id} .detail-actions .button-primary"
@@ -121,14 +132,3 @@ def test_done_is_the_primary_tier(authed_page: Page, base_url: str, theme: str) 
                 "border-top-style", "solid"
             )
         close_settings_sheets(authed_page)
-
-    # -- was test_the_ghost_accent_hybrid_is_gone --
-    expect(authed_page.locator("#tokenMintBtn")).to_have_class("button-tint")
-    assert authed_page.evaluate(
-        "() => document.querySelectorAll('.button-ghost.accent-btn').length"
-    ) == 0, "the button-ghost/accent-btn hybrid is back"
-
-    # -- was test_settings_sections_divide_on_a_hairline --
-    assert authed_page.evaluate(
-        "() => document.querySelectorAll('#paneSettings hr, dialog.settings-sheet hr').length"
-    ) == 0, "a bare <hr> is back in Settings"

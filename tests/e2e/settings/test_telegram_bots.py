@@ -93,13 +93,16 @@ def _bot_row(page: Page, pid: str):
     return page.locator(f'#channelBots [data-bot-id="{pid}"]')
 
 
-def test_bots_group_lists_every_bot_and_flags_only_a_known_restart(
-    authed_page: Page, base_url: str
-) -> None:
+
+
+def _back_to_bots(page: Page) -> None:
+    page.locator("#channelBotSheet [data-sheet-back]").click()
+    expect(page.locator("#channelsSheet")).to_be_visible()
+
+
+def _assert_the_group_lists_every_bot_and_flags_only_a_known_restart(page: Page) -> None:
     """Each bot is a row opening its own sheet. The chip shows only for a bot
     that is known to need a restart: false and null (unknown) show nothing."""
-    page = authed_page
-    _open_bots(page, base_url)
     expect(page.locator("#channelBots .bot-row")).to_have_count(3)
     expect(_bot_row(page, "health")).to_contain_text("Relay · closes after 1 h idle")
     expect(_bot_row(page, "job")).to_contain_text("Not running · relay off")
@@ -113,16 +116,77 @@ def test_bots_group_lists_every_bot_and_flags_only_a_known_restart(
     expect(page.locator("#channelBotSheet")).to_be_visible()
     expect(page.locator("#channelBotSheetTitle")).to_have_text("House")
     # Back returns to the Telegram sheet, not out of Settings.
-    page.locator("#channelBotSheet [data-sheet-back]").click()
-    expect(page.locator("#channelsSheet")).to_be_visible()
+    _back_to_bots(page)
+
+
+def _assert_the_bot_sheet_carries_no_path_or_token(page: Page) -> None:
+    _bot_row(page, "health").click()
+    expect(page.locator("#channelBotSheet")).not_to_contain_text(
+        re.compile(r"[A-Za-z]:[\\/]|TELEGRAM_BOT_TOKEN|\d{6,}:[\w-]{20,}")
+    )
+    expect(page.locator("#botStatus")).to_contain_text("Token file")
+    _back_to_bots(page)
+
+
+def _assert_restart_is_offered_only_when_needed_and_runs_on_a_confirmed_tap(
+    page: Page, store: Dict[str, Any]
+) -> None:
+    """The banner names the changed fields; Restart posts nothing until the
+    themed confirm is accepted; an unknown (null) bot shows neither."""
+    _bot_row(page, "job").click()
+    expect(page.locator("#botRestartBanner")).to_be_hidden()
+    expect(page.locator("#botRestartBtn")).to_be_hidden()
+    _back_to_bots(page)
+    _bot_row(page, "house").click()
+    expect(page.locator("#botRestartBanner")).to_contain_text("Relay and model changed")
+    page.locator("#botRestartBtn").click()
+    expect(page.locator("#confirmDialog")).to_be_visible()
+    page.locator("#confirmDialogClose").click()
+    assert store["restarts"] == []
+    page.locator("#botRestartBtn").click()
+    page.locator("#confirmDialogOk").click()
+    expect(page.locator("#botRestartBanner")).to_be_hidden()
+    assert store["restarts"] == ["house"]
+    _back_to_bots(page)
+
+
+def _assert_resume_offer_and_idle_close_wait_for_relay(page: Page) -> None:
+    """With Relay off the resume switch and the idle control are disabled and
+    say why; turning Relay on enables them."""
+    _bot_row(page, "job").click()
+    expect(page.locator("#botRelayToggle")).to_have_attribute("aria-checked", "false")
+    expect(page.locator("#botResumeToggle")).to_be_disabled()
+    expect(page.locator("#botIdleSeg .segmented-item").first).to_be_disabled()
+    expect(page.locator("#botResumeHelp")).to_have_text("Needs Relay on.")
+    page.locator("#botRelayToggle").click()
+    expect(page.locator("#botResumeToggle")).to_be_enabled()
+    expect(page.locator("#botIdleSeg .segmented-item").first).to_be_enabled()
+    _back_to_bots(page)
+
+
+def _assert_a_refused_save_shows_the_servers_message_under_the_field(
+    page: Page, store: Dict[str, Any]
+) -> None:
+    store["refuse"] = "skill is not a life-os skill"
+    _bot_row(page, "job").click()
+    page.locator("#botSkillSelect").select_option("sparring-work")
+    expect(page.locator("#botSkillError")).to_have_text("skill is not a life-os skill")
+    # The control goes back to what is stored, never the refused value.
+    expect(page.locator("#botSkillSelect")).to_have_value("journal-daily")
 
 
 def test_bot_fields_save_through_patch_and_survive_a_reload(
     authed_page: Page, base_url: str
 ) -> None:
-    """Every field PATCHes as it changes, toasts, and reads back from the server."""
+    """Every field PATCHes as it changes, toasts, and reads back from the
+    server. The same page first reads the group and a sheet's text, then
+    after the reload the restart offer, the fields that wait for Relay, and
+    a refused save (last: it makes every later save fail)."""
     page = authed_page
     store = _open_bots(page, base_url)
+    _assert_the_group_lists_every_bot_and_flags_only_a_known_restart(page)
+    _assert_the_bot_sheet_carries_no_path_or_token(page)
+
     _bot_row(page, "health").click()
     name = page.locator("#botNameInput")
     name.fill("Wellbeing")
@@ -144,65 +208,6 @@ def test_bot_fields_save_through_patch_and_survive_a_reload(
     expect(_bot_row(page, "health")).to_contain_text("Wellbeing")
     expect(_bot_row(page, "health")).to_contain_text("closes after 2 h idle")
 
-
-def test_resume_offer_and_idle_close_wait_for_relay(
-    authed_page: Page, base_url: str
-) -> None:
-    """With Relay off the resume switch and the idle control are disabled and
-    say why; turning Relay on enables them."""
-    page = authed_page
-    _open_bots(page, base_url)
-    _bot_row(page, "job").click()
-    expect(page.locator("#botRelayToggle")).to_have_attribute("aria-checked", "false")
-    expect(page.locator("#botResumeToggle")).to_be_disabled()
-    expect(page.locator("#botIdleSeg .segmented-item").first).to_be_disabled()
-    expect(page.locator("#botResumeHelp")).to_have_text("Needs Relay on.")
-    page.locator("#botRelayToggle").click()
-    expect(page.locator("#botResumeToggle")).to_be_enabled()
-    expect(page.locator("#botIdleSeg .segmented-item").first).to_be_enabled()
-
-
-def test_restart_is_offered_only_when_needed_and_runs_on_a_confirmed_tap(
-    authed_page: Page, base_url: str
-) -> None:
-    """The banner names the changed fields; Restart posts nothing until the
-    themed confirm is accepted; an unknown (null) bot shows neither."""
-    page = authed_page
-    store = _open_bots(page, base_url)
-    _bot_row(page, "job").click()
-    expect(page.locator("#botRestartBanner")).to_be_hidden()
-    expect(page.locator("#botRestartBtn")).to_be_hidden()
-    page.locator("#channelBotSheet [data-sheet-back]").click()
-    _bot_row(page, "house").click()
-    expect(page.locator("#botRestartBanner")).to_contain_text("Relay and model changed")
-    page.locator("#botRestartBtn").click()
-    expect(page.locator("#confirmDialog")).to_be_visible()
-    page.locator("#confirmDialogClose").click()
-    assert store["restarts"] == []
-    page.locator("#botRestartBtn").click()
-    page.locator("#confirmDialogOk").click()
-    expect(page.locator("#botRestartBanner")).to_be_hidden()
-    assert store["restarts"] == ["house"]
-
-
-def test_a_refused_save_shows_the_servers_message_under_the_field(
-    authed_page: Page, base_url: str
-) -> None:
-    page = authed_page
-    store = _open_bots(page, base_url)
-    store["refuse"] = "skill is not a life-os skill"
-    _bot_row(page, "health").click()
-    page.locator("#botSkillSelect").select_option("sparring-work")
-    expect(page.locator("#botSkillError")).to_have_text("skill is not a life-os skill")
-    # The control goes back to what is stored, never the refused value.
-    expect(page.locator("#botSkillSelect")).to_have_value("journal-daily")
-
-
-def test_bot_sheet_carries_no_path_or_token(authed_page: Page, base_url: str) -> None:
-    page = authed_page
-    _open_bots(page, base_url)
-    _bot_row(page, "health").click()
-    expect(page.locator("#channelBotSheet")).not_to_contain_text(
-        re.compile(r"[A-Za-z]:[\\/]|TELEGRAM_BOT_TOKEN|\d{6,}:[\w-]{20,}")
-    )
-    expect(page.locator("#botStatus")).to_contain_text("Token file")
+    _assert_restart_is_offered_only_when_needed_and_runs_on_a_confirmed_tap(page, store)
+    _assert_resume_offer_and_idle_close_wait_for_relay(page)
+    _assert_a_refused_save_shows_the_servers_message_under_the_field(page, store)

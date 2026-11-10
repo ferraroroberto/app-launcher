@@ -32,6 +32,9 @@ _ENVELOPE = {"session_id", "device_class", "os_class", "events"}
 def test_views_and_taps_reach_the_own_origin_with_the_contract_only(
     authed_page: Page, base_url: str, auth_token: str,
 ) -> None:
+    """Views and taps reach the app's own origin with the contract only; then,
+    on the disposable instance, a newly tracked sheet and its controls reach
+    the real summary."""
     page = authed_page
     posts: list[dict] = []
     foreign: list[str] = []
@@ -87,18 +90,18 @@ def test_views_and_taps_reach_the_own_origin_with_the_contract_only(
         assert page.evaluate(f"{api}.toString().includes('[native code]')"), f"{api} was wrapped"
     expect(page.locator("#paneSettings")).to_be_visible()
 
-
-def test_newly_tracked_sheet_and_controls_reach_the_summary(
-    authed_page: Page, base_url: str, auth_token: str,
-) -> None:
-    """A sheet's view and the taps inside it land in ``/api/usage/summary``.
-
-    Unmocked, so it writes real rows: it runs only against the disposable
-    instance, never the live tray's log."""
+    # Unmocked from here, so it writes real rows: it runs only against the
+    # disposable instance, never the live tray's log.
     if not os.environ.get("LAUNCHER_E2E_AUTOBOOT"):
-        pytest.skip("writes real usage rows; disposable instance only")
-    page = authed_page
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+        return
+    page.unroute(_USAGE)
+    _assert_a_tracked_sheet_and_its_controls_reach_the_summary(page, base_url, auth_token)
+
+
+def _assert_a_tracked_sheet_and_its_controls_reach_the_summary(
+    page: Page, base_url: str, auth_token: str,
+) -> None:
+    """A sheet's view and the taps inside it land in ``/api/usage/summary``."""
     page.locator("#tabJobs").click()
     page.locator('[data-track="jobs-filters"]').click()
     sheet = page.locator("#jobsSortSheet")
