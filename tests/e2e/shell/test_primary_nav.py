@@ -53,9 +53,9 @@ def _capture_index_cache_control(page: Page, base_url: str) -> dict:
 
     This is a thin WebKit-specific check that the header actually
     reaches the browser through the real network stack (i.e. it isn't
-    stripped by a proxy/middleware ordering bug). The non-browser
-    ``test_cache_busting`` already pins the header at the HTTP level for
-    both projections; this one runs through the rendering engine so a
+    stripped by a proxy/middleware ordering bug). The in-process
+    ``tests/api/webapp/test_webapp_api_basics.py`` already pins the header
+    at the HTTP level; this one runs through the rendering engine so a
     WebKit-specific regression surfaces here.
 
     Registers the listener; must run before ``goto``. Returns the dict the

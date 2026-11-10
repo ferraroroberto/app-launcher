@@ -87,38 +87,13 @@ def _job(job_id: str, name: str, *, with_bool_param: bool = False) -> dict:
     }
 
 
-def test_scan_rows_use_vendored_switch(authed_page: Page, base_url: str) -> None:
-    payload = {
-        "new": [
-            {
-                "id": "sample-app",
-                "name": "Sample App",
-                "kind": "webapp",
-                "bat_path": "C:\\stub\\sample\\webapp.bat",
-            }
-        ]
-    }
-    authed_page.route(
-        "**/api/apps/scan",
-        lambda route: route.fulfill(
-            status=200, content_type="application/json", body=json.dumps(payload)
-        ),
-    )
-
-    _open_scan_from_apps_tab(authed_page, base_url)
-
-    toggle = authed_page.locator("#scanResults .scan-row .toggle")
-    _assert_switch(authed_page, "#scanResults .scan-row .toggle")
-    expect(toggle).to_have_attribute("aria-checked", "false")
-    toggle.click()
-    expect(toggle).to_have_attribute("aria-checked", "true")
-
-
 def test_scan_entries_start_off_and_add_only_the_switched_on(
     authed_page: Page, base_url: str
 ) -> None:
     """#2117 - every found entry starts off; Add selected with none on adds
-    nothing and says so, with one on it saves exactly that id."""
+    nothing and says so, with one on it saves exactly that id. Each scan row's
+    switch is the vendored component (formerly
+    ``test_scan_rows_use_vendored_switch``)."""
     entries = [
         {"id": "app-a", "name": "App A", "kind": "webapp", "bat_path": "stub/a.bat"},
         {"id": "app-b", "name": "App B", "kind": "webapp", "bat_path": "stub/b.bat"},
@@ -145,12 +120,14 @@ def test_scan_entries_start_off_and_add_only_the_switched_on(
     expect(toggles).to_have_count(2)
     for i in range(2):
         expect(toggles.nth(i)).to_have_attribute("aria-checked", "false")
+        _assert_switch(authed_page, f"#scanResults .scan-row .toggle >> nth={i}")
 
     authed_page.locator("#scanSave").click()
     expect(authed_page.locator(".toast")).to_contain_text("Nothing selected")
     assert saves == []
 
     toggles.nth(1).click()
+    expect(toggles.nth(1)).to_have_attribute("aria-checked", "true")
     authed_page.locator("#scanSave").click()
     expect(authed_page.locator("#scanDialog")).to_be_hidden()
     assert saves == [{"ids": ["app-b"]}]
@@ -190,6 +167,26 @@ def test_on_switch_track_is_the_accent_fill_in_both_themes(
         expect(toggle).to_have_css("background-color", accent_fill)
 
 
+def _assert_static_boolean_controls_have_no_checkbox_markup(page: Page) -> None:
+    """Formerly ``test_static_boolean_controls_have_no_checkbox_markup``: every
+    boolean in the static markup is the vendored switch, and no checkbox
+    markup is left."""
+    selectors = (
+        "#claudeVerbose",
+        "#claudeDebug",
+        "#antigravitySkipPerms",
+        "#antigravitySandbox",
+        "#copilotSkipPerms",
+        "#bootAutostartToggle",
+        "#jobAlertOnFailureInput",
+        "#jobConfirmInput",
+        "#jobRunDialogDryRun",
+    )
+    for selector in selectors:
+        _assert_switch(page, selector)
+    expect(page.locator(".check-box")).to_have_count(0)
+
+
 def test_job_dialog_switches_use_vendored_component(
     authed_page: Page, base_url: str
 ) -> None:
@@ -204,7 +201,11 @@ def test_job_dialog_switches_use_vendored_component(
     )
 
     authed_page.goto(base_url, wait_until="domcontentloaded")
+    _assert_static_boolean_controls_have_no_checkbox_markup(authed_page)
     authed_page.locator("#tabJobs").click()
+    # The Jobs tab's Edit-mode switch (#jobsEditBtn) is gone (#1438): there
+    # is no Edit mode, so nothing there to be a switch.
+    expect(authed_page.locator("#jobsEditBtn")).to_have_count(0)
     # Edit lives in the row's ⋯ menu (#1130); since #1438 there is no Edit
     # mode to switch on first, and the menu items carry their own classes.
     row = authed_page.locator("#jobsList li.job-row[data-id='alpha']")
@@ -234,28 +235,3 @@ def test_job_dialog_switches_use_vendored_component(
         "#jobRunDialogFields .toggle[data-param-name='verbose']",
     )
     _assert_switch(authed_page, "#jobRunDialogDryRun")
-
-
-def test_static_boolean_controls_have_no_checkbox_markup(
-    authed_page: Page, base_url: str
-) -> None:
-    authed_page.goto(base_url, wait_until="domcontentloaded")
-    selectors = (
-        "#claudeVerbose",
-        "#claudeDebug",
-        "#antigravitySkipPerms",
-        "#antigravitySandbox",
-        "#copilotSkipPerms",
-        "#bootAutostartToggle",
-        "#jobAlertOnFailureInput",
-        "#jobConfirmInput",
-        "#jobRunDialogDryRun",
-    )
-    for selector in selectors:
-        _assert_switch(authed_page, selector)
-    expect(authed_page.locator(".check-box")).to_have_count(0)
-
-    # The Jobs tab's Edit-mode switch (#jobsEditBtn) is gone (#1438): there
-    # is no Edit mode, so nothing there to be a switch.
-    authed_page.locator("#tabJobs").click()
-    expect(authed_page.locator("#jobsEditBtn")).to_have_count(0)

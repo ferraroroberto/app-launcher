@@ -100,12 +100,32 @@ def _set_hidden(page: Page, hidden: bool) -> None:
 def test_every_header_shows_the_reading_and_its_four_states(
     authed_page: Page, base_url: str
 ) -> None:
+    """The first load of ``system-load.js`` is cut (#1610, formerly
+    ``test_a_failed_script_load_gets_one_fresh_boot``): that page boots
+    without ``main.js`` and the header keeps its markup default, so every
+    reading below comes from the one fresh boot ``_boot`` gives it."""
     page = authed_page
     current = {"body": _reading("normal", 42.4)}
     calls: list = []
     _route_load(page, current, calls)
+    navigations: list = []
+    cut: list = []
+    page.on("framenavigated", lambda f: navigations.append(1) if f == page.main_frame else None)
+
+    def _cut_first_load(route) -> None:
+        # The page asks for the file more than once per load, so cut every ask
+        # of the first load, not just the first ask.
+        if len(navigations) <= 1:
+            cut.append(1)
+            route.abort()
+        else:
+            route.continue_()
+
+    page.route(re.compile(r".*/static/system-load\.js"), _cut_first_load)
     _fake_clock.install(page)
     _boot(page, base_url)
+    assert cut, "the script was never requested"
+    expect(page.locator("#paneClaude > .home-head .cpu-reading")).to_have_text("42%")
 
     # One reading per page header, Settings' included.
     expect(page.locator(".home-head .cpu-reading")).to_have_count(6)
@@ -164,49 +184,26 @@ def test_every_header_shows_the_reading_and_its_four_states(
 
 
 @pytest.mark.iphone
-@pytest.mark.parametrize("width", [390, 1280])
 def test_the_reading_never_hides_and_the_status_shortens_instead(
-    authed_page: Page, base_url: str, width: int
+    authed_page: Page, base_url: str
 ) -> None:
     """The reading shows at every width with every tone (owner decision on
     #1838). Where the two exception parts no longer fit beside it (390px),
     the line wears each part's compact form, whole and uncut (design.md
     page-header: no ellipsis may cut the exception). At 1280px both fit, so
-    the full words stay."""
-    page = authed_page
-    page.set_viewport_size({"width": width, "height": 844})
-    current = {"body": _reading("normal", 30.0)}
-    _route_load(page, current, [])
-    _mock_sessions(page, [_WAITING, _STALLED])
-    _boot(page, base_url)
+    the full words stay.
 
-    status = page.locator("#homeHeadStatus")
-    reading = page.locator("#paneClaude > .home-head .cpu-reading")
-    expect(status).to_have_text(
-        "1 stalled · 1 needs you" if width > 500 else "1 stalled · 1 you"
-    )
-    expect(reading).to_have_text("30%")
-    expect(reading).to_be_visible()
-    assert stable_eval(status, "(el) => el.scrollWidth - el.clientWidth") <= 0
-
-    current["body"] = _reading("danger", 96.0)
-    with page.expect_response(lambda r: r.url.endswith("/api/system/load")):
-        _set_hidden(page, False)  # a foreground return reads at once
-    expect(reading).to_have_text("96%")
-    expect(reading).to_be_visible()
-
-
-@pytest.mark.iphone
-def test_a_short_toned_status_keeps_its_words_beside_the_reading_on_the_phone(
-    authed_page: Page, base_url: str
-) -> None:
-    """A phone header is always narrow, but "1 needs you" leaves room beside
-    the reading, so both show in full: the compact form is worn only when the
-    measured line would be cut, never on the width alone."""
+    First, formerly ``test_a_short_toned_status_keeps_its_words_beside_the_reading_on_the_phone``:
+    a phone header is always narrow, but "1 needs you" alone leaves room
+    beside the reading, so both show in full. The compact form is worn only
+    when the measured line would be cut, never on the width alone. The
+    sessions route reads its list per request, so a boot shows each list."""
     page = authed_page
     page.set_viewport_size({"width": 390, "height": 844})
-    _route_load(page, {"body": _reading("normal", 30.0)}, [])
-    _mock_sessions(page, [_WAITING])
+    current = {"body": _reading("normal", 30.0)}
+    _route_load(page, current, [])
+    sessions = [_WAITING]
+    _mock_sessions(page, sessions)
     _boot(page, base_url)
 
     status = page.locator("#homeHeadStatus")
@@ -216,39 +213,33 @@ def test_a_short_toned_status_keeps_its_words_beside_the_reading_on_the_phone(
     expect(reading).to_be_visible()
     assert stable_eval(status, "(el) => el.scrollWidth - el.clientWidth") <= 0
 
+    sessions.append(_STALLED)
+    for width in (390, 1280):
+        page.set_viewport_size({"width": width, "height": 844})
+        current["body"] = _reading("normal", 30.0)
+        _boot(page, base_url)
+        expect(status).to_have_text(
+            "1 stalled · 1 needs you" if width > 500 else "1 stalled · 1 you"
+        )
+        expect(reading).to_have_text("30%")
+        expect(reading).to_be_visible()
+        assert stable_eval(status, "(el) => el.scrollWidth - el.clientWidth") <= 0, width
 
-def test_the_tap_sheet_lists_cpu_memory_and_the_top_three(
-    authed_page: Page, base_url: str
+        current["body"] = _reading("danger", 96.0)
+        with page.expect_response(lambda r: r.url.endswith("/api/system/load")):
+            _set_hidden(page, False)  # a foreground return reads at once
+        expect(reading).to_have_text("96%")
+        expect(reading).to_be_visible()
+
+
+def _assert_the_sheet_groups_a_burn_and_shows_what_the_rows_leave_out(
+    page: Page, current: dict
 ) -> None:
-    page = authed_page
-    current = {"body": _reading("danger", 93.0)}
-    _route_load(page, current, [])
-    _boot(page, base_url)
+    """Formerly ``test_the_sheet_groups_a_burn_and_shows_what_the_rows_leave_out``.
 
-    reading = page.locator("#paneClaude > .home-head .cpu-reading")
-    expect(reading).to_have_text("93%")
-    reading.click()
-    sheet = page.locator("#cpuSheet")
-    expect(sheet).to_be_visible()
-    body = sheet.locator("#cpuSheetBody")
-    expect(body.locator("[data-row='cpu']")).to_contain_text("93% of 16 cores")
-    expect(body.locator("[data-row='cpu'] .usage-sheet-value")).to_have_attribute("data-tone", "danger")
-    expect(body.locator("[data-row='memory']")).to_contain_text("48 of 64 GB (75%)")
-    expect(body.locator("[data-row^='top-']")).to_have_count(3)
-    expect(body.locator("[data-row='top-0']")).to_contain_text("python (pytest)")
-    expect(body.locator("[data-row='top-0']")).to_contain_text("3.1 cores")
-    expect(body.locator("[data-row='top-1']")).to_contain_text("1 core")
-    page.locator("#cpuSheetDone").click()
-    expect(sheet).to_be_hidden()
-
-
-def test_the_sheet_groups_a_burn_and_shows_what_the_rows_leave_out(
-    authed_page: Page, base_url: str
-) -> None:
-    """#1646: 16 burners are one row with their count, a lone process keeps a
+    #1646: 16 burners are one row with their count, a lone process keeps a
     plain row (never "×1"), and "Everything else" closes the gap to the CPU
     line. A remainder that rounds to nothing draws no row."""
-    page = authed_page
     body_json = _reading("danger", 100.0)
     body_json["top"] = [
         {"name": "python", "cores": 11.2, "count": 16, "owner": "fleet-config-wt-1440"},
@@ -256,10 +247,8 @@ def test_the_sheet_groups_a_burn_and_shows_what_the_rows_leave_out(
         {"name": "MsMpEng", "cores": 0.9, "count": 1, "owner": None},
     ]
     body_json["other_cores"] = 2.3  # 16.0 - 13.7
-    current = {"body": body_json}
-    _route_load(page, current, [])
-    _fake_clock.install(page)
-    _boot(page, base_url)
+    current["body"] = body_json
+    _poll(page)
 
     page.locator("#paneClaude > .home-head .cpu-reading").click()
     body = page.locator("#cpuSheetBody")
@@ -281,14 +270,14 @@ def test_the_sheet_groups_a_burn_and_shows_what_the_rows_leave_out(
     page.locator("#paneClaude > .home-head .cpu-reading").click()
     expect(page.locator("#cpuSheetBody [data-row='top-0']")).to_be_visible()
     expect(page.locator("#cpuSheetBody [data-row='other']")).to_have_count(0)
+    page.locator("#cpuSheetDone").click()
 
 
-def test_an_unreadable_sample_says_why_in_the_sheet(
-    authed_page: Page, base_url: str
-) -> None:
-    page = authed_page
-    _route_load(page, {"body": _reading("unknown", None, reason="stale")}, [])
-    _boot(page, base_url)
+def _assert_an_unreadable_sample_says_why_in_the_sheet(page: Page, current: dict) -> None:
+    """Formerly ``test_an_unreadable_sample_says_why_in_the_sheet``: a dash on
+    the header, and the sheet names why."""
+    current["body"] = _reading("unknown", None, reason="stale")
+    _poll(page)
     reading = page.locator("#paneClaude > .home-head .cpu-reading")
     expect(reading).to_have_text("–")
     reading.click()
@@ -297,16 +286,14 @@ def test_an_unreadable_sample_says_why_in_the_sheet(
     page.locator("#cpuSheetClose").click()
 
 
-def test_the_poll_stops_while_the_page_is_hidden(
-    authed_page: Page, base_url: str
+def _assert_the_poll_stops_while_the_page_is_hidden(
+    page: Page, current: dict, calls: list
 ) -> None:
-    page = authed_page
-    calls: list = []
-    _route_load(page, {"body": _reading("normal", 20.0)}, calls)
-    _fake_clock.install(page)
-    _boot(page, base_url)
-    expect(page.locator("#paneClaude > .home-head .cpu-reading")).to_have_text("20%")
+    """Formerly ``test_the_poll_stops_while_the_page_is_hidden``: one poll for
+    the page, never per tab, and none while the page is hidden."""
+    current["body"] = _reading("normal", 20.0)
     _poll(page)
+    expect(page.locator("#paneClaude > .home-head .cpu-reading")).to_have_text("20%")
     seen = len(calls)
 
     # A tab switch adds no request of its own: one poll for the page.
@@ -328,27 +315,35 @@ def test_the_poll_stops_while_the_page_is_hidden(
     assert len(calls) == seen + 1
 
 
-@pytest.mark.iphone
-def test_a_failed_script_load_gets_one_fresh_boot(authed_page: Page, base_url: str) -> None:
-    """#1610: the first load of ``system-load.js`` is cut. The page then boots
-    without ``main.js`` and the header keeps its markup default; the second
-    boot is the one the reading comes from."""
+def test_the_tap_sheet_lists_cpu_memory_and_the_top_three(
+    authed_page: Page, base_url: str
+) -> None:
+    """The sheet's rows, then on the same load (each reading a poll on the
+    fake clock) a grouped burn, an unreadable sample and the hidden-page
+    gate, which runs last because it leaves the Board open."""
     page = authed_page
-    _route_load(page, {"body": _reading("normal", 42.4)}, [])
-    navigations: list = []
-    cut: list = []
-    page.on("framenavigated", lambda f: navigations.append(1) if f == page.main_frame else None)
-
-    def handle(route):
-        # The page asks for the file more than once per load, so cut every ask
-        # of the first load, not just the first ask.
-        if len(navigations) <= 1:
-            cut.append(1)
-            route.abort()
-        else:
-            route.continue_()
-
-    page.route(re.compile(r".*/static/system-load\.js"), handle)
+    current = {"body": _reading("danger", 93.0)}
+    calls: list = []
+    _route_load(page, current, calls)
+    _fake_clock.install(page)
     _boot(page, base_url)
-    assert cut, "the script was never requested"
-    expect(page.locator("#paneClaude > .home-head .cpu-reading")).to_have_text("42%")
+
+    reading = page.locator("#paneClaude > .home-head .cpu-reading")
+    expect(reading).to_have_text("93%")
+    reading.click()
+    sheet = page.locator("#cpuSheet")
+    expect(sheet).to_be_visible()
+    body = sheet.locator("#cpuSheetBody")
+    expect(body.locator("[data-row='cpu']")).to_contain_text("93% of 16 cores")
+    expect(body.locator("[data-row='cpu'] .usage-sheet-value")).to_have_attribute("data-tone", "danger")
+    expect(body.locator("[data-row='memory']")).to_contain_text("48 of 64 GB (75%)")
+    expect(body.locator("[data-row^='top-']")).to_have_count(3)
+    expect(body.locator("[data-row='top-0']")).to_contain_text("python (pytest)")
+    expect(body.locator("[data-row='top-0']")).to_contain_text("3.1 cores")
+    expect(body.locator("[data-row='top-1']")).to_contain_text("1 core")
+    page.locator("#cpuSheetDone").click()
+    expect(sheet).to_be_hidden()
+
+    _assert_the_sheet_groups_a_burn_and_shows_what_the_rows_leave_out(page, current)
+    _assert_an_unreadable_sample_says_why_in_the_sheet(page, current)
+    _assert_the_poll_stops_while_the_page_is_hidden(page, current, calls)

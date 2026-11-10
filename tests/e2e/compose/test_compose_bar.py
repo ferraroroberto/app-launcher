@@ -62,11 +62,11 @@ ATTACH_INPUT = f"{COMPOSER} .composer-attach-input"
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 # Drive the page's OWN setTerminalStatus (#1219) — the live module instance,
-# resolved from the resource timeline the way test_markdown_link_rendering.py
-# does, so the status goes through the real code path rather than a
-# hand-rolled DOM write. Even the unstamped fallback shares the live `els`:
-# the server stamps every served module's imports, so it imports the same
-# `state.js?v=` instance the page already holds.
+# resolved from the resource timeline (the module's stamped URL), so the
+# status goes through the real code path rather than a hand-rolled DOM write.
+# Even the unstamped fallback shares the live `els`: the server stamps every
+# served module's imports, so it imports the same `state.js?v=` instance the
+# page already holds.
 _SET_STATUS_JS = r"""
 async (message) => {
   const url = performance.getEntriesByType('resource')

@@ -6,6 +6,8 @@ import re
 
 import pytest
 
+from src.static_versioning import compute_asset_hashes, fleet_hash_of
+from src.stylesheet_bundle import BUNDLE_RELPATH
 from tests._css import STATIC
 
 
@@ -56,6 +58,23 @@ class TestIndex:
         assert stamps, "expected at least one stamped asset URL"
         for stamp in stamps:
             assert re.fullmatch(r"[a-f0-9]{8}", stamp), stamp
+
+    def test_served_index_hashes_match_disk(self, webapp_client):
+        # Each stamp is the fleet hash of the bytes on disk, so editing a JS
+        # file changes every URL the index hands out; a stale stamp would let
+        # the phone keep the old file. The stylesheet bundle is built in
+        # memory and carries the fleet hash like every file does.
+        client, _, _ = webapp_client
+        served = dict(re.findall(
+            r"""(?:href|src)=['"]/static/([\w\-./]+\.(?:css|js))\?v=([a-f0-9]+)['"]""",
+            client.get("/").text,
+        ))
+        assert served, "no hashed /static/*.{css,js} references in the served index"
+        on_disk = compute_asset_hashes(STATIC)
+        on_disk[BUNDLE_RELPATH] = fleet_hash_of(on_disk)
+        for name, stamp in served.items():
+            assert on_disk.get(name) is not None, f"the index references {name}, not on disk"
+            assert stamp == on_disk[name], f"{name}: stamp {stamp!r} != fleet hash {on_disk[name]!r}"
 
     def test_index_links_one_stylesheet(self, webapp_client):
         # The 31 sheets are one request: the served page links only the bundle.

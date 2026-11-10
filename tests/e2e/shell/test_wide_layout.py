@@ -29,15 +29,30 @@ def _box(page: Page, selector: str) -> dict:
     return box
 
 
+@pytest.mark.iphone
 def test_wide_window_puts_the_nav_in_a_left_rail(
     authed_page: Page, base_url: str, browser_name: str
 ) -> None:
-    if browser_name != "chromium":
-        pytest.skip("fine-pointer layout; the WebKit projection is an iPhone")
+    """Chromium (fine pointer): 1099px keeps the top control, 1440px gets the
+    rail, on one load resized across the breakpoint. WebKit (the iPhone's
+    coarse pointer): no rail at 1440px."""
     page = authed_page
-    page.set_viewport_size({"width": 1440, "height": 900})
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    if browser_name == "webkit":
+        page.set_viewport_size({"width": 1440, "height": 900})
+        page.goto(f"{base_url}/", wait_until="domcontentloaded")
+        nav = _box(page, "nav.tabs")
+        assert nav["height"] < 100, f"a coarse pointer got the rail: {nav}"
+        return
 
+    page.set_viewport_size({"width": 1099, "height": 900})
+    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    nav = _box(page, "nav.tabs")
+    assert nav["x"] > 0 and nav["height"] < 100, f"top control became a rail: {nav}"
+
+    page.set_viewport_size({"width": 1440, "height": 900})
+    page.wait_for_function(
+        "() => document.querySelector('nav.tabs').getBoundingClientRect().height === 900"
+    )
     nav = _box(page, "nav.tabs")
     assert nav["x"] == 0 and nav["y"] == 0, f"rail not pinned top-left: {nav}"
     assert nav["width"] == RAIL, f"rail is {nav['width']}px wide, not {RAIL}"
@@ -68,28 +83,3 @@ def test_wide_window_puts_the_nav_in_a_left_rail(
     assert board["x"] + board["width"] <= width + 1, "Board runs past the window"
     head = _box(page, "#paneBoard > .home-head")
     assert head["width"] > 772, "the Board header must span with the Board"
-
-
-def test_below_1100px_keeps_the_top_control(
-    authed_page: Page, base_url: str, browser_name: str
-) -> None:
-    if browser_name != "chromium":
-        pytest.skip("fine-pointer layout; the WebKit projection is an iPhone")
-    page = authed_page
-    page.set_viewport_size({"width": 1099, "height": 900})
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    nav = _box(page, "nav.tabs")
-    assert nav["x"] > 0 and nav["height"] < 100, f"top control became a rail: {nav}"
-
-
-@pytest.mark.iphone
-def test_coarse_pointer_never_gets_the_rail(
-    authed_page: Page, base_url: str, browser_name: str
-) -> None:
-    if browser_name != "webkit":
-        pytest.skip("coarse-pointer half; the WebKit projection is the iPhone")
-    page = authed_page
-    page.set_viewport_size({"width": 1440, "height": 900})
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    nav = _box(page, "nav.tabs")
-    assert nav["height"] < 100, f"a coarse pointer got the rail: {nav}"

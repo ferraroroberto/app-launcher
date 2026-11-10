@@ -133,23 +133,6 @@ def _mock_transcript(page: Page) -> None:
     )
 
 
-def test_chat_renders_a_markdown_table(authed_page: Page, base_url: str) -> None:
-    _mock_git_status(authed_page)
-    _mock_sessions_list(authed_page, [
-        _session_row(_SID, kind="remote", agent="claude", title="Table demo"),
-    ])
-    _mock_transcript(authed_page)
-    authed_page.goto(base_url, wait_until="domcontentloaded")
-    _row(authed_page, _SID).locator(".session-open").click()
-    expect(authed_page.locator("#terminalOverlay")).to_be_visible(timeout=OVERLAY_OPEN_MS)
-
-    _assert_table(authed_page, "#transcriptList .tr-md")
-    # A lone pipe in prose is not a table.
-    expect(authed_page.locator("#transcriptList .tr-md p").last).to_have_text(
-        "Plain pipes stay prose: a | b")
-    expect(authed_page.locator("#transcriptList .tr-md table")).to_have_count(1)
-
-
 def _mock_life_os_doc(page: Page) -> None:
     def _json_route(pattern: str, body: dict) -> None:
         page.route(
@@ -180,9 +163,21 @@ def _mock_life_os_doc(page: Page) -> None:
     })
 
 
-def test_life_os_document_renders_a_markdown_table(authed_page: Page, base_url: str) -> None:
+def test_life_os_document_and_chat_render_a_markdown_table(
+    authed_page: Page, base_url: str
+) -> None:
+    """Both consumers on one load (formerly
+    ``test_life_os_document_renders_a_markdown_table`` and
+    ``test_chat_renders_a_markdown_table``): their mocks do not overlap, so
+    the document viewer is read first and closed, then the Chat pane."""
     _mock_life_os_doc(authed_page)
+    _mock_git_status(authed_page)
+    _mock_sessions_list(authed_page, [
+        _session_row(_SID, kind="remote", agent="claude", title="Table demo"),
+    ])
+    _mock_transcript(authed_page)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+
     authed_page.locator("#tabLifeOS").click()
     tile = authed_page.locator("#lifeOsList li.lifeos-item[data-id='demo-skill']")
     expect(tile).to_be_visible()
@@ -191,5 +186,16 @@ def test_life_os_document_renders_a_markdown_table(authed_page: Page, base_url: 
     open_row_menu(authed_page).locator("[data-item=lifeos-browse-btn]").click()
     authed_page.locator(".lifeos-file-btn").first.click()
     expect(authed_page.locator("#lifeOsFileContent")).to_be_visible()
-
     _assert_table(authed_page, "#lifeOsFileContent")
+    # The reader and the file list under it are modal: close both.
+    authed_page.evaluate("document.querySelectorAll('dialog[open]').forEach((d) => d.close())")
+    expect(authed_page.locator("dialog[open]")).to_have_count(0)
+
+    authed_page.locator("#tabClaude").click()
+    _row(authed_page, _SID).locator(".session-open").click()
+    expect(authed_page.locator("#terminalOverlay")).to_be_visible(timeout=OVERLAY_OPEN_MS)
+    _assert_table(authed_page, "#transcriptList .tr-md")
+    # A lone pipe in prose is not a table.
+    expect(authed_page.locator("#transcriptList .tr-md p").last).to_have_text(
+        "Plain pipes stay prose: a | b")
+    expect(authed_page.locator("#transcriptList .tr-md table")).to_have_count(1)

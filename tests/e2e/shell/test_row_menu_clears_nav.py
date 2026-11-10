@@ -118,39 +118,11 @@ def _assert_clear_of_nav(m: dict, where: str) -> None:
     assert not blocked, f"{where}: items not tappable: {blocked} ({m})"
 
 
-def test_last_row_menu_opens_above_the_row_clear_of_the_nav(
-    authed_page: Page, base_url: str, browser_name: str
-) -> None:
-    page = authed_page
-    _open_jobs(page, base_url, browser_name)
+def _assert_open_menu_refits_when_scrolling_brings_its_row_down_to_the_nav(page: Page) -> None:
+    """Formerly ``test_open_menu_refits_when_scrolling_brings_its_row_down_to_the_nav``.
 
-    # A row near the top still opens downwards, as before.
-    first = _open_menu(page, 0)
-    m = stable_eval(first, _MEASURE)
-    assert m["top"] >= m["kebabBottom"] - 1, f"top row's menu no longer opens below: {m}"
-    _assert_clear_of_nav(m, "top row")
-    page.keyboard.press("Escape")
-    expect(first).to_be_hidden()
-
-    # The last row, scrolled to the bottom of the list, sits just above the
-    # pill: its menu flips above the row, whole and tappable.
-    page.locator("#jobsList li.job-row").last.scroll_into_view_if_needed()
-    page.evaluate("() => window.scrollTo(0, document.scrollingElement.scrollHeight)")
-    last = _open_menu(page, _COUNT - 1)
-    m = stable_eval(last, _MEASURE)
-    _assert_clear_of_nav(m, "last row")
-    assert m["bottom"] <= m["kebabTop"] + 1, f"last row's menu did not open above the row: {m}"
-    page.keyboard.press("Escape")
-    expect(last).to_be_hidden()
-
-
-def test_open_menu_refits_when_scrolling_brings_its_row_down_to_the_nav(
-    authed_page: Page, base_url: str, browser_name: str
-) -> None:
-    """Re-placement on scroll still runs: a menu that fit below its row when
-    it opened flips above once a scroll carries the row down to the pill."""
-    page = authed_page
-    _open_jobs(page, base_url, browser_name)
+    Re-placement on scroll still runs: a menu that fit below its row when it
+    opened flips above once a scroll carries the row down to the pill."""
     page.evaluate("() => window.scrollTo(0, document.scrollingElement.scrollHeight)")
 
     # Pick the row whose menu still fits below it: the topmost visible one.
@@ -183,3 +155,31 @@ def test_open_menu_refits_when_scrolling_brings_its_row_down_to_the_nav(
     m = stable_eval(menu, _MEASURE)
     _assert_clear_of_nav(m, "after scrolling")
     assert m["bottom"] <= m["kebabTop"] + 1, f"menu did not flip above its row: {m}"
+
+
+def test_last_row_menu_opens_above_the_row_clear_of_the_nav(
+    authed_page: Page, base_url: str, browser_name: str
+) -> None:
+    page = authed_page
+    _open_jobs(page, base_url, browser_name)
+
+    # A row near the top still opens downwards, as before.
+    first = _open_menu(page, 0)
+    m = stable_eval(first, _MEASURE)
+    assert m["top"] >= m["kebabBottom"] - 1, f"top row's menu no longer opens below: {m}"
+    _assert_clear_of_nav(m, "top row")
+    page.keyboard.press("Escape")
+    expect(first).to_be_hidden()
+
+    # The last row, scrolled to the bottom of the list, sits just above the
+    # pill: its menu flips above the row, whole and tappable.
+    page.locator("#jobsList li.job-row").last.scroll_into_view_if_needed()
+    page.evaluate("() => window.scrollTo(0, document.scrollingElement.scrollHeight)")
+    last = _open_menu(page, _COUNT - 1)
+    m = stable_eval(last, _MEASURE)
+    _assert_clear_of_nav(m, "last row")
+    assert m["bottom"] <= m["kebabTop"] + 1, f"last row's menu did not open above the row: {m}"
+    page.keyboard.press("Escape")
+    expect(last).to_be_hidden()
+
+    _assert_open_menu_refits_when_scrolling_brings_its_row_down_to_the_nav(page)
