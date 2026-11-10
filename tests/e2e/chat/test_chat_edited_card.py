@@ -189,8 +189,66 @@ _FIT = """
 """
 
 
+_ROW_FIT = """
+(card) => {
+  const box = document.getElementById('transcriptBody');
+  const c = card.getBoundingClientRect();
+  return [...card.querySelectorAll('.tr-edited-line')].map((line) => {
+    const r = line.querySelector('.tr-edited-row').getBoundingClientRect();
+    return {left: r.left - c.left, right: c.right - r.right, h: r.height, kids: line.children.length,
+            card: card.scrollWidth - card.clientWidth, body: box.scrollWidth - box.clientWidth};
+  });
+}
+"""
+
+
+def _check_a_row_opens_changed_files(page: Page, card, stub: _Stub) -> None:
+    """A row opens Changed files on This turn, focused on its file, then the whole session."""
+    # A row opens Changed files on This turn, focused on that file.
+    card.locator('.tr-edited-row[data-path$="src/ui/b.ts"]').click()
+    overlay = page.locator("#changesOverlay")
+    expect(overlay).to_be_visible()
+    expect(page.locator("#changesTitle")).to_have_text("Changed files · Edits demo")
+    scope = page.locator("#changesList .chg-scope-btn")
+    expect(scope).to_have_text(["This turn", "Whole session"])
+    expect(scope.first).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#changesList .chg-summary")).to_have_text(re.compile(r"^5 files · \+10 −3 · this turn$"))
+    files = page.locator("#changesList .chg-file")
+    expect(files.locator(".chg-base")).to_have_text(["old.txt", "README.md", "queue.ts", "a.ts", "b.ts"])
+    focus = page.locator("#changesList .chg-file.chg-focus")
+    expect(focus).to_have_count(1)
+    expect(focus.locator(".chg-base")).to_have_text("b.ts")
+    expect(focus).to_have_js_property("open", True)
+    expect(focus.locator(".chg-step")).to_have_text([re.compile(r"^Edit 1 of 1")])
+    expect(focus.locator(".tr-diff .d-add")).to_have_count(4)
+    expect(focus.locator(".tr-diff-path")).to_have_count(0)    # the row already names the file
+    fit = stable_eval(focus, "(el) => ({row: el.querySelector('summary').getBoundingClientRect().height,"
+                             " body: document.getElementById('changesBody').scrollWidth"
+                             " - document.getElementById('changesBody').clientWidth})")
+    assert fit["row"] >= 52 and fit["body"] <= 0, fit
+    assert stub.changes == [], "This turn is drawn from the loaded steps"
+
+    scope.nth(1).click()
+    expect(scope.nth(1)).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#changesList .chg-summary")).to_contain_text("from this session’s transcript")
+    expect(files).to_have_count(3)
+    expect(focus.locator(".chg-base")).to_have_text("b.ts")
+    expect(focus).to_have_js_property("open", True)
+    expect(focus.locator(".chg-step")).to_have_text([re.compile(r"^Edit 1 of 3")])
+    assert any(u.endswith("/changed-files") for u in stub.changes), stub.changes
+    assert any("path=E%3A%2Fautomation%2Fmodeproj%2Fsrc%2Fui%2Fb.ts" in u for u in stub.changes), stub.changes
+
+    scope.first.click()
+    expect(files).to_have_count(5)
+    page.locator("#changesClose").click()
+    expect(overlay).to_be_hidden()
+    expect(page.locator("#terminalOverlay")).to_be_visible()
+
+
 @pytest.mark.iphone
-def test_an_ended_turn_closes_with_its_edited_files(authed_page: Page, base_url: str) -> None:
+def test_an_ended_turn_closes_with_its_edited_files_and_a_row_opens_changed_files(
+    authed_page: Page, base_url: str
+) -> None:
     page = authed_page
     stub = _boot(page, base_url)
     card = _card(page)
@@ -215,6 +273,11 @@ def test_an_ended_turn_closes_with_its_edited_files(authed_page: Page, base_url:
         assert fit["head"] >= 52 and fit["rows"] >= 52, f"a card row is under rows.md ({theme}): {fit}"
         assert fit["older"] >= 44, f"Load older is under the 44px floor ({theme}): {fit}"
         assert fit["card"] <= 0 and fit["body"] <= 0 and fit["doc"] <= 0, f"sideways scroll ({theme}): {fit}"
+        # #1689: no per-row side control, so each row is the whole line, edge
+        # to edge inside the card's 1px border.
+        for line in stable_eval(card, _ROW_FIT):
+            assert line["kids"] == 1 and line["h"] >= 52, f"row ({theme}): {line}"
+            assert line["left"] <= 1.5 and line["right"] <= 1.5, f"row not full width ({theme}): {line}"
     page.evaluate("document.documentElement.setAttribute('data-theme', 'light')")
 
     more = card.locator(".tr-edited-more")
@@ -223,6 +286,11 @@ def test_an_ended_turn_closes_with_its_edited_files(authed_page: Page, base_url:
     expect(rows).to_have_count(5)
     expect(rows.locator(".chg-badge")).to_have_text(["M", "A", "M", "M", "D"])
     expect(more).to_have_count(0)
+    assert stub.changes == [], "the card is folded on the page, never fetched"
+
+    _check_a_row_opens_changed_files(page, card, stub)
+
+    fetched = len(stub.changes)
 
     # Hide steps leaves the card: the work still has a trace.
     page.locator("#terminalMenu").click()
@@ -237,87 +305,7 @@ def test_an_ended_turn_closes_with_its_edited_files(authed_page: Page, base_url:
     expect(rows.first.locator(".chg-counts")).to_have_text("+5 −1")
     expect(rows).to_have_count(5)
     assert any("before=" in u for u in stub.calls), stub.calls
-    assert stub.changes == [], "the card is folded on the page, never fetched"
-
-
-@pytest.mark.iphone
-def test_a_row_opens_changed_files_on_this_turn_then_the_whole_session(
-    authed_page: Page, base_url: str
-) -> None:
-    page = authed_page
-    stub = _boot(page, base_url)
-    card = _card(page)
-    card.locator(".tr-edited-more").click()
-    card.locator('.tr-edited-row[data-path$="src/ui/b.ts"]').click()
-
-    overlay = page.locator("#changesOverlay")
-    expect(overlay).to_be_visible()
-    expect(page.locator("#changesTitle")).to_have_text("Changed files · Edits demo")
-    scope = page.locator("#changesList .chg-scope-btn")
-    expect(scope).to_have_text(["This turn", "Whole session"])
-    expect(scope.first).to_have_attribute("aria-pressed", "true")
-    expect(page.locator("#changesList .chg-summary")).to_have_text(re.compile(r"^5 files · \+10 −3 · this turn$"))
-    rows = page.locator("#changesList .chg-file")
-    expect(rows.locator(".chg-base")).to_have_text(["old.txt", "README.md", "queue.ts", "a.ts", "b.ts"])
-    focus = page.locator("#changesList .chg-file.chg-focus")
-    expect(focus).to_have_count(1)
-    expect(focus.locator(".chg-base")).to_have_text("b.ts")
-    expect(focus).to_have_js_property("open", True)
-    expect(focus.locator(".chg-step")).to_have_text([re.compile(r"^Edit 1 of 1")])
-    expect(focus.locator(".tr-diff .d-add")).to_have_count(4)
-    expect(focus.locator(".tr-diff-path")).to_have_count(0)    # the row already names the file
-    fit = stable_eval(focus, "(el) => ({row: el.querySelector('summary').getBoundingClientRect().height,"
-                             " body: document.getElementById('changesBody').scrollWidth"
-                             " - document.getElementById('changesBody').clientWidth})")
-    assert fit["row"] >= 52 and fit["body"] <= 0, fit
-    assert stub.changes == [], "This turn is drawn from the loaded steps"
-
-    scope.nth(1).click()
-    expect(scope.nth(1)).to_have_attribute("aria-pressed", "true")
-    expect(page.locator("#changesList .chg-summary")).to_contain_text("from this session’s transcript")
-    expect(rows).to_have_count(3)
-    expect(focus.locator(".chg-base")).to_have_text("b.ts")
-    expect(focus).to_have_js_property("open", True)
-    expect(focus.locator(".chg-step")).to_have_text([re.compile(r"^Edit 1 of 3")])
-    assert any(u.endswith("/changed-files") for u in stub.changes), stub.changes
-    assert any("path=E%3A%2Fautomation%2Fmodeproj%2Fsrc%2Fui%2Fb.ts" in u for u in stub.changes), stub.changes
-
-    scope.first.click()
-    expect(rows).to_have_count(5)
-    page.locator("#changesClose").click()
-    expect(overlay).to_be_hidden()
-    expect(page.locator("#terminalOverlay")).to_be_visible()
-
-
-_ROW_FIT = """
-(card) => {
-  const box = document.getElementById('transcriptBody');
-  const c = card.getBoundingClientRect();
-  return [...card.querySelectorAll('.tr-edited-line')].map((line) => {
-    const r = line.querySelector('.tr-edited-row').getBoundingClientRect();
-    return {left: r.left - c.left, right: c.right - r.right, h: r.height, kids: line.children.length,
-            card: card.scrollWidth - card.clientWidth, body: box.scrollWidth - box.clientWidth};
-  });
-}
-"""
-
-
-@pytest.mark.iphone
-def test_a_row_is_one_full_width_button(authed_page: Page, base_url: str) -> None:
-    """#1689: the per-row undo prompt is gone, so each row is the whole line, edge to
-    edge inside the card's 1px border, in both themes."""
-    page = authed_page
-    _boot(page, base_url)
-    card = _card(page)
-    expect(card.locator(".tr-edited-row")).to_have_count(3)
-    for theme in ("light", "dark"):
-        page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
-        rows = stable_eval(card, _ROW_FIT)
-        for fit in rows:
-            assert fit["kids"] == 1 and fit["h"] >= 52, f"row ({theme}): {fit}"
-            assert fit["left"] <= 1.5 and fit["right"] <= 1.5, f"row not full width ({theme}): {fit}"
-            assert fit["card"] <= 0 and fit["body"] <= 0, f"sideways scroll ({theme}): {fit}"
-    page.evaluate("document.documentElement.setAttribute('data-theme', 'light')")
+    assert len(stub.changes) == fetched, "the recount is folded on the page, never fetched"
 
 
 @pytest.mark.iphone
@@ -350,11 +338,13 @@ def test_the_newest_turn_gets_its_card_when_the_agent_stops(authed_page: Page, b
     assert gap["gap"] <= 2, f"the card landed below a reader who was at the bottom: {gap}"
 
 
-def test_the_life_os_viewer_has_no_edited_card(authed_page: Page, base_url: str) -> None:
+def test_the_life_os_viewer_has_no_edited_card_and_no_file_chips(authed_page: Page, base_url: str) -> None:
+    """The Life OS conversation viewer shares the renderer: no card, and a
+    reply naming an edited file keeps it as plain code (#1478)."""
     capture = dict(_FAKE_TRANSCRIPT, entries=[
         _FAKE_TRANSCRIPT["entries"][0],
         _edit(60, "notes.md", 2, 0),
-        _FAKE_TRANSCRIPT["entries"][1] | {"offset": 120},
+        _FAKE_TRANSCRIPT["entries"][1] | {"offset": 120, "text": "Updated `notes.md`."},
     ])
     _mock_skills(authed_page)
     _mock_conversations(authed_page)
@@ -364,3 +354,5 @@ def test_the_life_os_viewer_has_no_edited_card(authed_page: Page, base_url: str)
     expect(viewer.locator(".tr-turn")).to_have_count(2)
     expect(viewer.locator(".tr-step")).to_have_count(1)
     expect(viewer.locator(".tr-edited")).to_have_count(0)
+    expect(viewer.locator(".tr-reply code")).to_have_text("notes.md")
+    expect(viewer.locator(".tr-file-chip")).to_have_count(0)

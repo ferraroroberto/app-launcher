@@ -114,14 +114,24 @@ def test_an_ordinary_session_shows_everything_until_asked(authed_page: Page, bas
     expect(_prompts(page)).to_have_count(6)
 
 
-def test_the_chief_starts_folded_and_a_divider_expands_and_folds(authed_page: Page, base_url: str) -> None:
+@pytest.mark.iphone
+def test_the_chief_starts_folded_a_divider_expands_and_folds_and_the_choice_is_remembered(
+    authed_page: Page, base_url: str
+) -> None:
     page = authed_page
     _open(page, base_url, chief=True)
     dividers = page.locator("#transcriptList .tr-auto-divider")
     expect(dividers).to_have_count(2)
     expect(_prompts(page)).to_have_count(3)
 
+    # The divider is a full-width touch target.
     first = dividers.first
+    box = first.bounding_box()
+    list_box = page.locator("#transcriptList").bounding_box()
+    assert box is not None and list_box is not None
+    assert box["height"] >= 44, box
+    assert abs(box["width"] - list_box["width"]) <= 1, (box, list_box)
+
     expect(first).to_have_attribute("aria-expanded", "false")
     first.click()
     expect(first).to_have_attribute("aria-expanded", "true")
@@ -134,13 +144,9 @@ def test_the_chief_starts_folded_and_a_divider_expands_and_folds(authed_page: Pa
     expect(first).to_have_attribute("aria-expanded", "false")
     expect(_prompts(page)).to_have_count(3)
 
-
-def test_the_choice_is_remembered_for_the_session(authed_page: Page, base_url: str) -> None:
-    page = authed_page
-    _open(page, base_url, chief=True)
-    expect(page.locator("#transcriptList .tr-auto-divider")).to_have_count(2)
+    # The menu's choice is remembered for the session across a reload.
     _menu_item(page, "Show automatic: doorbell and compact-summary turns").click()
-    expect(page.locator("#transcriptList .tr-auto-divider")).to_have_count(0)
+    expect(dividers).to_have_count(0)
 
     page.reload(wait_until="domcontentloaded")
     open_session_row(page, _row(page, _SID), mode="chat")
@@ -148,16 +154,3 @@ def test_the_choice_is_remembered_for_the_session(authed_page: Page, base_url: s
     # The chief's default is on, but this session's saved choice is off.
     expect(page.locator("#transcriptList .tr-auto-divider")).to_have_count(0)
     expect(_prompts(page)).to_have_count(6)
-
-
-@pytest.mark.iphone
-def test_the_divider_is_a_full_width_touch_target(authed_page: Page, base_url: str) -> None:
-    page = authed_page
-    _open(page, base_url, chief=True)
-    divider = page.locator("#transcriptList .tr-auto-divider").first
-    expect(divider).to_be_visible()
-    box = divider.bounding_box()
-    list_box = page.locator("#transcriptList").bounding_box()
-    assert box is not None and list_box is not None
-    assert box["height"] >= 44, box
-    assert abs(box["width"] - list_box["width"]) <= 1, (box, list_box)

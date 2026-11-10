@@ -103,11 +103,11 @@ def _two_capped() -> list[dict]:
 
 
 @pytest.mark.iphone
-def test_show_the_rest_loads_a_capped_prompt_and_reply_in_place(
+def test_show_the_rest_retries_a_failed_fetch_survives_the_poll_and_loads_in_place(
     authed_page: Page, base_url: str
 ) -> None:
     page = authed_page
-    _tr, stub = _boot(page, base_url, _two_capped(), {100: _PROMPT_FULL, 200: _REPLY_FULL})
+    tr, stub = _boot(page, base_url, _two_capped(), {100: _PROMPT_FULL, 200: _REPLY_FULL})
     prompt = page.locator("#transcriptList .tr-prompt-item")
     reply = page.locator("#transcriptList .tr-reply")
 
@@ -118,56 +118,8 @@ def test_show_the_rest_loads_a_capped_prompt_and_reply_in_place(
     box = stable_read(lambda: reply.locator(".tr-trunc-more").bounding_box())
     assert box is not None and box["height"] >= 44, f"Show the rest under the 44px floor: {box}"
 
-    # A prompt is plain text: the rest lands as text, its markup never parsed.
-    prompt.locator(".tr-trunc-more").click()
-    expect(prompt.locator(".tr-text")).to_have_text(_PROMPT_FULL)
-    expect(prompt.locator(".tr-text b")).to_have_count(0)
-    expect(prompt.locator(".tr-trunc")).to_have_count(0)
-
-    # A reply is markdown, as it was before it was capped.
-    reply.locator(".tr-trunc-more").click()
-    expect(reply.locator(".tr-md strong")).to_have_text("the rest")
-    expect(reply.locator(".tr-trunc")).to_have_count(0)
-
-    assert [re.search(r"offset=(\d+)", u).group(1) for u in stub.calls] == ["100", "200"], stub.calls
-    # Never left Chat for the terminal.
-    expect(page.locator("#transcriptList")).to_be_visible()
-
-
-def test_an_expanded_entry_stays_expanded_across_the_poll(authed_page: Page, base_url: str) -> None:
-    page = authed_page
-    tr, stub = _boot(page, base_url, _two_capped(), {100: _PROMPT_FULL, 200: _REPLY_FULL})
-    reply = page.locator("#transcriptList .tr-reply").first
-    reply.locator(".tr-trunc-more").click()
-    expect(reply.locator(".tr-md strong")).to_have_text("the rest")
-
-    # A tick that brings a new fragment rebuilds the provisional tail, which
-    # the newest reply sat in: it is drawn expanded again, not re-capped.
-    tr.append(_turn("assistant", "a later fragment", 300))
-    _tick(page, tr)
-    expect(page.locator("#transcriptList")).to_contain_text("a later fragment", timeout=OVERLAY_OPEN_MS)
-    first = page.locator("#transcriptList .tr-reply").first
-    expect(first.locator(".tr-md strong")).to_have_text("the rest")
-    expect(first).not_to_contain_text(_CAPPED_NOTE)
-    expect(first.locator(".tr-trunc-more")).to_have_count(0)
-
-    # A tick with nothing new changes nothing either, and nothing was refetched.
-    _tick(page, tr)
-    expect(first.locator(".tr-md strong")).to_have_text("the rest")
-    assert len(stub.calls) == 1, stub.calls
-
-    # The still-capped prompt kept its button through all of it.
-    expect(page.locator("#transcriptList .tr-prompt-item .tr-trunc-more")).to_have_count(1)
-
-
-def test_a_failed_fetch_keeps_the_capped_text_and_offers_a_retry(
-    authed_page: Page, base_url: str
-) -> None:
-    page = authed_page
-    _tr, stub = _boot(page, base_url, _two_capped(), {100: _PROMPT_FULL, 200: _REPLY_FULL})
-    reply = page.locator("#transcriptList .tr-reply")
+    # A failed fetch keeps the capped text, says so in place, and leaves the button.
     more = reply.locator(".tr-trunc-more")
-
     stub.fail = 1
     more.click()
     expect(reply.locator(".tr-trunc-status")).to_have_text(_FAILED)
@@ -176,11 +128,38 @@ def test_a_failed_fetch_keeps_the_capped_text_and_offers_a_retry(
     expect(more).to_be_enabled()
     expect(more).to_have_text("Show the rest")
 
-    # Trying again works, and the message goes with the note.
+    # Trying again works; a reply is markdown, as it was before it was capped.
     more.click()
     expect(reply.locator(".tr-md strong")).to_have_text("the rest")
     expect(reply.locator(".tr-trunc")).to_have_count(0)
     assert len(stub.calls) == 2, stub.calls
+
+    # A tick that brings a new fragment rebuilds the provisional tail, which
+    # the newest reply sat in: it is drawn expanded again, not re-capped.
+    tr.append(_turn("assistant", "a later fragment", 300))
+    _tick(page, tr)
+    expect(page.locator("#transcriptList")).to_contain_text("a later fragment", timeout=OVERLAY_OPEN_MS)
+    first = reply.first
+    expect(first.locator(".tr-md strong")).to_have_text("the rest")
+    expect(first).not_to_contain_text(_CAPPED_NOTE)
+    expect(first.locator(".tr-trunc-more")).to_have_count(0)
+
+    # A tick with nothing new changes nothing either, and nothing was refetched.
+    _tick(page, tr)
+    expect(first.locator(".tr-md strong")).to_have_text("the rest")
+    assert len(stub.calls) == 2, stub.calls
+    # The still-capped prompt kept its button through all of it.
+    expect(prompt.locator(".tr-trunc-more")).to_have_count(1)
+
+    # A prompt is plain text: the rest lands as text, its markup never parsed.
+    prompt.locator(".tr-trunc-more").click()
+    expect(prompt.locator(".tr-text")).to_have_text(_PROMPT_FULL)
+    expect(prompt.locator(".tr-text b")).to_have_count(0)
+    expect(prompt.locator(".tr-trunc")).to_have_count(0)
+
+    assert [re.search(r"offset=(\d+)", u).group(1) for u in stub.calls] == ["200", "200", "100"], stub.calls
+    # Never left Chat for the terminal.
+    expect(page.locator("#transcriptList")).to_be_visible()
 
 
 def test_a_capped_block_with_nothing_to_fetch_keeps_the_plain_note(

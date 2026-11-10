@@ -407,13 +407,17 @@ _UNCONFIRMED_SEND = {
 }
 
 
-def _send_unconfirmed(page: Page, text: str) -> None:
-    page.route(
-        re.compile(r".*/api/claude-code/sessions/" + _SID + r"/input$"),
-        lambda route: route.fulfill(
-            status=200, content_type="application/json", body=_json.dumps(_UNCONFIRMED_SEND)),
-    )
-    _open_chat(page)
+def _send_unconfirmed(page: Page, text: str, *, open_chat: bool = True) -> None:
+    """Send ``text`` from Chat's composer to an input route that answers
+    "delivered, unconfirmed"; ``open_chat=False`` sends again in a Chat
+    already open on that route."""
+    if open_chat:
+        page.route(
+            re.compile(r".*/api/claude-code/sessions/" + _SID + r"/input$"),
+            lambda route: route.fulfill(
+                status=200, content_type="application/json", body=_json.dumps(_UNCONFIRMED_SEND)),
+        )
+        _open_chat(page)
     composer = page.locator("#chatComposeBar")
     composer.locator(".composer-input").fill(text)
     composer.locator(".composer-send").click()

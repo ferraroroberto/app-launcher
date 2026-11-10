@@ -14,7 +14,8 @@ synthetic):
   focused on it, with no request; a chip in a later turn opens the whole
   session's list, focused on it;
 * a file edited after the reply named it links on the tick the edit arrives;
-* the Life OS conversation viewer, which shares the renderer, has no chips.
+* the Life OS conversation viewer, which shares the renderer, has no chips
+  (``test_chat_edited_card.py``'s Life OS test, one viewer for both).
 """
 from __future__ import annotations
 
@@ -34,14 +35,6 @@ from tests.e2e.chat.test_chat_edited_card import (
     _turn,
 )
 from tests.e2e.fixtures.waits import stable_eval
-from tests.e2e.life_os._support import (
-    _FAKE_TRANSCRIPT,
-    _mock_conversations,
-    _mock_skills,
-    _mock_transcript,
-    _open_conversations,
-    _open_viewer,
-)
 
 pytestmark = pytest.mark.smoke
 
@@ -174,18 +167,3 @@ def test_a_file_edited_after_the_reply_named_it_links_when_the_edit_arrives(
     assert stub.ticks() > before, "the live poll never fired on the fake clock"
     expect(reply.locator(".tr-file-chip-name")).to_have_text("late.ts")
     expect(reply.locator("code")).to_have_count(0)
-
-
-def test_the_life_os_viewer_has_no_file_chips(authed_page: Page, base_url: str) -> None:
-    capture = dict(_FAKE_TRANSCRIPT, entries=[
-        _FAKE_TRANSCRIPT["entries"][0],
-        _edit(60, "notes.md", 2, 0),
-        _FAKE_TRANSCRIPT["entries"][1] | {"offset": 120, "text": "Updated `notes.md`."},
-    ])
-    _mock_skills(authed_page)
-    _mock_conversations(authed_page)
-    _mock_transcript(authed_page, capture)
-    _open_conversations(authed_page, base_url)
-    viewer = _open_viewer(authed_page, 0)
-    expect(viewer.locator(".tr-reply code")).to_have_text("notes.md")
-    expect(viewer.locator(".tr-file-chip")).to_have_count(0)

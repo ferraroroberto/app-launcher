@@ -140,13 +140,20 @@ def _click_speak_and_capture_text(page: Page) -> str:
     return (req_info.value.post_data_json or {}).get("text", "")
 
 
-def test_detached_session_reveals_speak_button_and_reads_transcript(
+def test_detached_session_reads_the_newest_entry_and_a_capped_one_uncapped(
     authed_page: Page, base_url: str
 ) -> None:
     """The core ask: a detached (no-PTY) session gets a working Read aloud row
-    in the ⋮ menu, and it reads the transcript's newest assistant entry."""
-    _mock_sessions_list(authed_page, kind="remote")
-    _mock_transcript(authed_page, {
+    in the ⋮ menu, and it reads the transcript's newest assistant entry.
+
+    Then a capped newest entry upgrades to the full text via /transcript/entry
+    before speaking — never read out silently shortened (#979 decision log).
+    A reply this long is chunked into several bounded hub requests
+    (terminal-speech.js), so the proof is the *sum* of every request's text:
+    capped at 12,000 chars would stay <= that; the uncapped 20,000-char entry
+    must push the total well past it.
+    """
+    body = {
         "available": True, "source": "native", "reason": None, "session_id": _SID,
         "next_cursor": None,
         "entries": [
@@ -155,19 +162,50 @@ def test_detached_session_reveals_speak_button_and_reads_transcript(
             {"kind": "assistant", "timestamp": "2026-09-17T10:01:05Z", "offset": 4096,
              "text": "All green, ship it.", "truncated": False, "sidechain": False},
         ],
-    })
-    _mock_tts(authed_page)
+    }
+    full_reply = "R" * 20_000
+    capped_reply = full_reply[:12_000]
+    captured: list = []
+    _mock_sessions_list(authed_page, kind="remote")
+    # The route dumps ``body`` per request, so editing it changes the next read.
+    _mock_transcript(authed_page, body)
+    _mock_transcript_entry(authed_page, full_reply)
+    _mock_tts_capturing(authed_page, captured)
     authed_page.add_init_script(AUDIO_MOCK)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
-    row = _row(authed_page)
-    _open_chat(authed_page, row)
+    _open_chat(authed_page, _row(authed_page))
     # No Terminal segment for a detached session — its read-aloud rows are
     # decided from Chat mode too, not only off attachTerminalPane.
     expect(authed_page.locator("#sessionModeTerminal")).to_have_attribute("aria-disabled", "true")
     text = _click_speak_and_capture_text(authed_page)
     assert text == "All green, ship it.", text
     expect(authed_page.locator(".toast")).to_contain_text("Reading:")
+    expect(authed_page.locator("#terminalMenu")).to_have_attribute("data-speaking", "false")
+
+    # The newest entry is now a capped one.
+    body["entries"] = [
+        {"kind": "assistant", "timestamp": "2026-09-17T10:01:05Z", "offset": 4096,
+         "text": capped_reply, "truncated": True, "sidechain": False},
+    ]
+    captured.clear()
+    authed_page.reload(wait_until="domcontentloaded")
+    _open_chat(authed_page, _row(authed_page))
+    wait_for_hub_probe(authed_page)
+    read_aloud_item(authed_page).click()
+    # The ⋮ button returns to idle once every chunked request has streamed and
+    # finished playing — a bounded proxy for "all requests captured".
+    expect(authed_page.locator("#terminalMenu")).to_have_attribute("data-speaking", "false")
+
+    total = sum(len(t) for t in captured)
+    assert len(captured) >= 2, f"expected the long reply to split into multiple requests, got {captured}"
+    assert total > len(capped_reply), (
+        f"total spoken chars ({total}) never exceeded the capped entry's length "
+        f"({len(capped_reply)}) — looks like the capped text was read, not the uncapped entry"
+    )
+    # Matches the tolerance test_chunk_for_hub_bounds_long_text uses: a little
+    # inter-segment trimming at boundaries is expected, wholesale truncation isn't.
+    assert total >= int(0.95 * len(full_reply)), (captured and total, len(full_reply))
 
 
 def test_full_control_session_in_chat_mode_reads_transcript_not_terminal(
@@ -192,48 +230,3 @@ def test_full_control_session_in_chat_mode_reads_transcript_not_terminal(
     _open_chat(authed_page, row)
     text = _click_speak_and_capture_text(authed_page)
     assert text == "Chat-mode reply.", text
-
-
-def test_truncated_entry_reads_the_uncapped_text(authed_page: Page, base_url: str) -> None:
-    """A capped newest entry upgrades to the full text via /transcript/entry
-    before speaking — never read out silently shortened (#979 decision log).
-
-    A reply this long is chunked into several bounded hub requests
-    (terminal-speech.js), so the proof is the *sum* of every request's text:
-    capped at 12,000 chars would stay <= that; the uncapped 20,000-char entry
-    must push the total well past it.
-    """
-    full_reply = "R" * 20_000
-    capped_reply = full_reply[:12_000]
-    captured: list = []
-    _mock_sessions_list(authed_page, kind="remote")
-    _mock_transcript(authed_page, {
-        "available": True, "source": "native", "reason": None, "session_id": _SID,
-        "next_cursor": None,
-        "entries": [
-            {"kind": "assistant", "timestamp": "2026-09-17T10:01:05Z", "offset": 4096,
-             "text": capped_reply, "truncated": True, "sidechain": False},
-        ],
-    })
-    _mock_transcript_entry(authed_page, full_reply)
-    _mock_tts_capturing(authed_page, captured)
-    authed_page.add_init_script(AUDIO_MOCK)
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-
-    row = _row(authed_page)
-    _open_chat(authed_page, row)
-    wait_for_hub_probe(authed_page)
-    read_aloud_item(authed_page).click()
-    # The ⋮ button returns to idle once every chunked request has streamed and
-    # finished playing — a bounded proxy for "all requests captured".
-    expect(authed_page.locator("#terminalMenu")).to_have_attribute("data-speaking", "false")
-
-    total = sum(len(t) for t in captured)
-    assert len(captured) >= 2, f"expected the long reply to split into multiple requests, got {captured}"
-    assert total > len(capped_reply), (
-        f"total spoken chars ({total}) never exceeded the capped entry's length "
-        f"({len(capped_reply)}) — looks like the capped text was read, not the uncapped entry"
-    )
-    # Matches the tolerance test_chunk_for_hub_bounds_long_text uses: a little
-    # inter-segment trimming at boundaries is expected, wholesale truncation isn't.
-    assert total >= int(0.95 * len(full_reply)), (captured and total, len(full_reply))
