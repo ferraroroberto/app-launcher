@@ -30,6 +30,7 @@ import { wireHtmlViewer, wireImageLightbox } from './lightbox.js';
 import { openScreenWindow, wireScreenView } from './screen/screen-view.js';
 import { wireTokens } from './settings/tokens.js';
 import { wireFleetScope } from './settings/fleet-scope.js';
+import { wireInspiration } from './settings/inspiration.js';
 import { wireDocuments } from './settings/documents.js';
 import { showPath, wireSettingsSheets } from './settings/settings-sheets.js';
 import { wireRemotePowerGuard } from './settings/remote-power-guard.js';
@@ -420,6 +421,7 @@ wireWebauthn();
 wireSettings();
 wireTokens();
 wireFleetScope();
+wireInspiration();
 wireDocuments();
 wireTheme();
 // Settings → Text size: same localStorage prefix as the theme,

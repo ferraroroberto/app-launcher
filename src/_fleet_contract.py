@@ -16,6 +16,7 @@ modules distinct in ``sys.modules`` terms.
 from __future__ import annotations
 
 import importlib.util
+import sys
 from functools import lru_cache
 from pathlib import Path
 from types import ModuleType
@@ -35,5 +36,12 @@ def load_fleet_contract(path_text: str, alias: str, label: str) -> ModuleType:
     if spec is None or spec.loader is None:
         raise ImportError(f"{label} contract loader unavailable")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    # A contract that declares a @dataclass looks its own module up by name
+    # while it executes, so the alias has to resolve before exec_module runs.
+    sys.modules[alias] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop(alias, None)
+        raise
     return module

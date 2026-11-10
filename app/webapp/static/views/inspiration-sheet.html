@@ -1,0 +1,105 @@
+    <!-- Inspiration: the /inspiration-scan source list and the X login.
+         inspiration.js draws it from GET /api/inspiration/sources; the
+         inspiration-scan skill owns the file and its format. -->
+    <dialog id="inspirationSheet" class="detail-dialog settings-sheet" data-track-view="sheet.inspiration" aria-labelledby="inspirationSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header settings-sheet-head">
+          <button data-track="inspiration.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <h2 id="inspirationSheetTitle" tabindex="-1" autofocus>Inspiration</h2>
+          <button data-track="inspiration.close" type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div id="inspirationBody" class="settings-sheet-body">
+          <p class="muted small">The newsletters, YouTube channels and X accounts the daily Inspiration scan reads, and a note on what you like. Each change is saved to this PC at once and checked first; the file never leaves it.</p>
+          <div id="inspirationUnavailable" class="empty-state" hidden>
+            <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-globe"></use></svg>
+            <p id="inspirationReason" class="empty-state-message"></p>
+          </div>
+          <div id="inspirationContent" hidden>
+            <p id="inspirationProblem" class="field-error" role="alert" hidden></p>
+            <div class="opt-group">
+              <h3 class="opt-group-title">Latest digest</h3>
+              <p id="inspirationDigest" class="muted small" role="status" aria-live="polite"></p>
+              <ul id="inspirationDigestLines" class="inspiration-lines" aria-label="Sources read in the latest digest"></ul>
+            </div>
+            <div class="opt-group" id="inspirationEditor">
+              <h3 class="opt-group-title">What you like</h3>
+              <p id="inspirationLikesHelp" class="field-help">Each item is scored against this. Either the note itself or the path of a .md or .txt file that holds it.</p>
+              <textarea id="inspirationLikes" class="input-native" rows="4" maxlength="8000" aria-label="What you like" aria-describedby="inspirationLikesHelp inspirationLikesError" autocomplete="off"></textarea>
+              <p id="inspirationLikesError" class="field-error" role="alert" hidden></p>
+              <div class="row settings-actions">
+                <button data-track="inspiration.likes-save" id="inspirationLikesSave" type="button" class="button-tint">Save note</button>
+              </div>
+            </div>
+
+            <div class="opt-group" data-kind="newsletter">
+              <h3 class="opt-group-title">Newsletters</h3>
+              <ul class="card-list action-rows" aria-label="Newsletters" data-list></ul>
+              <form class="inspiration-form" data-form novalidate hidden>
+                <label class="stacked"><span>Name</span><input id="inspirationNewsletterName" class="input-native" name="name" maxlength="500" autocomplete="off" aria-describedby="inspirationNewsletterNameHelp"></label>
+                <p id="inspirationNewsletterNameHelp" class="field-help">How it appears in this list.</p>
+                <label class="stacked"><span>Feed address</span><input id="inspirationNewsletterFeed" class="input-native" name="feed" inputmode="url" autocapitalize="none" spellcheck="false" maxlength="500" autocomplete="off" placeholder="https://example.substack.com/feed" aria-describedby="inspirationNewsletterFeedHelp"></label>
+                <p id="inspirationNewsletterFeedHelp" class="field-help">The publication's RSS or Atom feed, starting with https://. A newsletter without a feed cannot be read.</p>
+                <p class="field-error" role="alert" data-error hidden></p>
+                <div class="row settings-actions">
+                  <button data-track="inspiration.newsletter-save" type="submit" class="button-tint" data-submit>Add</button>
+                  <button data-track="inspiration.newsletter-cancel" type="button" class="button-ghost" data-cancel>Cancel</button>
+                </div>
+              </form>
+              <div class="row settings-actions" data-add-row>
+                <button data-track="inspiration.newsletter-add" type="button" class="button-ghost" data-add><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg> Add newsletter</button>
+              </div>
+            </div>
+
+            <div class="opt-group" data-kind="youtube">
+              <h3 class="opt-group-title">YouTube channels</h3>
+              <ul class="card-list action-rows" aria-label="YouTube channels" data-list></ul>
+              <form class="inspiration-form" data-form novalidate hidden>
+                <label class="stacked"><span>Name</span><input id="inspirationYoutubeName" class="input-native" name="name" maxlength="500" autocomplete="off" aria-describedby="inspirationYoutubeNameHelp"></label>
+                <p id="inspirationYoutubeNameHelp" class="field-help">How it appears in this list.</p>
+                <label class="stacked"><span>Channel id</span><input id="inspirationYoutubeChannel" class="input-native" name="channel_id" autocapitalize="none" spellcheck="false" maxlength="40" autocomplete="off" placeholder="UC…" aria-describedby="inspirationYoutubeChannelHelp"></label>
+                <p id="inspirationYoutubeChannelHelp" class="field-help">From the channel page: Share, then Copy channel ID. It starts with UC.</p>
+                <p class="field-error" role="alert" data-error hidden></p>
+                <div class="row settings-actions">
+                  <button data-track="inspiration.youtube-save" type="submit" class="button-tint" data-submit>Add</button>
+                  <button data-track="inspiration.youtube-cancel" type="button" class="button-ghost" data-cancel>Cancel</button>
+                </div>
+              </form>
+              <div class="row settings-actions" data-add-row>
+                <button data-track="inspiration.youtube-add" type="button" class="button-ghost" data-add><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg> Add channel</button>
+              </div>
+            </div>
+
+            <div class="opt-group" data-kind="x">
+              <h3 class="opt-group-title">X accounts</h3>
+              <ul class="card-list action-rows" aria-label="X accounts" data-list></ul>
+              <form class="inspiration-form" data-form novalidate hidden>
+                <label class="stacked"><span>Handle</span><input id="inspirationXHandle" class="input-native" name="handle" autocapitalize="none" spellcheck="false" maxlength="40" autocomplete="off" placeholder="example_handle" aria-describedby="inspirationXHandleHelp"></label>
+                <p id="inspirationXHandleHelp" class="field-help">The account name, with or without the @. Only its public profile page is read.</p>
+                <p class="field-error" role="alert" data-error hidden></p>
+                <div class="row settings-actions">
+                  <button data-track="inspiration.x-save" type="submit" class="button-tint" data-submit>Add</button>
+                  <button data-track="inspiration.x-cancel" type="button" class="button-ghost" data-cancel>Cancel</button>
+                </div>
+              </form>
+              <div class="row settings-actions" data-add-row>
+                <button data-track="inspiration.x-add" type="button" class="button-ghost" data-add><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg> Add account</button>
+              </div>
+            </div>
+
+            <div class="opt-group">
+              <h3 class="opt-group-title">X login</h3>
+              <p class="opt-hint">Reading X needs a one-time login in its own Chrome window on this PC. The button opens that window; you log in there yourself, then close it.</p>
+              <div class="row settings-actions">
+                <button data-track="inspiration.login-x" id="inspirationLoginBtn" type="button" class="button-tint"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-monitor"></use></svg> Log into X</button>
+              </div>
+              <p id="inspirationLoginStatus" class="muted small" role="status" aria-live="polite"></p>
+            </div>
+          </div>
+        </div>
+        <div class="detail-actions">
+          <button data-track="inspiration.done" type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+        </div>
+      </div>
+    </dialog>

@@ -85,6 +85,7 @@ from app.webapp.routers import (
     desktop_screen,
     documents,
     fleet_scope,
+    inspiration,
     jobs,
     life_os,
     life_os_channels,
@@ -566,6 +567,7 @@ def create_app() -> FastAPI:
     app.include_router(config.router)
     app.include_router(context_filter.router)
     app.include_router(fleet_scope.router)
+    app.include_router(inspiration.router)
     app.include_router(progress.router)
     app.include_router(documents.router)
     app.include_router(tokens.router)

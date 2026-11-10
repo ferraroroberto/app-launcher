@@ -514,6 +514,7 @@ export const els = {
   fleetScopeFilterEmpty: document.getElementById('fleetScopeFilterEmpty'),
   fleetScopeUnavailable: document.getElementById('fleetScopeUnavailable'),
   fleetScopeReason: document.getElementById('fleetScopeReason'),
+  inspirationBody: document.getElementById('inspirationBody'),
   documentsSection: document.getElementById('documentsSection'),
   documentsGroup: document.getElementById('documentsGroup'),
   documentsError: document.getElementById('documentsError'),

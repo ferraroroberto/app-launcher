@@ -536,7 +536,10 @@ time_budget_s         = 1200
 # the build on either side: a regrown suite, or a trim that left the number
 # stale. Lower it with every later trim; raise it only with a node-for-node
 # reason beside it.
-test_budget = 645
+# 2026-11-10: 645 -> 646, one node for Settings > Inspiration's sheet test
+# (tests/e2e/settings/test_inspiration.py): a new surface with its own routes
+# and sheet, so no existing same-setup test could carry its assertions.
+test_budget = 646
 
 # --- static assets under the webapp's static dir -> Chromium smoke ----------
 [[e2e.rule]]
