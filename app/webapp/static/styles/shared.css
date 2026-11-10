@@ -142,6 +142,24 @@
   font-size: var(--font-label);
   min-height: var(--row-sm);
 }
+/* iOS Safari keeps its own date/time chrome on these inputs: a taller intrinsic
+   box and a centred value that `min-height` and `padding` do not reset. Dropping
+   the appearance and fixing `height` puts them on the row floor like the text
+   inputs, and the value pseudo-element is start-aligned like every other field. */
+.input-native[type="time"],
+.input-native[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: var(--row-sm);
+  min-width: 0;
+  text-align: start;
+}
+.input-native[type="time"]::-webkit-date-and-time-value,
+.input-native[type="date"]::-webkit-date-and-time-value {
+  min-height: 0;
+  margin: 0;
+  text-align: start;
+}
 /* The same, for a <select> standing in a stacked form row rather than in an
    inline toolbar cluster. The vendored component's own 36px `height` is the
    inline-control contract and stays for those. */

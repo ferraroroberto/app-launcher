@@ -335,6 +335,9 @@ def _assert_pc_load_saves_the_night_restart_switch_and_window(
     toggle = page.locator("#processAutoRestartToggle")
     expect(toggle).to_have_attribute("aria-checked", "false")
     expect(page.locator("#processAutoRestartStart")).to_have_value("21:00")
+    for time_field in ("#processAutoRestartStart", "#processAutoRestartEnd"):
+        expect(page.locator(time_field)).to_have_css("height", "44px")
+        expect(page.locator(time_field)).to_have_css("text-align", "start")
     toggle.click()
     expect(toggle).to_have_attribute("aria-checked", "true")
     page.locator("#processAutoRestartEnd").fill("06:30")
@@ -344,6 +347,7 @@ def _assert_pc_load_saves_the_night_restart_switch_and_window(
     assert saved["process_auto_restart"] is True and saved["process_auto_restart_end"] == "06:30"
 
 
+@pytest.mark.iphone
 def test_pc_load_passkeys_and_telegram_sheets(
     authed_page: Page, base_url: str, auth_token: str
 ) -> None:
