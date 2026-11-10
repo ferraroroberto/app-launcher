@@ -116,6 +116,41 @@ _LIVE_MODULE = """
 """
 
 
+def _hide_overlay_and_assert_stashed(authed_page: Page) -> None:
+    """Hide the terminal overlay and check the xterm element and WS were kept, not disposed."""
+    # Close the overlay — must stash, not dispose (#430): element stays in
+    # the DOM (hidden) and the WS stays OPEN.
+    authed_page.evaluate(
+        "async () => (await import(("
+        + _LIVE_MODULE
+        + ")('terminal.js'))).hideTerminal()"
+    )
+    expect(authed_page.locator("#terminalOverlay")).to_be_hidden()
+    kept = authed_page.evaluate(
+        """() => {
+          const el = document.querySelector('#terminalHost .xterm');
+          return {
+            tag: el ? el.dataset.warm : null,
+            hidden: el ? el.style.display : null,
+            wsCount: window.__wsInstances.length,
+            wsState: window.__wsInstances[0].readyState,
+          };
+        }"""
+    )
+    assert kept["tag"] == "tagged", (
+        "hiding the overlay destroyed the xterm element — the warm cache "
+        "(#430) is gone and every re-open will replay the transcript"
+    )
+    assert kept["hidden"] == "none", (
+        f"stashed terminal element should be display:none, got "
+        f"{kept['hidden']!r}"
+    )
+    assert kept["wsCount"] == 1 and kept["wsState"] == 1, (
+        f"hiding the overlay should keep the single WS open, got "
+        f"count={kept['wsCount']} state={kept['wsState']}"
+    )
+
+
 def _leg_warm_reopen_reuses_terminal_and_ws(
     authed_page: Page, sid: str, wait_for_session_log
 ) -> None:
@@ -151,37 +186,7 @@ def _leg_warm_reopen_reuses_terminal_and_ws(
         "document.querySelector('#terminalHost .xterm').dataset.warm = 'tagged'"
     )
 
-    # Close the overlay — must stash, not dispose (#430): element stays in
-    # the DOM (hidden) and the WS stays OPEN.
-    authed_page.evaluate(
-        "async () => (await import(("
-        + _LIVE_MODULE
-        + ")('terminal.js'))).hideTerminal()"
-    )
-    expect(authed_page.locator("#terminalOverlay")).to_be_hidden()
-    kept = authed_page.evaluate(
-        """() => {
-          const el = document.querySelector('#terminalHost .xterm');
-          return {
-            tag: el ? el.dataset.warm : null,
-            hidden: el ? el.style.display : null,
-            wsCount: window.__wsInstances.length,
-            wsState: window.__wsInstances[0].readyState,
-          };
-        }"""
-    )
-    assert kept["tag"] == "tagged", (
-        "hiding the overlay destroyed the xterm element — the warm cache "
-        "(#430) is gone and every re-open will replay the transcript"
-    )
-    assert kept["hidden"] == "none", (
-        f"stashed terminal element should be display:none, got "
-        f"{kept['hidden']!r}"
-    )
-    assert kept["wsCount"] == 1 and kept["wsState"] == 1, (
-        f"hiding the overlay should keep the single WS open, got "
-        f"count={kept['wsCount']} state={kept['wsState']}"
-    )
+    _hide_overlay_and_assert_stashed(authed_page)
 
     # Re-open the same session: same element, same socket, no new WS.
     authed_page.evaluate(
