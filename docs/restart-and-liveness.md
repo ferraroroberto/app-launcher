@@ -23,10 +23,32 @@ process is restarted.
    (mechanism: `CLAUDE.md`'s `## session-host`), so `--restart` preserves open
    Coding/PTY sessions — including one hosted on `:8446` itself — is safe to
    run from inside such a session, and never restarts `:8446`.
-4. Confirm the new build is live with a bounded poll of `GET /api/version`
-   (hard timeout + attempt cap, fail loud) — `git_sha` should match `HEAD` and
-   `asset_hash` should have changed — and report that build line.
-5. Don't hand off "done" with a stale process still serving.
+4. Run the restart from **PowerShell**, wrapped by the replacement check:
+
+   ```
+   .\.venv\Scripts\python.exe -m src.launching.restart_check snapshot
+   tray.bat --restart
+   .\.venv\Scripts\python.exe -m src.launching.restart_check verify
+   ```
+
+   `verify` polls `GET /api/version` (60 s by default) and exits 0 only when
+   the answer carries a **different `pid`** than the snapshot **and** a
+   `git_sha` matching `HEAD`. A matching `git_sha` alone proves nothing: a
+   restart that never ran leaves the old process serving, and when that
+   process already loaded `HEAD` the sha matches anyway. Exit 1 = the process
+   was not replaced (or nothing answers); exit 2 = no baseline, so a restart
+   cannot be confirmed. Neither is a pass. Report the `verify` line.
+5. From Git Bash, `cmd.exe /c "tray.bat --restart"` never enters the script:
+   MSYS rewrites `/c`, cmd opens an interactive prompt, and the call exits 0
+   with no output and nothing restarted. Use PowerShell (or `cmd.exe //c`).
+   `tray.bat` appends `entered` and `helper exit=<code>` lines to
+   `webapp/restart.log`, as does `restart_check`, so a restart with no
+   `entered` line was never run.
+6. `built_at` is the webapp process's start time, captured at import; it moves
+   only when a webapp process starts. It does not distinguish a tray restart
+   from a webapp-only restart (the tray's Restart webapp item, a self-heal),
+   so it is no proof that `tray.bat --restart` ran. `pid` is.
+7. Don't hand off "done" with a stale process still serving.
 
 ## A session-host change is not live until `:8446` itself restarts
 

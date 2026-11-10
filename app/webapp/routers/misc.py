@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -150,6 +151,7 @@ async def version(request: Request) -> Dict[str, Any]:
     return {
         "git_sha": _GIT_SHA,
         "built_at": _BUILT_AT,
+        "pid": os.getpid(),
         "asset_hash": asset_hash_for(asset_hashes, "styles/base.css") or "",
         "head_sha": facts["head_sha"],
         "session_host": facts["session_host"],

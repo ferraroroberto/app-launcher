@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 
 import pytest
@@ -140,8 +141,9 @@ class TestVersion:
         assert resp.status_code == 200
         body = resp.json()
         assert set(body.keys()) == {
-            "git_sha", "built_at", "asset_hash", "head_sha", "session_host", "age_seconds",
+            "git_sha", "built_at", "pid", "asset_hash", "head_sha", "session_host", "age_seconds",
         }
+        assert body["pid"] == os.getpid()
         assert isinstance(body["git_sha"], str) and body["git_sha"]
         # The footer stamp is the identity this process captured at import, not a fresh read.
         assert body["built_at"] == misc_router._IDENTITY["built_at"]

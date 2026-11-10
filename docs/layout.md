@@ -79,7 +79,7 @@ app-launcher/
 │   ├── clients/                # loopback HTTP clients: the shared _loopback_http.py base, the session-host (session.py),
 │   │                           #   local-llm-hub (llm.py, tts.py), photo-ocr, voice-transcriber, and `gh` (github.py)
 │   ├── launching/              # coding-agent launch: per-agent CLI flags (flags.py), spawn helpers (launcher.py),
-│   │                           #   the model catalog, Telegram channel profiles, VS Code workspaces
+│   │                           #   the model catalog, Telegram channel profiles, VS Code workspaces, the tray-restart replacement check (restart_check.py)
 │   ├── perf_ledger/            # Apps tab: the read-only reader of fleet-config's perf-review ledger (latest result, cold-ready trend, row mapping)
 │   ├── board/                  # Board backend: kanban assembly (__init__.py), session-state join (state.py),
 │   │                           #   live-session enumeration (sessions.py), the drawer's last exchange (exchange.py),
