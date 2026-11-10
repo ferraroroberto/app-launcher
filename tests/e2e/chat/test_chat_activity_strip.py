@@ -25,15 +25,59 @@ from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS, stable_eval
 pytestmark = pytest.mark.smoke
 
 
+def _check_the_line_is_a_centred_icon(page: Page, line, browser_name: str) -> None:
+    """#1394's geometry, read with the connection status held off, which it leaves on again."""
+    # A connection status owns the row while the mirror is down, and the
+    # stubbed mirror re-shows it whenever it reconnects (WebKit, under load):
+    # an observer keeps it off for the whole measurement, where flipping
+    # `hidden` once would be undone before the read.
+    page.evaluate("""() => {
+      const s = document.getElementById('terminalStatus');
+      const hide = () => { if (!s.hidden) { s.hidden = true; s.textContent = ''; } };
+      window.__keepStatusOff = new MutationObserver(hide);
+      window.__keepStatusOff.observe(s, { attributes: true, childList: true, characterData: true, subtree: true });
+      hide();
+    }""")
+    expect(line).to_be_visible()
+    got = stable_eval(line, _STRIP_LINE_JS)
+    assert "⏱" not in got["text"], got
+    assert got["use"] == "#i-timer", got
+    assert got["iconColor"] == got["lineColor"], f"the icon is not in the line's muted colour: {got}"
+    assert 12 <= got["iconSize"] <= 18, got
+    assert abs(got["spanMid"] - got["stripMid"]) <= 1, (
+        f"the line's centre is {got['spanMid'] - got['stripMid']:+.1f}px off the strip's: {got}"
+    )
+    assert abs(got["iconMid"] - got["textMid"]) <= 1.5, f"the icon is off the text's centre: {got}"
+
+    # The strip is max(row, home-indicator inset) tall (#1219), so a taller
+    # inset leaves slack the line must split evenly, not keep at its top.
+    # Chromium can emulate an inset over CDP; WebKit has no such override.
+    if browser_name == "chromium":
+        cdp = page.context.new_cdp_session(page)
+        cdp.send("Emulation.setSafeAreaInsetsOverride", {"insets": {"bottom": 56, "bottomMax": 56}})
+        tall = stable_eval(line, _STRIP_LINE_JS)
+        assert tall["stripMid"] != got["stripMid"], f"the emulated inset did not reach the strip: {tall}"
+        assert abs(tall["spanMid"] - tall["stripMid"]) <= 1, (
+            f"in a taller strip the line is {tall['spanMid'] - tall['stripMid']:+.1f}px off its centre: {tall}"
+        )
+    page.evaluate("() => window.__keepStatusOff.disconnect()")
+
+
 @pytest.mark.iphone
-def test_the_strip_shows_the_turn_in_progress_and_gives_way_to_status(
-    authed_page: Page, base_url: str
+def test_the_strip_shows_the_turn_in_progress_as_a_centred_icon_line_and_gives_way_to_status(
+    authed_page: Page, base_url: str, browser_name: str
 ) -> None:
     """#1387: one line in the bottom strip while a turn runs — elapsed time,
     the action count and the newest step — ticking on the client with no
     request of its own, gone when the turn ends, and never over a
-    connection status."""
+    connection status.
+
+    #1394: the timer is the vendored `i-timer` icon in the line's muted
+    colour, not the ⏱ emoji (iOS draws a colour stopwatch, desktop another
+    glyph), and at 390 px the line's vertical centre is within 1 px of the
+    strip's. The icon is centred on the text, so it cannot lift or sink it."""
     page = authed_page
+    page.set_viewport_size({"width": 390, "height": 844})
     tr = _boot(page, base_url)
     tr.activity = {"since": _since(page, 902), "actions": 10, "last": "Running Bash", "working": True}
     _open_chat(page)
@@ -46,7 +90,10 @@ def test_the_strip_shows_the_turn_in_progress_and_gives_way_to_status(
     expect(line.locator(".terminal-activity-text")).to_have_css("text-overflow", "ellipsis")
     expect(line).to_have_css("font-variant-numeric", "tabular-nums")
     strip = page.locator("#terminalStatusStrip")
-    assert stable_eval(strip, "el => el.isConnected ? el.getBoundingClientRect().height : null")         == stable_eval(line, "el => el.isConnected ? el.parentElement.getBoundingClientRect().height : null")
+    assert stable_eval(strip, "el => el.isConnected ? el.getBoundingClientRect().height : null") \
+        == stable_eval(line, "el => el.isConnected ? el.parentElement.getBoundingClientRect().height : null")
+
+    _check_the_line_is_a_centred_icon(page, line, browser_name)
 
     # The counter moves on the client: 2 s on the clock is under the 3 s poll,
     # so no read goes out, yet the text has advanced.
@@ -80,113 +127,48 @@ def test_the_strip_shows_the_turn_in_progress_and_gives_way_to_status(
 
 
 @pytest.mark.iphone
-def test_the_activity_line_is_an_icon_and_sits_in_the_middle_of_its_strip_at_phone_width(
-    authed_page: Page, base_url: str, browser_name: str
-) -> None:
-    """#1394: the timer is the vendored `i-timer` icon in the line's muted
-    colour, not the ⏱ emoji (iOS draws a colour stopwatch, desktop another
-    glyph), and at 390 px the line's vertical centre is within 1 px of the
-    strip's. The icon is centred on the text, so it cannot lift or sink it."""
-    page = authed_page
-    page.set_viewport_size({"width": 390, "height": 844})
-    tr = _boot(page, base_url)
-    tr.activity = {"since": _since(page, 902), "actions": 10, "last": "Running Bash", "working": True}
-    _open_chat(page)
-    line = page.locator("#terminalActivity")
-    expect(line).to_have_text(re.compile(r"^15:0\d · 10 actions · Running Bash$"), timeout=OVERLAY_OPEN_MS)
-    # A connection status owns the row while the mirror is down, and the
-    # stubbed mirror re-shows it whenever it reconnects (WebKit, under load):
-    # a style rule keeps it off for the whole measurement, where flipping
-    # `hidden` once would be undone before the read.
-    page.evaluate("""() => {
-      const s = document.getElementById('terminalStatus');
-      const hide = () => { if (!s.hidden) { s.hidden = true; s.textContent = ''; } };
-      new MutationObserver(hide).observe(s, { attributes: true, childList: true, characterData: true, subtree: true });
-      hide();
-    }""")
-    expect(line).to_be_visible()
-
-    got = stable_eval(line, _STRIP_LINE_JS)
-    assert "⏱" not in got["text"], got
-    assert got["use"] == "#i-timer", got
-    assert got["iconColor"] == got["lineColor"], f"the icon is not in the line's muted colour: {got}"
-    assert 12 <= got["iconSize"] <= 18, got
-    assert abs(got["spanMid"] - got["stripMid"]) <= 1, (
-        f"the line's centre is {got['spanMid'] - got['stripMid']:+.1f}px off the strip's: {got}"
-    )
-    assert abs(got["iconMid"] - got["textMid"]) <= 1.5, f"the icon is off the text's centre: {got}"
-
-    # The strip is max(row, home-indicator inset) tall (#1219), so a taller
-    # inset leaves slack the line must split evenly, not keep at its top.
-    # Chromium can emulate an inset over CDP; WebKit has no such override.
-    if browser_name == "chromium":
-        cdp = page.context.new_cdp_session(page)
-        cdp.send("Emulation.setSafeAreaInsetsOverride", {"insets": {"bottom": 56, "bottomMax": 56}})
-        tall = stable_eval(line, _STRIP_LINE_JS)
-        assert tall["stripMid"] != got["stripMid"], f"the emulated inset did not reach the strip: {tall}"
-        assert abs(tall["spanMid"] - tall["stripMid"]) <= 1, (
-            f"in a taller strip the line is {tall['spanMid'] - tall['stripMid']:+.1f}px off its centre: {tall}"
-        )
-
-
-@pytest.mark.iphone
-def test_an_unconfirmed_send_says_sent_and_stays_quiet_when_the_turn_shows_up(
+def test_an_unconfirmed_send_is_confirmed_by_its_turn_or_by_busy_and_else_flagged_and_returned(
     authed_page: Page, base_url: str
 ) -> None:
-    """The common case: the message reaches the agent, its turn lands in the
-    transcript within the window, and no warning is ever raised."""
+    """Three sends in one Chat, each judged on its own window."""
     page = authed_page
     tr = _boot(page, base_url)
-    _send_unconfirmed(page, "yes please")
+    toast = page.locator("#toast")
+    box = page.locator("#chatComposeBar .composer-input")
 
+    # The common case: the message reaches the agent, its turn lands in the
+    # transcript within the window, and no warning is ever raised.
+    _send_unconfirmed(page, "yes please")
     tr.append(_turn("user", "yes please", 300))
     _tick(page, tr)
     expect(page.locator("#transcriptList .tr-user").last).to_contain_text("yes please")
-
     # Well past the window, with the fake clock and a tick after it (the
     # watch is judged on a read): still no warning, and the box stays empty.
     _fake_clock.advance(page, _CONFIRM_WINDOW_MS + _POLL_MS)
     _tick(page, tr)
-    expect(page.locator("#toast")).not_to_contain_text("picked it up")
-    expect(page.locator("#chatComposeBar .composer-input")).to_have_value("")
+    expect(toast).not_to_contain_text("picked it up")
+    expect(box).to_have_value("")
 
-
-@pytest.mark.iphone
-def test_an_unconfirmed_send_is_confirmed_by_the_agent_going_busy(
-    authed_page: Page, base_url: str
-) -> None:
-    """No turn yet (the agent logs it late), but the session went busy: that
-    is evidence too, and the window closing later raises nothing."""
-    page = authed_page
-    tr = _boot(page, base_url)
-    _send_unconfirmed(page, "go ahead")
-
+    # No turn yet (the agent logs it late), but the session went busy: that
+    # is evidence too, and the window closing later raises nothing.
+    _send_unconfirmed(page, "go ahead", open_chat=False)
     tr.activity = {"since": _since(page, 5), "actions": None, "last": "Thinking", "working": True}
     _tick(page, tr)
-
     _fake_clock.advance(page, _CONFIRM_WINDOW_MS + _POLL_MS)
     _tick(page, tr)
-    expect(page.locator("#toast")).not_to_contain_text("picked it up")
-    expect(page.locator("#chatComposeBar .composer-input")).to_have_value("")
+    expect(toast).not_to_contain_text("picked it up")
+    expect(box).to_have_value("")
 
-
-@pytest.mark.iphone
-def test_an_unconfirmed_send_the_agent_never_takes_is_flagged_and_the_text_returned(
-    authed_page: Page, base_url: str
-) -> None:
-    """The case the old warning was for: nothing shows up. The window closes
-    on a distinct error state, and the text goes back to the box to resend."""
-    page = authed_page
-    tr = _boot(page, base_url)
-    _send_unconfirmed(page, "did you get this")
-
+    # The case the old warning was for: nothing shows up. The window closes
+    # on a distinct error state, and the text goes back to the box to resend.
+    tr.activity = {**tr.activity, "working": False}
+    _tick(page, tr)
+    _send_unconfirmed(page, "did you get this", open_chat=False)
     # Still inside the window: quiet, however many ticks have found nothing.
     _tick(page, tr)
     _tick(page, tr)
-    expect(page.locator("#toast")).not_to_contain_text("picked it up")
-
+    expect(toast).not_to_contain_text("picked it up")
     _fake_clock.advance(page, _CONFIRM_WINDOW_MS)
-    toast = page.locator("#toast")
     expect(toast).to_contain_text("hasn’t picked it up", timeout=OVERLAY_OPEN_MS)
     expect(toast).to_have_class(re.compile(r"\berror\b"))
-    expect(page.locator("#chatComposeBar .composer-input")).to_have_value("did you get this")
+    expect(box).to_have_value("did you get this")

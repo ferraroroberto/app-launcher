@@ -30,7 +30,9 @@ _IN_BOX = {
 
 
 @pytest.mark.iphone
-def test_the_chip_lists_pending_messages_and_discards_one(authed_page: Page, base_url: str) -> None:
+def test_the_chip_lists_pending_messages_discards_one_and_a_repeat_send_asks_first(
+    authed_page: Page, base_url: str
+) -> None:
     page = authed_page
     tr = _boot(page, base_url)
     tr.pending_input = [_QUEUED, _IN_BOX]
@@ -44,12 +46,31 @@ def test_the_chip_lists_pending_messages_and_discards_one(authed_page: Page, bas
         }))
 
     page.route(re.compile(r".*/api/claude-code/sessions/" + _SID + r"/pending-input/q1$"), _discard)
+    sends: list = []
+    page.route(
+        re.compile(r".*/api/claude-code/sessions/" + _SID + r"/input$"),
+        lambda route: (sends.append(1), route.fulfill(status=200, content_type="application/json",
+                                                      body=_json.dumps({"ok": True, "submit_state": "confirmed"}))),
+    )
     _open_chat(page)
 
     chip = page.locator("#chatQueuedChip")
     expect(chip).to_have_text("2 queued", timeout=OVERLAY_OPEN_MS)
     box = chip.bounding_box()
     assert box is not None and box["height"] >= 44
+
+    # Sending text that is already pending asks first; a "no" sends nothing
+    # and keeps the draft.
+    composer = page.locator("#chatComposeBar")
+    composer.locator(".composer-input").fill("also check the ferry times")
+    composer.locator(".composer-send").click()
+    confirm = page.locator("#confirmDialog")
+    expect(confirm).to_be_visible()
+    expect(page.locator("#confirmDialogTitle")).to_have_text("Already queued")
+    page.locator("#confirmDialogClose").click()
+    expect(confirm).to_be_hidden()
+    expect(composer.locator(".composer-input")).to_have_value("also check the ferry times")
+    assert sends == []
 
     chip.click()
     sheet = page.locator("#pendingInputDialog")
@@ -122,30 +143,3 @@ def test_the_sheet_keeps_its_scroll_across_polls(authed_page: Page, base_url: st
     assert page.evaluate("() => window.__sheetRebuilds") > 0
     first = page.locator("#pendingInputDialog .pending-text").first
     assert stable_eval(first, "el => el.scrollTop") == held
-
-
-def test_sending_text_already_pending_asks_first(authed_page: Page, base_url: str) -> None:
-    page = authed_page
-    tr = _boot(page, base_url)
-    tr.pending_input = [_QUEUED]
-    sends: list = []
-    page.route(
-        re.compile(r".*/api/claude-code/sessions/" + _SID + r"/input$"),
-        lambda route: (sends.append(1), route.fulfill(status=200, content_type="application/json",
-                                                      body=_json.dumps({"ok": True, "submit_state": "confirmed"}))),
-    )
-    _open_chat(page)
-    expect(page.locator("#chatQueuedChip")).to_have_text("1 queued", timeout=OVERLAY_OPEN_MS)
-
-    composer = page.locator("#chatComposeBar")
-    composer.locator(".composer-input").fill("also check the ferry times")
-    composer.locator(".composer-send").click()
-
-    confirm = page.locator("#confirmDialog")
-    expect(confirm).to_be_visible()
-    expect(page.locator("#confirmDialogTitle")).to_have_text("Already queued")
-    page.locator("#confirmDialogClose").click()
-    expect(confirm).to_be_hidden()
-    # A "no" sends nothing and keeps the draft.
-    expect(composer.locator(".composer-input")).to_have_value("also check the ferry times")
-    assert sends == []

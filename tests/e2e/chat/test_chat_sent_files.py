@@ -274,9 +274,12 @@ def _assert_inert(page: Page, frame, frame_requests: list) -> None:
 
 
 @pytest.mark.iphone
-def test_a_sent_html_document_runs_no_script_and_loads_nothing(authed_page: Page, base_url: str) -> None:
+def test_a_sent_html_document_runs_no_script_and_the_viewer_closes_every_way(
+    authed_page: Page, base_url: str
+) -> None:
     """A document that tries to read the app, call its API and phone home
-    does none of it, in the card or in the viewer."""
+    does none of it, in the card or in the viewer; the viewer closes on Esc,
+    back and (desktop) the backdrop, each time returning focus to the card."""
     frame_requests = _open_chat_with(
         authed_page, base_url, [_html_entry(_HTML_ID, "report.html", len(_HOSTILE_HTML))],
         {_HTML_ID: _HOSTILE_HTML},
@@ -284,23 +287,6 @@ def test_a_sent_html_document_runs_no_script_and_loads_nothing(authed_page: Page
     card = authed_page.locator("#transcriptList .tr-file-card[data-kind='html']")
     expect(card.locator(".tr-file-note")).to_have_text("Shown without scripts")
     _assert_inert(authed_page, card.locator("iframe.tr-file-html-frame"), frame_requests)
-    # No same-origin page exists for it: the Download blob is opaque bytes.
-    card.locator(".tr-file-html-open").click()
-    viewer = authed_page.locator("#htmlViewer")
-    expect(viewer).to_be_visible()
-    download = viewer.locator("#htmlViewerDownload")
-    expect(download).to_have_attribute("download", "report.html")
-    assert download.evaluate("a => fetch(a.href).then(r => r.blob()).then(b => b.type)") == "application/octet-stream"
-    _assert_inert(authed_page, viewer.locator("iframe"), frame_requests)
-
-
-@pytest.mark.iphone
-def test_the_html_viewer_closes_on_esc_backdrop_and_back_and_returns_focus(
-    authed_page: Page, base_url: str, browser_name: str
-) -> None:
-    doc = "<!doctype html><h1 id='h'>Quarterly report</h1>"
-    _open_chat_with(authed_page, base_url, [_html_entry(_HTML_ID, "report.html", len(doc))], {_HTML_ID: doc})
-    card = authed_page.locator("#transcriptList .tr-file-card[data-kind='html']")
     preview = card.locator(".tr-file-html-open")
     expect(preview).to_have_attribute("aria-label", "Open report.html")
     viewer = authed_page.locator("#htmlViewer")
@@ -318,15 +304,21 @@ def test_the_html_viewer_closes_on_esc_backdrop_and_back_and_returns_focus(
         expect(viewer.locator("iframe")).to_have_count(0)
         expect(authed_page.locator("#terminalOverlay")).to_be_visible()
 
+    # No same-origin page exists for it: the Download blob is opaque bytes.
+    open_it(preview)
+    download = viewer.locator("#htmlViewerDownload")
+    expect(download).to_have_attribute("download", "report.html")
+    assert download.evaluate("a => fetch(a.href).then(r => r.blob()).then(b => b.type)") == "application/octet-stream"
+    _assert_inert(authed_page, viewer.locator("iframe"), frame_requests)
+    authed_page.keyboard.press("Escape")
+    closed()
+
     open_it(card.locator("button.tr-file-open"))
     box = viewer.bounding_box()
     if vw <= 520:  # the phone sheet fills the screen
         assert box["x"] == 0 and box["width"] == vw
     else:
         assert box["width"] <= 1100 and box["x"] > 0
-    authed_page.keyboard.press("Escape")
-    closed()
-    open_it(preview)
     authed_page.evaluate("history.back()")  # what the back gesture does
     closed()
     if vw > 520:  # only the desktop dialog leaves a backdrop to tap

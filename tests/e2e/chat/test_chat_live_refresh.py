@@ -1,4 +1,5 @@
-"""Chat live refresh: new turns appear with no tap, only the visible chat polls, and scroll and open cards survive."""
+"""Chat live refresh: new turns appear with no tap, only the visible chat polls, scroll and open cards survive,
+and overlapping reads never append a turn twice."""
 
 from __future__ import annotations
 
@@ -499,13 +500,80 @@ def test_a_reply_arriving_after_tool_calls_is_unfolded_and_a_user_fold_stays(
     expect(turns.nth(1)).to_have_attribute("open", "")
 
 
-def test_a_session_that_ends_stops_refreshing_and_says_so(
+# session-transcript.js SENT_REFRESH_MS: how long after an answer the pane
+# nudges the live poll.
+_SENT_REFRESH_MS = 3_000
+
+
+def test_overlapping_reads_append_once_a_transient_source_recovers_and_an_ended_one_stops(
     authed_page: Page, base_url: str
 ) -> None:
+    """A refresh nudge that lands while a read is in flight waits for it, so
+    no turn is appended twice.
+
+    Only an *ended session* is terminal. A live Claude session reports
+    `no_transcript` for as long as its hook row is deleted and the filesystem
+    fallback can't name the file (#1023) — a condition that clears by itself,
+    so refresh must back off and recover rather than latch off and make the
+    reader tap Reload. A session that ends stops refreshing and says so.
+    """
     page = authed_page
     tr = _boot(page, base_url)
+    page.route(
+        re.compile(r".*/api/claude-code/sessions/" + _SID + r"/answer$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"ok": True, "delivered": "unconfirmed", "steps": 1}),
+        ),
+    )
     _open_chat(page)
     expect(page.locator("#transcriptList .tr-turn")).to_have_count(2)
+
+    tr.append(_turn("assistant", "one question first", 250), _question("toolu_q", 300))
+    _tick(page, tr)
+    card = page.locator('#transcriptList .tr-ask-item[data-call-id="toolu_q"]')
+    expect(card).to_have_attribute("data-mode", "live", timeout=OVERLAY_OPEN_MS)
+
+    # One read is held open; the answer's refresh nudge fires while it is.
+    # Against a real phone this is a slow tick that is still on the wire when
+    # the nudge lands.
+    tr.append(_turn("assistant", "only once please", 400), _turn("assistant", "tail", 450))
+    tr.hold = True
+    _tick(page, tr)
+    with page.expect_response(re.compile(r".*/answer$")):
+        card.locator(".tr-ask-opt").first.click()
+    expect(page.locator(".toast", has_text="Answer sent")).to_be_visible()
+    _fake_clock.advance(page, _SENT_REFRESH_MS + 1)
+    # The nudge has not started a second read from the same cursor.
+    assert len(tr.held) == 1, tr.calls[-3:]
+    tr.release()
+    _fake_clock.advance(page, 1)
+    # A nudge waited out the held read and then read from its cursor, if at
+    # all; either way the release left nothing more held.
+    tr.release()
+    _fake_clock.advance(page, 1)
+
+    expect(page.locator("#transcriptList")).to_contain_text("only once please")
+    expect(page.locator("#transcriptList .tr-reply", has_text="only once please")).to_have_count(1)
+    expect(card).to_have_count(1)
+
+    tr.unavailable = "no_transcript"
+    _tick(page, tr)
+    expect(page.locator("#transcriptState")).to_contain_text(
+        "No transcript found", timeout=OVERLAY_OPEN_MS
+    )
+    # It is still trying, unlike the ended case below.
+    settled = tr.tail_calls()
+    _tick(page, tr)
+    assert tr.tail_calls() > settled, "a transient condition latched refresh off"
+
+    tr.unavailable = None
+    tr.append(_turn("assistant", "back again", 500))
+    _tick(page, tr)
+    expect(page.locator("#transcriptList")).to_contain_text(
+        "back again", timeout=OVERLAY_OPEN_MS
+    )
+    expect(page.locator("#transcriptState")).to_be_hidden()
 
     tr.dead = True
     _tick(page, tr)
@@ -517,36 +585,5 @@ def test_a_session_that_ends_stops_refreshing_and_says_so(
     assert tr.tail_calls() == settled, "a dead session was still being polled"
     # What was already read stays readable.
     expect(page.locator("#transcriptList .tr-turn")).to_have_count(2)
-
-
-def test_a_transient_unavailable_source_recovers_without_a_tap(
-    authed_page: Page, base_url: str
-) -> None:
-    """Only an *ended session* is terminal. A live Claude session reports
-    `no_transcript` for as long as its hook row is deleted and the filesystem
-    fallback can't name the file (#1023) — a condition that clears by itself,
-    so refresh must back off and recover rather than latch off and make the
-    reader tap Reload.
-    """
-    page = authed_page
-    tr = _boot(page, base_url)
-    _open_chat(page)
-    expect(page.locator("#transcriptList .tr-turn")).to_have_count(2)
-
-    tr.unavailable = "no_transcript"
-    _tick(page, tr)
-    expect(page.locator("#transcriptState")).to_contain_text(
-        "No transcript found", timeout=OVERLAY_OPEN_MS
-    )
-    # It is still trying, unlike the ended case above.
-    settled = tr.tail_calls()
-    _tick(page, tr)
-    assert tr.tail_calls() > settled, "a transient condition latched refresh off"
-
-    tr.unavailable = None
-    tr.append(_turn("assistant", "back again", 400))
-    _tick(page, tr)
-    expect(page.locator("#transcriptList")).to_contain_text(
-        "back again", timeout=OVERLAY_OPEN_MS
-    )
-    expect(page.locator("#transcriptState")).to_be_hidden()
+    expect(page.locator("#transcriptList")).to_contain_text("back again")
+    expect(page.locator("#transcriptList .tr-reply", has_text="only once please")).to_have_count(1)

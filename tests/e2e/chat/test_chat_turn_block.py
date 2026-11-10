@@ -108,9 +108,54 @@ def _open(page: Page, base_url: str) -> None:
     expect(page.locator("#terminalOverlay")).to_be_visible(timeout=OVERLAY_OPEN_MS)
 
 
-def test_a_turn_is_one_block_under_one_header(authed_page: Page, base_url: str) -> None:
+def _check_the_bubble_geometry(page: Page, bubble) -> None:
+    """Right-aligned within its caps at 390px and 1440px, tinted and legible in both themes."""
+    for width, cap in ((390, None), (1440, 560)):
+        page.set_viewport_size({"width": width, "height": 900})
+        m = stable_read(lambda: page.evaluate(_BUBBLE))
+        assert abs(m["right"] - m["listRight"]) < 1, f"{width}px: bubble not right-aligned: {m}"
+        assert m["width"] <= 0.85 * m["listWidth"] + 1, f"{width}px: bubble over 85%: {m}"
+        if cap:
+            assert m["width"] <= cap + 0.5, f"{width}px: bubble over {cap}px: {m}"
+        assert m["left"] > m["listLeft"] + 1, f"{width}px: bubble spans the column: {m}"
+
+    # Accent tint in both themes, text on it in fg (COLOR-02).
+    for theme in ("light", "dark"):
+        page.evaluate(f"document.documentElement.dataset.theme = '{theme}'")
+        expect(bubble).not_to_have_css("background-color", "rgba(0, 0, 0, 0)")
+        ratio = stable_read(lambda: contrast_ratio(bubble.locator(".tr-text")))
+        assert ratio >= 4.5, f"{theme}: prompt text at {ratio:.2f}:1 on its bubble"
+
+
+def test_the_prompt_is_a_right_aligned_bubble_and_a_turn_is_one_block_under_one_header(
+    authed_page: Page, base_url: str
+) -> None:
     page = authed_page
+    page.set_viewport_size({"width": 390, "height": 844})
     _open(page, base_url)
+    prompt = page.locator("#transcriptList .tr-user").first
+    bubble = prompt.locator("div.tr-bubble")
+    expect(bubble).to_be_visible()
+
+    _check_the_bubble_geometry(page, bubble)
+
+    # The time, copy and fold sit under the bubble; fold leaves a one-line
+    # bubble that a tap opens again.
+    foot = prompt.locator(".tr-prompt-foot")
+    expect(foot.locator(".tr-meta")).to_have_text(re.compile(r"\d"))
+    foot.locator(".tr-turn-copy").click()
+    page.wait_for_function("() => window.__copied.length === 1", timeout=3_000)
+    assert page.evaluate("() => window.__copied[0]") == _LONG_PROMPT.strip()
+    foot.locator(".tr-prompt-fold").click()
+    expect(prompt).to_have_js_property("open", False)
+    folded = prompt.locator("summary.tr-prompt-folded")
+    expect(folded).to_be_visible()
+    folded.click()
+    expect(prompt).to_have_js_property("open", True)
+    expect(folded).to_be_hidden()
+    expect(bubble).to_be_visible()
+
+    page.evaluate("document.documentElement.dataset.theme = 'light'")
     listing = page.locator("#transcriptList")
 
     # Two prompts, two agent turns: three reply fragments make ONE block.
@@ -143,8 +188,8 @@ def test_a_turn_is_one_block_under_one_header(authed_page: Page, base_url: str) 
     # Copy takes the whole turn, its fragments in order, one blank line apart,
     # without toggling it.
     first.locator(".tr-turn-summary .tr-turn-copy").click()
-    page.wait_for_function("() => window.__copied.length > 0", timeout=3_000)
-    assert page.evaluate("() => window.__copied[0]") == (
+    page.wait_for_function("() => window.__copied.length === 2", timeout=3_000)
+    assert page.evaluate("() => window.__copied[1]") == (
         "I'll check how the queue tracks the connection first.\n\n"
         "Found it: nothing listens for `online`.\n\n"
         "## Fixed\n\nThe badge now goes back online."
@@ -162,44 +207,3 @@ def test_a_turn_is_one_block_under_one_header(authed_page: Page, base_url: str) 
     first.locator(".tr-turn-summary").click()
     expect(first).to_have_js_property("open", True)
     expect(first.locator(".tr-reply").nth(2)).to_be_visible()
-
-
-def test_the_prompt_is_a_right_aligned_bubble(authed_page: Page, base_url: str) -> None:
-    page = authed_page
-    page.set_viewport_size({"width": 390, "height": 844})
-    _open(page, base_url)
-    prompt = page.locator("#transcriptList .tr-user").first
-    bubble = prompt.locator("div.tr-bubble")
-    expect(bubble).to_be_visible()
-
-    for width, cap in ((390, None), (1440, 560)):
-        page.set_viewport_size({"width": width, "height": 900})
-        m = stable_read(lambda: page.evaluate(_BUBBLE))
-        assert abs(m["right"] - m["listRight"]) < 1, f"{width}px: bubble not right-aligned: {m}"
-        assert m["width"] <= 0.85 * m["listWidth"] + 1, f"{width}px: bubble over 85%: {m}"
-        if cap:
-            assert m["width"] <= cap + 0.5, f"{width}px: bubble over {cap}px: {m}"
-        assert m["left"] > m["listLeft"] + 1, f"{width}px: bubble spans the column: {m}"
-
-    # Accent tint in both themes, text on it in fg (COLOR-02).
-    for theme in ("light", "dark"):
-        page.evaluate(f"document.documentElement.dataset.theme = '{theme}'")
-        expect(bubble).not_to_have_css("background-color", "rgba(0, 0, 0, 0)")
-        ratio = stable_read(lambda: contrast_ratio(bubble.locator(".tr-text")))
-        assert ratio >= 4.5, f"{theme}: prompt text at {ratio:.2f}:1 on its bubble"
-
-    # The time, copy and fold sit under the bubble; fold leaves a one-line
-    # bubble that a tap opens again.
-    foot = prompt.locator(".tr-prompt-foot")
-    expect(foot.locator(".tr-meta")).to_have_text(re.compile(r"\d"))
-    foot.locator(".tr-turn-copy").click()
-    page.wait_for_function("() => window.__copied.length > 0", timeout=3_000)
-    assert page.evaluate("() => window.__copied[0]") == _LONG_PROMPT.strip()
-    foot.locator(".tr-prompt-fold").click()
-    expect(prompt).to_have_js_property("open", False)
-    folded = prompt.locator("summary.tr-prompt-folded")
-    expect(folded).to_be_visible()
-    folded.click()
-    expect(prompt).to_have_js_property("open", True)
-    expect(folded).to_be_hidden()
-    expect(bubble).to_be_visible()

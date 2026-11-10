@@ -240,12 +240,67 @@ def _read(offset: int, ts: str | None, path: str) -> dict:
             "offset": offset, "action": {"verb": "read", "path": path}}
 
 
+def _check_multi_day_and_untimed_runs(page: Page, tr: _Transcript) -> None:
+    """After a reload each: a multi-day session rolls up to days, a live run
+    reads "started", and a run with no timestamps shows no line."""
+    # A multi-day session rolls up to days; a run still going reads "started".
+    page.reload(wait_until="domcontentloaded")
+    age = 53 * 3600 + 12 * 60
+    tr.entries = [
+        _turn("user", "work on it", 100, _since(page, age)),
+        _read(200, _since(page, 3600), "E:/automation/modeproj/notes.md"),
+        _read(300, _since(page, 3600 - 4), "E:/automation/modeproj/a.md"),
+        _turn("assistant", "Done.", 400, _since(page, 3600 - 9)),
+        _turn("user", "again", 500, _since(page, 120)),
+        _read(600, _since(page, 100), "E:/automation/modeproj/notes.md"),
+    ]
+    _open_chat(page)
+    runs = page.locator("#transcriptList .tr-run")
+    expect(runs).to_have_count(2)
+    done, live = runs.nth(0), runs.nth(1)
+    done.locator("summary.tr-step-line").click()
+    expect(done.locator(".tr-run-when")).to_have_text(
+        re.compile(r"^finished .+ · took 9s · session 2d 4h$")
+    )
+    live.locator("summary.tr-step-line").click()
+    expect(live.locator(".tr-run-when")).to_have_text(re.compile(r"^started [^·]+$"))
+    expect(live.locator(".tr-run-when")).not_to_contain_text("finished")
+
+    page.reload(wait_until="domcontentloaded")
+    # No entry carries a stamp: the line takes its finish from the reply after
+    # the run and its session age from the first entry, so a stamped reply
+    # would (rightly) draw "finished … · session 50s".
+    tr.entries = [
+        _turn("user", "hello", 100, None),
+        _read(200, None, "E:/automation/modeproj/notes.md"),
+        _turn("assistant", "Done.", 300, None),
+    ]
+    _open_chat(page)
+    run = page.locator("#transcriptList .tr-run")
+    # `toggle` fires after the click's own task, so a hidden-check made straight
+    # away passes before the line is ever filled. Wait for the app's handler
+    # (registered at render, so it runs ahead of this listener) to have run.
+    run.evaluate("""el => {
+      window.__runToggled = false;
+      el.querySelector(':scope > details').addEventListener(
+        'toggle', () => { window.__runToggled = true; }, { once: true });
+    }""")
+    run.locator("summary.tr-step-line").click()
+    page.wait_for_function("() => window.__runToggled === true")
+    expect(run.locator(".tr-item")).to_be_visible()
+    expect(run.locator(".tr-run-when")).to_be_hidden()
+    expect(run.locator(".tr-run-when")).to_have_text("")
+    expect(run).not_to_contain_text("NaN")
+
+
 @pytest.mark.iphone
 def test_an_opened_run_says_when_it_ran_and_where_it_sits_in_the_session(
     authed_page: Page, base_url: str
 ) -> None:
     """#2006: nothing in the folded row; opened, one muted line with the run's
-    start, its duration and its offset from the session's first entry."""
+    start, its duration and its offset from the session's first entry. A
+    multi-day session rolls up to days, a live run reads "started", and a run
+    with no timestamps shows no line."""
     page = authed_page
     page.set_viewport_size({"width": 390, "height": 844})
     tr = _boot(page, base_url)
@@ -301,62 +356,4 @@ def test_an_opened_run_says_when_it_ran_and_where_it_sits_in_the_session(
         assert fit["pane"][0] <= fit["pane"][1], (theme, fit)
     assert colors["light"] != colors["dark"], colors
 
-
-@pytest.mark.iphone
-def test_an_opened_run_in_a_multi_day_session_rolls_up_to_days_and_a_live_one_reads_started(
-    authed_page: Page, base_url: str
-) -> None:
-    page = authed_page
-    page.set_viewport_size({"width": 390, "height": 844})
-    tr = _boot(page, base_url)
-    age = 53 * 3600 + 12 * 60
-    tr.entries = [
-        _turn("user", "work on it", 100, _since(page, age)),
-        _read(200, _since(page, 3600), "E:/automation/modeproj/notes.md"),
-        _read(300, _since(page, 3600 - 4), "E:/automation/modeproj/a.md"),
-        _turn("assistant", "Done.", 400, _since(page, 3600 - 9)),
-        _turn("user", "again", 500, _since(page, 120)),
-        _read(600, _since(page, 100), "E:/automation/modeproj/notes.md"),
-    ]
-    _open_chat(page)
-    runs = page.locator("#transcriptList .tr-run")
-    expect(runs).to_have_count(2)
-    done, live = runs.nth(0), runs.nth(1)
-    done.locator("summary.tr-step-line").click()
-    expect(done.locator(".tr-run-when")).to_have_text(
-        re.compile(r"^finished .+ · took 9s · session 2d 4h$")
-    )
-    live.locator("summary.tr-step-line").click()
-    expect(live.locator(".tr-run-when")).to_have_text(re.compile(r"^started [^·]+$"))
-    expect(live.locator(".tr-run-when")).not_to_contain_text("finished")
-
-
-def test_an_opened_run_without_timestamps_shows_no_line(
-    authed_page: Page, base_url: str
-) -> None:
-    page = authed_page
-    tr = _boot(page, base_url)
-    # No entry carries a stamp: the line takes its finish from the reply after
-    # the run and its session age from the first entry, so a stamped reply
-    # would (rightly) draw "finished … · session 50s".
-    tr.entries = [
-        _turn("user", "hello", 100, None),
-        _read(200, None, "E:/automation/modeproj/notes.md"),
-        _turn("assistant", "Done.", 300, None),
-    ]
-    _open_chat(page)
-    run = page.locator("#transcriptList .tr-run")
-    # `toggle` fires after the click's own task, so a hidden-check made straight
-    # away passes before the line is ever filled. Wait for the app's handler
-    # (registered at render, so it runs ahead of this listener) to have run.
-    run.evaluate("""el => {
-      window.__runToggled = false;
-      el.querySelector(':scope > details').addEventListener(
-        'toggle', () => { window.__runToggled = true; }, { once: true });
-    }""")
-    run.locator("summary.tr-step-line").click()
-    page.wait_for_function("() => window.__runToggled === true")
-    expect(run.locator(".tr-item")).to_be_visible()
-    expect(run.locator(".tr-run-when")).to_be_hidden()
-    expect(run.locator(".tr-run-when")).to_have_text("")
-    expect(run).not_to_contain_text("NaN")
+    _check_multi_day_and_untimed_runs(page, tr)

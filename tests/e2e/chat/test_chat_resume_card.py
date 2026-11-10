@@ -71,24 +71,26 @@ def test_latest_pill_brings_a_scrolled_up_reader_back_to_the_newest_turn(
     expect(pill).to_be_hidden()
 
 
-@pytest.mark.iphone
-def test_a_resume_launch_with_no_transcript_shows_the_card_in_place_of_the_empty_state(
-    authed_page: Page, base_url: str
-) -> None:
-    """#1300, reopened: a session launched with `--resume` has no transcript
-    yet, and its screen shows the resume picker from the start. The first
-    load's `no_transcript` used to end the view, so the screen was never
-    asked about and Chat showed only "No transcript found". The card must
-    come up in that line's place, and the line comes back once it is ✕'d."""
-    page = authed_page
-    picker = _Picker(page)
-    picker.resume_up = True
-    _Resume(page)
-    tr = _boot(page, base_url)
-    tr.unavailable = "no_transcript"
-    _open_chat(page)
+# A button's ghost-style computed fill, border, glyph colour and radius.
+_GHOST_JS = (
+    "el => { const s = getComputedStyle(el); return el.isConnected ? "
+    "{bg: s.backgroundColor, border: s.borderTopWidth, color: s.color, "
+    "radius: s.borderTopLeftRadius} : null; }"
+)
+# The same reading off a probe built from the Jobs run list's real icon-button rule.
+_GHOST_PROBE_JS = (
+    "() => { const ul = document.createElement('ul'); ul.className = 'jobs-runs-list';"
+    "ul.hidden = true; const li = document.createElement('li');"
+    "const b = document.createElement('button'); b.className = 'icon-button';"
+    "li.appendChild(b); ul.appendChild(li); document.body.appendChild(ul);"
+    "const s = getComputedStyle(b); const out = {bg: s.backgroundColor,"
+    "border: s.borderTopWidth, color: s.color, radius: s.borderTopLeftRadius};"
+    "ul.remove(); return out; }"
+)
 
-    card = page.locator("#transcriptResumeLive")
+
+def _check_the_card_replaces_no_transcript(page: Page, tr, picker, card) -> None:
+    """The card stands in for the no-transcript line until it is closed, and the view stays live."""
     state = page.locator("#transcriptState")
     _tick(page, tr)
     expect(card).to_be_visible(timeout=OVERLAY_OPEN_MS)
@@ -105,26 +107,36 @@ def test_a_resume_launch_with_no_transcript_shows_the_card_in_place_of_the_empty
     # The view stayed live: once a transcript appears, its turns land by
     # themselves and the reason line goes with them.
     tr.unavailable = None
+    picker.resume_up = False
     _tick(page, tr)
     expect(page.locator("#transcriptList")).to_contain_text(
         "opening conftest now", timeout=OVERLAY_OPEN_MS
     )
     expect(state).to_be_hidden()
+    expect(card).to_be_hidden()
 
 
 @pytest.mark.iphone
-def test_the_resume_card_lists_searches_and_resumes_from_the_picker_or_the_composer(
+def test_the_resume_card_shows_with_no_transcript_lists_searches_and_resumes(
     authed_page: Page, base_url: str
 ) -> None:
     """#1300: while the terminal shows Claude Code's /resume picker, Chat
     offers the project's sessions as a searchable card, newest first; a pick
     posts that session with via=picker and the card goes. Typing /resume in
     the composer opens the same card instead of sending anything to the
-    terminal, and a pick from it posts via=composer."""
+    terminal, and a pick from it posts via=composer.
+
+    #1300, reopened: a session launched with `--resume` has no transcript
+    yet, and its screen shows the resume picker from the start. The first
+    load's `no_transcript` used to end the view, so the screen was never
+    asked about and Chat showed only "No transcript found". The card must
+    come up in that line's place, and the line comes back once it is ✕'d."""
     page = authed_page
-    tr = _boot(page, base_url)
     picker = _Picker(page)
+    picker.resume_up = True
     resume = _Resume(page)
+    tr = _boot(page, base_url)
+    tr.unavailable = "no_transcript"
     typed: list = []
     page.route(
         re.compile(r".*/api/claude-code/sessions/" + _SID + r"/input$"),
@@ -133,9 +145,11 @@ def test_the_resume_card_lists_searches_and_resumes_from_the_picker_or_the_compo
                                      body=_json.dumps({"ok": True, "submit_state": "confirmed"}))),
     )
     _open_chat(page)
-    card = page.locator("#transcriptResumeLive")
-    expect(card).to_be_hidden()
 
+    card = page.locator("#transcriptResumeLive")
+    _check_the_card_replaces_no_transcript(page, tr, picker, card)
+
+    # The picker comes up again on the terminal: the card is back.
     picker.resume_up = True
     _tick(page, tr)
     expect(card).to_be_visible(timeout=OVERLAY_OPEN_MS)
@@ -156,28 +170,14 @@ def test_the_resume_card_lists_searches_and_resumes_from_the_picker_or_the_compo
     # The ✕ is a ghost icon button like the Jobs run list's, not the UA's grey
     # square: same computed fill, border, glyph colour and radius as a probe
     # built from that real rule, and its colour reacts on hover (pointer only).
-    ghost = (
-        "el => { const s = getComputedStyle(el); return el.isConnected ? "
-        "{bg: s.backgroundColor, border: s.borderTopWidth, color: s.color, "
-        "radius: s.borderTopLeftRadius} : null; }"
-    )
-    probe = (
-        "() => { const ul = document.createElement('ul'); ul.className = 'jobs-runs-list';"
-        "ul.hidden = true; const li = document.createElement('li');"
-        "const b = document.createElement('button'); b.className = 'icon-button';"
-        "li.appendChild(b); ul.appendChild(li); document.body.appendChild(ul);"
-        "const s = getComputedStyle(b); const out = {bg: s.backgroundColor,"
-        "border: s.borderTopWidth, color: s.color, radius: s.borderTopLeftRadius};"
-        "ul.remove(); return out; }"
-    )
     close = card.locator(".tr-resume-close")
-    sibling = page.evaluate(probe)
+    sibling = page.evaluate(_GHOST_PROBE_JS)
     assert sibling["bg"] == "rgba(0, 0, 0, 0)" and sibling["border"] == "0px", sibling
-    assert stable_eval(close, ghost) == sibling, sibling
+    assert stable_eval(close, _GHOST_JS) == sibling, sibling
     # Hover only exists on a pointer device; the touch projection has none.
     if page.evaluate("matchMedia('(hover: hover)').matches"):
         close.hover()
-        assert stable_eval(close, ghost)["color"] != sibling["color"]
+        assert stable_eval(close, _GHOST_JS)["color"] != sibling["color"]
     shown.first.click()
     expect(page.locator("#toast")).to_contain_text("Resumed: Add a dark theme")
     assert resume.picks == [{"session_id": _RESUMABLE[1]["id"], "via": "picker"}], resume.picks
