@@ -24,7 +24,6 @@ from playwright.sync_api import Page, WebSocketRoute, expect
 from tests.e2e.fixtures.waits import wait_until
 from tests.e2e.screens.test_screen_view import (
     _frame,
-    _live_view,
     _open_from_sheet,
     _set_mode,
     _stub_screen,
@@ -58,11 +57,60 @@ def _expect_keys(page: Page, seen, expected: List[str], what: str) -> None:
     assert _keys(seen) == expected
 
 
-def test_hardware_keys_reach_the_pc_once_and_typed_text_is_not_doubled(
+def test_hardware_keys_reach_the_pc_once_never_in_view_when_not_live_or_while_composing(
     authed_page: Page, base_url: str
 ) -> None:
-    seen, page = _live_view(authed_page, base_url)
+    """One live view, in turn: no hardware key is sent in View, during an IME
+    composition or while the picture is stale; then in Control each reaches
+    the PC once and typed text is not doubled."""
+    sockets: List[WebSocketRoute] = []
+
+    def on_connect(ws: WebSocketRoute) -> None:
+        sockets.append(ws)
+        ws.send(_frame())
+
+    seen = _stub_screen(authed_page.context, on_connect)
+    page = _open_from_sheet(authed_page, base_url)
+    expect(page.locator("#screenImage")).to_be_visible()
+    wait_until(page, lambda: len(seen["acks"]) >= 1, "the frame's ack")
+    _no_key_in_view_when_not_live_or_composing_leg(page, seen, sockets)
+    seen["inputs"].clear()
+    _hardware_keys_reach_the_pc_once_leg(page, seen)
+
+
+def _no_key_in_view_when_not_live_or_composing_leg(
+    page: Page, seen, sockets: List[WebSocketRoute]
+) -> None:
+    """Nothing is sent in View, while composing or while stale; ends live in Control."""
+    # View mode: not sent, and not cancelled either, so the browser keeps F5.
+    for key in ("ArrowUp", "F5", "Escape"):
+        init = {"key": key}
+        assert page.evaluate(_DISPATCH_KEYDOWN_JS, [init])["cancelled"] is False, key
+    assert page.evaluate(_DISPATCH_KEYDOWN_JS, [{"key": "c", "ctrlKey": True}])["cancelled"] is False
+
     _set_mode(page, "control")
+    # An IME composition is the input's business, not a key press.
+    assert page.evaluate(_DISPATCH_KEYDOWN_JS, [{"key": "Enter", "isComposing": True}])["cancelled"] is False
+    assert page.evaluate(_DISPATCH_KEYDOWN_JS, [{"key": "Process", "keyCode": 229}])["cancelled"] is False
+    # A plain printable character is beforeinput's, not keydown's.
+    assert page.evaluate(_DISPATCH_KEYDOWN_JS, [{"key": "a"}])["cancelled"] is False
+
+    # The picture goes stale: the same keys are not sent, and not cancelled.
+    sockets[-1].send(json.dumps({"type": "status", "state": "unavailable"}))
+    expect(page.locator("#screenState")).to_have_attribute("data-state", "stale")
+    assert page.evaluate(_DISPATCH_KEYDOWN_JS, [{"key": "F5"}])["cancelled"] is False
+    page.keyboard.press("ArrowUp")
+
+    # Live again, in Control: the first key that arrives is the marker, so
+    # nothing above was queued or sent.
+    sockets[-1].send(_frame())
+    expect(page.locator("#screenState")).not_to_have_attribute("data-state", "stale")
+    assert page.evaluate(_DISPATCH_KEYDOWN_JS, [{"key": "F8"}])["cancelled"] is True
+    _expect_keys(page, seen, ["f8"], "the marker key")
+
+
+def _hardware_keys_reach_the_pc_once_leg(page: Page, seen) -> None:
+    """In Control each hardware key reaches the PC once; typed text is not doubled."""
     page.evaluate("window.__stillHere = true")
 
     for press in ("ArrowUp", "ArrowLeft", "Tab", "Escape", "F5", "Control+c", "Control+v", "Meta+c", "Shift+Tab"):
@@ -101,47 +149,6 @@ def test_hardware_keys_reach_the_pc_once_and_typed_text_is_not_doubled(
     wait_until(page, lambda: seen["inputs"][-1].get("key") == "down", "Shift+Down")
     assert seen["inputs"][-1] == {"type": "key", "key": "down", "mods": ["shift"]}
     expect(page.locator('#screenKeys [data-mod="shift"]')).to_have_attribute("aria-pressed", "false")
-
-
-def test_no_hardware_key_is_sent_in_view_when_not_live_or_while_composing(
-    authed_page: Page, base_url: str
-) -> None:
-    sockets: List[WebSocketRoute] = []
-
-    def on_connect(ws: WebSocketRoute) -> None:
-        sockets.append(ws)
-        ws.send(_frame())
-
-    seen = _stub_screen(authed_page.context, on_connect)
-    page = _open_from_sheet(authed_page, base_url)
-    expect(page.locator("#screenImage")).to_be_visible()
-    wait_until(page, lambda: len(seen["acks"]) >= 1, "the frame's ack")
-
-    # View mode: not sent, and not cancelled either, so the browser keeps F5.
-    for key in ("ArrowUp", "F5", "Escape"):
-        init = {"key": key}
-        assert page.evaluate(_DISPATCH_KEYDOWN_JS, [init])["cancelled"] is False, key
-    assert page.evaluate(_DISPATCH_KEYDOWN_JS, [{"key": "c", "ctrlKey": True}])["cancelled"] is False
-
-    _set_mode(page, "control")
-    # An IME composition is the input's business, not a key press.
-    assert page.evaluate(_DISPATCH_KEYDOWN_JS, [{"key": "Enter", "isComposing": True}])["cancelled"] is False
-    assert page.evaluate(_DISPATCH_KEYDOWN_JS, [{"key": "Process", "keyCode": 229}])["cancelled"] is False
-    # A plain printable character is beforeinput's, not keydown's.
-    assert page.evaluate(_DISPATCH_KEYDOWN_JS, [{"key": "a"}])["cancelled"] is False
-
-    # The picture goes stale: the same keys are not sent, and not cancelled.
-    sockets[-1].send(json.dumps({"type": "status", "state": "unavailable"}))
-    expect(page.locator("#screenState")).to_have_attribute("data-state", "stale")
-    assert page.evaluate(_DISPATCH_KEYDOWN_JS, [{"key": "F5"}])["cancelled"] is False
-    page.keyboard.press("ArrowUp")
-
-    # Live again, in Control: the first key that arrives is the marker, so
-    # nothing above was queued or sent.
-    sockets[-1].send(_frame())
-    expect(page.locator("#screenState")).not_to_have_attribute("data-state", "stale")
-    assert page.evaluate(_DISPATCH_KEYDOWN_JS, [{"key": "F8"}])["cancelled"] is True
-    _expect_keys(page, seen, ["f8"], "the marker key")
 
 
 def test_the_pop_out_window_takes_hardware_keys_too(
