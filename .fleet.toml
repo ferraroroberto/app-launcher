@@ -1202,3 +1202,9 @@ name   = "background-task-state-ui"
 module = "app/webapp/static/background-tasks/task-state.js"
 type   = "TaskPhase"
 derive = "statusChip"
+
+[[state_machines]]
+name   = "board-exchange-state"
+module = "app/webapp/static/board/exchange-state.js"
+type   = "ExchangeState"
+derive = "exchangeState"

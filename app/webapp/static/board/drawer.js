@@ -28,6 +28,7 @@ import { CHIEF_KILL_CONFIRM, channelKillConfirm, isChannelSession } from '../sha
 import { renderMarkdown } from '../markdown.js';
 import { confirmDialog } from '../confirm-dialog.js';
 import { createRowMenu } from '../_vendored/row-menu/row-menu.js';
+import { exchangeState } from './exchange-state.js';
 import { isChiefCard } from './board-dispatch.js';
 import { fetchBoard, noteBoardEdit, renderBoard, sessionLabel } from '../board.js';
 
@@ -152,7 +153,7 @@ export function buildDrawer(card) {
 
   const exchange = document.createElement('div');
   exchange.className = 'board-exchange';
-  exchange.dataset.state = 'loading';
+  exchange.dataset.state = exchangeState(null);
   exchange.setAttribute('role', 'status');
   exchange.setAttribute('aria-live', 'polite');
   exchange.textContent = 'Reading last exchange…';
@@ -261,8 +262,8 @@ async function loadExchange(card, el) {
       '/api/board/sessions/' + encodeURIComponent(card.session_id) + '/exchange'
     );
     el.replaceChildren();
+    el.dataset.state = exchangeState(body);
     if (!body.available) {
-      el.dataset.state = body.reason === 'no_exchange' ? 'empty' : 'error';
       const reasons = {
         no_exchange: 'No exchange yet.',
         session_not_found: 'Session ended — refresh the Board.',
@@ -274,7 +275,6 @@ async function loadExchange(card, el) {
         'Conversation preview unavailable — open the terminal.';
       return;
     }
-    el.dataset.state = 'ready';
     // Rendered as markdown by Chat mode's renderer, which escapes
     // the text before it builds any markup.
     if (body.user && body.user.text) {
@@ -291,7 +291,7 @@ async function loadExchange(card, el) {
     }
     el.scrollTop = el.scrollHeight;
   } catch (exc) {
-    el.dataset.state = 'error';
+    el.dataset.state = exchangeState(null, true);
     el.textContent = 'Conversation preview unavailable — try again.';
   }
 }
