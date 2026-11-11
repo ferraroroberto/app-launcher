@@ -31,6 +31,7 @@ import {
   modelTag, resumedModelTag, refreshAfterLogChange, skillAvatar, skillsFilter, wireSheet,
 } from '../life-os.js';
 import { askName, closeDoc, loadFile, RENAME_TITLE_SHEET } from './life-os-content.js';
+import { syncFailed } from './title-sync.js';
 
 // The group's mode: 'off' (hidden), 'browse' (one skill's index, nothing
 // typed), 'search' (ranked hits, within the scope if there is one), or
@@ -675,7 +676,7 @@ async function renameConversationTitle(r) {
   // The rename stands; an open session of this conversation that could not be
   // renamed with it says so rather than quietly keeping the old name.
   const sync = reply && reply.session_sync;
-  if (sync && sync.status === 'failed') {
+  if (syncFailed(sync)) {
     toast(sync.error, 'error', { icon: 'pencil' });
   } else {
     toast(title ? 'Renamed to ' + title : 'Name cleared', 'good', { icon: 'pencil' });

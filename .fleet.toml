@@ -1136,3 +1136,15 @@ name   = "job-run-status-ui"
 module = "app/webapp/static/jobs/run-status.js"
 type   = "RunStatus"
 derive = "runStatus"
+
+[[state_machines]]
+name   = "life-os-title-sync"
+module = "src/life_os/title_sync.py"
+type   = "TitleSync"
+derive = "title_sync"
+
+[[state_machines]]
+name   = "life-os-title-sync-ui"
+module = "app/webapp/static/life-os/title-sync.js"
+type   = "TitleSync"
+derive = "titleSync"
