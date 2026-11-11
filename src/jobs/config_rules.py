@@ -21,7 +21,7 @@ def validate_principal_shape(visible: bool, session_less: bool) -> None:
     the job would run logged-out *and* show nothing when it ran logged-in.
 
     Enforced here rather than resolved by precedence because which one the
-    owner wants is a real trade, not a default (issue #757). Shared by
+    owner wants is a real trade, not a default. Shared by
     :func:`job_from_dict` and :func:`src.jobs.config.update_job` so the two
     write paths can't drift.
     """

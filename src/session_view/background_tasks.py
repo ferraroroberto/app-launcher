@@ -1,4 +1,4 @@
-"""A Claude session's background tasks (#1955), folded from its transcript.
+"""A Claude session's background tasks, folded from its transcript.
 
 The session's ⋮ → *Background tasks* lists what the agent started with
 ``run_in_background`` (Bash, PowerShell) or ``Monitor`` and has not heard

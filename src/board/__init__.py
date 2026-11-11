@@ -1,6 +1,6 @@
-"""Assembly logic for the Board tab's kanban columns (issue #300 / #164).
+"""Assembly logic for the Board tab's kanban columns.
 
-Five single-purpose columns (#399): Backlog and Done hold issues only;
+Five single-purpose columns: Backlog and Done hold issues only;
 Claude's turn and Your turn hold session cards only; Other holds everything
 else that needs attention but isn't a terminal or an issue — open PRs and
 failed/stuck jobs. See :func:`build_board` for the exact routing.
@@ -17,7 +17,7 @@ Three inputs, one board:
 plus the in-memory GitHub snapshot from :mod:`src.clients.github`.
 
 This module is now a thin ``build_board`` assembly plus the jobs-attention
-scan (issue #408 split — was a 690-line god file). The three other concerns
+scan. The three other concerns
 each own their own module, and their public names are re-exported here so
 every existing ``board.<name>`` call site (routers, tests) keeps working
 unchanged:
@@ -32,12 +32,12 @@ unchanged:
   (:func:`last_exchange`, plus the activity-overlay/external-liveness helpers
   ``merge_sessions`` calls internally).
 
-Degradation contract (#164 acceptance): a missing/corrupt/stale state file
+Degradation contract: a missing/corrupt/stale state file
 must never error — session cards fall back to ``unknown`` status and the
 GitHub/jobs columns render regardless.
 
-Shared session title (#396): the state row also carries ``name``/``name_source``
-(fleet-config#302's live Claude Code session title). ``merge_sessions`` copies
+Shared session title: the state row also carries ``name``/``name_source``
+(the live Claude Code session title). ``merge_sessions`` copies
 those onto every card as ``shared_name``/``shared_name_source``, and
 :func:`attach_shared_names` runs the identical agent-aware claim walk for the
 Coding tab's own ``/api/claude-code/sessions`` list — so a live session
@@ -94,16 +94,16 @@ _UNREADABLE_JOBS: set[str] = set()
 def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
     """Failed-today, unconfirmed-today, stuck and unreadable runs across all jobs.
 
-    A card's ``state`` is ``"failed"``, ``"unconfirmed"`` (#916 — the run may
+    A card's ``state`` is ``"failed"``, ``"unconfirmed"`` (the run may
     well have delivered, but the scheduled-run adapter could not establish it),
     ``"stuck"`` or ``"unreadable"``. ``error`` carries the exit code's own
     one-liner when it has one, so the card can say *why* without a log dive.
-    A run whose job declares its exit code ``deferred`` (#1316) gets no card.
-    A failed or unconfirmed run the owner dismissed (#1669) gets none either;
+    A run whose job declares its exit code ``deferred`` gets no card.
+    A failed or unconfirmed run the owner dismissed gets none either;
     ``stuck`` and ``unreadable`` cards describe a live problem and cannot be
     dismissed.
 
-    Reads the jobs' in-memory runtime snapshot (#1324), shared with
+    Reads the jobs' in-memory runtime snapshot, shared with
     ``/api/jobs``, instead of walking every job's history per poll. Still
     blocking (a stale or dirty snapshot is rebuilt inline) — callers wrap in
     ``asyncio.to_thread``. Job timestamps are naive local ISO strings
@@ -111,7 +111,7 @@ def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
     local calendar day.
 
     A job whose run history cannot be read gets an ``unreadable`` card rather
-    than being skipped (#915): skipping it meant that job could never raise
+    than being skipped: skipping it meant that job could never raise
     attention at all, and its absence read as "nothing stuck".
     """
     from src.jobs import snapshot as jobs_snapshot
@@ -211,7 +211,7 @@ _NEEDS_YOU_STATUSES = card_status.NEEDS_HUMAN
 def _is_chief_card(card: Dict[str, Any]) -> bool:
     """Board-side mirror of the frontend's ``isChiefSession`` (session-kinds.js) —
     label-first, ``kind``/``name`` fallback for a session-host predating the
-    label field. Kept in lockstep with that JS predicate (#575)."""
+    label field. Kept in lockstep with that JS predicate."""
     return bool(
         card.get("label") == "chief"
         or (card.get("kind") == "pty" and card.get("name") == "chief")
@@ -225,21 +225,21 @@ def build_board(
 ) -> Dict[str, List[Dict[str, Any]]]:
     """Route the three sources into the five computed columns.
 
-    Each column now holds one kind of card (#399): Backlog = open issues.
+    Each column now holds one kind of card: Backlog = open issues.
     Claude's turn = sessions working / unknown / idle / idle-finished /
     tool-pending / waiting-on-task (idle and idle-finished are dimmed client-side, not hidden —
     a session with nothing pending is still Claude holding a workspace, not
-    an alert; tool-pending (#813) is a session still mid-turn on an ordinary,
+    an alert; tool-pending is a session still mid-turn on an ordinary,
     non-decision tool call — equally likely to be executing as
     permission-gated, so it isn't asserted as an alert either). Your turn =
-    :data:`_NEEDS_YOU_STATUSES` only (#608: ``stalled`` / ``awaiting-decision``
+    :data:`_NEEDS_YOU_STATUSES` only (``stalled`` / ``awaiting-decision``
     / ``awaiting-input`` — the needs-you split's three genuinely
     human-actionable outcomes) — a terminal that needs a human.
     Other = everything else that needs attention but isn't a terminal: open
     PRs, then failed/stuck/unreadable jobs. Done = today's closed issues only
     — a merged PR that closed one is already reflected by the issue itself.
 
-    The standing fleet chief (#245) never routes to Your turn (#575): its
+    The standing fleet chief never routes to Your turn: its
     ``Stop``-hook-driven status sits in the needs-you family for nearly its
     entire life between dispatches — for a long-lived chat session that's a
     resting state, not a transient alert like it is for a worker session. It
@@ -270,7 +270,7 @@ def session_board_columns(
     fleet_config_dir: Path,
     now: Optional[datetime] = None,
 ) -> Dict[str, Dict[str, Any]]:
-    """Each live session's Board column, status and age, keyed by session id (#1434).
+    """Each live session's Board column, status and age, keyed by session id.
 
     The Coding tab's rows carry the Board's status vocabulary ("needs you",
     "stalled") without polling ``/api/board``: its own sessions poll asks this
@@ -280,7 +280,7 @@ def session_board_columns(
 
     A session absent from the result has no known column; callers show no
     chip for it rather than guess. ``age_seconds`` is the Board card's own
-    last-activity age (#1580), ``None`` when it has no anchor. Blocking (transcript tails and a pid probe
+    last-activity age, ``None`` when it has no anchor. Blocking (transcript tails and a pid probe
     per owned claim row) — callers wrap in ``asyncio.to_thread``.
     """
     claim_states = active_issue_claims.classify_claims(

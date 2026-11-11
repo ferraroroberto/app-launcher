@@ -1,7 +1,7 @@
-"""Owner liveness for the Board's active-issue claims (issue #948).
+"""Owner liveness for the Board's active-issue claims.
 
 A claim row in ``active-issues.json`` outlives a lane that died without
-``/issue-finish`` for up to the 24h read horizon. fleet-config#852 records the
+``/issue-finish`` for up to the 24h read horizon. The fleet-config active-issue helper records the
 row's owner (session id, agent pid, host) and owns the ``live`` / ``dead`` /
 ``unknown`` judgement in ``skills/_lib/active_issue.py``'s
 ``classify_owner``; this module only loads that contract (the same

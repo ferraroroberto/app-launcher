@@ -137,7 +137,7 @@ def upcoming_fires(
     ``now=cursor`` returns a fire strictly after ``cursor`` (the
     ``candidate <= now`` roll-forward guarantees it), so advancing the
     cursor to each result enumerates the window without re-deriving any
-    cadence math (issue #230 reuses #229's tested helper).
+    cadence math (it reuses the tested cadence helper).
 
     Returns ``[]`` for ``none`` / already-elapsed ``once`` and for the
     dense :data:`FREQUENT_SCHEDULE_TYPES` (``minutes`` / ``hourly``),

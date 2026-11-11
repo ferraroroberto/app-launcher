@@ -1,4 +1,4 @@
-"""Which failed job runs the owner already dealt with (#1669).
+"""Which failed job runs the owner already dealt with.
 
 A failed or unconfirmed run raises a card in the Board's PRs and jobs lane for
 the rest of the local day. Once the cause is fixed (or the work delivered by

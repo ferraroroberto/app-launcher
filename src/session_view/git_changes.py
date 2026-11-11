@@ -1,4 +1,4 @@
-"""Read-only working-tree inspection for the Coding tab's project menu (#977).
+"""Read-only working-tree inspection for the Coding tab's project menu.
 
 Three things the ``⋯`` menu on a Coding row needs that no editor should be
 required for:
@@ -10,7 +10,7 @@ required for:
   accordion viewer.
 * :func:`open_folder` — the project directory in Windows Explorer on the PC.
 * :func:`select_in_explorer` — one file, selected in its Explorer folder
-  (Open on PC's fallback, #1689).
+  (Open on PC's fallback).
 
 Everything git goes through :func:`src.git_utils.run_git` (argv list,
 ``NO_WINDOW``, ``None`` on a non-zero exit). That last property is why an
@@ -388,7 +388,7 @@ def open_folder(project_dir: Path) -> int:
 
 
 def select_in_explorer(file_path: Path) -> int:
-    """Open Explorer on ``file_path``'s folder with the file selected (#1689).
+    """Open Explorer on ``file_path``'s folder with the file selected.
 
     Open on PC's fallback when VS Code is missing: it shows the file, it never
     opens it, so nothing runs. ``/select,`` must be glued to a quoted path in

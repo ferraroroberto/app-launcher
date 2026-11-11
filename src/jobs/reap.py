@@ -34,12 +34,12 @@ never triggers a re-entrant mutex-queue spawn off stale information:
   queue once if anything was reaped. Safe from a pure read/refresh context
   that isn't deciding an admission itself:
   ``src.jobs.snapshot.compute_job``, the one walk behind the ``/api/jobs``
-  and ``/api/board`` polls (#1324), rebuilt by a tick only while those polls
+  and ``/api/board`` polls, rebuilt by a tick only while those polls
   are asking, and a single-job ``_decorate_job``. Still lazy-on-read in
   spirit (:func:`src.app_runtime.prune_dead`): nobody polling, nothing reaped.
 
 The reconciler discovers a death lazily — sometimes hours after the process
-actually exited (issue #747: the machine had no live user session to poll
+actually exited (for example when the machine had no live user session to poll
 ``/api/jobs`` for 14+ hours). So ``finished_at`` is never stamped as "now" —
 that would fold a phantom multi-hour duration into the job's P50/P95. Instead
 :func:`_evidence_finished_at` prefers ``output.log``'s last-write mtime, the
@@ -247,7 +247,7 @@ def _reap_one(job: Job, record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     real evidence exists (:func:`_evidence_finished_at`) or ``end_time_unknown:
     True`` when it doesn't, marked ``reaped: True`` rather than ``killed:
     True`` (this was never killed, we just lost track of it) — invalidates
-    the stats cache, and fires the same failure alert (issue #747) a normal
+    the stats cache, and fires the same failure alert a normal
     finalise would, since nobody was told about this failure the moment it
     actually happened.
 
@@ -343,7 +343,7 @@ def reap_stranded_runs(job: Job) -> List[Dict[str, Any]]:
 def reap_stranded_runs_all(
     jobs: Optional[List[Job]] = None,
 ) -> Dict[str, List[Dict[str, Any]]]:
-    """Sweep every job for stranded records (issue #809).
+    """Sweep every job for stranded records.
 
     ``reap_stranded_runs`` is otherwise lazy-on-read — it only runs when
     ``GET /api/jobs`` or the Board's ``jobs_attention`` happen to be polled.
@@ -352,7 +352,7 @@ def reap_stranded_runs_all(
     ``script_path`` (the fleet-config skill-relocation commit, 2026-06-18)
     sat unreaped for over two months until something finally polled it,
     firing a failure alert that read as live but was two months stale.
-    Mirrors issue #697's fix for the same "nothing looked when nobody was
+    Mirrors the missed-fire coverage fix for the same "nothing looked when nobody was
     looking" shape, applied here to reaping instead of missed-fire coverage
     — see the background tick in ``app/webapp/server.py``.
 

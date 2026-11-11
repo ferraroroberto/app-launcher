@@ -1,11 +1,11 @@
 """Filesystem correlation of a live session to its harness transcript.
 
-Split out of ``src/board/exchange.py`` (#1309): that module resolves *what to
+Split out of ``src/board/exchange.py``: that module resolves *what to
 show* for the Board drawer's conversation preview, while this one answers a
 narrower, reusable question — *which file on disk belongs to this live
 session* — for every harness that writes the launcher no exact id at all
 (Codex, Pi, Antigravity, Copilot) plus Claude's own filesystem fallback
-(#1023) and its ``--resume <id>`` correlation (#1155). ``src.board.exchange``
+and its ``--resume <id>`` correlation. ``src.board.exchange``
 and ``app/webapp/routers/session_transcript.py`` both call into this module
 rather than duplicating the correlation logic; neither owns it.
 
@@ -191,7 +191,7 @@ def find_codex_transcript(session: Dict[str, Any]) -> Optional[Path]:
 
 
 def find_pi_transcript(state_sid: str) -> Optional[Path]:
-    """The Pi history file for a state row keyed ``state_sid`` (#1013).
+    """The Pi history file for a state row keyed ``state_sid``.
 
     Pi's fleet ``session_state`` extension keys its row by **Pi's own
     session uuid** and leaves ``transcript_path`` null, while Pi names the
@@ -233,7 +233,7 @@ def _started_epoch(session: Dict[str, Any]) -> Optional[float]:
 def find_antigravity_transcript(
     session: Dict[str, Any], live: Iterable[Dict[str, Any]]
 ) -> Optional[Path]:
-    """The Antigravity conversation log for a live session (#1014).
+    """The Antigravity conversation log for a live session.
 
     Antigravity writes nothing that names the launcher session: its
     conversation store is keyed by its own UUID, and `history.jsonl` — the
@@ -341,7 +341,7 @@ def _copilot_workspace(path: Path) -> Tuple[str, Optional[float]]:
 
 
 def find_copilot_transcript(session: Dict[str, Any]) -> Optional[Path]:
-    """The Copilot CLI event log for a live session (#1015).
+    """The Copilot CLI event log for a live session.
 
     Copilot writes the launcher nothing: its hooks don't fire in the
     interactive TUI, so there is no sessions-state row, and a grep of a
@@ -370,7 +370,7 @@ def find_copilot_transcript(session: Dict[str, Any]) -> Optional[Path]:
     refused by the same check.
 
     Cost: one bounded read of every session folder's sidecar — 71 files of
-    ~500 bytes here. Chat mode has no periodic refresh (#982), so this runs
+    ~500 bytes here. Chat mode has no periodic refresh, so this runs
     on opening the pane and on Reload, not on a timer.
     """
     project_dir = _normalize_dir(session.get("project_dir"))
@@ -432,7 +432,7 @@ def _claude_scan(
     disprove: bool = False,
 ) -> Tuple[Optional[Path], str, str]:
     """The Claude Code conversation log for a live session, from the
-    filesystem alone (#1023) — the fallback for when no state row names one.
+    filesystem alone — the fallback for when no state row names one.
 
     Claude's history normally arrives the direct way, on the hook state row's
     ``transcript_path``. That row is written by ``fleet-config``'s
@@ -465,7 +465,7 @@ def _claude_scan(
     * **One live session per folder.** If the launcher hosts another alive
       Claude session with the same ``project_dir``, nothing here can say
       which of them the newest file belongs to — refuse, rather than show
-      one session's conversation under the other's name (#537).
+      one session's conversation under the other's name.
     * **Written since this session started.** The file's mtime must be at or
       after ``started_at`` (less :data:`_CLAUDE_MTIME_SLOP_SECONDS`). A
       session that has not written yet would otherwise inherit whatever ran
@@ -476,7 +476,7 @@ def _claude_scan(
     ``no_transcript`` — never an ``available: true`` over a file that may not
     be this session's.
 
-    **The third guard, opt-in (#1034):** with ``disprove`` set, a chosen
+    **The third guard, opt-in:** with ``disprove`` set, a chosen
     file is additionally checked against the PTY's own window title and
     *refused* when the two genuinely conflict — see
     :func:`_disprove_by_live_title`. It is opt-in because it is a ranking
@@ -488,7 +488,7 @@ def _claude_scan(
     every caller that does not want the third guard.
 
     The third element names the guard that refused (``""`` on success), so
-    a ``no_transcript`` answer can say why (#1155).
+    a ``no_transcript`` answer can say why.
     """
     project_dir = str(session.get("project_dir") or "")
     started = _started_epoch(session)
@@ -561,7 +561,7 @@ def claude_resume_id(session: Dict[str, Any]) -> Optional[str]:
 def _claude_resumed_transcript(session: Dict[str, Any]) -> Optional[Path]:
     """``<cwd folder>/<resume id>.jsonl`` for a ``--resume <id>`` launch.
 
-    Probed on Claude Code 2.1.280 (#1155): an interactive
+    Probed on Claude Code 2.1.280: an interactive
     ``claude --resume <id>`` appends to that same ``<id>.jsonl`` rather than
     opening a new file, so the id names this session's conversation from
     spawn onwards, including before any prompt, when the hook row is gone
@@ -586,7 +586,7 @@ def claude_bridge_id(session: Dict[str, Any]) -> Optional[str]:
 
 def _claude_bridge_transcript(session: Dict[str, Any]) -> Optional[Path]:
     """``<cwd folder>/<conversation id>.jsonl`` named by the session's own
-    Claude process (#1393).
+    Claude process.
 
     A ``--remote-control`` session carries its bridge id in ``web_url``, and
     Claude Code records the same id as ``bridgeSessionId`` in its per-process
@@ -638,7 +638,7 @@ def _claude_bridge_transcript(session: Dict[str, Any]) -> Optional[Path]:
 def resolve_claude_transcript(
     session: Dict[str, Any], live: Iterable[Dict[str, Any]]
 ) -> Tuple[Optional[Path], str]:
-    """``/transcript``'s row-less Claude resolution (#1023, #1155, #1393).
+    """``/transcript``'s row-less Claude resolution.
 
     The scan (two guards, no title disproof) answers first. When it refuses,
     a ``--resume <id>`` launch still names its conversation: the resumed
@@ -647,12 +647,12 @@ def resolve_claude_transcript(
     exactly this session's. The id is exact, so neither guard applies to it,
     but one thing can still make it wrong: a ``/resume`` *inside* the
     session moves it to another conversation while its launch flags keep
-    the old id. The live-title disproof (#1034) covers that: a title that
+    the old id. The live-title disproof covers that: a title that
     genuinely conflicts with the resumed file's own name refuses it. A fresh
     launch and a bare ``--resume`` have no id and are unaffected.
 
     A session with a Remote Control link has a third exact id, its bridge
-    id's registry entry (#1393), tried last and checked by the same title
+    id's registry entry, tried last and checked by the same title
     disproof; a channel session with no hook row in a shared folder has no
     other.
 
@@ -689,7 +689,7 @@ def _claude_declared_titles(path: Path) -> Tuple[Optional[str], Optional[str]]:
     ``aiTitle: "Investigate and fix failed jobs"`` in the *same* file, the
     ai-title frozen at what it inferred early (one distinct value across all
     38,094 lines) while the PTY paints the custom one. Reading only
-    ``ai-title``, as #1034 first proposed, would have made the chief's own
+    ``ai-title`` alone would have made the chief's own
     drawer disagree with itself permanently.
 
     Both are returned rather than resolved to one here, so the caller can
@@ -722,10 +722,10 @@ def _claude_declared_titles(path: Path) -> Tuple[Optional[str], Optional[str]]:
 
 
 def _disprove_by_live_title(path: Path, session: Dict[str, Any]) -> str:
-    """Use the PTY window title to *rule out* a scanned conversation (#1034).
+    """Use the PTY window title to *rule out* a scanned conversation.
 
-    The gap this closes is the ``/resume`` window #1027 documented and left
-    open: ``SessionEnd`` fires on ``/resume`` too, so a session that resumes
+    The gap this closes is the ``/resume`` window:
+    ``SessionEnd`` fires on ``/resume`` too, so a session that resumes
     a *different* conversation has no state row, and until the resumed
     conversation is itself written the newest file in the folder is the one
     it just **left**. Nothing about the two files separates them — the same
@@ -742,13 +742,13 @@ def _disprove_by_live_title(path: Path, session: Dict[str, Any]) -> str:
     gate a working answer behind a signal that is absent in exactly the
     cases that need it most: a detached ``RemoteSession`` has no PTY and so
     no title at all, and those are the sessions that had no fallback
-    whatsoever before #1027.
+    whatsoever.
 
     Hence three outcomes rather than two, with ``unknown`` folded into
-    neither: either side missing leaves the answer exactly as #1027 ranked
+    neither: either side missing leaves the answer exactly as the ranking left
     it, and says so rather than implying the title agreed. Requiring *both*
     sides present and genuinely conflicting is also what keeps a title
-    frozen by a wedged PTY (#636) from refusing a good answer by itself.
+    frozen by a wedged PTY from refusing a good answer by itself.
     """
     title = strip_status_glyph(session.get("live_title"))
     if not title:

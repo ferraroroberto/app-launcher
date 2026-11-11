@@ -156,7 +156,7 @@ PROBLEM_OFFSET_PINNED_TRIGGER = "offset_pinned_trigger"
 
 
 class Announcement(NamedTuple):
-    """How one problem class is announced on the phone (issue #778).
+    """How one problem class is announced on the phone.
 
     ``title`` is a format string taking ``{name}`` (the job's display name).
     ``severity`` maps to a Pushover priority in
@@ -289,7 +289,7 @@ def _result(
 def _no_history_detail() -> str:
     """The honest "cannot establish" line for a job with zero run records.
 
-    Two materially different diagnoses, so two messages (issue #737):
+    Two materially different diagnoses, so two messages:
 
     * The run-history store holds no per-job history at all — either the
       directory is absent or nothing has ever been recorded under it. That is
@@ -328,7 +328,7 @@ def behavioural_coverage(
     genuinely uncovered (``[]`` meaning "all covered", or nothing to check).
     ``([], reason)`` means the question could not be answered at all, and the
     caller must report ``unknown`` rather than either passing or failing the
-    job (issue #737; see the module docstring's never-flag rules).
+    job (see the module docstring's never-flag rules).
 
     Missed slots are oldest first. Both lists are empty for the dense
     :data:`~src.jobs.next_fire.FREQUENT_SCHEDULE_TYPES`, for a schedule with
@@ -403,7 +403,7 @@ def coverage_for(
 
     ``principals`` is :func:`src.jobs.schtasks.registered_task_principals`'
     output, read from the same cached snapshot. It is only consulted for a
-    ``session_less`` job (issue #757), where "the entry exists and is
+    ``session_less`` job, where "the entry exists and is
     enabled" is *not* sufficient: an entry left on the default
     ``InteractiveToken`` principal passes every other check here and still
     does nothing whenever the machine sits logged out. Same tri-state rule
@@ -414,8 +414,8 @@ def coverage_for(
     problem first (it rests on its own evidence and outranks the other
     half's silence), then ``unknown`` if *either* half could not establish
     its fact, then ``ok``. So a job whose Task Scheduler entry is missing is
-    still a ``problem`` even with no run history to read (issue #737), which
-    is the shape of both incidents #697 was built for.
+    still a ``problem`` even with no run history to read, which
+    is the shape of the incidents this check exists for.
 
     ``offset_pins`` is :func:`src.jobs.schtasks.registered_task_offset_pins`'
     output. Left out, the pinned-offset check is skipped; passed as ``None``
@@ -603,7 +603,7 @@ def coverage_map(max_age: Optional[float] = None) -> Dict[str, Dict[str, Any]]:
     ``/api/jobs`` decorates every row from one cached scan per poll rather
     than re-deriving per job. Invalidated on demand by
     :func:`invalidate_coverage_cache`, not by forcing a fresh scan here.
-    ``max_age`` rescans earlier than the TTL: the jobs snapshot tick (#1324)
+    ``max_age`` rescans earlier than the TTL: the jobs snapshot tick
     warms it before it expires, so a poll never pays the scan.
     """
     global _coverage_cache
@@ -674,7 +674,7 @@ def _signature(result: Dict[str, Any]) -> str:
 
 
 def announcement_for(problems: Any) -> Announcement:
-    """How to announce a ``problem`` verdict carrying *problems* (issue #778).
+    """How to announce a ``problem`` verdict carrying *problems*.
 
     The **title and severity** come from the highest-precedence class present
     in :data:`PROBLEM_ANNOUNCEMENTS` — a missing Task Scheduler entry explains

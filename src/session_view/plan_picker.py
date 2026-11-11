@@ -1,4 +1,4 @@
-"""Claude Code's plan picker, read off the live terminal screen (#1151).
+"""Claude Code's plan picker, read off the live terminal screen.
 
 The Chat pane's plan card can't answer from the transcript alone. Claude Code
 can keep the pending ``ExitPlanMode`` call off disk until it is answered

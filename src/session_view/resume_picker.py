@@ -1,9 +1,9 @@
-"""Claude Code's ``/resume`` picker, answered from a Chat card (#1300).
+"""Claude Code's ``/resume`` picker, answered from a Chat card.
 
 Resuming from the phone meant driving Claude Code's own session picker in
 the terminal: a long, scrolling TUI list. The Chat pane shows that list as a
 searchable card instead, and a pick resumes the session deterministically.
-Probed on Claude Code 2.1.283 (the probe is recorded on #1300):
+Probed on Claude Code 2.1.283 (the probe is recorded in the PR that added it):
 
 * ``/resume <session-id>`` typed into a running interactive session resumes
   exactly that conversation, no picker in between. A pick made with no
@@ -37,7 +37,7 @@ list drops the ``(1 of 50)`` count, which follows the highlight)::
         14 seconds ago · main · 554.6KB
         Add a dark theme
         25 minutes ago · main · 5.8MB ·
-        example/my-project#12
+        example/my-project
       ↓ /remote-control is active · Continue here,…
         Ctrl+A to show all projects · Ctrl+B to only
         show current branch · Ctrl+W to show all

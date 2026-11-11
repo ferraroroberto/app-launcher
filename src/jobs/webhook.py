@@ -1,4 +1,4 @@
-"""Webhook-target jobs — signature verification + payload mapping (issue #73).
+"""Webhook-target jobs — signature verification + payload mapping.
 
 Lets an external service (GitHub, Stripe, or a generic POST from
 IFTTT/Zapier/…) fire a job over ``POST /api/jobs/<id>/hook`` instead of the
@@ -12,7 +12,7 @@ Deliberately a leaf module — no import of :mod:`src.jobs.config` — so
 
 Secrets: a job's ``webhook.secret`` is either a literal string or a
 ``$secret:<key>`` reference resolved against ``webapp_config.secrets`` at
-fire time (via :mod:`src.jobs.secrets`, generalized by issue #72 from the
+fire time (via :mod:`src.jobs.secrets`, generalized from the
 in-line mechanism this module introduced) — so a rotated secret lives in
 one gitignored place instead of ``jobs.json``.
 """

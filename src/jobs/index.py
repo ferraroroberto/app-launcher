@@ -284,15 +284,15 @@ def search_runs(
 ) -> List[Dict[str, Any]]:
     """FTS-search output, newest first, with optional exact filters.
 
-    Each hit carries ``outcome`` alongside ``status`` (issue #916), classified
+    Each hit carries ``outcome`` alongside ``status``, classified
     here from the indexed ``exit_code`` rather than re-derived in the client, so
     a search hit's icon agrees with the same run's icon in the history list. The
     ``status`` filter argument still matches the persisted column: filtering is
     a query against what is stored, rendering is a question about what it meant.
-    The hit's job's own ``exit_outcomes`` (#1316) ride along for the same
+    The hit's job's own ``exit_outcomes`` ride along for the same
     reason.
 
-    That agreement needs the launcher-terminated flags too (issue #1007):
+    That agreement needs the launcher-terminated flags too:
     :func:`~src.jobs.outcome.run_outcome` keeps a ``failed`` verdict as
     ``failed`` when ``killed`` / ``watchdog`` / ``reaped`` is set, instead of
     softening it to "not confirmed". They were not in the schema, so that

@@ -1,8 +1,8 @@
-"""Agent-aware conversation previews for the Board drawer (issue #457).
+"""Agent-aware conversation previews for the Board drawer.
 
 The hook row's Claude JSONL remains the best source when it exists because it
 is structured chat data.  When no row names one, a Claude conversation is
-correlated from the filesystem instead (#1027, reported as ``native_scan``
+correlated from the filesystem instead (reported as ``native_scan``
 because the match is inferred rather than exact).  Launcher-owned PTYs also
 have an exact-id capture, however, and that is the fallback for a scan that
 refuses and for agents such as Codex that publish no hook transcript at all.
@@ -14,7 +14,7 @@ repaint bytes out of the API response and avoids any cwd-based guessing.
 
 The filesystem correlation itself — locating which harness file belongs to a
 live session at all, across Codex/Pi/Antigravity/Copilot and Claude's own
-scan/resume-id fallbacks — lives in ``src/session_view/transcript_locate.py`` (#1309); this
+scan/resume-id fallbacks — lives in ``src/session_view/transcript_locate.py``; this
 module resolves *what to show*, not *which file*.
 """
 
@@ -107,12 +107,12 @@ def resolve_exchange(
     The row-declared ``native_path`` is exact and always wins. When no row
     names one and the agent is Claude,
     :func:`transcript_locate._scan_claude_transcript`
-    (#1023, the scan ``/transcript`` shares via
+    (the scan ``/transcript`` shares via
     :func:`transcript_locate.resolve_claude_transcript`) correlates the
     conversation from the filesystem — the fallback for the window where
     the hook has deleted the row out from under a still-live session.
 
-    **Ordering (#1027).** Unlike ``/transcript``, this route already had a
+    **Ordering.** Unlike ``/transcript``, this route already had a
     working fallback, so adding a second one is a ranking decision rather
     than a gap-fill. The scanned JSONL is placed **above** the launcher's
     exact-id PTY capture, for two reasons: it is structured chat data
@@ -123,7 +123,7 @@ def resolve_exchange(
     two guards — so an ambiguous folder still degrades to the
     rougher-but-honest answer rather than to a neighbour's text.
 
-    **The ranking's one cost, and how it is now bounded (#1034).** Claude
+    **The ranking's one cost, and how it is now bounded.** Claude
     Code fires ``SessionEnd`` on ``/resume`` too, so the rowless window
     opens the moment a session resumes a *different* conversation. Until
     the resumed conversation is itself written, the newest file in the
@@ -239,7 +239,7 @@ def codex_last_exchange(path: Optional[Path]) -> Dict[str, Any]:
     """Read the newest Codex user/assistant messages from bounded JSONL.
 
     Reads the rollout through :func:`transcript_flavors.codex.codex_entries`
-    (#1422) so the drawer and the Chat reader agree on what counts as a typed
+    so the drawer and the Chat reader agree on what counts as a typed
     prompt — harness plumbing such as ``<environment_context>`` is a ``system``
     entry there, never the "last prompt" shown here.
     """
@@ -485,7 +485,7 @@ def _last_submitted_input(path: Optional[Path]) -> str:
     :func:`_cook_input_line` — the same keystroke cooker
     ``session_host.PtySession._maybe_capture_prompt`` uses for the first-
     prompt title — so the drawer prompt and the session title agree on one
-    rule (#1627) instead of carrying their own, divergent copies.
+    rule instead of carrying their own, divergent copies.
     """
     if path is None:
         return ""

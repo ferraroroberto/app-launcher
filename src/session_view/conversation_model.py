@@ -1,8 +1,8 @@
-"""The model a stored conversation last ran on, read from the agent's own files (#1503).
+"""The model a stored conversation last ran on, read from the agent's own files.
 
 Life OS's swipe-Resume promises that a resumed conversation comes back on its
 own model, not on whatever the launch combo shows. The two harnesses differ,
-and this was probed rather than assumed (recorded on #1503's PR):
+and this was probed rather than assumed (the probe is recorded in the PR that added it):
 
 - **Claude** — a bare ``claude --resume <id>`` keeps the conversation's model
   (started on Haiku with Opus as the configured default, resumed bare: Haiku),

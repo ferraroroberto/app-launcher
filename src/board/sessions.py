@@ -1,4 +1,4 @@
-"""Session-claim/merge logic for the Board tab (issue #408 split of ``board.py``).
+"""Session-claim/merge logic for the Board tab (split out of ``board.py``).
 
 Joins the **live session list** from the session-host
 (``session_client.list_sessions``) with the hook-written state rows
@@ -7,8 +7,8 @@ agent when a writer supplies those fields; legacy Claude rows fall back to an
 agent-gated normalized-cwd claim. Two legacy live sessions in one directory
 tie-break by most recent ``started_at``; the rest show ``unknown``.
 
-Shared session title (#396): the state row also carries ``name``/``name_source``
-(fleet-config#302's live Claude Code session title). :func:`merge_sessions`
+Shared session title: the state row also carries ``name``/``name_source``
+(the live Claude Code session title). :func:`merge_sessions`
 copies those onto every card as ``shared_name``/``shared_name_source``, and
 :func:`attach_shared_names` runs the identical agent-aware claim walk for the
 Coding tab's own ``/api/claude-code/sessions`` list — so a live session
@@ -66,10 +66,10 @@ def active_issue_repos(
     workflow — unless ``claim_states`` (keyed like the rows, see
     :func:`src.board.active_issue_claims.classify_claims`) positively marks a row
     ``dead``, whose lane is gone and so no longer holds its repo's sessions
-    out of ``idle-finished`` (#948). ``unknown`` keeps the row, as before.
+    out of ``idle-finished``. ``unknown`` keeps the row, as before.
     This is the cheap, already-fetched-every-poll signal
     :func:`merge_sessions` uses to keep a session's card out of
-    ``idle-finished`` while its own repo's issue work is still open (#627) —
+    ``idle-finished`` while its own repo's issue work is still open —
     coarser than the branch/PR-level evidence the issue itself describes
     (that would need a new ``git``/``gh`` call per session per poll, which
     this Board explicitly never does — see ``scanner.git_status``'s own
@@ -162,7 +162,7 @@ def _normalize_dir(raw: Any) -> str:
 
 
 def _row_agent(row: Dict[str, Any]) -> str:
-    """State rows predating #455 are Claude Code rows by definition."""
+    """A state row with no ``agent`` is a Claude Code row by definition."""
     return str(row.get("agent") or "claude").strip().lower()
 
 
@@ -187,17 +187,17 @@ def _match_state_row(
     Claude rows have neither that field nor ``agent`` and retain the normalized
     cwd fallback. Rows carrying a different launcher id are never allowed to
     fall back by cwd — that would reintroduce the same-session collision exact
-    identity exists to prevent (#455).
+    identity exists to prevent.
 
     The cwd fallback also requires the row's ``updated_at`` to be at-or-after
-    the session's own ``started_at`` (#482) — a row genuinely written by this
+    the session's own ``started_at`` — a row genuinely written by this
     session can never predate the session's existence, so an older row can
     only be some other, unrelated conversation's leftover state in the same
     directory (e.g. a race where this session's own row hasn't landed yet).
     Without this guard the "most recently updated" tie-break could hand a
     brand-new session an hours-old sibling's title.
 
-    ``ambiguous_cwd`` (#537): true when 2+ *live* sessions share this
+    ``ambiguous_cwd``: true when 2+ *live* sessions share this
     session's (cwd, agent) — set by :func:`_claim_walk` from the full live
     list, not just the rows still unclaimed. With only recency to go on, the
     cwd fallback has no way to tell which of several live siblings a given
@@ -255,7 +255,7 @@ def _claim_walk(
     The single source of the claim order — ``merge_sessions`` renders it and
     ``state_row_for_session`` resolves one session's row consistently with
     what the board displays. Returns ``(pairs, leftovers)`` where ``pairs``
-    is ``[(session, row-or-None, sid-or-None), ...]`` (fleet-config#242's
+    is ``[(session, row-or-None, sid-or-None), ...]`` (the
     ``state_sid`` — the claimed row's own key — rides alongside the row so
     ``merge_sessions`` can put it on the card) and ``leftovers`` the unclaimed
     rows.
@@ -280,7 +280,7 @@ def _claim_walk(
 
 def _claimed_transcript_paths(pairs: List[tuple]) -> "set[str]":
     """Transcript paths already backing a live, matched session's own row
-    (#613) — an unmatched row pointing at the same file is a superseded
+    — an unmatched row pointing at the same file is a superseded
     leftover of that same session (re-keyed when a worker moved from one
     issue to the next), not independent evidence of a second live process."""
     claimed: "set[str]" = set()
@@ -294,7 +294,7 @@ def _claimed_transcript_paths(pairs: List[tuple]) -> "set[str]":
 
 
 def _live_launcher_session_ids(live: List[Dict[str, Any]]) -> "set[str]":
-    """Every currently-alive session-host id (#613) — the session-host is the
+    """Every currently-alive session-host id — the session-host is the
     authority on which PTYs it owns, so a hook row whose own
     ``launcher_session_id`` is absent from this set is provably dead, however
     recently its transcript happened to be touched."""
@@ -312,7 +312,7 @@ def state_row_for_session(
 ) -> Optional[Dict[str, Any]]:
     """The state row the board's merge assigns to this live session (or None).
 
-    Used by the drill-down endpoint (#301) to find a session's
+    Used by the drill-down endpoint to find a session's
     ``transcript_path`` — the transcript UUID lives only in the hook row,
     never in the session-host record.
     """
@@ -335,7 +335,7 @@ def state_sid_for_session(
 
     A live PTY's own id is the session-host's, not Claude Code's; the id
     ``claude --resume <id>`` needs is the state row's key. The chief resume
-    lookup (#670) needs exactly that for the chief it is about to stop, so a
+    lookup needs exactly that for the chief it is about to stop, so a
     chief nobody launched through ``ensure`` — whose row is therefore named
     after its project rather than ``"chief"`` — is still resumable back into
     itself.
@@ -351,8 +351,8 @@ def attach_shared_names(
     live: List[Dict[str, Any]], state_rows: Dict[str, Dict[str, Any]]
 ) -> List[Dict[str, Any]]:
     """Join live session-host sessions with the state file's shared session
-    title (fleet-config#302's ``name``/``name_source``), for the Coding tab's
-    Running-sessions list (#396).
+    title (``name``/``name_source``), for the Coding tab's
+    Running-sessions list.
 
     Uses the exact same agent-aware :func:`_claim_walk` as :func:`merge_sessions`
     — both consumers must resolve a given live session to the same state row,
@@ -375,7 +375,7 @@ def attach_shared_names(
 def attach_last_turn(
     live: List[Dict[str, Any]], state_rows: Dict[str, Dict[str, Any]]
 ) -> List[Dict[str, Any]]:
-    """Each live session plus ``last_turn_at`` (#1647): epoch seconds of the
+    """Each live session plus ``last_turn_at``: epoch seconds of the
     newest real conversation line (``user``/``assistant``) in its transcript,
     or ``None`` when that cannot be read.
 
@@ -439,28 +439,28 @@ def merge_sessions(
     claims win; legacy Claude rows fall back to cwd recency. Later sessions in
     the same directory render ``unknown``. A state row with no live match only
     becomes an external card when recent transcript activity independently
-    proves the process still exists — hook state alone is not liveness (#455).
+    proves the process still exists — hook state alone is not liveness.
     Waiting statuses are checked against transcript activity — see
-    :func:`src.board.transcript._transcript_overlay` (#305) — and a hook
+    :func:`src.board.transcript._transcript_overlay` — and a hook
     ``needs-you`` is then split into ``stalled`` / ``awaiting-decision`` /
-    ``tool-pending`` / ``idle-finished`` / ``awaiting-input`` (#608, sharpened
-    by #813's :func:`src.board.transcript._refine_waiting_status`) so a caller
+    ``tool-pending`` / ``idle-finished`` / ``awaiting-input``
+    by :func:`src.board.transcript._refine_waiting_status`, so a caller
     never has to fetch the exchange to tell those five apart. The raw
     ``needs-you`` string itself never reaches a card's ``status`` field.
     When that split finds no pending decision, a live launcher PTY running
-    Claude gets one more check (#1203): the plan picker on its screen
+    Claude gets one more check: the plan picker on its screen
     (:func:`_plan_picker_on_screen`, cached by the capture's size and mtime)
     makes it ``awaiting-decision`` — Claude can keep the ``ExitPlanMode``
     call off disk while the picker is up. Detached and state-only cards have
     no screen and keep the transcript's answer. The
     live session's ``last_output_at`` rides along with ``live_title`` to the
-    matched-pairs call site only (#636) — a busy title with a genuinely
+    matched-pairs call site only — a busy title with a genuinely
     stale PTY (no more raw output at all) falls through to this same
     transcript-based logic instead of being trusted blindly; unmatched rows
     have no live PTY to read a freshness stamp from, same scoping as
     ``live_title`` itself.
 
-    ``idle-finished`` gets one more downgrade after that split (#627): a
+    ``idle-finished`` gets one more downgrade after that split: a
     clean stop with nothing pending is still only an *absence* of evidence,
     not positive proof the session's own work is done — a turn can end mid
     task (no tool call issued, nothing to structurally detect) just as
@@ -470,20 +470,20 @@ def merge_sessions(
     cheap, already-fetched substitute: an ``idle-finished`` card whose repo
     still has an open issue workflow is reported ``awaiting-input`` instead
     — a coarser, repo-level check that can occasionally keep a genuinely
-    finished session in view, which is exactly the asymmetry #627 asks for
+    finished session in view, which is exactly the asymmetry wanted here
     (under-claim, don't over-claim).
 
     Live-session cards also carry ``state_sid`` — the claimed state row's own
     key (``None`` when unmatched) — so a Slack ping's deep link, which only
     knows the hook's transcript UUID, can still resolve to the right card
-    (fleet-config#242 / #307). State-only cards don't get one: they have no
+    . State-only cards don't get one: they have no
     session-host id and no drawer target, so a deep link to one is out of scope.
 
     Blocking file IO (a transcript stat plus up to two bounded tail reads per
     waiting card — the activity window and one shared
     :class:`src.board.transcript._ExchangeTail` — and, for a screen-checked
     card, a capture stat plus a render when the capture changed) — callers wrap in
-    ``asyncio.to_thread`` (#881).
+    ``asyncio.to_thread``.
     """
     now = now or utc_now()
     active_repos = active_issue_repos or frozenset()

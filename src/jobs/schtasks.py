@@ -16,7 +16,7 @@ calls it with ``pythonw launcher.py run-job <id>``; the webapp's
 ``POST /api/jobs/<id>/run`` route spawns the same command detached and
 returns the new ``run_id`` immediately.
 
-Split out of :mod:`src.jobs` (issue #315) — run-history file storage lives
+Split out of :mod:`src.jobs` — run-history file storage lives
 in :mod:`src.jobs.history`, the mutex queue in :mod:`src.jobs.queue`, and
 percentiles/health in :mod:`src.jobs.stats`.
 """
@@ -335,7 +335,7 @@ def registration_script(job: Job) -> Optional[str]:
     :func:`sync_schtasks`).
 
     The principal is ``-LogonType S4U``: "run whether the user is logged on
-    or not" *without* storing a password. #757's probe measured a real S4U
+    or not" *without* storing a password. A probe measured a real S4U
     token on this host against the things these jobs actually need — same
     SID, ``SessionId=0``, both backup destinations writable, the loopback
     hub and outbound HTTPS reachable, ``gh``'s Credential-Manager token
@@ -345,7 +345,7 @@ def registration_script(job: Job) -> Optional[str]:
     rather than baked in, so the emitted text carries no machine identity.
 
     Settings mirror what :func:`_apply_power_policy` applies to every
-    normally-synced task (issue #746), because ``Register-ScheduledTask``
+    normally-synced task, because ``Register-ScheduledTask``
     replaces the whole settings object rather than merging into it — a
     hand-registered entry that omitted them would silently inherit Windows'
     restrictive on-battery defaults on a UPS-backed host.
@@ -485,7 +485,7 @@ def sync_schtasks(
     Deletes anything currently under ``\\AppLauncher\\<job.id>*`` first,
     then creates one task per schedule slot. Every created task then gets
     its on-battery power policy flipped off Windows' restrictive defaults
-    (issue #746, :func:`_apply_power_policy`) — otherwise a real mains loss
+    (:func:`_apply_power_policy`) — otherwise a real mains loss
     would let Task Scheduler terminate the running job, which this
     UPS-backed host is exposed to about monthly. Returns the list of task
     names created (empty for ``schedule.type == "none"`` after the
@@ -495,13 +495,13 @@ def sync_schtasks(
     The principal is still whatever ``schtasks /Create`` defaults to —
     ``LogonType=InteractiveToken``, i.e. "run only when the user is logged
     on" — so every task created here silently does nothing while the machine
-    sits logged out (issue #757). If a scheduled job is missing runs, look
+    sits logged out. If a scheduled job is missing runs, look
     there before looking at power.
 
     ``job.session_less`` jobs are the opt-out from that default, and are
-    **never touched at all** — no create, no delete (issue #757). An S4U
+    **never touched at all** — no create, no delete. An S4U
     principal cannot be registered from this non-elevated process by any
-    route (measured on #757: ``/RU``+``/RP``, a direct S4U registration, and
+    route (measured: ``/RU``+``/RP``, a direct S4U registration, and
     the create-then-``Set-ScheduledTask`` patch that works for *Settings* all
     return ``Access is denied``), so the entry is hand-registered from an
     elevated shell — see :func:`registration_script`. Deleting is skipped
@@ -514,7 +514,7 @@ def sync_schtasks(
     missed-fire half for the slot that moved) instead of destroying state to
     stay tidy.
 
-    ``job.elevated`` jobs are skipped entirely (issue #352): their real
+    ``job.elevated`` jobs are skipped entirely: their real
     ``/RL HIGHEST`` entry can only be created by an already-elevated
     caller, which this webapp process never is. Deleting-then-failing-to
     recreate on every edit/pause/resume silently strands a job that the
@@ -617,7 +617,7 @@ def _parse_bulk_records(stdout: str) -> Dict[str, Dict[str, Any]]:
     * ``background_capable`` — ``True`` when the task's principal can run
       with no logged-on session ("Logon Mode" mentions Background, i.e. S4U
       or a stored password), ``False`` for "Interactive only", and ``None``
-      when the field is absent or unrecognised. This is the fact issue #757
+      when the field is absent or unrecognised. This is the fact the S4U check
       turns on, and it is the same tri-state discipline as ``enabled``.
     * ``enabled`` — ``True``/``False`` when schtasks states it, and
       ``None`` when *neither* state key is present in the record. A
@@ -707,7 +707,7 @@ def _bulk_records(
     (:mod:`src.jobs.coverage`) needs that distinction: without it, one
     failed query would flag every scheduled job as missing its task.
 
-    Asks for the ``\\AppLauncher\\`` folder first (#1516): the unscoped
+    Asks for the ``\\AppLauncher\\`` folder first: the unscoped
     query dumps every task on the machine, measured at 1.74 s and 466 KB
     against 0.14 s and 36 KB for the folder, with an identical parsed map.
     The jobs tick re-runs it every ~24 s while the Board or Jobs tab polls.
@@ -744,7 +744,7 @@ def _cached_bulk_records(
     """Return the bulk record map, refreshing the cache on TTL miss.
 
     ``max_age`` refreshes earlier than the TTL: the jobs snapshot tick
-    (#1324) warms it before it expires, so a poll never pays the query.
+    warms it before it expires, so a poll never pays the query.
     """
     global _next_run_cache
     now = time.monotonic()
@@ -801,7 +801,7 @@ def registered_task_principals(
     = registered but the principal could not be read. The whole map is
     ``None`` when the query failed — same contract as
     :func:`registered_task_states`, and served off the same 30 s cached bulk
-    query, so the #757 check costs no extra shell-out.
+    query, so the S4U check costs no extra shell-out.
     """
     snapshot = _cached_bulk_records(runner=runner)
     if snapshot is None:
