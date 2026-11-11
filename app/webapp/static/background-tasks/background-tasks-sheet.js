@@ -18,6 +18,7 @@ import { setAsyncState } from '../async-state.js';
 import { chip } from '../glance.js';
 import { fmtDuration } from '../shared/format.js';
 import { icon } from '../_vendored/icons/icons.js';
+import { statusChip } from './task-state.js';
 
 // Why the server could not read, in the words the sheet shows.
 const REASON = {
@@ -28,9 +29,6 @@ const REASON = {
   read_failed: 'Couldn’t read the transcript',
 };
 const NO_OUTPUT = 'No output was recorded for this task';
-
-// Chip tone per status that is not a plain success; `completed` shows none.
-const STATUS_TONE = { failed: 'danger', killed: 'attention', stopped: 'attention', timeout: 'attention' };
 
 let view = null;   // { sid, seq } while the sheet is open
 
@@ -79,9 +77,8 @@ function taskRow(task, running) {
   meta.textContent = bits.filter(Boolean).join(' · ');
   text.appendChild(meta);
   head.appendChild(text);
-  if (!running && task.status !== 'completed') {
-    head.appendChild(chip(task.status, STATUS_TONE[task.status] || 'neutral'));
-  }
+  const ended = running ? null : statusChip(task);
+  if (ended) head.appendChild(chip(ended.label, ended.tone));
   head.insertAdjacentHTML('beforeend', icon('chevron-down', 'bg-task-chevron'));
   row.appendChild(head);
 

@@ -1190,3 +1190,15 @@ name   = "apps-perf-card-state"
 module = "app/webapp/static/apps/perf-card-state.js"
 type   = "PerfCardState"
 derive = "perfCardState"
+
+[[state_machines]]
+name   = "background-task-state"
+module = "src/session_view/task_state.py"
+type   = "TaskPhase"
+derive = "next_status"
+
+[[state_machines]]
+name   = "background-task-state-ui"
+module = "app/webapp/static/background-tasks/task-state.js"
+type   = "TaskPhase"
+derive = "statusChip"

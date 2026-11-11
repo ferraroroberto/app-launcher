@@ -44,6 +44,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterator, Optional, Tuple
 
+from src.session_view.task_state import TaskPhase, next_status, task_phase
+
 SCAN_CEILING = 64 * 1024 * 1024
 # The newest finished tasks listed; the rest are counted, not sent.
 FINISHED_LIMIT = 30
@@ -52,7 +54,6 @@ LABEL_CHARS = 200
 COMMAND_CHARS = 600
 
 _TASK_ID = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
-_STATUS = re.compile(r"^[a-z][a-z_-]{0,19}$")
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 # Lines that carry the whole system prompt and no task fact.
 _SKIP_TYPES = (b"prompt_snapshot", b"api-request-shape")
@@ -205,10 +206,11 @@ def _record_notification(tasks: Dict[str, Dict[str, Any]], text: str, ts: Option
         }
     if not task["output_file"]:
         task["output_file"] = _field(text, "output-file")
-    if status and task["status"] is None:
-        task["status"] = status if _STATUS.match(status) else "finished"
-        task["finished_at"] = ts
-        task["summary"] = summary[:LABEL_CHARS * 2]
+    if task["status"] is None:
+        task["status"] = next_status(None, status)
+        if task["status"] is not None:
+            task["finished_at"] = ts
+            task["summary"] = summary[:LABEL_CHARS * 2]
 
 
 def _public(
@@ -218,7 +220,7 @@ def _public(
     return {
         "id": task["id"], "kind": task["kind"], "label": task["label"],
         "command": task["command"],
-        "status": task["status"] or "running",
+        "status": task["status"] or TaskPhase.RUNNING.value,
         "started_at": task["started_at"], "finished_at": task["finished_at"],
         "elapsed_seconds": _seconds_between(task["started_at"], end),
         "summary": task["summary"],
@@ -235,8 +237,8 @@ def background_tasks(
     now = now or datetime.now(timezone.utc)
     session_id = path.stem
     folded = [_public(t, session_id, now, temp_root) for t in fold_tasks(path).values()]
-    running = [t for t in folded if t["status"] == "running"]
-    finished = [t for t in folded if t["status"] != "running"]
+    running = [t for t in folded if task_phase(t["status"]) is TaskPhase.RUNNING]
+    finished = [t for t in folded if task_phase(t["status"]) is TaskPhase.FINISHED]
     running.sort(key=lambda t: t["started_at"] or "", reverse=True)
     finished.sort(key=lambda t: t["finished_at"] or "", reverse=True)
     return {
