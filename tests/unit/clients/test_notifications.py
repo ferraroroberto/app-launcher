@@ -9,11 +9,36 @@ hub unreachable.
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 from src import notifications as notif
 from src.clients import _loopback_http
+from src.subprocess_flags import NO_WINDOW
+
+# ============================================================== Import order
+
+
+@pytest.mark.parametrize("module", ["src.notifications", "src.chief.job_failed"])
+def test_module_imports_first_in_a_fresh_interpreter(module):
+    """Either end of the notifier -> chief -> board -> jobs.reap loop loads first.
+
+    In-process this passes whenever an earlier test already imported the chain
+    in a working order, so it runs in a clean interpreter.
+    """
+    proc = subprocess.run(
+        [sys.executable, "-c", f"import {module}"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        creationflags=NO_WINDOW,
+    )
+    assert proc.returncode == 0, proc.stderr[-800:]
+
 
 # ============================================================== Notifiers
 

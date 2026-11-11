@@ -20,6 +20,7 @@ import pytest
 
 from src import diagnostics
 from src import jobs as jobs_mod
+from src import notifications as notifications_mod
 from src.jobs import history as jobs_history_mod
 from src.jobs import queue as jobs_queue_mod
 from src.jobs import reap as jobs_reap_mod
@@ -249,7 +250,7 @@ class TestFinalizeDeadRuns:
         )
         monkeypatch.setattr(jobs_reap_mod, "is_pid_alive", lambda *a, **k: False)
         spy = MagicMock()
-        monkeypatch.setattr(jobs_reap_mod, "notify_failure", spy)
+        monkeypatch.setattr(notifications_mod, "notify_failure", spy)
         job = Job(id="solo", name="Solo", script_path="C:/nowhere/x.py")
 
         jobs_reap_mod.finalize_dead_runs(job)
@@ -457,7 +458,7 @@ class TestReapPidlessPending:
             status="pending", started_at=started,
         )
         spy = MagicMock()
-        monkeypatch.setattr(jobs_reap_mod, "notify_failure", spy)
+        monkeypatch.setattr(notifications_mod, "notify_failure", spy)
         job = Job(id="solo", name="Solo", script_path="C:/nowhere/x.py")
 
         jobs_reap_mod.finalize_dead_runs(job)
@@ -754,7 +755,7 @@ class TestReapRacesExecutorFinalise:
         rd = _seed_run(isolated_jobs, "solo", "20260101T000000", started_at=started, **seed)
         monkeypatch.setattr(jobs_reap_mod, "is_pid_alive", lambda *a, **k: False)
         spy = MagicMock()
-        monkeypatch.setattr(jobs_reap_mod, "notify_failure", spy)
+        monkeypatch.setattr(notifications_mod, "notify_failure", spy)
         job = Job(id="solo", name="Solo", script_path="C:/nowhere/x.py")
         stale = jobs_mod.read_run(rd)
         jobs_history_mod.write_run_json(rd, **executor_write)
@@ -792,7 +793,7 @@ def test_reap_waits_for_a_live_executor_but_not_a_dead_one(
 
     monkeypatch.setattr(jobs_reap_mod, "is_pid_alive", fake_alive)
     spy = MagicMock()
-    monkeypatch.setattr(jobs_reap_mod, "notify_failure", spy)
+    monkeypatch.setattr(notifications_mod, "notify_failure", spy)
     job = Job(id="solo", name="Solo", script_path="C:/nowhere/x.py")
 
     with caplog.at_level("INFO", logger=jobs_reap_mod.logger.name):

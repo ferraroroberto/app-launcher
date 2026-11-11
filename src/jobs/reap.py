@@ -63,7 +63,6 @@ from src.jobs.config import Job, load_jobs
 from src.jobs.history import list_runs, read_run, runs_dir, write_run_json_if
 from src.jobs.run_status import RunStatus, is_active, run_status
 from src.jobs.stats import invalidate_stats_cache
-from src.notifications import notify_failure
 from src.webapp_config import load_webapp_config
 
 logger = logging.getLogger(__name__)
@@ -153,6 +152,29 @@ def _log_reap_skipped(job: Job, run_id: Any) -> None:
     )
 
 
+def _notify_reaped_failure(
+    job: Job, run_dir: Path, *, exit_code: Optional[int]
+) -> None:
+    """Page for a run this reconciler just finalised as failed."""
+    # Imported here, not at module scope: ``src.notifications`` reaches the
+    # ``src.jobs`` package (and, through ``src.chief.job_failed``, the board
+    # that imports it), and the package ``__init__`` loads this module — a
+    # top-level import closes that loop for whichever of them loads first.
+    from src.notifications import notify_failure
+
+    try:
+        cfg = load_webapp_config()
+    except Exception as exc:  # noqa: BLE001 — reap must keep going regardless
+        logger.warning(f"⚠️  reap notify: could not load webapp config: {exc}")
+        return
+    notify_failure(
+        cfg, job, run_dir,
+        status=RunStatus.FAILED,
+        exit_code=exit_code,
+        reaped=True,
+    )
+
+
 def _reap_pidless_pending(
     job: Job, record: Dict[str, Any]
 ) -> Optional[Dict[str, Any]]:
@@ -197,17 +219,7 @@ def _reap_pidless_pending(
         f"(pending {age:.0f}s with no pid ever recorded — never started)"
     )
 
-    try:
-        cfg = load_webapp_config()
-    except Exception as exc:  # noqa: BLE001 — reap must keep going regardless
-        logger.warning(f"⚠️  reap notify: could not load webapp config: {exc}")
-    else:
-        notify_failure(
-            cfg, job, run_dir,
-            status=RunStatus.FAILED,
-            exit_code=None,
-            reaped=True,
-        )
+    _notify_reaped_failure(job, run_dir, exit_code=None)
 
     return read_run(run_dir)
 
@@ -282,17 +294,7 @@ def _reap_one(job: Job, record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         f"end_time={'confirmed' if finished_at else 'unknown'})"
     )
 
-    try:
-        cfg = load_webapp_config()
-    except Exception as exc:  # noqa: BLE001 — reap must keep going regardless
-        logger.warning(f"⚠️  reap notify: could not load webapp config: {exc}")
-    else:
-        notify_failure(
-            cfg, job, run_dir,
-            status=RunStatus.FAILED,
-            exit_code=record.get("exit_code"),
-            reaped=True,
-        )
+    _notify_reaped_failure(job, run_dir, exit_code=record.get("exit_code"))
 
     return read_run(run_dir)
 
