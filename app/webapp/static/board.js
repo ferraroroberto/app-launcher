@@ -597,11 +597,13 @@ export function plural(n, one, many) {
 
 // The page header (the header rule): only the exceptions — "N
 // questions" (the chief's, unanswered), "N needs you" (Your turn) and
-// "N failing" (failed or stuck jobs), two at most — fleet-wide, whatever the
-// project filter narrows the lanes to. With nothing wrong, the plain totals;
-// a count that could not be read is said, never shown as zero:
-// an unreadable plan adds no question part.
-function renderBoardHead(body, ghLoaded, liveRead) {
+// "N failing" (failed or stuck jobs), two at most. The exceptions are global
+// on purpose, whatever the project filter narrows the lanes to: they are the
+// Board tab badge's sum, which every tab shows and no filter touches, and a
+// job carries no project to filter by. The plain totals shown with nothing
+// wrong count what the filter shows. A count that could not be read is said,
+// never shown as zero: an unreadable plan adds no question part.
+function renderBoardHead(body, ghLoaded, liveRead, visible) {
   const columns = body.columns || {};
   const sessions = function (key) {
     return (columns[key] || []).filter(function (c) { return !isOffBoard(c); }).length;
@@ -613,9 +615,9 @@ function renderBoardHead(body, ghLoaded, liveRead) {
   if (questions) exceptions.push({ text: plural(questions, 'question', 'questions'), short: questions + ' Q', tone: 'attention' });
   if (yours) exceptions.push({ text: yours + ' needs you', short: yours + ' you', tone: 'attention' });
   if (failing) exceptions.push({ text: failing + ' failing', short: failing + ' fail', tone: 'danger' });
-  const live = sessions('your_turn') + sessions('claude_turn');
+  const live = visible.your_turn.length + visible.claude_turn.length;
   const totals = [liveRead || live ? plural(live, 'session', 'sessions') : 'sessions unknown'];
-  if (ghLoaded) totals.push(plural((columns.backlog || []).length, 'issue', 'issues'));
+  if (ghLoaded) totals.push(plural(visible.backlog.length, 'issue', 'issues'));
   renderFittedHeadStatus(els.boardHeadStatus, exceptions, totals.join(' · '));
 }
 
@@ -769,7 +771,7 @@ export function renderBoard() {
   renderChiefPlan(body, liveRead);
   renderIdeas(body, liveRead);
   renderStatusLine(body);
-  renderBoardHead(body, ghLoaded, liveRead);
+  renderBoardHead(body, ghLoaded, liveRead, visible);
   renderBoardBadge();
   // Keep the lane toolbar's project list in step with a project list that
   // may land after the first render (/api/apps).

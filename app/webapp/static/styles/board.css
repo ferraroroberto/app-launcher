@@ -896,44 +896,44 @@ span.chief-answer-ref { color: var(--muted); }
   .board-columns > .board-col.is-empty { grid-column: 1 / -1; }
   /* The strip: title and count, then the empty sentence and its one
      action inline, on one line; the sentence ellipsizes first. */
-  .board-col.is-empty[open] {
+  .board-columns > .board-col.is-empty[open] {
     display: flex;
     align-items: center;
   }
   /* One line, so no divider under the summary; the chevron keeps a gap
      from the count. */
-  .board-col.is-empty[open] > .collapse-summary {
+  .board-columns > .board-col.is-empty[open] > .collapse-summary {
     flex: none;
     column-gap: 12px;
     border-bottom: 0;
   }
-  .board-col.is-empty[open] > .collapse-body {
+  .board-columns > .board-col.is-empty[open] > .collapse-body {
     flex: 1;
     min-width: 0;
     padding: 0 14px 0 0;
   }
   /* Done's "Show earlier" sits inline after the sentence, in the same line. */
-  .board-col.is-empty > .collapse-body { display: flex; align-items: center; gap: 12px; }
-  .board-col.is-empty .board-empty { flex: 1; min-width: 0; }
-  .board-col.is-empty .board-done-more { flex: none; width: auto; margin: 0; }
-  .board-col.is-empty .board-lane-toolbar,
-  .board-col.is-empty .board-lane-foot,
-  .board-col.is-empty .empty-state-icon { display: none; }
-  .board-col.is-empty .empty-state {
+  .board-columns > .board-col.is-empty > .collapse-body { display: flex; align-items: center; gap: 12px; }
+  .board-columns > .board-col.is-empty .board-empty { flex: 1; min-width: 0; }
+  .board-columns > .board-col.is-empty .board-done-more { flex: none; width: auto; margin: 0; }
+  .board-columns > .board-col.is-empty .board-lane-toolbar,
+  .board-columns > .board-col.is-empty .board-lane-foot,
+  .board-columns > .board-col.is-empty .empty-state-icon { display: none; }
+  .board-columns > .board-col.is-empty .empty-state {
     flex-direction: row;
     justify-content: flex-end;
     gap: 12px;
     padding: 0;
     min-height: 0;
   }
-  .board-col.is-empty .empty-state-message {
+  .board-columns > .board-col.is-empty .empty-state-message {
     min-width: 0;
     margin: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .board-col.is-empty .empty-state-action { flex: none; margin: 0; }
+  .board-columns > .board-col.is-empty .empty-state-action { flex: none; margin: 0; }
   .board-col { margin: 0; }
   .board-col-stack {
     display: flex;

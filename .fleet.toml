@@ -544,7 +544,9 @@ time_budget_s         = 1200
 # 2026-11-11: 647 -> 651, four nodes (two tests, both projections) for tests/e2e/life_os/test_sensitive_action_feedback.py: a held (never-answered)
 # stop route and a held resume route, so no existing test shares their setup. The tests carry the iphone marker
 # (the iPhone projection is the phone-width run) and the stop failure is folded into the stop test.
-test_budget = 651
+# 2026-11-11: 651 -> 653, two nodes (one test, both projections) for tests/e2e/board/test_board_repo_filter_counts.py: a filtered owner-check payload
+# across two repos, which no existing Board test shares; its geometry half (Start work in the stacked Claude turn) rides the same node.
+test_budget = 653
 
 # --- static assets under the webapp's static dir -> Chromium smoke ----------
 [[e2e.rule]]
