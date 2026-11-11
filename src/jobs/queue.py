@@ -1,4 +1,4 @@
-"""Cross-job mutex queue for the Jobs tab (issue #68 PR #2).
+"""Cross-job mutex queue for the Jobs tab (the queue half of mutex groups).
 
 When a job carries a ``mutex_group`` and another job in the same group is
 ``running`` or ``pending``, the fresh fire is queued rather than rejected.
@@ -6,7 +6,7 @@ The finalising executor pops the next entry on its way out and spawns it
 detached. Queue file lives at :data:`JOBS_QUEUE_PATH` (one JSON document,
 keyed by group → FIFO list of pending entries).
 
-Split out of :mod:`src.jobs` (issue #315) — run-history file storage lives
+Split out of :mod:`src.jobs` — run-history file storage lives
 in :mod:`src.jobs.history`, schtasks sync in
 :mod:`src.jobs.schtasks`, the detached spawner in :mod:`src.jobs.spawn`, and
 percentiles/health in :mod:`src.jobs.stats`.
@@ -56,7 +56,7 @@ def _queue_file_lock() -> Iterator[None]:
     webapp process and a spawned ``run-job`` executor process — so the
     in-process :data:`_queue_lock` alone doesn't prevent two writers from
     reading the same pre-write state and one clobbering the other's
-    ``os.replace`` (issue #409). Thin wrapper around the shared
+    ``os.replace``. Thin wrapper around the shared
     :func:`src._json_io.file_lock` (same sidecar-lock pattern as
     ``src.jobs.history._run_json_lock``).
 
@@ -104,7 +104,7 @@ def enqueue_mutex(group: str, entry: Dict[str, Any]) -> None:
     Holds the in-process lock (fast-path for same-process races) nested
     inside the interprocess file lock (:func:`_queue_file_lock`), which is
     what actually serializes the read-modify-write across the webapp
-    process and a spawned executor process (issue #409).
+    process and a spawned executor process.
     """
     with _queue_lock, _queue_file_lock():
         state = _read_queue_file()
@@ -182,9 +182,9 @@ def seed_run_meta(
     Every real fire path (manual / webhook / scheduled / chain / dry-run)
     writes the same seven fields — ``run_id`` / ``job_id`` / ``name`` /
     ``trigger`` / ``script_path`` / ``args`` / ``started_at`` — before
-    layering on its own status/provenance fields. Hand-copied in 8 places
-    across 3 modules before issue #794; this is the one place that shape
-    lives now. ``run_id`` is required (the caller already created the run
+    layering on its own status/provenance fields. This is the one place
+    that shape
+    lives. ``run_id`` is required (the caller already created the run
     dir and knows its name); ``**extra`` merges on top, so a caller can
     pass e.g. ``status="running"`` or ``chained_from=upstream_id`` directly
     into the returned dict.
@@ -218,7 +218,7 @@ def admit_and_spawn(
 
     The one implementation of the admission block that used to exist three
     times in parallel — the webapp route, the chain dispatcher, and the
-    executor's own scheduled-fire gate (issue #794). They had already
+    executor's own scheduled-fire gate. They had already
     drifted: ``dispatch_chain_run`` wrote ``status="failed"`` to disk but
     returned a meta dict still claiming ``"pending"``. A single status
     source means that class of drift cannot recur.
@@ -238,7 +238,7 @@ def admit_and_spawn(
       ``pending``. Both are "this fire produced no child": the run dir is
       already on disk by then, so letting either escape would leave exactly
       the orphaned ``pending`` record this helper exists to prevent. The
-      meta also carries ``refused`` (issue #810): ``True`` for the
+      meta also carries ``refused``: ``True`` for the
       :class:`~src.jobs.argv.ArgvRejected` case, ``False`` for a genuine
       ``OSError``, so an HTTP caller can answer 400 vs 500 instead of
       collapsing both into "the server broke".

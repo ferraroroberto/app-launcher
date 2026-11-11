@@ -44,7 +44,7 @@ helpers live in :mod:`src.jobs.config_models`; the chain-cycle graph
 algorithm lives in :mod:`src.jobs.config_chain`. Both are re-exported
 here so existing callers (``from src.jobs.config import X``) keep
 working unchanged — same facade pattern as the earlier ``src.jobs``
-split (issue #315).
+split.
 
 ``DEFAULT_JOBS_PATH``/``load_jobs``/``save_jobs`` stay defined in *this*
 module rather than moving to a storage-only submodule: tests across the
@@ -207,13 +207,13 @@ _exit_outcomes_cache: Dict[Tuple[str, int, int], Dict[str, Dict[int, str]]] = {}
 
 
 def exit_outcomes_for(job_id: str) -> Dict[int, str]:
-    """``job_id``'s declared ``exit_outcomes`` (#1316), ``{}`` if none.
+    """``job_id``'s declared ``exit_outcomes``, ``{}`` if none.
 
     Every run-record read classifies against this, which on the Jobs tab's
     4 s poll is every retained run of every job. So the registry is parsed
     once per on-disk change (keyed on its stat), not once per record. An
     unknown job, or an unreadable registry, declares nothing: its runs keep
-    their persisted ``status``, which is the pre-#1316 behaviour.
+    their persisted ``status``, which is the behaviour of a job with no deferred exit code.
     """
     target = DEFAULT_JOBS_PATH
     try:
@@ -242,7 +242,7 @@ def jobs_file_lock() -> Iterator[None]:
     executor's own unlocked mutation in ``_cleanup_once_schedule`` — so an
     in-process lock alone can't prevent one writer's ``load_jobs()`` →
     mutate → ``save_jobs()`` from clobbering a concurrent writer's change
-    with a stale ``os.replace`` (issue #755). Thin wrapper around the
+    with a stale ``os.replace``. Thin wrapper around the
     shared :func:`src._json_io.file_lock` (same pattern as
     ``src.jobs.queue._queue_file_lock`` / ``src.jobs.history._run_json_lock``)
     on a dedicated sidecar file. Exported so callers outside this module
@@ -273,7 +273,7 @@ def add_job(cfg: JobsConfig, job: Job) -> Job:
     is rejected before the file is touched.
 
     Re-reads the registry from disk under :func:`jobs_file_lock` rather
-    than trusting the caller's ``cfg`` snapshot (issue #755) — a snapshot
+    than trusting the caller's ``cfg`` snapshot — a snapshot
     taken before the lock can already be stale by the time this runs.
     ``cfg.jobs`` is refreshed in place on success so the caller's view
     stays current; left untouched on a rejected add, matching the old
@@ -348,7 +348,7 @@ def update_job(cfg: JobsConfig, job_id: str, **fields: Any) -> Optional[Job]:
     ``kind_config`` and ``on_success``/``on_failure``.
 
     Re-reads the registry from disk under :func:`jobs_file_lock` rather
-    than trusting the caller's ``cfg`` snapshot (issue #755) — see
+    than trusting the caller's ``cfg`` snapshot — see
     :func:`add_job` for why. ``cfg.jobs`` is refreshed in place before
     every return, including an unknown-id ``None`` and a rejected edit,
     so the caller's view is always at least as current as the reload.
@@ -442,7 +442,7 @@ def pause_job(cfg: JobsConfig, job_id: str) -> Optional[Job]:
     already-paused job is a no-op (the original payload is preserved).
 
     Re-reads the registry from disk under :func:`jobs_file_lock` rather
-    than trusting the caller's ``cfg`` snapshot (issue #755) — see
+    than trusting the caller's ``cfg`` snapshot — see
     :func:`add_job` for why.
     """
     with jobs_file_lock():
@@ -468,7 +468,7 @@ def resume_job(cfg: JobsConfig, job_id: str) -> Optional[Job]:
     the parked field. Resuming a job that was never paused is a no-op.
 
     Re-reads the registry from disk under :func:`jobs_file_lock` rather
-    than trusting the caller's ``cfg`` snapshot (issue #755) — see
+    than trusting the caller's ``cfg`` snapshot — see
     :func:`add_job` for why.
     """
     with jobs_file_lock():
@@ -492,7 +492,7 @@ def remove_by_id(cfg: JobsConfig, job_id: str) -> Optional[Job]:
     because reject would force users into a multi-step delete dance.
 
     Re-reads the registry from disk under :func:`jobs_file_lock` rather
-    than trusting the caller's ``cfg`` snapshot (issue #755) — see
+    than trusting the caller's ``cfg`` snapshot — see
     :func:`add_job` for why.
     """
     with jobs_file_lock():

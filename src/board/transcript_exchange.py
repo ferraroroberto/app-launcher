@@ -62,7 +62,7 @@ def _assistant_text(content: Any) -> str:
 
 def has_typed_user_prompt(transcript_path: Any) -> Optional[bool]:
     """Whether this conversation ever received a **typed human prompt** —
-    ``None`` when that can't be established (#670).
+    ``None`` when that can't be established.
 
     The discriminator between a real conversation and a bootstrap-only one:
     a session spawned by the launcher and handed a slash command has user

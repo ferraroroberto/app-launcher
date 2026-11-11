@@ -1,21 +1,21 @@
-"""Transcript-JSONL parsing for the Board tab (issue #408 split of ``board.py``).
+"""Transcript-JSONL parsing for the Board tab (split out of ``board.py``).
 
 Claude Code's transcript files are the ground truth for three things the hook
 state file can't tell you on its own:
 
 * whether a session that's stamped ``needs-you``/``idle`` has actually
-  resumed working without any hook firing (:func:`_transcript_overlay`,
-  #305/#309), and whether an unmatched hook row has recent transcript
+  resumed working without any hook firing (:func:`_transcript_overlay`),
+  and whether an unmatched hook row has recent transcript
   activity that independently proves an external process still exists
-  (:func:`_external_row_liveness`, #322/#455);
+  (:func:`_external_row_liveness`);
 * whether a session stamped ``needs-you``/``idle`` is actually still waiting
   on its *own* backgrounded work — a background sub-agent or shell dispatch
   it hasn't heard back from yet
-  (:func:`_pending_background_dispatch_launched_at`, #464, hardened by #576
-  and #601 — see that function's docstring for why the original
+  (:func:`_pending_background_dispatch_launched_at`; see
+  that function's docstring for why the original
   ``toolUseResult``-keyed check alone isn't reliable);
 * the last completed user→assistant exchange, for the drill-down drawer
-  (:func:`src.board.transcript_exchange.last_exchange`, #301).
+  (:func:`src.board.transcript_exchange.last_exchange`).
 
 All read only a bounded tail of the transcript (never the whole file — a
 long session's JSONL can run to many MB) and degrade to "no signal" on any
@@ -139,7 +139,7 @@ _WEDGED_PTY_AFTER = timedelta(seconds=10)
 
 def _note_unrecognized_title_glyph(title: str) -> None:
     """Leave one info-level breadcrumb per distinct unrecognized leading
-    glyph on a ``live_title`` (#815).
+    glyph on a ``live_title``.
 
     Scoped to *non-ASCII* leads that aren't the known idle marker: an ASCII
     lead is an ordinary title (a Codex folder echo, a plain prompt title)
@@ -170,7 +170,7 @@ def _live_title_is_busy(live_title: Optional[str]) -> bool:
     See the module-level comment above :data:`_BUSY_LIVE_TITLE_RE` for what
     this does and does not prove, and why an unrecognized glyph falls
     through to the transcript-based checks with a one-off breadcrumb
-    (#815) rather than silently.
+    rather than silently.
     """
     title = (live_title or "").strip()
     if _BUSY_LIVE_TITLE_RE.match(title):
@@ -186,7 +186,7 @@ def strip_status_glyph(live_title: Optional[str]) -> str:
     glyph: the animated spinner while a turn runs
     (:data:`_BUSY_LIVE_TITLE_RE`) or :data:`_IDLE_LIVE_TITLE_GLYPH` once
     control is back at the prompt. Both are stripped, because both are
-    chrome rather than name — measured for #1034 against the live sessions
+    chrome rather than name — measured against the live sessions
     on this box, 2 of the 3 PTYs were sitting on the *idle* glyph, so a
     reader that knew only the busy one would read
     ``✳ Wooden floor repair investigation`` as differing from the
@@ -194,7 +194,7 @@ def strip_status_glyph(live_title: Optional[str]) -> str:
     difference that is pure chrome.
 
     Deliberately *not* :func:`_live_title_is_busy`, which is a verdict
-    carrying #815's drift breadcrumb as a side effect: this is a pure
+    carrying a drift breadcrumb as a side effect: this is a pure
     string normalisation used on the 5s-polled drawer path, and it reuses
     that function's own two patterns rather than spelling the glyphs a
     third time.
@@ -286,7 +286,7 @@ def _tail_lines(path: Any, n_bytes: int) -> Tuple[List[str], bool]:
 
 class _ExchangeTail:
     """One card's :data:`_EXCHANGE_TAIL_BYTES` transcript tail, read and
-    parsed at most once (#881).
+    parsed at most once.
 
     :func:`_transcript_overlay`'s pending-dispatch scan and
     :func:`_refine_waiting_status`'s pending-tool scan both walk this same
@@ -335,7 +335,7 @@ def _last_activity(transcript_path: Any) -> Optional[datetime]:
 
     Claude Code appends non-message metadata lines (``system``, ``pr-link``,
     ``ai-title``, ``file-history-snapshot``, …) seconds-to-minutes after a
-    turn ends, so the file's mtime overstates activity (#309). Only
+    turn ends, so the file's mtime overstates activity. Only
     ``assistant``/``user`` lines carrying a ``message`` payload mark a live
     turn; the newest one's ``timestamp`` is the activity anchor. Torn or
     unparseable lines are skipped (a line may be appended mid-read); no
@@ -414,7 +414,7 @@ def _pty_output_is_fresh(
     ``None`` (an older ``to_api()`` build with no such field yet, or a
     non-PTY/unmatched row with no live session to read from at all) means
     "no freshness signal available", not "stale" — treated as fresh so the
-    pre-#636 behavior (trust the busy glyph unconditionally) is unchanged
+    behavior without this signal (trust the busy glyph unconditionally) is unchanged
     when this signal simply isn't there. A non-positive value is the same
     "never recorded" case, not a real epoch-0 timestamp (session_host.py
     always stamps this in the same read that first populates ``live_title``,
@@ -444,10 +444,10 @@ def _transcript_overlay(
     ``process_confirmed``: an external row has no process evidence, and its
     long-outstanding dispatch reads :data:`~src.board.card_status.WAITING_ON_TASK` instead.
 
-    Checked first (#631/#627): a busy ``live_title`` (see
+    Checked first: a busy ``live_title`` (see
     :func:`_live_title_is_busy`) short-circuits straight to ``working``,
     before any of the transcript-file reads below run — but only while
-    ``last_output_at`` is also fresh (:func:`_pty_output_is_fresh`, #636): a
+    ``last_output_at`` is also fresh (:func:`_pty_output_is_fresh`): a
     busy glyph frozen on a genuinely wedged PTY (no more raw output at all)
     is stale chrome, not proof of a live turn, so it falls through to the
     transcript-based checks below instead — the same path a non-busy title
@@ -458,23 +458,23 @@ def _transcript_overlay(
     The hooks flip status only on prompt-submit / stop / notification — but
     Claude *resumes* without any of those firing (an answered permission
     prompt or AskUserQuestion, a prompt queued into a running turn), so a
-    ``needs-you``/``idle`` stamp sticks while the agent visibly works (#305).
+    ``needs-you``/``idle`` stamp sticks while the agent visibly works.
     The transcript JSONL is ground truth: it is appended continuously during
     a turn and goes quiet on stop — and the Stop hook re-stamps the row
     *after* the final transcript write, so a genuine ``needs-you`` still wins
     immediately.
 
-    The probe is two-stage (#309): the mtime ``os.stat`` is only a cheap
+    The probe is two-stage: the mtime ``os.stat`` is only a cheap
     pre-filter — post-Stop metadata lines advance mtime with no real resume —
     so when mtime clears the epsilon, :func:`_last_activity` reads the tail
     and only a real conversation line past the stamp flips the status.
 
-    Separately (#464), :func:`_pending_background_dispatch_launched_at`
+    Separately, :func:`_pending_background_dispatch_launched_at`
     always checks the tail for an outstanding background sub-agent/shell
     dispatch launched *before* Claude's own turn ended — a case the mtime
     pre-filter above would otherwise skip, since nothing is written to this
     transcript past the stamp until the background work's own completion
-    notice lands. #608 refines this further: a dispatch outstanding past
+    notice lands. A dispatch outstanding past
     :data:`_STALLED_DISPATCH_AFTER` is no longer healthy waiting but a real
     anomaly, so it renders ``stalled`` instead of :data:`~src.board.card_status.WAITING_ON_TASK` — but only when
     the launch line's own timestamp actually resolved
@@ -485,7 +485,7 @@ def _transcript_overlay(
     split is scoped to ``needs-you``, and :func:`_refine_waiting_status` does
     the rest of that split once this function is done overriding.
 
-    ``tail`` is the card's shared :class:`_ExchangeTail` (#881) — pass the
+    ``tail`` is the card's shared :class:`_ExchangeTail` — pass the
     same one on to :func:`_refine_waiting_status` so the two scans share one
     read. Omitted, a private one is built for this path.
 
@@ -606,7 +606,7 @@ def _outstanding_dispatch_stamps(tail: _ExchangeTail) -> Tuple[List[Optional[dat
 
 def _pending_background_dispatch_launched_at(tail: _ExchangeTail) -> Optional[datetime]:
     """The earliest still-outstanding background dispatch's own launch
-    timestamp, or ``None`` if nothing is pending (#608's ``stalled`` status
+    timestamp, or ``None`` if nothing is pending (the ``stalled`` status
     needs *how long* a dispatch has been outstanding, not just whether one
     is).
 
@@ -614,12 +614,12 @@ def _pending_background_dispatch_launched_at(tail: _ExchangeTail) -> Optional[da
     turn ends — even when that turn dispatched a background sub-agent or
     shell command it is still waiting to hear back from. The parent
     transcript then goes quiet until the eventual ``<task-notification>``
-    lands, so #305's activity check alone never catches this window (#464).
+    lands, so the activity check alone never catches this window.
     Unlike :func:`_last_activity` this runs unconditionally, not mtime-gated:
     the dispatch's launch line sits *before* the hook's stamp, not after it,
     so the mtime pre-filter that skips a quiet tail would otherwise hide it.
 
-    Two independent launched/completed id schemes are unioned (#576): the
+    Two independent launched/completed id schemes are unioned: the
     original one keyed on internal ``toolUseResult`` fields
     (:func:`_launched_background_ids` / :func:`_notified_background_ids`,
     covers backgrounded ``Bash`` via ``backgroundTaskId`` and async
@@ -642,12 +642,12 @@ def _pending_background_dispatch_launched_at(tail: _ExchangeTail) -> Optional[da
     is running when the launch line has left the tail window.
 
     Reads :data:`_EXCHANGE_TAIL_BYTES` rather than the smaller
-    ``_ACTIVITY_TAIL_BYTES`` (#594): a launch line can sit well behind one
+    ``_ACTIVITY_TAIL_BYTES``: a launch line can sit well behind one
     large intervening tool result (e.g. a file ``Read``) by the time the turn
-    ends, and the 8 KB window sized for the cheap #309 mtime pre-filter was
+    ends, and the 8 KB window sized for the cheap mtime pre-filter was
     empirically too small to still reach it. The read, torn-first-line drop
     and parse are :class:`_ExchangeTail`'s, shared with
-    :func:`_tail_tool_use_pairs` (#881).
+    :func:`_tail_tool_use_pairs`.
 
     Even :data:`_EXCHANGE_TAIL_BYTES` is just a window: a long turn can push
     the launch line past it (one real background ``Explore`` dispatch sat
@@ -687,11 +687,11 @@ def _tail_tool_use_pairs(tail: _ExchangeTail) -> Tuple[Dict[str, str], "set[str]
     """Every assistant ``tool_use`` in the tail (id -> tool name), every
     ``tool_use_id`` a later ``tool_result`` block resolves, and whether the
     tail held at least one genuine, parseable conversation line at all
-    (#608).
+    .
 
     Same tail-scan shape as :func:`_pending_background_dispatch_launched_at`
     — over the same :class:`_ExchangeTail`, so a card pays for one read
-    between them (#881) — generalized from "any backgrounded dispatch" to
+    between them — generalized from "any backgrounded dispatch" to
     "any tool call at all" —
     :func:`_refine_waiting_status` needs to know whether *anything* is still
     pending, not just a background one. A backgrounded ``Bash``/``PowerShell``
@@ -746,7 +746,7 @@ def _tail_tool_use_pairs(tail: _ExchangeTail) -> Tuple[Dict[str, str], "set[str]
 
 def _pending_tool_use_names(tail: _ExchangeTail) -> Optional["set[str]"]:
     """Tool names of every ``tool_use`` still unresolved at the tail's end
-    (#608) — empty set when the tail was read and genuinely has nothing
+    — empty set when the tail was read and genuinely has nothing
     pending; ``None`` when there was no usable signal at all (no path,
     missing file, or an unparseable tail) — the caller must not conflate the
     two."""
@@ -763,7 +763,7 @@ def pending_decision_call(transcript_path: Any) -> Optional[Dict[str, Any]]:
     unresolved at the tail's end, as ``{"id", "name", "input"}`` — the same
     "pending decision" :func:`_refine_waiting_status` sorts a card into
     ``awaiting-decision`` by, handed back whole so the Chat pane can answer
-    it (#1149).
+    it.
 
     ``None`` means *not established*, and covers both "nothing pending" and
     "couldn't read the tail" on purpose: the one caller is a send-time gate
@@ -798,8 +798,8 @@ def pending_decision_call(transcript_path: Any) -> Optional[Dict[str, Any]]:
 
 
 def _refine_waiting_status(status: str, tail: _ExchangeTail) -> str:
-    """Split the generic ``needs-you`` into a caller-actionable value (#608,
-    sharpened by #813) without a caller ever needing to fetch the exchange to
+    """Split the generic ``needs-you`` into a caller-actionable value,
+    sharpened by the tail's tool state, without a caller ever needing to fetch the exchange to
     tell them apart:
 
     * ``awaiting-decision`` -- blocked on :data:`_PENDING_DECISION_TOOL_NAMES`
@@ -807,7 +807,7 @@ def _refine_waiting_status(status: str, tail: _ExchangeTail) -> str:
     * ``idle-finished`` -- the turn ended clean, nothing pending at all — the
       session doesn't actually need anyone, it's just holding a workspace.
     * ``tool-pending`` -- an ordinary, non-decision ``tool_use`` (``Bash``,
-      ``Read``, ``Edit``, …) is still unresolved at the tail's end (#813).
+      ``Read``, ``Edit``, …) is still unresolved at the tail's end.
       This is genuinely ambiguous — equally consistent with "still mid-turn,
       executing" and "permission-gated, waiting on a human to approve/deny" —
       so per the global rule that an unresolvable classifier must report its
@@ -815,8 +815,8 @@ def _refine_waiting_status(status: str, tail: _ExchangeTail) -> str:
       ``awaiting-input`` (over-claims a human is needed) nor ``idle-finished``
       (under-claims the turn is done). Routed to Claude's turn, not Your
       turn: a false "needs you" on every long-running foreground command is
-      the worse failure mode of the two. #815 fixed the busy-title fast path
-      in :func:`_transcript_overlay` (a dead spinner-glyph regex), so a
+      the worse failure mode of the two. The busy-title fast path
+      in :func:`_transcript_overlay` catches a spinner glyph, so a
       genuinely mid-turn session with a live, fresh PTY now already resolves
       to ``working`` before this function is ever reached — this branch is
       the narrower residual case: no live PTY, a wedged/quiet one, or a
@@ -862,7 +862,7 @@ def _external_row_liveness(
     writer's whole 24-hour retention window. Its status says what the agent was
     doing at the last event; it does not say the process is still alive. Two
     stronger, deterministic checks run before the transcript-freshness
-    fallback (#613 — a freshness heuristic is corroboration, not proof):
+    fallback (a freshness heuristic is corroboration, not proof):
 
     * ``launcher_session_id`` present but absent from the *current* live
       session-host list is definitive: the session-host is the authority on
@@ -878,10 +878,10 @@ def _external_row_liveness(
     minutes remain the (inherently imperfect) fallback evidence for a
     genuinely external row the launcher has no other way to verify — a
     process that writes once and exits within the window is indistinguishable
-    from one still running; #613 narrows this gap, it does not close it.
+    from one still running; the stronger checks narrow this gap, it does not close it.
 
     The reason string is deliberately condition-specific so the caller can
-    leave one useful info-level breadcrumb for the next recurrence (#455).
+    leave one useful info-level breadcrumb for the next recurrence.
     """
     if row is None:
         return False, "missing state row"

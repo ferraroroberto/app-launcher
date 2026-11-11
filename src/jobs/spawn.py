@@ -75,7 +75,7 @@ def spawn_run_job_detached(
     dispatch (``src/jobs/queue.py``). Returns the spawned PID — kept only
     for diagnostics; the run record is tracked via the filesystem.
 
-    Re-parented via ``cmd /c start`` (issue #416) rather than
+    Re-parented via ``cmd /c start`` rather than
     ``DETACHED_PROCESS``, mirroring ``app/tray/tray.py``'s
     ``_start_session_host()``: that function's own comment documents,
     empirically verified, that ``DETACHED_PROCESS``/``CREATE_NEW_PROCESS_GROUP``
@@ -86,13 +86,13 @@ def spawn_run_job_detached(
     its execution (including one the job's own work triggers, e.g. shipping
     an app-launcher issue via ``/issue-finish``).
 
-    ``params`` (issue #67) is the validated ``{name: value}`` payload from
+    ``params`` is the validated ``{name: value}`` payload from
     the run-now dialog. When present, it is JSON-encoded onto argv as
     ``--params <json>`` so the executor (which re-validates) sees an
     exact byte-for-byte copy. Schedule + Stream-Deck callers omit the
     arg entirely.
 
-    ``dry_run`` (issue #69 'execute' mode) appends ``--dry-run`` so the
+    ``dry_run`` (the 'execute' mode) appends ``--dry-run`` so the
     executor spawns the child with ``JOB_DRY_RUN=1`` and stamps the run
     record. Mutex queue / chain callers never set it.
     """

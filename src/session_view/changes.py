@@ -1,4 +1,4 @@
-"""Changed files of one agent session (#1349, #1356), folded from its transcript.
+"""Changed files of one agent session, folded from its transcript.
 
 The session's ⋮ → *Changed files* lists every file its edit steps created,
 modified or (best effort) deleted, with +/- counts, and opens each file into
@@ -22,11 +22,11 @@ carry no line numbers (:mod:`._shared`).
 Bounded work per request: the Claude scan reads at most :data:`SCAN_CEILING`
 bytes; the builder fold at most :data:`FLAVOR_SCAN_CEILING`, in windows of
 :data:`FLAVOR_WINDOW` so memory stays flat. Both keep the *newest* part of the
-file and report ``partial`` when they cut. Measured on the dev box (#1356): the
+file and report ``partial`` when they cut. Measured on the dev box: the
 largest Codex rollout, 33.8 MB, builds whole in 0.22 s (~6.5 ms/MB), so the
 64 MiB ceiling is ~0.4 s at worst; no rollout there passes it.
 
-The panel's File view (#1689) is the one place this module touches a changed
+The panel's File view is the one place this module touches a changed
 file itself: :func:`changed_file_path` finds a requested file in the fold
 (the jail), :func:`read_text_file` reads it, bounded, with a distinct refusal
 per reason it can't be shown.
@@ -135,7 +135,7 @@ def _windows(path: Path, start: int) -> Iterator[List[Tuple[int, str]]]:
 
 def _flavor_edits(path: Path, flavor: str) -> Tuple[Iterator[Edit], bool]:
     """``(edits, partial)`` from the flavour's own entry builder, in file
-    order (#1356). A call's outcome can sit in the next window, so a
+    order. A call's outcome can sit in the next window, so a
     successful-looking edit with no result yet is held back and its lines
     are read again with that window — never split from its result."""
     build = FLAVORS[flavor][0]

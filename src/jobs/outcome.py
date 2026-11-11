@@ -1,4 +1,4 @@
-"""Terminal-outcome classification for a finished job run (issue #916).
+"""Terminal-outcome classification for a finished job run.
 
 A job's persisted ``status`` is binary — ``"success"`` for exit 0, ``"failed"``
 for anything else (``app.cli.commands.run_job_cmd._spawn_and_wait``). That was
@@ -11,7 +11,7 @@ not establish whether the run delivered**, which is a different fact and the one
 the global rule insists must be its own state rather than folded into a
 neighbour.
 
-Rendering those as ``failed`` produced the false alarms in #916: healthy runs
+Rendering those as ``failed`` produced the false alarms: healthy runs
 that had committed, pushed and posted to Telegram showed red, and the one
 genuinely failed job among them was camouflaged by the fakes.
 
@@ -30,9 +30,9 @@ if it grows a code this table does not name. A new upstream code would otherwise
 land here silently as a generic failure — the drift the issue asked to prevent.
 ``test_exit_code_outcomes_match_scheduled_runner_verdicts`` goes one further and
 pins each row's outcome against the ``❓``/``❌`` verdict the adapter prints for
-that code (#959).
+that code.
 
-**Job-declared codes (#1316).** That table is global and belongs to the
+**Job-declared codes.** That table is global and belongs to the
 adapter. A job's *own* child can also exit non-zero on purpose: life-os's
 nightly email sweep exits 3 when it has mail to sweep but no desktop to start
 Outlook on. A job declares that in its config entry
@@ -168,7 +168,7 @@ def run_outcome(
     ``outcome`` is a superset of ``status``: it equals ``status`` for every
     record except a ``failed`` one whose exit code says the adapter never
     established delivery, which becomes :data:`OUTCOME_UNCONFIRMED`, or whose
-    exit code the run's own job declares in ``exit_outcomes`` (#1316), which
+    exit code the run's own job declares in ``exit_outcomes``, which
     becomes the declared outcome. Non-terminal statuses (``running`` /
     ``pending`` / ``queued``) pass straight through, so a run in flight is
     never re-labelled.

@@ -1,4 +1,4 @@
-"""A Claude session's context-window use, read off its terminal's footer (#1223).
+"""A Claude session's context-window use, read off its terminal's footer.
 
 Nothing Claude Code writes to disk states how full a session's context
 window is: the transcript's ``message.usage`` counts tokens but never names

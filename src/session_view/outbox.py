@@ -1,4 +1,4 @@
-"""Files an agent sends to the owner's chat view, any harness (#1530).
+"""Files an agent sends to the owner's chat view, any harness.
 
 An agent in a launcher session posts ``{path, caption}`` to its session's
 outbox (``POST /api/claude-code/sessions/{sid}/outbox``, loopback-only). The
@@ -29,7 +29,7 @@ transcript instead (``/transcript/file``); its listed paths go through
 
 Store: ``<audit dir>/outbox/<sid>/`` — ``index.json`` plus one file per
 entry, named by a launcher-generated id. Follows ``LAUNCHER_AUDIT_DIR`` like
-the dispatch briefs (#1114), so a test or gate run never writes into the
+the dispatch briefs, so a test or gate run never writes into the
 checkout's live ``webapp/``. Bounded: a session keeps its newest
 :data:`MAX_ENTRIES_PER_SESSION`, and every post prunes sessions untouched for
 :data:`OUTBOX_TTL`.

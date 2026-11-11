@@ -7,9 +7,9 @@ onto argv via :func:`src.jobs.spawn.spawn_run_job_detached`:
 * ``"scheduled"`` — Windows Task Scheduler.
 * ``"manual"``    — ``POST /api/jobs/<id>/run`` (phone tap / Stream Deck),
   and the mutex-queue drain's fallback when an entry carries no trigger.
-* ``"webhook"``   — ``POST /api/jobs/<id>/hook`` (issue #73).
+* ``"webhook"``   — ``POST /api/jobs/<id>/hook``.
 * ``"chain:<upstream_job_id>"`` — a DAG ``on_success`` / ``on_failure``
-  consequence (issue #68), dispatched by :mod:`src.jobs.queue`.
+  consequence, dispatched by :mod:`src.jobs.queue`.
 
 This module is the single source of that vocabulary. It exists because
 the mint sites and the argparse declaration that has to accept them live
@@ -20,7 +20,7 @@ before the command body ever runs. Since the spawn is fire-and-forget
 (nothing waits on the child's exit code) and the pre-written ``run.json``
 never got a ``pid``, the run was silently orphaned — unreapable by
 :mod:`src.jobs.reap`, which needs a pid — so both features looked wired
-end to end while never having fired once (issue #687).
+end to end while never having fired once.
 
 Stdlib-only and dependency-free on purpose, so both the ``src`` mint
 sites and the ``app.cli`` parser can import it without a cycle.

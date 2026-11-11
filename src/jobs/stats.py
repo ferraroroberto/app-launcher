@@ -1,6 +1,6 @@
 """Run-duration percentiles, health, and stuck-run detection for the Jobs tab.
 
-Split out of :mod:`src.jobs` (issue #315) — run-history file storage lives
+Split out of :mod:`src.jobs` — run-history file storage lives
 in :mod:`src.jobs.history`, schtasks sync + spawn helpers in
 :mod:`src.jobs.schtasks`, and the mutex queue in :mod:`src.jobs.queue`.
 """
@@ -175,7 +175,7 @@ def run_stats(job_id: str, *, fresh: bool = False) -> Dict[str, Any]:
           "success_rate_30d": Optional[float],  # None when zero recent runs
           "unconfirmed_30d": int,          # runs whose delivery was never
                                            # established; excluded from the
-                                           # ratio above (issue #916)
+                                           # ratio above
           "completed_count": int,
           "last7": [{"status": str, "outcome": str, "run_id": str}, ...]
         }
@@ -183,7 +183,7 @@ def run_stats(job_id: str, *, fresh: bool = False) -> Dict[str, Any]:
     ``success_rate_30d`` is a ratio over runs with a *known* outcome only. A
     job whose every recent run was unconfirmed reports ``None`` there and a
     non-zero ``unconfirmed_30d`` — "we cannot say", not "0%". A ``deferred``
-    run (#1316) is left out of the ratio, the durations and
+    run is left out of the ratio, the durations and
     ``completed_count``. It still appears in ``last7``.
 
     ``fresh=True`` skips the cache — used by the stuck-run check, which
@@ -255,7 +255,7 @@ def stuck_threshold_seconds(
 
     The one place the "too long for *this* job" heuristic is defined.
     :func:`is_stuck` (the surface-only ⚠️ badge) and the executor's
-    last-resort watchdog (issue #695) both read it, so the warning line
+    last-resort watchdog both read it, so the warning line
     and the auto-kill ceiling can never drift apart.
     """
     return _threshold_from_stats(
@@ -295,7 +295,7 @@ def is_stuck(
 
     Threshold = :func:`stuck_threshold_seconds`. Surface-only — the UI
     shows ⚠️ and exposes a manual kill button. The *auto*-kill lives in
-    the executor's watchdog (issue #695), which derives its ceiling from
+    the executor's watchdog, which derives its ceiling from
     the same helper but demands a minimum sample first.
 
     ``latest`` lets a caller that already holds the newest run record
@@ -321,7 +321,7 @@ def consecutive_failed_runs(job_id: str) -> int:
     """Count the contiguous genuinely-failed runs at the top of the history.
 
     Stops at the first run that is not a failure — success, running, pending,
-    unknown, or (issue #916) ``unconfirmed``. An unconfirmed run is not
+    unknown, or ``unconfirmed``. An unconfirmed run is not
     evidence of a failure, so it must not extend a failure streak; the whole
     point of the streak gate is to escalate a job that is provably broken, and
     a run of "we could not tell" is the opposite of proof. It breaks the streak

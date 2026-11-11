@@ -1,7 +1,7 @@
 """Chain-cycle graph algorithm for the jobs registry (split off ``src.jobs.config``).
 
 ``on_success`` / ``on_failure`` edges between jobs form a DAG dispatch
-graph (issue #68). This module owns the graph-shaped checks — cycle
+graph. This module owns the graph-shaped checks — cycle
 detection and unknown-reference validation — that ``add_job`` /
 ``update_job`` run before ever writing a chain edit to disk. See
 :mod:`src.jobs.config_models` for the ``Job``/``JobsConfig`` dataclasses

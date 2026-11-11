@@ -1,4 +1,4 @@
-"""In-memory job runtime snapshot behind ``/api/jobs`` and ``/api/board`` (#1324).
+"""In-memory job runtime snapshot behind ``/api/jobs`` and ``/api/board``.
 
 Both polls used to walk every job's run history on every request: reap
 stranded runs, then ``latest_run``, each a full ``list_runs`` (``iterdir``

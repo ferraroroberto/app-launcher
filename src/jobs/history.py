@@ -5,7 +5,7 @@ with ``run.json`` (metadata) and ``output.log`` (combined stdout+stderr).
 Mirrors the audit pattern in :mod:`src.audit`. Pruned to
 :data:`MAX_RUNS_PER_JOB` per job.
 
-Split out of :mod:`src.jobs` (issue #315) — the schtasks sync layer lives in
+Split out of :mod:`src.jobs` — the schtasks sync layer lives in
 :mod:`src.jobs.schtasks`, the mutex queue in :mod:`src.jobs.queue`, and
 percentiles/health in :mod:`src.jobs.stats`; all three read run history
 through this module.
@@ -177,7 +177,7 @@ def write_webhook_payload(
     payload: Any,
 ) -> None:
     """Persist the triggering webhook's payload to ``run_dir / _webhook.json``
-    (issue #73) — so the run record is reproducible, mirroring ``run.json`` /
+    — so the run record is reproducible, mirroring ``run.json`` /
     ``output.log``. Written before the child spawns (the executor never
     touches this file), so it's present even for a run that lands in the
     mutex queue.
@@ -214,7 +214,7 @@ def read_run(
 
     Missing/malformed file → empty dict.
 
-    The two derived keys (issue #916) are added here, at the one place every
+    The two derived keys are added here, at the one place every
     reader of a run record passes through, so the Jobs list, the run history,
     the Board's job cards and the stats aggregates cannot disagree about what a
     run's exit code meant:
@@ -222,7 +222,7 @@ def read_run(
     * ``outcome`` — ``status`` widened with ``"unconfirmed"`` for the exit codes
       fleet-config's scheduled-run adapter uses to say "this may well have
       delivered, but nobody established that", and with ``"deferred"`` for
-      an exit code the job itself declares a designed deferral (#1316). See
+      an exit code the job itself declares a designed deferral. See
       :mod:`src.jobs.outcome`.
     * ``outcome_reason`` — the code's one-line meaning, or ``None`` for an exit
       code the adapter does not define.
@@ -231,7 +231,7 @@ def read_run(
     showing a false red re-render correctly with no migration, and ``status``
     on disk keeps its original meaning.
 
-    ``exit_outcomes`` is the owning job's own exit-code declaration (#1316);
+    ``exit_outcomes`` is the owning job's own exit-code declaration;
     omitted, it is looked up from the registry by the run dir's parent name
     (``webapp/jobs/<job_id>/<run_id>``), so every caller gets it for free.
     """

@@ -55,7 +55,7 @@ def _notified_background_ids(obj: Dict[str, Any]) -> List[str]:
     plain ``content`` string, or an ``attachment`` line's
     ``attachment.prompt`` — never as an ordinary ``assistant``/``user``
     message, so it is invisible to :func:`_last_activity` (empirically
-    confirmed against live transcripts, app-launcher#464). Either shape
+    confirmed against live transcripts). Either shape
     carries the same ``<task-id>ID</task-id>``.
     """
     return _TASK_ID_RE.findall(_notification_text(obj))
@@ -73,13 +73,13 @@ def _is_background_dispatch_tool_use(block: Any) -> bool:
     ``id``, ``input``) is part of the stable message format, unlike the
     internal ``toolUseResult.backgroundTaskId`` key
     :func:`_launched_background_ids` depends on, which a live-transcript
-    spot-check for #576 found had silently stopped appearing: a fresh
+    spot-check found had silently stopped appearing: a fresh
     ``run_in_background`` Bash dispatch and its eventual
     ``<task-notification>`` both showed up in the tail, but no
     ``backgroundTaskId`` anywhere — the old check sees nothing launched and
     never overrides the status. ``PowerShell`` shares the same
     ``run_in_background`` input shape and is this repo's own agents' actual
-    backgrounding tool on Windows (#594) — restricting the check to ``Bash``
+    backgrounding tool on Windows — restricting the check to ``Bash``
     left it blind to exactly that case.
     """
     return (
@@ -93,7 +93,7 @@ def _is_background_dispatch_tool_use(block: Any) -> bool:
 
 def _launched_bash_dispatch_ids(obj: Dict[str, Any]) -> List[str]:
     """``tool_use`` ids of backgrounded ``Bash``/``PowerShell`` dispatches an
-    assistant line launches (#576, widened to ``PowerShell`` by #594) —
+    assistant line launches (``Bash`` and ``PowerShell``) —
     correlated against the tool call's own ``id``, not the internal
     ``backgroundTaskId`` :func:`_launched_background_ids` reads out of the
     result.
@@ -124,7 +124,7 @@ _TOOL_USE_ID_RE = re.compile(r"<tool-use-id>([^<]+)</tool-use-id>")
 
 def _notified_bash_dispatch_ids(obj: Dict[str, Any]) -> List[str]:
     """``tool_use`` ids a ``<task-notification>`` line's ``<tool-use-id>``
-    tag proves resolved (#576)."""
+    tag proves resolved."""
     return _TOOL_USE_ID_RE.findall(_notification_text(obj))
 
 

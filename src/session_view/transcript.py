@@ -1,4 +1,4 @@
-"""Paginated, typed transcript pages for one live Coding session (#953).
+"""Paginated, typed transcript pages for one live Coding session.
 
 The Coding tab's transcript overlay reads a session's *native* history —
 Claude Code's hook JSONL, a Codex rollout, Grok Build's ACP-style
@@ -13,12 +13,12 @@ Every reader here is **bounded**: a long session's JSONL runs to many MB, so
 a page is assembled from fixed-size byte windows read *backwards* from a
 cursor until enough conversation turns are in hand, within a
 :data:`REQUEST_BYTE_CAP` budget that charges a huge line only
-:data:`LINE_CHARGE_CAP` (#1120) and never past :data:`REQUEST_READ_CEILING`
+:data:`LINE_CHARGE_CAP` and never past :data:`REQUEST_READ_CEILING`
 real bytes per request. The cursor handed back is the byte
 offset of the oldest line the page kept, so the next (older) page reads
 strictly before it — no turn is duplicated or dropped across pages.
 
-Since #1050 the cursor also runs *forwards*: :func:`transcript_tail` reads
+The cursor also runs *forwards*: :func:`transcript_tail` reads
 only what has been appended since a given offset, so a chat view that is
 being looked at can stay live without re-reading the newest page on a timer
 (measured on this box: 0.05–0.10 ms for a tick's worth of appends against
@@ -32,7 +32,7 @@ Deliberately **not** on the session-host import closure (CLAUDE.md
 ``:8446`` restart concern.
 
 The six line grammars (:data:`FLAVORS`) live one per module under
-``src/transcript_flavors/`` (#1309) — this module keeps only what is common
+``src/transcript_flavors/`` — this module keeps only what is common
 to all of them: the byte-window paging above, the live-tail cursor, on-demand
 image decoding, and the registry that dispatches to each flavour's builder.
 """
@@ -201,7 +201,7 @@ def entry_full_text(path: Path, offset: int, flavor: str) -> Optional[Dict[str, 
     """The uncapped text of the turn entry beginning at byte ``offset``.
 
     The counterpart of a capped, ``truncated: true`` entry from
-    :func:`transcript_page` — the copy-full-text route (#985) calls this
+    :func:`transcript_page` — the copy-full-text route calls this
     when the phone wants the whole thing. A ``user`` entry is always one
     line; a Claude ``assistant`` entry can span several (one line per
     content block, same ``message.id``), so this reads forward from
@@ -484,7 +484,7 @@ def _pending_from(lines: List[Line], build: EntryBuilder, line_key: LineKey) -> 
     tool call: its result is always a separate, later raw line — often the
     next tick's read entirely — so settling the call as soon as it is read
     and then rendering its result as an orphan card once it finally arrives
-    is #1310. And when call and result *do* land in the same read (a page
+    is a bug this guards against. And when call and result *do* land in the same read (a page
     load, or a tail read that caught up in one tick), building the whole
     window together pairs them correctly, but the naive "just the last
     line" split still cuts between them: the call goes into ``settled``
@@ -545,7 +545,7 @@ def _split_pending(
     report half its text as a whole entry.
 
     **Offsets as render keys.** Both halves keep an offset on every kind,
-    folded ones included — unlike a page's ``entries``, which keep the #985
+    folded ones included — unlike a page's ``entries``, which keep the
     contract of turns only, since a turn is the one kind the copy-full-text
     route can re-read. Everything a live read returns is content the client
     may have to re-render, so each card needs a stable identity to carry an
@@ -570,7 +570,7 @@ def _tail(
     """Everything appended to ``path`` since byte offset ``after``.
 
     The forward counterpart of :func:`_page` — the transcript cursor paged
-    only backwards before #1050, so a live view had no way to ask for "just
+    only backwards, so a live view had no way to ask for "just
     what is new" and had to refetch the newest page whole.
 
     ``after`` is a previous read's ``tail``, so it is always a line boundary
@@ -912,7 +912,7 @@ def transcript_tail(
     size: Optional[int] = None,
     flavor: str = "claude",
 ) -> Dict[str, Any]:
-    """Entries appended since byte offset ``after`` (#1050).
+    """Entries appended since byte offset ``after``.
 
     ``after`` is the ``tail`` of the caller's last read — of the newest page
     from :func:`transcript_page`, or of the previous call to this. ``size``
