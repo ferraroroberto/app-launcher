@@ -9,8 +9,6 @@
     {"key": "app/webapp/static/board/ci-card.js", "counts": {"state-literal": 2}},
     {"key": "app/webapp/static/board/drawer.js", "counts": {"state-literal": 2}},
     {"key": "app/webapp/static/chat/chat-pending.js", "counts": {"state-literal": 1}},
-    {"key": "app/webapp/static/jobs.js", "counts": {"state-literal": 10}},
-    {"key": "app/webapp/static/jobs/jobs-row.js", "counts": {"state-literal": 2}},
     {"key": "app/webapp/static/life-os/life-os-convos.js", "counts": {"state-literal": 1}},
     {"key": "app/webapp/static/sessions.js", "counts": {"state-literal": 2}},
     {"key": "app/webapp/static/settings/inspiration.js", "counts": {"state-literal": 4}},

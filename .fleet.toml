@@ -1130,3 +1130,9 @@ name   = "job-run-status"
 module = "src/jobs/run_status.py"
 type   = "RunStatus"
 derive = "run_status"
+
+[[state_machines]]
+name   = "job-run-status-ui"
+module = "app/webapp/static/jobs/run-status.js"
+type   = "RunStatus"
+derive = "runStatus"

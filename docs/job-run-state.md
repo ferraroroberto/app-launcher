@@ -31,4 +31,6 @@ A reader calls `run_status(record)` (a value outside the set, or no record, is `
 
 The terminal rule is enforced where two writers race: the reaper's guarded write re-checks `is_active` under the run lock and refuses to overwrite a run the executor already finished. `tests/unit/jobs/test_job_run_status.py` holds the state table and that refusal.
 
-The Jobs tab's JavaScript still re-spells some of these values; moving it onto the declared set is separate work.
+## The Jobs tab
+
+The browser reads the same values from `app/webapp/static/jobs/run-status.js`: `RunStatus` (the same eight values), `runStatus(status)` (`null` outside the set) and `isActive(status)`. The tab streams live output and offers Kill only while `isActive` holds, so a finished or unknown run never gets either. It is declared as the `job-run-status-ui` state machine; `tests/unit/jobs/test_job_run_status_ui.py` runs its Node pin and fails when its values drift from `RunStatus`.

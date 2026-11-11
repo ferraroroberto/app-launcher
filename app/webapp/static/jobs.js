@@ -43,6 +43,7 @@ import {
   statusIcon,
 } from './jobs/jobs-row.js';
 import { renderRunRow } from './jobs/run-row.js';
+import { RunStatus, isActive } from './jobs/run-status.js';
 import { renderRunSentFiles } from './jobs/run-sent-files.js';
 import { icon } from './_vendored/icons/icons.js';
 
@@ -423,14 +424,14 @@ function writeOutput(jobId, runId, text, status, extras) {
   extras = extras || runExtras.get(key) || {};
   if (label) {
     const bits = ['Output · ' + runId];
-    if (status) bits.push(status + (status === 'running' || status === 'pending' ? ' (live)' : ''));
+    if (status) bits.push(status + (isActive(status) ? ' (live)' : ''));
     const cpu = extras && Number.isFinite(extras.cpu_seconds)
       ? Math.round(extras.cpu_seconds) + ' s CPU' : null;
     const rss = extras && Number.isFinite(extras.peak_rss_bytes)
       ? 'peak ' + formatBytes(extras.peak_rss_bytes) : null;
     const dur = extras && Number.isFinite(extras.duration_seconds)
       ? formatDuration(extras.duration_seconds) : null;
-    if (dur && status !== 'running' && status !== 'pending') bits.push(dur);
+    if (dur && !isActive(status)) bits.push(dur);
     if (cpu) bits.push(cpu);
     if (rss) bits.push(rss);
     label.textContent = bits.join(' · ');
@@ -571,7 +572,7 @@ async function refreshSheetContent(jobId, opts) {
   const selected = runs.find(function (r) { return r.run_id === selectedRunId; });
   const panel = panelEl(jobId);
   const tail = panel ? panel.querySelector('[data-role="output-tail"]') : null;
-  const isLive = selected && (selected.status === 'running' || selected.status === 'pending');
+  const isLive = selected && isActive(selected.status);
   const isFirstPaint = !tail || tail.dataset.runId !== selectedRunId;
   // Skip the output fetch when the selected run is final AND we've
   // already painted it — a static log doesn't need re-polling, which
@@ -684,7 +685,7 @@ function renderKillButton(jobId, runId, status) {
   if (!panel) return;
   let killBtn = panel.querySelector('[data-role="kill-btn"]');
   const job = findJob(jobId);
-  const isLive = status === 'running' || status === 'pending';
+  const isLive = isActive(status);
   const showKill = !!(job && job.stuck && isLive);
   if (!showKill) {
     if (killBtn) killBtn.remove();
@@ -793,7 +794,7 @@ export async function runJobNow(job, options) {
         job.running = true;
         started = true;
       }
-    } else if (res && res.status === 'queued') {
+    } else if (res && res.status === RunStatus.QUEUED) {
       const blocker = res.mutex_blocked_by ? ' (behind ' + res.mutex_blocked_by + ')' : '';
       toast('Queued ' + job.name + blocker + '.', 'good', { icon: 'hourglass' });
     } else {
@@ -806,7 +807,7 @@ export async function runJobNow(job, options) {
     // output streams there.
     if (state.sheetJob === job.id && sheetOpen()) {
       syncSheetRun(job);
-      if (res && res.run_id && (started || res.status === 'queued')) {
+      if (res && res.run_id && (started || res.status === RunStatus.QUEUED)) {
         stopLiveStream();
         state.selectedRun = { jobId: job.id, runId: res.run_id };
       }
