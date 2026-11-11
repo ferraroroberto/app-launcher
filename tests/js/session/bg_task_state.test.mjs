@@ -8,7 +8,7 @@
 import assert from 'node:assert/strict';
 
 const { TaskPhase, COMPLETED, statusChip } =
-  await import('../../app/webapp/static/background-tasks/task-state.js');
+  await import('../../../app/webapp/static/background-tasks/task-state.js');
 
 assert.ok(Object.isFrozen(TaskPhase));
 

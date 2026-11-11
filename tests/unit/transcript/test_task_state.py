@@ -3,7 +3,7 @@
 ``src/session_view/task_state.py`` declares the phases and the one
 transition rule; ``static/background-tasks/task-state.js`` is the browser's
 copy. The UI test shells out to plain Node to import the real ES module
-(``tests/js/bg_task_state.test.mjs``) and checks its values are the
+(``tests/js/session/bg_task_state.test.mjs``) and checks its values are the
 server's. Machines without Node skip that test.
 """
 
@@ -20,7 +20,7 @@ from src.session_view.task_state import COMPLETED, TaskPhase, next_status, task_
 from src.subprocess_flags import NO_WINDOW
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-_TEST_SCRIPT = _REPO_ROOT / "tests" / "js" / "bg_task_state.test.mjs"
+_TEST_SCRIPT = _REPO_ROOT / "tests" / "js" / "session" / "bg_task_state.test.mjs"
 
 
 def test_a_finished_task_never_reopens_or_changes_status() -> None:
