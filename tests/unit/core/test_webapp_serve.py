@@ -231,6 +231,84 @@ async def _abandoned_h2_responses_that_finished(clients: int) -> int:
             pass
 
 
+async def _unanswered_h2_requests(total: int, batch: int) -> list:
+    """Serve over h2c with the launch config and send ``total`` requests on one
+    connection, ``batch`` in flight at a time; the streams that never got an answer."""
+    import socket
+
+    import h2.config
+    import h2.connection
+    import h2.events
+    from hypercorn.asyncio import serve as hypercorn_serve
+
+    async def app(scope, receive, send):
+        if scope["type"] != "http":
+            return
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    stop = asyncio.Event()
+    server = asyncio.create_task(
+        hypercorn_serve(app, serve.build_config("127.0.0.1", port), shutdown_trigger=stop.wait))
+    try:
+        for _ in range(100):
+            try:
+                reader, writer = await asyncio.open_connection("127.0.0.1", port)
+                break
+            except OSError:
+                await asyncio.sleep(0.05)
+        else:
+            raise AssertionError("hypercorn never listened")
+        conn = h2.connection.H2Connection(h2.config.H2Configuration(client_side=True))
+        conn.initiate_connection()
+        sent = 0
+        while sent < total:
+            pending = set()
+            for _ in range(min(batch, total - sent)):
+                stream_id = conn.get_next_available_stream_id()
+                conn.send_headers(stream_id, [(":method", "GET"), (":path", f"/{sent}"),
+                                              (":scheme", "http"), (":authority", "t")], end_stream=True)
+                pending.add(stream_id)
+                sent += 1
+            writer.write(conn.data_to_send())
+            await writer.drain()
+            while pending:
+                try:
+                    # A healthy answer takes milliseconds; the stall is the 5 s keep-alive.
+                    data = await asyncio.wait_for(reader.read(65_536), 2)
+                except asyncio.TimeoutError:
+                    return sorted(pending)
+                if not data:
+                    return sorted(pending)
+                for event in conn.receive_data(data):
+                    if isinstance(event, h2.events.StreamEnded):
+                        pending.discard(event.stream_id)
+                writer.write(conn.data_to_send())
+        writer.close()
+        return []
+    finally:
+        stop.set()
+        server.cancel()
+        try:
+            await server
+        except BaseException:
+            pass
+
+
+def test_every_request_on_a_long_lived_h2_connection_is_answered():
+    """A page opened late in a browser session shares the connection every
+    earlier page booted over. Past hypercorn's default per-connection request
+    cap, the requests in flight must still be answered at once, not left for
+    the keep-alive timer to drop."""
+    from hypercorn.config import Config
+
+    total = Config.keep_alive_max_requests + 200
+    assert asyncio.run(_unanswered_h2_requests(total, batch=20)) == []
+
+
 def test_a_response_whose_h2_client_vanished_still_finishes(monkeypatch):
     """A client that leaves mid-response must not leave its ASGI call waiting
     forever, or every closed tab leaks a task and its connection."""
