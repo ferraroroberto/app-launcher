@@ -40,6 +40,7 @@ import re
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Set, Tuple
 
 from src.board import owner_checks
+from src.chief.queue_status import QueueStatus, queue_status
 
 IN_PROGRESS = "in_progress"
 WAITING = "waiting"
@@ -103,14 +104,19 @@ def _after_chips(after: str) -> List[str]:
     return chips
 
 
+# Statuses the bucket heading or the question chip already says, so no status chip.
+_HEADING_SAYS_IT = frozenset({QueueStatus.QUEUED, QueueStatus.PARKED, QueueStatus.WAITING_ROBERTO})
+
+
 def _row_chips(row: Mapping[str, str]) -> List[str]:
     """A queued or blocked row's reasons; the bucket heading says the rest."""
     status = row.get("status") or ""
+    state = queue_status(row)
     kind = row.get("kind") or ""
     chips: List[str] = []
-    if status not in ("queued", "parked", "waiting-roberto", ""):
+    if status and state not in _HEADING_SAYS_IT:
         chips.append(status)
-    if status == "parked":
+    if state is QueueStatus.PARKED:
         if kind == "blocked-by" and row.get("blocked_by"):
             chips.append("blocked by " + row["blocked_by"])
         elif kind == "owner":
@@ -218,13 +224,13 @@ def _place(
         return UNKNOWN, []
     labels = {str(lab).lower() for lab in card.get("labels") or []}
     row = queue.get(key) if key is not None else None
-    question = key in asked or (row is not None and row.get("status") == "waiting-roberto")
+    question = key in asked or queue_status(row) is QueueStatus.WAITING_ROBERTO
     tail = ["question"] if question else []
     chips = _label_chips(labels)
     if chips:
         return WAITING, chips + tail
     if row is not None:
-        if row.get("status") == "parked":
+        if queue_status(row) is QueueStatus.PARKED:
             bucket = UMBRELLA if row.get("kind") == "umbrella" else BLOCKED
             return bucket, ([] if bucket == UMBRELLA else _row_chips(row)) + tail
         return QUEUED, _row_chips(row) + tail
@@ -244,7 +250,7 @@ def _unblocks(plan: Optional[Mapping[str, Any]]) -> Dict[Key, List[str]]:
     if not plan or plan.get("state") != "ok":
         return held
     for row in plan.get("queue") or []:
-        if row.get("status") != "parked" or row.get("kind") != "blocked-by":
+        if queue_status(row) is not QueueStatus.PARKED or row.get("kind") != "blocked-by":
             continue
         repo = str(row.get("repo") or "")
         ref = str(row.get("ref") or "")
