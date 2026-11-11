@@ -64,6 +64,7 @@ from src.jobs import (
 )
 from src.jobs.argv import compose_argv
 from src.jobs.config import Job, get_by_id, load_jobs
+from src.jobs.run_status import RunStatus, finished_status
 from src.jobs.secrets import resolve_env_overlay
 from src.jobs.trigger import TRIGGER_SYNTAX, is_valid_trigger
 from src.notifications import notify_failure
@@ -198,7 +199,7 @@ def _finalize_cooldown_skip(job: Job, args: argparse.Namespace) -> Optional[int]
             stamped,
             run_id=skip_dir.name,
             finished_at=stamped,
-            status="skipped",
+            status=RunStatus.SKIPPED,
             note="cooldown",
             cooldown_seconds=cooldown_seconds,
             cooldown_remaining_seconds=remaining,
@@ -298,7 +299,7 @@ def _record_failed_run(
             stamped,
             run_id=run_dir.name,
             finished_at=stamped,
-            status="failed",
+            status=RunStatus.FAILED,
             exit_code=-1,
             note=note,
         ),
@@ -444,11 +445,11 @@ def _spawn_and_wait(
             if job.visible and proc.stdout is not None:
                 tee_pipe_to_file_and_console(proc.stdout, fh)
             exit_code = proc.wait()
-        status = "success" if exit_code == 0 else "failed"
+        status = finished_status(exit_code)
     except OSError as exc:
         logger.error(f"❌ run-job {job.id} spawn failed: {exc}")
         exit_code = -1
-        status = "failed"
+        status = RunStatus.FAILED
         try:
             with runtime_files.open_for_write(output_log, "ab") as fh:
                 fh.write(f"[run-job spawn error] {exc}\n".encode("utf-8"))
@@ -462,7 +463,7 @@ def _spawn_and_wait(
     if watchdog is not None and watchdog.fired:
         # A watchdog kill is a failure whatever exit code the torn-down
         # tree happened to report on its way out.
-        status = "failed"
+        status = RunStatus.FAILED
     return exit_code, status, sampler, watchdog
 
 
@@ -536,9 +537,9 @@ def _dispatch_chain(job: Job, status: str) -> None:
     restart.
     """
     downstream_ids: List[str] = []
-    if status == "success":
+    if status == RunStatus.SUCCESS:
         downstream_ids = list(job.on_success or [])
-    elif status == "failed":
+    elif status == RunStatus.FAILED:
         downstream_ids = list(job.on_failure or [])
     if not downstream_ids:
         return
@@ -760,7 +761,7 @@ class RunJobCommand(BaseCommand):
         )
         # A watchdog kill is a failed run even in the pathological case
         # where the torn-down tree still reported a zero exit code.
-        if status == "failed":
+        if status == RunStatus.FAILED:
             return 1
         return 0 if exit_code == 0 else 1
 
@@ -771,7 +772,7 @@ def _write_running_record(
     """Flip the run to ``running`` on disk, with its params and provenance."""
     started_at = datetime.now().isoformat(timespec="seconds")
     run_meta: Dict[str, Any] = seed_run_meta(
-        job, args.trigger, started_at, run_id=run_dir.name, status="running"
+        job, args.trigger, started_at, run_id=run_dir.name, status=RunStatus.RUNNING
     )
     # Persist the typed-parameter payload so the history
     # row can replay it and the meta line can show the values back.

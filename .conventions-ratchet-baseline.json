@@ -1,10 +1,6 @@
 {
   "version": 1,
   "entries": [
-    {"key": "app/cli/commands/run_job_cmd.py", "counts": {"state-literal": 6}},
-    {"key": "app/webapp/routers/jobs.py", "counts": {"state-literal": 5, "state-set-repeat": 1}},
-    {"key": "app/webapp/routers/jobs_outbox_routes.py", "counts": {"state-literal": 1}},
-    {"key": "app/webapp/routers/jobs_run.py", "counts": {"state-literal": 5}},
     {"key": "app/webapp/routers/life_os_conversations.py", "counts": {"state-literal": 6}},
     {"key": "app/webapp/routers/life_os_relay.py", "counts": {"state-literal": 4}},
     {"key": "app/webapp/static/apps/apps-perf.js", "counts": {"state-literal": 3}},
@@ -20,12 +16,7 @@
     {"key": "app/webapp/static/settings/inspiration.js", "counts": {"state-literal": 4}},
     {"key": "scripts/design_review_synthetic.py", "counts": {"state-literal": 1}},
     {"key": "scripts/telegram_relay.py", "counts": {"state-literal": 1}},
-    {"key": "src/board/__init__.py", "counts": {"state-literal": 2}},
     {"key": "src/board/backlog_buckets.py", "counts": {"state-literal": 1}},
-    {"key": "src/jobs/history.py", "counts": {"state-literal": 1}},
-    {"key": "src/jobs/queue.py", "counts": {"state-literal": 6, "state-set-repeat": 1}},
-    {"key": "src/jobs/reap.py", "counts": {"state-literal": 10, "state-set-repeat": 2}},
-    {"key": "src/jobs/stats.py", "counts": {"state-literal": 2}},
     {"key": "src/notifications.py", "counts": {"state-literal": 1}},
     {"key": "src/session_view/background_tasks.py", "counts": {"state-literal": 2}},
     {"key": "src/transcript_flavors/grok.py", "counts": {"state-literal": 1}}

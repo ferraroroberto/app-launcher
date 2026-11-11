@@ -31,6 +31,7 @@ from fastapi import HTTPException
 from src import jobs as jobs_mod
 from src.jobs.argv import ArgvRejected
 from src.jobs.config import Job, JobsConfig
+from src.jobs.run_status import RunStatus
 
 logger = logging.getLogger(__name__)
 
@@ -68,10 +69,10 @@ async def _dry_run_check(job: Job, raw_params: Dict[str, Any]) -> Dict[str, Any]
 
             wcfg = await asyncio.to_thread(load_webapp_config)
             resolve_env_overlay(job.env, wcfg.secrets)
-        meta["status"] = "dry_run_success"
+        meta["status"] = RunStatus.DRY_RUN_SUCCESS
         meta["note"] = "resolved: " + " ".join(argv)
     except (OSError, ValueError) as exc:
-        meta["status"] = "dry_run_failed"
+        meta["status"] = RunStatus.DRY_RUN_FAILED
         meta["note"] = str(exc)
     jobs_mod.write_run_json(run_dir, **meta)
     jobs_mod.invalidate_stats_cache(job.id)
@@ -96,7 +97,7 @@ async def _dry_run_execute(job: Job, raw_params: Dict[str, Any]) -> Dict[str, An
     )
     started_at = datetime.now().isoformat(timespec="seconds")
     base_meta: Dict[str, Any] = jobs_mod.seed_run_meta(
-        job, "manual", started_at, run_id=run_dir.name, status="pending", dry_run=True
+        job, "manual", started_at, run_id=run_dir.name, status=RunStatus.PENDING, dry_run=True
     )
     if raw_params:
         base_meta["params"] = raw_params
@@ -120,7 +121,7 @@ async def _dry_run_execute(job: Job, raw_params: Dict[str, Any]) -> Dict[str, An
             run_dir,
             finished_at=datetime.now().isoformat(timespec="seconds"),
             exit_code=-1,
-            status="failed",
+            status=RunStatus.FAILED,
             refused=refused,
         )
         # A refused argv is a rejected request, not a server
@@ -192,15 +193,15 @@ async def _admit_and_spawn(
         # produces a record. Fail loud rather than return a bodyless 200.
         raise HTTPException(status_code=500, detail="admission produced no run")
 
-    if meta["status"] == "queued":
+    if meta["status"] == RunStatus.QUEUED:
         return {
             "run_id": meta["run_id"],
             "job_id": job.id,
-            "status": "queued",
+            "status": RunStatus.QUEUED,
             "mutex_group": meta["mutex_group"],
             "mutex_blocked_by": meta["mutex_blocked_by"],
         }
-    if meta["status"] == "failed":
+    if meta["status"] == RunStatus.FAILED:
         # Spawn failed. admit_and_spawn already recorded the failure on the
         # run so the UI surfaces it instead of a stuck "pending". A refused
         # argv is a rejected request, not a server fault —

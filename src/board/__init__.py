@@ -80,6 +80,7 @@ from src.board.transcript_exchange import (  # noqa: F401 — re-exported
 )
 from src.jobs import dismissed as jobs_dismissed
 from src.jobs.outcome import OUTCOME_DEFERRED, OUTCOME_UNCONFIRMED
+from src.jobs.run_status import RunStatus, run_status
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +160,7 @@ def _job_attention_card(job: Any, runtime: Any, now_local: datetime, dismissed: 
         _UNREADABLE_JOBS.discard(job.id)
     if not latest:
         return None
-    if latest.get("status") == "running" and runtime.stuck:
+    if run_status(latest) is RunStatus.RUNNING and runtime.stuck:
         started = parse_iso(latest.get("started_at"))
         return {
             "kind": "job",
@@ -173,7 +174,7 @@ def _job_attention_card(job: Any, runtime: Any, now_local: datetime, dismissed: 
     # A deferral the job itself declared is by design, so nothing
     # here needs a human. Its state is shown on the job card, not here.
     if (
-        latest.get("status") == "failed"
+        run_status(latest) is RunStatus.FAILED
         and latest.get("outcome") != OUTCOME_DEFERRED
     ):
         finished = parse_iso(latest.get("finished_at"))

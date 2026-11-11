@@ -1124,3 +1124,9 @@ record = "https://github.com/ferraroroberto/app-launcher/issues/1634"
 name   = "board-card-status"
 module = "src/board/card_status.py"
 type   = "CardStatus"
+
+[[state_machines]]
+name   = "job-run-status"
+module = "src/jobs/run_status.py"
+type   = "RunStatus"
+derive = "run_status"
