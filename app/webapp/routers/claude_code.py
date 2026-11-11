@@ -2,7 +2,7 @@
 
 Favorites, the per-project git status the tiles colour themselves from, and
 the row's ``⋯`` project menu — VS Code, the read-only changes viewer,
-Explorer (#802, #977) — none of which spawn or track a PTY session.
+Explorer — none of which spawn or track a PTY session.
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ def _project_or_404(request: Request, project_id: str) -> ProjectDir:
 
 @router.post("/api/claude-code/favorites")
 async def toggle_favorite(request: Request) -> Dict[str, Any]:
-    """Star/unstar a coding project (issue #250).
+    """Star/unstar a coding project.
 
     Body: ``{"id": "<scanner-slug>", "favorite": true|false}``. Membership in
     ``coding_favorites`` is set idempotently — favoriting an already-favorite
@@ -81,7 +81,7 @@ async def toggle_favorite(request: Request) -> Dict[str, Any]:
 
 @router.post("/api/claude-code/vscode/{project_id}")
 async def open_project_in_vscode(project_id: str, request: Request) -> Dict[str, Any]:
-    """Open a Coding project in the local VS Code (issue #802).
+    """Open a Coding project in the local VS Code.
 
     Resolves the project's sibling ``<name>.code-workspace`` under
     ``projects_dir``, creating it with a minimal one-folder shape when it
@@ -113,7 +113,7 @@ async def open_project_in_vscode(project_id: str, request: Request) -> Dict[str,
 
 @router.get("/api/claude-code/changes/{project_id}")
 async def project_changes(project_id: str, request: Request) -> Dict[str, Any]:
-    """The working-tree file list behind the row menu's *Show changes* (#977).
+    """The working-tree file list behind the row menu's *Show changes*.
 
     Read-only and on demand — never folded into the 45 s ``git-status``
     poll, whose payload stays a cheap ``dirty`` bool per project. A folder
@@ -129,7 +129,7 @@ async def project_changes(project_id: str, request: Request) -> Dict[str, Any]:
 
 @router.get("/api/claude-code/changes/{project_id}/diff")
 async def project_file_diff(project_id: str, request: Request, path: str = "") -> Dict[str, Any]:
-    """One file's unified diff for the accordion viewer (#977).
+    """One file's unified diff for the accordion viewer.
 
     ``path`` is a repo-relative path the ``changes`` payload handed out;
     anything else — absolute, ``..``, a symlink out of the tree — is 400,
@@ -149,7 +149,7 @@ async def project_file_diff(project_id: str, request: Request, path: str = "") -
 
 @router.post("/api/claude-code/folder/{project_id}")
 async def open_project_folder(project_id: str, request: Request) -> Dict[str, Any]:
-    """Open the project directory in Windows Explorer on the PC (#977).
+    """Open the project directory in Windows Explorer on the PC.
 
     A local-machine action like the VS Code route above: Explorer opens on
     the launcher host, not the phone. Nothing is tracked afterwards. A host
@@ -257,7 +257,7 @@ async def claude_git_status(request: Request, fresh: bool = False) -> Dict[str, 
     interval; ``?fresh=true`` (the Projects toolbar's refresh) always waits
     for a scan that starts after the call. A call that waits and overlaps a
     running scan waits for the next one, shared with every call from that
-    window (#1268); ``shield`` keeps one caller's disconnect from cancelling
+    window; ``shield`` keeps one caller's disconnect from cancelling
     it for the rest.
     """
     cfg: WebappConfig = request.app.state.webapp_config

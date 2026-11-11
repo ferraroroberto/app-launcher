@@ -1,4 +1,4 @@
-"""Artifacts, pinning, and live output for Jobs-tab run records (issue #71)."""
+"""Artifacts, pinning, and live output for Jobs-tab run records."""
 
 from __future__ import annotations
 

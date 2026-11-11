@@ -1,4 +1,4 @@
-"""Coding tab: files an agent sends to the owner's chat view (#1530).
+"""Coding tab: files an agent sends to the owner's chat view.
 
 ``POST /api/claude-code/sessions/{sid}/outbox`` — ``{"path", "caption"?}``.
 **Loopback-only**: the caller is an agent running on this PC (a companion

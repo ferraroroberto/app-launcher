@@ -1,7 +1,6 @@
 """Skill resolution + the spawn tail shared by the Life OS launch routes.
 
-Split off ``app/webapp/routers/life_os.py`` (issue #884, a `/codebase-audit`
-maintainability finding) alongside :mod:`app.webapp.routers.life_os_conversations`
+Split off ``app/webapp/routers/life_os.py`` alongside :mod:`app.webapp.routers.life_os_conversations`
 and :mod:`app.webapp.routers.life_os_files`. The skill-launch, recap-launch and
 conversation-launch routes all resolve a skill, a provider/model choice, and
 then run the same spawn + audit + PC-mirror tail; those three live here so that
@@ -46,8 +45,8 @@ _LAUNCH_MODELS = {
 def _resolve_launch_choice(body: Dict[str, Any]) -> tuple[str, str]:
     """Resolve the per-launch provider and model from the request body.
 
-    The tab now sends an explicit ``model`` (#540, board parity). Older
-    callers sent an ``opus`` bool (on → opus, off → sonnet); accept it as a
+    The tab sends an explicit ``model``, as the Board does. Older callers
+    sent an ``opus`` bool (on → opus, off → sonnet); accept it as a
     fallback so an out-of-date cached client still launches correctly.
     """
     raw = body.get("model")
@@ -105,9 +104,9 @@ async def _spawn_skill_session(
     already resolved provider-specific flags and the session kind; this runs
     the spawn + audit + optional PC mirror identically and returns the common
     response fields. The caller prepends its own ``launched`` id. ``label``
-    tags the session with a role (#1366's ``telegram:<profile>``); ``""``
+    tags the session with a role (``telegram:<profile>``); ``""``
     for every other launch. ``request`` is ``None`` (and ``mirror`` off) only
-    for the Telegram boot-time autostart (#1542), which no client asked for.
+    for the Telegram boot-time autostart, which no client asked for.
     """
     # The phone passes its real terminal size: a skill streams
     # output the moment the PTY spawns, so spawning at the legacy 40×120

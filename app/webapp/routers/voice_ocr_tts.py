@@ -43,7 +43,7 @@ def _voice_base(request: Request) -> str:
 
 @router.post("/api/transcribe/sessions")
 async def transcribe_create(request: Request) -> Dict[str, Any]:
-    """Create a streamed dictation session (Tailscale-only + passkey, #168)."""
+    """Create a streamed dictation session (Tailscale-only + passkey)."""
     base = _voice_base(request)
     language = (request.query_params.get("language") or "").strip() or None
     try:
@@ -58,7 +58,7 @@ async def transcribe_create(request: Request) -> Dict[str, Any]:
 
 @router.post("/api/transcribe/sessions/{vid}/chunk")
 async def transcribe_chunk(vid: str, request: Request) -> Dict[str, Any]:
-    """Forward one raw audio chunk to a streamed session (#168)."""
+    """Forward one raw audio chunk to a streamed session."""
     base = _voice_base(request)
     content = await request.body()
     if not content:
@@ -75,7 +75,7 @@ async def transcribe_chunk(vid: str, request: Request) -> Dict[str, Any]:
 
 @router.post("/api/transcribe/sessions/{vid}/finish")
 async def transcribe_finish(vid: str, request: Request) -> Dict[str, Any]:
-    """Close a streamed session and return the canonical transcript (#168)."""
+    """Close a streamed session and return the canonical transcript."""
     base = _voice_base(request)
     language = (request.query_params.get("language") or "").strip() or None
     try:
@@ -91,7 +91,7 @@ async def transcribe_finish(vid: str, request: Request) -> Dict[str, Any]:
 
 @router.get("/api/transcribe/sessions/{vid}/events")
 async def transcribe_events(vid: str, request: Request) -> StreamingResponse:
-    """Proxy the voice-transcriber's rolling-partial SSE stream (#168).
+    """Proxy the voice-transcriber's rolling-partial SSE stream.
 
     ``EventSource`` can't set headers, so the bearer + passkey ``tt`` ride
     the query string (both gates read query params). The upstream stream is
@@ -135,9 +135,9 @@ async def transcribe_events(vid: str, request: Request) -> StreamingResponse:
 async def transcribe_single_shot(
     request: Request, file: UploadFile = File(...)
 ) -> Dict[str, Any]:
-    """Single-shot transcription fallback for the compose bar (#165).
+    """Single-shot transcription fallback for the compose bar.
 
-    The streamed path (#168) is preferred for live partials; this remains
+    The streamed path is preferred for live partials; this remains
     the no-streaming fallback. The phone records audio and POSTs it here;
     the webapp proxies the blob to the voice-transcriber over loopback and
     returns the transcript for review in the compose textarea.
@@ -184,7 +184,7 @@ def _photo_ocr_base(request: Request) -> str:
 async def ocr_screenshot(
     request: Request, files: List[UploadFile] = File(...)
 ) -> Dict[str, Any]:
-    """Single-shot screenshot OCR for the compose bar (#171).
+    """Single-shot screenshot OCR for the compose bar.
 
     The phone captures one or more screenshots and POSTs them here; the
     webapp proxies the images to the sibling photo-ocr over loopback (its
@@ -241,7 +241,7 @@ def _tts_base(request: Request) -> str:
 
 @router.get("/api/tts/health")
 async def tts_health(request: Request) -> Dict[str, Any]:
-    """Is the hub's high-quality read-aloud voice reachable right now (#203)?
+    """Is the hub's high-quality read-aloud voice reachable right now?
 
     The 🔊 button uses this to decide whether to route through the hub or fall
     back to the on-device Web Speech voice. Degrades to ``available: False``
@@ -262,7 +262,7 @@ async def tts_health(request: Request) -> Dict[str, Any]:
 
 @router.post("/api/tts/speak")
 async def tts_speak(request: Request) -> StreamingResponse:
-    """Stream the read-aloud reply as headerless PCM16 from the hub (#203, #206).
+    """Stream the read-aloud reply as headerless PCM16 from the hub.
 
     Body is JSON ``{text, voice?, speed?}``. The webapp forwards it to the
     hub's OpenAI-shape ``POST /v1/audio/speech`` with ``response_format="pcm"``
@@ -271,7 +271,7 @@ async def tts_speak(request: Request) -> StreamingResponse:
     them through the Web Audio API for low time-to-first-audio. The hub's
     ``X-Sample-Rate`` is forwarded so the client knows the PCM rate. PCM (not
     WAV) because the hub's streaming WAV uses an open-ended RIFF header an
-    ``<audio>`` element can't play progressively (issue #206). Carries the
+    ``<audio>`` element can't play progressively. Carries the
     terminal's Tailscale-only + passkey gate (the reply text is terminal
     content).
     """
@@ -335,7 +335,7 @@ async def tts_speak(request: Request) -> StreamingResponse:
 
 @router.post("/api/tts/summarize")
 async def tts_summarize(request: Request) -> Dict[str, Any]:
-    """Summarize the agent's last reply for hands-free / driving listening (#210).
+    """Summarize the agent's last reply for hands-free / driving listening.
 
     Body is JSON ``{text}``. Forwards it to the hub's ``claude-haiku-4-5`` with
     a driving-mode prompt (the essence + any decision to take) and returns

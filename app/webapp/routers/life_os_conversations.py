@@ -4,25 +4,24 @@
                                                  or new handoff (Tailscale + passkey)
     POST /api/life-os/skills/{id}/conversations/resume-latest
                                                → the newest resumable conversation,
-                                                 on its own model (Tailscale + passkey, #1503)
+                                                 on its own model (Tailscale + passkey)
     GET  /api/life-os/skills/{id}/conversations → digested conversation index
                                                  (Tailscale + passkey)
     DELETE /api/life-os/skills/{id}/conversations?path=<capture>
                                                → capture + Claude transcript + indexes
-                                                 (Tailscale + passkey, #1410)
+                                                 (Tailscale + passkey)
     PATCH  /api/life-os/skills/{id}/conversations?path=<capture>
                                                → set or clear the owner's title
-                                                 (Tailscale + passkey, #1495)
+                                                 (Tailscale + passkey)
 
-Split off ``app/webapp/routers/life_os.py`` (issue #884, a `/codebase-audit`
-maintainability finding) and mounted on ``life_os.router`` via
+Split off ``app/webapp/routers/life_os.py`` and mounted on ``life_os.router`` via
 ``include_router``, so ``app/webapp/server.py`` still registers one
 ``life_os.router``. Launching goes through
 :mod:`app.webapp.routers.life_os_spawn`, never ``life_os.py`` — which imports
 *this* module for a cached client's targeted resume — so there is no cycle.
 
-Conversations (issue #727) are the same private content one level up: the
-capture/index pipeline in life-os (life-os#68, fleet-config#586) writes a
+Conversations are the same private content one level up: the
+capture/index pipeline in life-os writes a
 digested ``conversations/index.json`` per skill and keeps a cross-skill FTS5
 database, and this router surfaces both so the phone can *find* one
 conversation and reopen exactly it — rather than scrolling Claude's native
@@ -166,7 +165,7 @@ def _capture_rel_for_file(root: Path, skill: Skill, filename: str) -> str:
 
 
 def _last_interaction(path: Optional[Path], created: str) -> str:
-    """The capture file's mtime as ``YYYY-MM-DD`` — "last interaction" (#886).
+    """The capture file's mtime as ``YYYY-MM-DD`` — "last interaction".
 
     life-os's pipeline rewrites the same capture ``.md`` when a resumed
     session adds turns, so its mtime moves forward while the date-prefixed
@@ -396,7 +395,7 @@ async def _handoff_flags(
 async def _name_resumed_session(
     cfg: WebappConfig, skill: Skill, path: Path, session: Any,
 ) -> Optional[Dict[str, Any]]:
-    """Open a resumed conversation's session under its Life OS title (#1637).
+    """Open a resumed conversation's session under its Life OS title.
 
     The session starts under the skill's name, which is also what every other
     session of that skill is called; the owner's title is the durable name, and
@@ -474,7 +473,7 @@ async def list_skill_conversations(skill_id: str, request: Request) -> Dict[str,
 
     Reads ``<skill>/conversations/index.json`` — the machine-readable twin of
     ``index.md``, written by life-os's own capture/index pipeline
-    (life-os#68) — and returns its entries newest-first. Each carries the
+    — and returns its entries newest-first. Each carries the
     digest (topic, plus one ``summary`` paragraph or the older decisions /
     open loops pair), the stored session id, and a
     ``path`` to the raw capture for the existing file viewer.
@@ -548,7 +547,7 @@ async def _group_by_conversation(
     """:func:`_conversation_sessions` over a session list the caller already has.
 
     The grouping itself is ``src.life_os.delete.group_by_conversation`` (shared
-    with the zombie cleanup job, #1738); it reads the hook-state file, so it
+    with the zombie cleanup job); it reads the hook-state file, so it
     runs off the loop.
     """
     return await asyncio.to_thread(group_by_conversation, cfg, sessions)
@@ -607,7 +606,7 @@ async def resume_latest_conversation(skill_id: str, request: Request) -> Dict[st
 async def skill_conversations(cfg: WebappConfig, skill: Skill) -> List[Dict[str, Any]]:
     """One skill's conversation rows, the most recently touched first (by
     capture mtime: life-os rewrites a capture when a resumed session adds
-    turns). ``[]`` with no usable index. Shared with the relay (#1639)."""
+    turns). ``[]`` with no usable index. Shared with the relay."""
     root = Path(cfg.life_os_dir)
     index = _safe_conversation_index(root, skill)
     rows = _read_conversation_index(index) if index else None
@@ -625,7 +624,7 @@ async def resume_or_open(
     """Resume one resumable conversation row on its own model, or return the
     session that already has it open (``conversation_action: "open"``).
 
-    Shared by resume-latest and the Telegram relay (#1639). 503 when the
+    Shared by resume-latest and the Telegram relay. 503 when the
     session host can't be asked, since then it isn't known whether the
     conversation is open, and nothing is launched.
     """
@@ -696,7 +695,7 @@ def skill_last_used(root: Path, skill: Skill) -> tuple[str, bool]:
 
 @router.delete("/api/life-os/skills/{skill_id}/conversations")
 async def delete_conversation(skill_id: str, request: Request) -> Dict[str, Any]:
-    """Delete one conversation everywhere it lives (Tailscale + passkey, #1410).
+    """Delete one conversation everywhere it lives (Tailscale + passkey).
 
     ``?path=`` is the capture's vault-relative path, exactly as the list rows
     carry it. Removes the Claude Code transcript (matched by the capture
@@ -764,7 +763,7 @@ _TITLE_EXIT_ERRORS = {
 
 @router.patch("/api/life-os/skills/{skill_id}/conversations")
 async def rename_conversation(skill_id: str, request: Request) -> Dict[str, Any]:
-    """Set or clear the owner's title for one conversation (Tailscale + passkey, #1495).
+    """Set or clear the owner's title for one conversation (Tailscale + passkey).
 
     ``?path=`` is the capture's vault-relative path, as for Delete; the body is
     ``{"title": "<text>"}``, and an empty or ``null`` title clears it, so the
@@ -940,7 +939,7 @@ def _captures_with_sessions(
 async def sync_session_title(
     cfg: WebappConfig, sessions: List[Dict[str, Any]], session_id: str, title: str, client: str,
 ) -> Optional[Dict[str, Any]]:
-    """Title the Life OS conversation a just-renamed session has open (#1637).
+    """Title the Life OS conversation a just-renamed session has open.
 
     ``sessions`` is the host's list as the caller already fetched it. ``None``
     when the session is not on a Life OS conversation, or the name was cleared

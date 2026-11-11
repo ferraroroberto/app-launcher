@@ -1,4 +1,4 @@
-"""Screen time routes — the sheet's Send to task-os (#1678, step 2/2) and its
+"""Screen time routes — the sheet's Send to task-os and its
 By feature counts.
 
     GET  /api/screen-time/export   {configured, last_ok, last_error}

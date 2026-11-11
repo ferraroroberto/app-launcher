@@ -1,11 +1,11 @@
-"""Life OS Telegram channel profiles — list + launch (issue #1366).
+"""Life OS Telegram channel profiles — list + launch.
 
 Split off ``life_os.py`` the way ``life_os_conversations.py`` and
-``life_os_files.py`` were (#884): mounted from there via ``include_router``, so
+``life_os_files.py`` were: mounted from there via ``include_router``, so
 ``app/webapp/server.py`` still registers one ``life_os.router``.
 
     GET  /api/life-os/channels                    → the profiles + which are running,
-                                                     and the setup checks (#1369)
+                                                     and the setup checks
     PATCH /api/life-os/channels/{id}              → edit a profile's settings
                                                      (Tailscale + passkey)
     POST /api/life-os/channels/{id}/launch        → start (or resume) a profile's
@@ -14,7 +14,7 @@ Split off ``life_os.py`` the way ``life_os_conversations.py`` and
                                                      (Tailscale + passkey)
     POST /api/life-os/channels/{id}/restart       → quit the running session,
                                                      confirm it is gone, start
-                                                     it fresh (#1675)
+                                                     it fresh
 
 A profile (:mod:`src.launching.channel_profiles`) binds one life-os skill to one Telegram
 bot. The launch opens that skill exactly as the skill tile does, plus
@@ -28,12 +28,12 @@ so a second session on the same profile would fight the first with a 409. The
 guard looks the profile's label up in the session-host's live list, under a
 per-profile lock so two quick taps cannot both pass it.
 
-**Restart (#1675).** A running bot keeps the skill text, settings, hooks and
+**Restart.** A running bot keeps the skill text, settings, hooks and
 model it started with. Restart quits it and starts a fresh session under the
 same lock, so a Launch can't slip in between; when the quit can't be
 confirmed it starts nothing and answers 502.
 
-**Boot-time autostart (#1542).** With ``autostart_channel_sessions`` on, the
+**Boot-time autostart.** With ``autostart_channel_sessions`` on, the
 webapp's lifespan calls :func:`autostart_channel_sessions`, which starts each
 ready profile through :func:`start_channel_session` — the launch route's own
 body, so the lock and the already-running refusal hold for it too.
@@ -129,7 +129,7 @@ def _settings_fields(profile: ChannelProfile) -> Dict[str, Any]:
 
 
 def relay_base_url(cfg: WebappConfig) -> str:
-    """The loopback URL a relay-enabled bot calls this webapp on (#1639).
+    """The loopback URL a relay-enabled bot calls this webapp on.
 
     Loopback, so the request is the PC itself; the relay routes still demand
     the profile's token on top of that.
@@ -154,7 +154,7 @@ async def _live_profile_sessions(cfg: WebappConfig) -> Dict[str, Dict[str, Any]]
 @router.get("/api/life-os/channels")
 async def list_channels(request: Request) -> Dict[str, Any]:
     """The configured profiles, each with the session it is running in, plus the
-    setup checks the Settings card shows (#1369).
+    setup checks the Settings card shows.
 
     ``running`` is ``None`` (not ``False``) for every profile when the
     session-host cannot be reached: an unknown is not "nothing running". The
@@ -270,7 +270,7 @@ def _restart_due(
     life_os_dir: Path, skill: Optional[Skill], sess: Optional[Dict[str, Any]]
 ) -> Optional[bool]:
     """Whether a running bot's skill or project settings changed after its
-    session started (#1675), so a Restart would pick up something new.
+    session started, so a Restart would pick up something new.
 
     The files that count are the ones a session reads only at its start: the
     skill's ``SKILL.md`` and life-os's ``.claude/settings.json`` /
@@ -360,12 +360,12 @@ async def start_channel_session(
     request: Optional[Request],
 ) -> Dict[str, Any]:
     """Start one profile's channel session — the launch route's body, shared
-    with the boot-time autostart (#1542) so both go through the per-profile
+    with the boot-time autostart so both go through the per-profile
     lock and the already-running refusal: never two sessions on one bot.
 
     ``request`` is ``None`` for the autostart, which has no client to audit
     and no one watching, so it opens no PC mirror window (as the fleet
-    chief's unwatched dispatch, #1283). Refusals raise ``HTTPException``
+    chief's unwatched dispatch). Refusals raise ``HTTPException``
     with the same status and detail the route returns.
     """
     life_os_dir, skill = _profile_skill(cfg, profile)

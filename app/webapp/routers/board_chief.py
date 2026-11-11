@@ -2,22 +2,22 @@
 
     POST /api/board/chief/ensure    → spawn the fleet chief if absent
                                       (?fresh=1 kills + restarts, an explicit
-                                      operator action, #616; ?resume=1
+                                      operator action; ?resume=1
                                       reattaches the most recent *substantive*
                                       chief conversation instead of starting
-                                      fresh, #633/#670) — Tailscale + passkey
+                                      fresh) — Tailscale + passkey
     GET  /api/board/chief/settings  → chief settings block (also read by the
                                       /chief skill over loopback)
     PUT  /api/board/chief/settings  → persist chief settings
     GET  /api/board/chief-settings  → {"auto_compact_threshold": <int>}, the
-                                      chief's self-compact threshold (#1298,
-                                      fleet-config#1052); board token only
+                                      chief's self-compact threshold
+                                      (read by fleet-config's chief_ops.py
+                                      self-compact); board token only
 
-Split off ``app/webapp/routers/board.py`` (issue #691, a `/codebase-audit`
-maintainability finding) — the same god-router split ``jobs.py`` and
-``sessions.py`` already carry. ``board.py`` owned two unrelated concerns: the
-Board tab's read-only column assembly, and this ~650-line chief state machine
-(spawn, resume, label self-heal, chief-managed marking, settings). Mounted on
+Kept apart from ``app/webapp/routers/board.py``, like ``jobs.py`` and
+``sessions.py``, because the two are unrelated concerns: the Board tab's
+read-only column assembly, and this chief state machine (spawn, resume,
+label self-heal, chief-managed marking, settings). Mounted on
 ``board.router`` via ``include_router`` so ``app/webapp/server.py`` still
 registers one ``board.router``.
 
@@ -33,13 +33,12 @@ checkout — that cwd is what loads the fleet-only /chief skill tier and keeps
 app-launcher's own project context out of it. The server ships zero chief
 prose: the spawn types only "/chief", so the brain stays versioned in
 fleet-config. Two triggers hit the ensure endpoint: the first chat-mode message
-(lazy) and the manual Start/Restart button (#617). A third trigger — an
-unattended daily respawn job — was retired in #616: fleet-config#442/#449
-shipped compact-and-continue (chief hands its own handover log back to itself
-on every session start), so a schedule that force-restarted chief unattended
-would now discard a live batch's context instead of protecting it. ``fresh=1``
-(a graceful stop-then-respawn) is kept as an explicit operator action only,
-still used by the manual Restart button — nothing calls it unattended anymore.
+(lazy) and the manual Start/Restart button. No unattended schedule restarts the
+chief: it compacts and continues (hands its own handover log back to itself
+on every session start), so a forced unattended restart would discard a live
+batch's context instead of protecting it. ``fresh=1`` (a graceful
+stop-then-respawn) is an explicit operator action only, used by the manual
+Restart button.
 """
 
 from __future__ import annotations
@@ -109,12 +108,12 @@ async def _mark_chief_managed(
     cfg: WebappConfig, request: Request, sid: str, repo: str, number: int
 ) -> bool:
     """Best-effort: record a launcher-dispatched worker as chief-managed
-    (fleet-config#474) so `hooks/notify_on_idle.py` and
+    so `hooks/notify_on_idle.py` and
     `hooks/block_askuserquestion_chief.py` route it like one dispatched
     through `chief_ops.py dispatch` -- the CLI-only path that already
     marked correctly. `start_issue`/`dispatch_goal` are the paths chief
     actually calls (over loopback, never through the CLI wrapper), so
-    without this the marker was never written for a real dispatch.
+    without this the marker would never be written for a real dispatch.
 
     Gated on two signals already meaningful in this codebase rather than a
     new protocol: the caller is loopback (the same trust `BearerTokenMiddleware`
@@ -129,7 +128,7 @@ async def _mark_chief_managed(
 
     Returns whether both signals held — a loopback caller while a chief is
     alive — whatever became of the mark itself: the caller decides the PC
-    window from it (#1283). False when either can't be established.
+    window from it. False when either can't be established.
     """
     # Imported here, not at module load, so a test's `monkeypatch.setattr
     # (middleware.trust, "LOOPBACK_HOSTS", ...)` is actually observed -- a
@@ -185,12 +184,12 @@ def _reconcile_chief_labels(
     :func:`_live_sessions_with_chief_label`.
 
     Also persists the durable chief pointer (:func:`_note_chief_conversation`)
-    here rather than only inside :func:`_live_sessions_with_chief_label` —
-    issue #796: ``GET /api/board`` calls this function directly, bypassing
-    that wrapper, so a chief typed by hand into a plain Coding-tab session
-    (self-healed to ``label="chief"`` by :func:`_reconcile_chief_label` on
-    every poll) never got its conversation id written to
-    ``webapp/chief-pointer.json``. Both callers now record it; the
+    here rather than only inside :func:`_live_sessions_with_chief_label`:
+    ``GET /api/board`` calls this function directly, bypassing that wrapper,
+    so a chief typed by hand into a plain Coding-tab session (self-healed to
+    ``label="chief"`` by :func:`_reconcile_chief_label` on every poll) would
+    otherwise never get its conversation id written to
+    ``webapp/chief-pointer.json``. Both callers record it; the
     module-level memo in :func:`_note_chief_conversation` keeps this a no-op
     write on every poll after the first for an unchanged chief.
     """
@@ -202,11 +201,11 @@ def _reconcile_chief_labels(
 async def _live_sessions_with_chief_label(
     cfg: WebappConfig,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any], Optional[str]]:
-    """Live sessions + hook state, fetched together and chief-reconciled (#617).
+    """Live sessions + hook state, fetched together and chief-reconciled.
 
     Returns ``(live, state, host_error)`` so a caller that also needs
     ``state["rows"]`` for its own purposes doesn't fetch the state file twice.
-    ``host_error`` set means ``live`` is *unknown*, not empty (#1308): a caller
+    ``host_error`` set means ``live`` is *unknown*, not empty: a caller
     that acts on "no chief in the list" must not act on it then.
     """
     (live, host_error), state = await asyncio.gather(
@@ -228,7 +227,7 @@ _last_noted_chief_conversation = ""
 def _note_chief_conversation(
     live: List[Dict[str, Any]], state_rows: Dict[str, Any]
 ) -> None:
-    """Persist which conversation the live chief is, when that changes (#675).
+    """Persist which conversation the live chief is, when that changes.
 
     This is the write half of the durable pointer (:mod:`src.chief.pointer`).
     It hangs off the *identification* path rather than ``ensure_chief``,
@@ -345,7 +344,7 @@ def _find_resumable_chief_session_id(
     resumed at any tier — reattaching it is worth strictly less than the
     fresh spawn the caller falls back to, which at least re-runs ``/chief``.
 
-    **The durable pointer (#675).** Tiers 2 and 3 above can only ever see what
+    **The durable pointer.** Tiers 2 and 3 above can only ever see what
     ``sessions-state.json`` still holds, and two perfectly resumable chiefs are
     invisible to it: one the launcher never spawned (its row is named after the
     project, so the name scan skips it) once its PTY is gone, and any chief
@@ -449,7 +448,7 @@ def _pointer_candidate(state_rows: Dict[str, Any], now: datetime) -> Optional[Tu
 def _refresh_chief_pointer_after_resume(
     state_rows: Dict[str, Any], resumed_sid: str
 ) -> None:
-    """Re-stamp the pointer at the conversation a Resume just reattached (#675).
+    """Re-stamp the pointer at the conversation a Resume just reattached.
 
     Blocking IO — callers wrap in ``asyncio.to_thread``; this only ever runs on
     the explicit ensure path, never on the board poll.
@@ -489,8 +488,8 @@ def _chief_settings_payload(cfg: WebappConfig) -> Dict[str, Any]:
 
 @router.get("/api/board/chief-settings")
 async def get_chief_auto_compact(request: Request) -> Dict[str, Any]:
-    """The chief's auto-compact threshold (#1298), the contract
-    fleet-config#1052's ``chief_ops.py self-compact`` reads: percent of
+    """The chief's auto-compact threshold, the contract
+    fleet-config's ``chief_ops.py self-compact`` reads: percent of
     context use, 0 = off, the default when nothing is stored. Set through
     Settings (POST /api/config); the app never compacts anything itself.
     Same bearer token as /api/board — a number, no session or terminal."""
@@ -563,41 +562,41 @@ async def _stop_chief_for_respawn(port: int, sid: str) -> None:
 
 @router.post("/api/board/chief/ensure")
 async def ensure_chief(request: Request) -> Dict[str, Any]:
-    """Spawn the fleet chief if none is alive (Tailscale + passkey, #245).
+    """Spawn the fleet chief if none is alive (Tailscale + passkey).
 
     Body/query: ``fresh`` truthy → kill the current chief first and respawn
-    — the manual Restart button's mode (#616/#617; the query form keeps a
+    — the manual Restart button's mode (the query form keeps a
     bodyless ``curl -X POST`` usable for a manual operator restart). ``resume``
     truthy → reattach the chief conversation worth continuing instead of
-    starting fresh (#633): looks up the newest *substantive* same-day chief
+    starting fresh: looks up the newest *substantive* same-day chief
     conversation in ``sessions-state.json`` for the fleet-config checkout —
     preferring the one the just-stopped PTY was attached to, and never a
     conversation confirmed to hold nothing but its own ``/chief`` bootstrap
-    (:func:`_find_resumable_chief_session_id`, #670) — and — if found — spawns with
+    (:func:`_find_resumable_chief_session_id`) — and — if found — spawns with
     ``label="chief"`` declared at spawn time and a direct
     ``claude --resume <id>`` (never the bare interactive picker), skipping the
     ``/chief`` type-in entirely since a resumed conversation is already past
-    that point. ``resume`` alone never touches a live chief (#1351): it is
+    that point. ``resume`` alone never touches a live chief: it is
     kept exactly as with no flags, and the lookup runs only when there is
     none. Stopping one takes an explicit restart intent — ``fresh`` (the
     Restart button) or ``restart`` (the Resume buttons, which pair it with
-    ``resume``) — so a stale page can't do it: a Board loaded before #1353
+    ``resume``) — so a stale page can't do it: an older Board page
     sends ``resume`` alone from every chat send and answer sheet, and a
     phone never reloads it. A chief stopped for a ``resume`` + restart
     request is resumed right back into itself — a context-preserving
     restart, not a coincidence of the shared stop-first ordering with
     ``fresh`` — *unless* that conversation is
     a bootstrap-only one, in which case the substantive conversation it
-    displaced wins instead (#670: that is exactly the case where resuming
+    displaced wins instead (that is exactly the case where resuming
     "itself" is what loses the real chief). The lookup also consults the
-    durable pointer (#675), so a chief the launcher never spawned, or one
+    durable pointer, so a chief the launcher never spawned, or one
     dead past the 24h row-prune, is still reachable. No resumable id (state
     pruned past the 24h window, no prior chief, or nothing but bootstrap-only
-    conversations) degrades to today's fresh-spawn-
+    conversations) degrades to the fresh-spawn-
     and-``/chief`` path, never a hard failure — the response's ``resumed`` /
     ``resume_fallback_reason`` fields tell the caller which happened.
-    ``if_absent``, which #1353's pages still send, is now the default and is
-    ignored.
+    ``if_absent``, which older pages still send, is the default behaviour and
+    is ignored.
     ``rows``/``cols`` size the PTY like every other launch. Returns
     ``{"session_id", "spawned", "resumed", "resume_fallback_reason"}`` —
     ``spawned`` False when an alive chief was found and kept (whenever

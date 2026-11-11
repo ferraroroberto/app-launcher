@@ -1,4 +1,4 @@
-"""``/api/tokens`` — mint / list / revoke scoped API bearer tokens (issue #72).
+"""``/api/tokens`` — mint / list / revoke scoped API bearer tokens.
 
 Backs the Settings tab's "API tokens" panel. The raw token appears
 exactly once, in the mint response — only the salted hash is persisted

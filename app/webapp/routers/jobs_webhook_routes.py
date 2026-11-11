@@ -1,4 +1,4 @@
-"""``POST /api/jobs/{job_id}/hook`` — webhook trigger (issue #73).
+"""``POST /api/jobs/{job_id}/hook`` — webhook trigger.
 
 Split off ``app/webapp/routers/jobs.py`` (a single-file god-router
 candidate flagged by ``/codebase-audit``). Mounted into the parent
@@ -32,7 +32,7 @@ router = APIRouter()
 
 @router.post("/api/jobs/{job_id}/hook")
 async def run_job_webhook(job_id: str, request: Request) -> Response:
-    """Fire a job from an external service (issue #73).
+    """Fire a job from an external service.
 
     Authenticated by the job's own ``webhook.provider`` signature — never
     the bearer token (see ``src.middleware.is_webhook_hook_path``),

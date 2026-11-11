@@ -1,5 +1,4 @@
-"""``/api/jobs`` surface — CRUD, agenda, pause/resume, run, kill, run-history
-(issue #47).
+"""``/api/jobs`` surface — CRUD, agenda, pause/resume, run, kill, run-history.
 
 The Jobs tab's API mirrors the Apps tab's shape (see
 ``app/webapp/routers/apps.py``): same bearer-token middleware, same
@@ -7,7 +6,7 @@ The Jobs tab's API mirrors the Apps tab's shape (see
 
 Trigger funnel: every run — manual (phone tap / Stream Deck via
 ``POST /api/jobs/<id>/run``), webhook (an external service via
-``POST /api/jobs/<id>/hook``, issue #73), and scheduled (Task Scheduler) —
+``POST /api/jobs/<id>/hook``), and scheduled (Task Scheduler) —
 goes through ``launcher.py run-job <id>``. The route pre-creates the run
 directory so it can return the new ``run_id`` immediately, then spawns
 the executor detached.
@@ -121,18 +120,18 @@ def _decorate_job(
     ``next_run`` is queried from schtasks (best-effort, ``None`` on
     error or N/A); ``last_run`` is the most recent on-disk run record,
     carrying both its persisted ``status`` and the derived ``outcome`` /
-    ``outcome_reason`` pair (issue #916);
+    ``outcome_reason`` pair;
     ``running`` is a quick "is the latest run still in progress" flag;
     ``stats`` carries the p50/p95/success-rate aggregates plus the
     ``last7`` sparkline payload; ``stuck`` flags an over-long running run;
     ``queue_depth`` is the count of pending entries in this job's mutex
     queue (0 when no group); ``coverage`` flags a schedule that isn't
-    firing at all (issue #697) — a missing/disabled Task Scheduler entry or
+    firing at all — a missing/disabled Task Scheduler entry or
     an elapsed slot with no run record, read from one cached scan per poll.
 
     Blocking (a ``schtasks`` query plus a run-history disk walk) — async
-    callers wrap it in ``asyncio.to_thread`` (issue #881). The ``/api/jobs``
-    poll passes ``runtime`` from the in-memory snapshot (#1324), so it skips
+    callers wrap it in ``asyncio.to_thread``. The ``/api/jobs``
+    poll passes ``runtime`` from the in-memory snapshot, so it skips
     the walk; a single-job route, or a job whose snapshot entry holds a read
     error, walks inline as before (and raises as before).
     """
@@ -213,7 +212,7 @@ def _decorate_job(
 
 
 def _preflight_gate(job: Job, *, acknowledged: bool) -> List[Dict[str, str]]:
-    """Run save-time pre-flight (issue #69) and enforce the two-phase flow.
+    """Run save-time pre-flight and enforce the two-phase flow.
 
     * Any **error** raises ``HTTPException`` 400 carrying a structured
       ``problems`` list — the save is blocked regardless of acknowledgement.
@@ -270,7 +269,7 @@ async def get_jobs(request: Request) -> Dict[str, Any]:
 
 @router.get("/api/jobs/agenda")
 async def get_jobs_agenda(request: Request, days: int = 7) -> Dict[str, Any]:
-    """Upcoming scheduled fires over the next ``days`` (issue #230).
+    """Upcoming scheduled fires over the next ``days``.
 
     Backs the Jobs-tab agenda panel. Expands each non-paused job's schedule
     across ``[now, now+days)`` into a flat, time-sorted occurrence list (the
@@ -651,7 +650,7 @@ async def kill_job_run(job_id: str, run_id: str) -> Dict[str, Any]:
 
 @router.post("/api/jobs/{job_id}/runs/{run_id}/dismiss")
 async def dismiss_job_run(job_id: str, run_id: str) -> Dict[str, Any]:
-    """Mark a failed or unconfirmed run as dealt with (#1669).
+    """Mark a failed or unconfirmed run as dealt with.
 
     Drops its card (and the header's failing count) from the Board; the run
     record is untouched, so the Jobs tab still shows it. Only a finished,

@@ -107,7 +107,7 @@ async def run_conversation_search(
 ) -> Dict[str, Any]:
     """Run the search CLI for a non-empty, length-checked ``query``; the route's
     reply shape, unaudited. ``skill`` (may be ``""``) narrows to one skill's
-    hits. Shared with the Telegram relay's find (#1639), which audits itself.
+    hits. Shared with the Telegram relay's find, which audits itself.
     """
     life_os_dir = Path(cfg.life_os_dir)
     cli = search_cli(cfg)

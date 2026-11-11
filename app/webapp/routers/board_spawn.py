@@ -1,19 +1,17 @@
 """Shared spawn-then-type mechanics for the Board tab's launch paths.
 
-Split off ``app/webapp/routers/board.py`` (issue #691, a `/codebase-audit`
-maintainability finding), the same way ``jobs_run.py`` was split off
-``jobs.py``. This module owns the parts of the Board's launch path that are
-reused across *both* route modules:
+This module owns the parts of the Board's launch path that are reused across
+*both* route modules (``board.py`` and ``board_chief.py``):
 
 * :func:`_read_live_sessions` — the degradation-safe live-session read,
-  carrying its unknown state (#915) so no caller reads a failed list as empty.
+  carrying its unknown state so no caller reads a failed list as empty.
 * :func:`_resolve_repo_entry` — bare repo name → live projects-folder entry.
-* :func:`_agent_and_flags` — the Board's per-launch model selector (#500/#505).
+* :func:`_agent_and_flags` — the Board's per-launch model selector.
 * :func:`dispatch_effort` / :func:`applied_effort` — a dispatch's per-launch
   ``effort``: checked against the model, then read back off the built flags.
 * :func:`_await_dispatch_ready` / :func:`_await_pty_quiescent` /
   :func:`_type_into_session` — the readiness, quiescence and framing rules for
-  writing text into a freshly spawned PTY (#64/#166/#245/#302/#549/#611).
+  writing text into a freshly spawned PTY.
 
 Kept as its own module so neither route module has to import the other:
 ``board.py`` (columns, drill-down, issue-start) and
@@ -65,8 +63,8 @@ def _read_live_sessions(port: int) -> Tuple[List[Dict[str, Any]], Optional[str]]
     """``(sessions, error)`` — ``error`` set means the list is *unknown*.
 
     The Board must keep rendering GitHub + jobs cards when the session-host is
-    down (#164 degradation), but an empty list it could not read is not an
-    empty list it read (#915): ``GET /api/board`` carries ``error`` through so
+    down, but an empty list it could not read is not an
+    empty list it read: ``GET /api/board`` carries ``error`` through so
     the render never says "Nothing needs you right now" on a failure.
     """
     global _session_host_down
@@ -141,9 +139,9 @@ _DISPATCH_GROK_MODELS = available_values(GROK_DISPATCH_MODEL_SPECS)
 def _agent_and_flags(
     cfg: WebappConfig, model: str, effort: Optional[str] = None
 ) -> Tuple[str, str]:
-    """Validated ``(agent, flags)`` for a Board per-launch ``model`` (#500/#505).
+    """Validated ``(agent, flags)`` for a Board per-launch ``model``.
 
-    The Claude tiers force ``--model`` like the Life OS tab's toggle (#102);
+    The Claude tiers force ``--model`` like the Life OS tab's toggle;
     Codex values select an exact model with the Coding tab's remembered
     compatible effort; ``grok:grok-4.7`` takes the Coding tab's Grok effort.
     Its permission flag is bypassPermissions even when the saved mode is
@@ -241,7 +239,7 @@ async def _await_dispatch_ready(port: int, sid: str) -> None:
 
     Ready = alive **and** first output seen (``output_chars > 0``), then a
     short settle so the TUI has its input box up. A session dict without
-    ``output_chars`` means the live session-host predates #302 — degrade to
+    ``output_chars`` means the live session-host predates the ``output_chars`` probe — degrade to
     a fixed grace (⚠️ logged) rather than refusing, so dispatch works until
     the host's next restart picks up the real probe. Never returns for a
     dead session: typing into a dead PTY is the one forbidden outcome.
@@ -289,8 +287,8 @@ async def _await_pty_quiescent(port: int, sid: str) -> None:
     "painted something", not "input box live" — a fresh --remote-control
     agent keeps booting (handshake, banner) well past first paint, and a CR
     typed in that window is swallowed, merging the typed text with whatever
-    is typed next (#245 review; generalized to every typed submission in
-    #549 after the same race hit a chief-dispatched worker). Stable output
+    is typed next (this applies to every typed submission, chief-dispatched
+    workers included). Stable output
     for ``PTY_QUIESCENT_STABLE_S`` is the strongest cheap signal the prompt
     is settled. On cap: proceed — typing slightly early degrades, failing
     the spawn is worse. A session dict without ``output_chars`` or a dead
@@ -323,19 +321,19 @@ async def _await_pty_quiescent(port: int, sid: str) -> None:
 async def _type_into_session(port: int, sid: str, command: str) -> None:
     """Await readiness + quiescence, then type ``command`` into the PTY.
 
-    Framing, the CR-as-a-separate-write ordering (#64/#166), and — for a
-    long ``command`` — the settle-then-submit wait (#611) all now live
+    Framing, the CR-as-a-separate-write ordering, and — for a
+    long ``command`` — the settle-then-submit wait all live
     session-host-side in ``PtySession.submit_input``, keeping the text one
     atomic paste with no per-keystroke TUI interpretation and routing it
-    through the first-prompt title capture (#266). Framing is applied only
+    through the first-prompt title capture. Framing is applied only
     when the PTY's own DECSET 2004 output says bracketed-paste mode is on —
     always true by the time this fires, since typing happens after both the
     readiness and quiescence waits below, well past the agent's own paste-
-    mode announcement during boot. The quiescence wait (#549) guards against
+    mode announcement during boot. The quiescence wait guards against
     typing while the agent's boot output is still growing, which can swallow
     the submitting CR — first-paint alone is not enough. On any failure past
     the spawn the half-spawned session is killed, so a timeout can't strand
-    an orphan the user never asked for. Shared by the chief ensure (#245) and
+    an orphan the user never asked for. Shared by the chief ensure and
     its siblings so the timing rules stay single-sourced instead of
     drifting between call sites.
     """
