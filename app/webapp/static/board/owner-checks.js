@@ -250,14 +250,50 @@ function group(g, items, onAnswer) {
   return wrap;
 }
 
+// Your turn's counts as the repo filter shows them. Unfiltered they are the
+// server's (`backlog_buckets.your_turn`); filtered they are the same terms
+// rebuilt from the shown items and the filter's Waiting on you issues, so the
+// line never counts rows the list does not draw. `hidden` is what waits on you
+// in other projects, like the Chief's plan card's "N more questions".
+function turnCounts(body, turn) {
+  const filter = boardRepoFilter();
+  if (!filter) return { ...turn, hidden: 0 };
+  const items = shownOwnerItems(body);
+  const inGroup = function (key) {
+    return items.filter(function (it) { return ownerGroup(it) === key && waiting(it); }).length;
+  };
+  const listed = new Set(items.filter(function (it) { return ownerGroup(it) !== TRY_SHIPPED; })
+    .map(function (it) { return String(it.ref).toLowerCase(); }));
+  const backlog = (body.columns && body.columns.backlog) || [];
+  const unlisted = backlog.filter(function (c) {
+    return c.bucket === 'waiting' && matchesRepoFilter(c, filter)
+      && !listed.has((c.repo + '#' + c.number).toLowerCase());
+  }).length;
+  const counts = {
+    before_start: inGroup(BEFORE_START_GROUP),
+    validate_to_close: inGroup(VALIDATE_TO_CLOSE),
+    try_shipped: inGroup(TRY_SHIPPED),
+    waiting_set_aside: items.filter(function (it) {
+      return it.bucket === 'waiting' && !waiting(it);
+    }).length,
+    unlisted: unlisted,
+  };
+  counts.waiting = counts.before_start + counts.validate_to_close + counts.waiting_set_aside + unlisted;
+  const mine = counts.before_start + counts.validate_to_close + counts.try_shipped;
+  counts.hidden = Math.max(0, (ownerNeedsCount(body) || 0) - mine);
+  return counts;
+}
+
 // How the Backlog's Waiting on you adds up to Your turn's groups, in words:
 // "12 waiting on you (9 before you start + 3 validate to close) · 9 to try".
 // What the owner set aside, and what the list lacks, are terms of the sum.
-function reconcileText(turn) {
+function reconcileText(body, fleetTurn) {
+  const turn = turnCounts(body, fleetTurn);
   const terms = [turn.before_start + ' before you start', turn.validate_to_close + ' validate to close'];
   if (turn.waiting_set_aside) terms.push(turn.waiting_set_aside + ' set aside');
   if (turn.unlisted) terms.push(turn.unlisted + ' not in this list yet');
-  return turn.waiting + ' waiting on you (' + terms.join(' + ') + ') · ' + turn.try_shipped + ' to try';
+  const text = turn.waiting + ' waiting on you (' + terms.join(' + ') + ') · ' + turn.try_shipped + ' to try';
+  return turn.hidden ? text + ' · ' + turn.hidden + ' more in other projects' : text;
 }
 
 // The list's freshness and gaps, said every time: its age, a failed
@@ -275,7 +311,7 @@ function stateLine(sec, body) {
   const unknown = (sec.unknown || []).length;
   if (unknown) parts.push(plural(unknown, 'repo', 'repos') + ' unreadable, so this list may be short');
   const turn = (body && body.backlog_buckets && body.backlog_buckets.your_turn) || {};
-  if (Number.isInteger(turn.waiting)) parts.push(reconcileText(turn));
+  if (Number.isInteger(turn.waiting)) parts.push(reconcileText(body, turn));
   return parts.join(' · ');
 }
 
