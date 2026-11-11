@@ -7,7 +7,7 @@
  * button-tier sweep found a deterministic CSS parse of
  * ~135 button rule variants across 7 apps: the only button ever vendored
  * (.detail-save-btn, embedded in this repo's modal.css) was byte-identical
- * everywhere, while every non-vendored recipe had drifted (photo-ocr's
+ * everywhere, while every non-vendored recipe diverged per app (photo-ocr's
  * .big-btn became a solid primary, voice-transcriber's .ghost-btn became a
  * tint). This file generalizes the reference recipes out of their per-app
  * homes so the drift stops:

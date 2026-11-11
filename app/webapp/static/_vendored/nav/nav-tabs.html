@@ -37,14 +37,14 @@
      mobile stylesheet reserves bottom padding on `.app` so the fixed bar never
      occludes content.
 
-     REQUIRED PAGE HEAD: put these tags in your index.html <head>. The
-     installed app starts with its final viewport, and the bar is in place from
-     the first frame of a cold launch, only with the `default` status-bar
-     style; `black-translucent` lets the viewport grow after launch and the bar
-     rides that growth. theme-color paints the status bar in the page colour:
+     REQUIRED PAGE HEAD: put these tags in your index.html <head>. They are
+     the page half of the translucent top-bar recipe validated on the
+     installed iPhone app: the `black-translucent` status-bar style with
+     `viewport-fit=auto`, and theme-color following the page colour. The
+     nav's top glass (nav-tabs.css body::after) is the other half:
 
-       <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-       <meta name="apple-mobile-web-app-status-bar-style" content="default">
+       <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=auto">
+       <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
        <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
        <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)"> -->
 

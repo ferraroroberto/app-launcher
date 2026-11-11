@@ -30,7 +30,7 @@ process, and asserted by ``tests/test_runtime_data.py``.
 **Relocating leaves the git working tree, so it leaves git-derived backup.**
 ``fleet-config``'s ``backup_private.py`` selects files via ``git ls-files``;
 anything under this root is invisible to it and needs the explicit
-``C:\\sqlite`` backup source (``fleet-config#724``). An app that invents its
+``C:\\sqlite`` backup source (set up in fleet-config). An app that invents its
 own root outside this one is unbacked.
 
 Vendor-verbatim: adopters copy this file byte-identical into their own

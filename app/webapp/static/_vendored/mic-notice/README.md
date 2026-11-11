@@ -73,7 +73,7 @@ Plus the tokens rec-wave names. The warning is a border and a bold line of text,
 
 ## Testing without a mic
 
-`tests/e2e/test_vendored_mic_notice.py` drives the real module with a fixed level source (`opts.source`), a stream that only names its input, and Playwright's fake clock, so the 3000 ms window is checked to the millisecond with no real waiting. An app's own test does the same; a real mic is never needed.
+`tests/e2e/_mic_notice_checks.py` (a case of `test_vendored_rec_wave.py`) drives the real module with a fixed level source (`opts.source`), a stream that only names its input, and Playwright's fake clock, so the 3000 ms window is checked to the millisecond with no real waiting. An app's own test does the same; a real mic is never needed.
 
 ## Don't diverge
 

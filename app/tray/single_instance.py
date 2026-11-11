@@ -5,14 +5,14 @@ per-app — it is byte-identical across every fleet tray so a fix made once in t
 scaffold re-propagates everywhere. App-specific values (the mutex *names*) are
 passed in by the caller, never hardcoded here, which is what keeps the file
 identical. Full reasoning: scaffold ``docs/windows-tray.md`` (gotcha 4) +
-project-scaffolding#39 / #12.
+the scaffold's tray lifecycle notes.
 
 Two guarantees, one primitive (a Windows named mutex via ``ctypes``):
 
 * :class:`SingleInstance` — the tray's in-process single-instance guard. A
   launcher ``.bat`` pre-check cannot guarantee single-instance: two near
   simultaneous ``tray.bat`` runs both pass the CIM detection blind-spot and both
-  survive (project-scaffolding#12). The guarantee must live *in the process*.
+  survive. The guarantee must live *in the process*.
   Acquire at tray entry; if another process in the session already holds the
   named mutex, ``acquired`` is False and the caller must exit immediately.
 
@@ -20,7 +20,7 @@ Two guarantees, one primitive (a Windows named mutex via ``ctypes``):
   across processes. Wrap the webapp adopt-or-spawn in it so two trays starting
   at once cannot both ``Popen`` uvicorn: the first holds the mutex, spawns, and
   binds the port; the second blocks, then observes the now-listening port and
-  *adopts* instead of spawning a duplicate (project-scaffolding#39 root cause 2).
+  *adopts* instead of spawning a duplicate.
 
 Windows is the supported surface (these are ``pythonw`` tray apps). On any other
 platform both helpers degrade to no-ops (single-instance assumed, lock a pass

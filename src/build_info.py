@@ -1,4 +1,4 @@
-"""Process build identity — the git SHA this process actually loaded (#199, #246, #247).
+"""Process build identity — the git SHA this process actually loaded.
 
 Captured once, at import time, so it reflects the code running in *this*
 process rather than live git state: a process started three days ago still
@@ -11,7 +11,7 @@ matter what it is actually running.
 
 **Retries a failed resolution inside the capture, never after it.** A single
 transient ``git`` failure at import used to freeze ``"unknown"`` for a
-process's entire life (observed: 8 days, ``app-launcher#825``). The retry
+process's entire life (observed: 8 days in a live app). The retry
 happens within :func:`build_identity` itself, in the first second of start,
 so the "captured at my own start" semantic holds; a later re-resolve would
 let a stale process report a newer ``HEAD`` as a confident "fresh" — strictly

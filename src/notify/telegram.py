@@ -1,7 +1,8 @@
 """Telegram delivery via the Bot API.
 
-Sends a one-line plain-text message to a single configured chat using the Bot
-API ``sendMessage`` endpoint. Uses the standard library only (``urllib``) so a
+Sends a plain-text message to a single configured chat using the Bot API
+``sendMessage`` endpoint, split into several calls when it exceeds Telegram's
+per-message limit. Uses the standard library only (``urllib``) so a
 consuming app takes on no extra dependency for one HTTPS POST.
 
 The bot token and chat id are secrets: they come from the consuming app's
@@ -17,6 +18,30 @@ from src.notify.base import NotifierError
 
 _API = "https://api.telegram.org/bot{token}/sendMessage"
 _TIMEOUT_SECONDS = 15
+# The Bot API documents the ``text`` parameter as "1-4096 characters"; a longer
+# message is rejected, and a retry of the identical text fails the same way.
+_MAX_MESSAGE_CHARS = 4096
+
+
+def _chunk_text(text: str, limit: int) -> list[str]:
+    """Split ``text`` into pieces of at most ``limit`` characters, exactly.
+
+    Cuts at (and keeps) the last newline at or before ``limit`` so a line is
+    never split when it fits, and ``"".join(_chunk_text(text, limit)) == text``.
+    A single line longer than ``limit`` is hard-cut as a last resort.
+    """
+    if len(text) <= limit:
+        return [text]
+    chunks: list[str] = []
+    remaining = text
+    while len(remaining) > limit:
+        cut = remaining.rfind("\n", 0, limit)
+        cut = cut + 1 if cut > 0 else limit
+        chunks.append(remaining[:cut])
+        remaining = remaining[cut:]
+    if remaining:
+        chunks.append(remaining)
+    return chunks
 
 
 class TelegramNotifier:
@@ -31,9 +56,18 @@ class TelegramNotifier:
     def send_text(self, text: str) -> None:
         """Deliver a plain-text message to the configured chat.
 
+        Text over Telegram's 4096-character limit is sent as several messages,
+        cut at line breaks where possible, with no content lost between them.
+        Delivery stops at the first failing piece.
+
         Raises :class:`NotifierError` on any transport, decode, or Bot-API
         rejection so the caller can retry, log, or swallow it as appropriate.
         """
+        for piece in _chunk_text(text, _MAX_MESSAGE_CHARS):
+            self._send_one(piece)
+
+    def _send_one(self, text: str) -> None:
+        """POST one ``sendMessage`` call; ``text`` is already within the limit."""
         payload = json.dumps({"chat_id": self._chat_id, "text": text}).encode("utf-8")
         request = urllib.request.Request(
             _API.format(token=self._token),

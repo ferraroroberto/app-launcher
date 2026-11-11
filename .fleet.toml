@@ -41,20 +41,20 @@ extra_junctions = ["webapp/certificates"]
 [vendored]
 icons = { src = "app/webapp/static/_vendored/icons", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/icons" }
 switch = { src = "app/webapp/static/_vendored/switch", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/switch" }
-button = { src = "app/webapp/static/_vendored/button", sha = "8d8a5e05c9dcc552431104deb5acaa72b3089adc", dest = "app/webapp/static/_vendored/button" }
+button = { src = "app/webapp/static/_vendored/button", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "app/webapp/static/_vendored/button" }
 card = { src = "app/webapp/static/_vendored/card", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/card" }
 disclosure = { src = "app/webapp/static/_vendored/disclosure", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/disclosure" }
-home-head = { src = "app/webapp/static/_vendored/home-head", sha = "8d8a5e05c9dcc552431104deb5acaa72b3089adc", dest = "app/webapp/static/_vendored/home-head" }
-nav = { src = "app/webapp/static/_vendored/nav", sha = "c2dcd8c2c4cb8eb2bdc08e2772fba0a89f337551", dest = "app/webapp/static/_vendored/nav" }
+home-head = { src = "app/webapp/static/_vendored/home-head", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "app/webapp/static/_vendored/home-head" }
+nav = { src = "app/webapp/static/_vendored/nav", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "app/webapp/static/_vendored/nav" }
 select-native = { src = "app/webapp/static/_vendored/select-native", sha = "8d8a5e05c9dcc552431104deb5acaa72b3089adc", dest = "app/webapp/static/_vendored/select-native" }
 empty-state = { src = "app/webapp/static/_vendored/empty-state", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/empty-state" }
 modal = { src = "app/webapp/static/_vendored/modal", sha = "9d0fd2777fbae78aaffa7a0e53f62a201db5af79", dest = "app/webapp/static/_vendored/modal" }
 sign-in = { src = "app/webapp/static/_vendored/sign-in", sha = "8d8a5e05c9dcc552431104deb5acaa72b3089adc", dest = "app/webapp/static/_vendored/sign-in" }
 text-size = { src = "app/webapp/static/_vendored/text-size", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/text-size" }
 segmented = { src = "app/webapp/static/_vendored/segmented", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/segmented" }
-base = { src = "app/webapp/static/_vendored/base", sha = "dedb86e0f212d66f247f4aacb6c15d13b1154651", dest = "app/webapp/static/_vendored/base" }
+base = { src = "app/webapp/static/_vendored/base", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "app/webapp/static/_vendored/base" }
 action-row = { src = "app/webapp/static/_vendored/action-row", sha = "6c8ae06472edc4c7448a767656060cd2b79cefe9", dest = "app/webapp/static/_vendored/action-row" }
-row-menu = { src = "app/webapp/static/_vendored/row-menu", sha = "00311a74ed7a858193e5b83ade533bf94468eb81", dest = "app/webapp/static/_vendored/row-menu" }
+row-menu = { src = "app/webapp/static/_vendored/row-menu", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "app/webapp/static/_vendored/row-menu" }
 # Every vendored web component above is byte-identical to the scaffold and declared;
 # tests/unit/repo/test_vendored_manifest.py pins that. icons joined on 2026-10-15 (the owner's
 # decision, project-scaffolding#390): the 16 app-launcher-only glyphs were upstreamed
@@ -62,45 +62,45 @@ row-menu = { src = "app/webapp/static/_vendored/row-menu", sha = "00311a74ed7a85
 # src/build_info.py is declared below: it is the scaffold's copy, and the
 # app-side extras live in src/git_utils.py.
 browser_sweep = { src = "tests/e2e/_browser_sweep.py", sha = "362f4a973746b3fbc4ebfc97c3bb0a0767fb8ada", dest = "tests/e2e/_browser_sweep.py" }
-geometry = { src = "tests/e2e/_geometry.py", sha = "362f4a973746b3fbc4ebfc97c3bb0a0767fb8ada", dest = "tests/e2e/_geometry.py" }
-runtime_data = { src = "src/runtime_data.py", sha = "4a06ca84fc9c5005d4be7fa505c9d0e7c0472dba", dest = "src/runtime_data.py" }
+geometry = { src = "tests/e2e/_geometry.py", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "tests/e2e/_geometry.py" }
+runtime_data = { src = "src/runtime_data.py", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "src/runtime_data.py" }
 compression = { src = "src/compression.py", sha = "d930466848d17d47261261c490c4e9c1cce9399e", dest = "src/compression.py" }
 classify_e2e = { src = "scripts/classify_e2e.py", sha = "3f15581f2188895a27f5a32083f7f7cdb7e93648", dest = "scripts/classify_e2e.py" }
 icon-button = { src = "app/webapp/static/_vendored/icon-button", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/icon-button" }
-notify = { src = "src/notify", sha = "aa820f1215151087588433f290cd2ba55b34658d", dest = "src/notify" }
-usage-log = { src = "app/webapp/static/_vendored/usage-log", sha = "4a06ca84fc9c5005d4be7fa505c9d0e7c0472dba", dest = "app/webapp/static/_vendored/usage-log" }
-usage_log = { src = "src/usage_log.py", sha = "4a06ca84fc9c5005d4be7fa505c9d0e7c0472dba", dest = "src/usage_log.py" }
+notify = { src = "src/notify", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "src/notify" }
+usage-log = { src = "app/webapp/static/_vendored/usage-log", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "app/webapp/static/_vendored/usage-log" }
+usage_log = { src = "src/usage_log.py", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "src/usage_log.py" }
 surface_capture = { src = "tests/e2e/_surface.py", sha = "5c4d3a7947dae8b3b4a028bf636c0f052ea3b1f7", dest = "tests/e2e/_surface.py" }
-comment_ratchet = { src = "scripts/comment_ratchet.py", sha = "4a06ca84fc9c5005d4be7fa505c9d0e7c0472dba", dest = "scripts/comment_ratchet.py" }
-static_ratchet = { src = "scripts/static_ratchet.py", sha = "4a06ca84fc9c5005d4be7fa505c9d0e7c0472dba", dest = "scripts/static_ratchet.py" }
-docs_ratchet = { src = "scripts/docs_ratchet.py", sha = "4a06ca84fc9c5005d4be7fa505c9d0e7c0472dba", dest = "scripts/docs_ratchet.py" }
-build_info = { src = "src/build_info.py", sha = "c9e54e917fd3cbc96011d6c09f9d363af460b205", dest = "src/build_info.py" }
+comment_ratchet = { src = "scripts/comment_ratchet.py", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "scripts/comment_ratchet.py" }
+static_ratchet = { src = "scripts/static_ratchet.py", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "scripts/static_ratchet.py" }
+docs_ratchet = { src = "scripts/docs_ratchet.py", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "scripts/docs_ratchet.py" }
+build_info = { src = "src/build_info.py", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "src/build_info.py" }
 structure_ratchet = { src = "scripts/structure_ratchet.py", sha = "4a06ca84fc9c5005d4be7fa505c9d0e7c0472dba", dest = "scripts/structure_ratchet.py" }
 structure_layout = { src = "scripts/structure_layout.py", sha = "4a06ca84fc9c5005d4be7fa505c9d0e7c0472dba", dest = "scripts/structure_layout.py" }
 structure_band = { src = "scripts/structure_band.py", sha = "3b708fd3c54ab7b93b08d489406c405762c83c41", dest = "scripts/structure_band.py" }
 box_lock_gate = { src = "scripts/box_lock_gate.ps1", sha = "de5b351ecbc58f0908bc1cbdcdf76fd41f36005d", dest = "scripts/box_lock_gate.ps1" }
-instruction_ratchet = { src = "scripts/instruction_ratchet.py", sha = "4a06ca84fc9c5005d4be7fa505c9d0e7c0472dba", dest = "scripts/instruction_ratchet.py" }
+instruction_ratchet = { src = "scripts/instruction_ratchet.py", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "scripts/instruction_ratchet.py" }
 doc_refs_ratchet = { src = "scripts/doc_refs_ratchet.py", sha = "4a06ca84fc9c5005d4be7fa505c9d0e7c0472dba", dest = "scripts/doc_refs_ratchet.py" }
 dead_code_ratchet = { src = "scripts/dead_code_ratchet.py", sha = "4a06ca84fc9c5005d4be7fa505c9d0e7c0472dba", dest = "scripts/dead_code_ratchet.py" }
 conventions_ratchet = { src = "scripts/conventions_ratchet.py", sha = "ab06ad732591d4edab00774ee93a455189c14577", dest = "scripts/conventions_ratchet.py" }
 conventions_readers = { src = "scripts/conventions_readers.py", sha = "ab06ad732591d4edab00774ee93a455189c14577", dest = "scripts/conventions_readers.py" }
-conventions_state = { src = "scripts/conventions_state.py", sha = "ab06ad732591d4edab00774ee93a455189c14577", dest = "scripts/conventions_state.py" }
+conventions_state = { src = "scripts/conventions_state.py", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "scripts/conventions_state.py" }
 runtime_write_ratchet = { src = "scripts/runtime_write_ratchet.py", sha = "4a06ca84fc9c5005d4be7fa505c9d0e7c0472dba", dest = "scripts/runtime_write_ratchet.py" }
 usage_track_ratchet = { src = "scripts/usage_track_ratchet.py", sha = "4a06ca84fc9c5005d4be7fa505c9d0e7c0472dba", dest = "scripts/usage_track_ratchet.py" }
 usage_track_scan = { src = "scripts/usage_track_scan.py", sha = "ea11037a42f9f99ea8e728f574c6bb89480f3aa2", dest = "scripts/usage_track_scan.py" }
 runtime_write_resolve = { src = "scripts/runtime_write_resolve.py", sha = "5505185c5f4b10eea5ab268e7b6676c6c54340c4", dest = "scripts/runtime_write_resolve.py" }
-rec-wave = { src = "app/webapp/static/_vendored/rec-wave", sha = "e5ed13790dd2c5a9997e67582a9f22e7272b1e10", dest = "app/webapp/static/_vendored/rec-wave" }
-mic-notice = { src = "app/webapp/static/_vendored/mic-notice", sha = "22c06b733a0de34d8dc808dd8358dae0623da2bb", dest = "app/webapp/static/_vendored/mic-notice" }
-single_instance = { src = "app/tray/single_instance.py", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/tray/single_instance.py" }
+rec-wave = { src = "app/webapp/static/_vendored/rec-wave", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "app/webapp/static/_vendored/rec-wave" }
+mic-notice = { src = "app/webapp/static/_vendored/mic-notice", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "app/webapp/static/_vendored/mic-notice" }
+single_instance = { src = "app/tray/single_instance.py", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "app/tray/single_instance.py" }
 shot_capture = { src = "tests/e2e/_shot.py", sha = "4a06ca84fc9c5005d4be7fa505c9d0e7c0472dba", dest = "tests/e2e/_shot.py" }
 shot_baseline = { src = "scripts/shot_baseline.py", sha = "4a06ca84fc9c5005d4be7fa505c9d0e7c0472dba", dest = "scripts/shot_baseline.py" }
 layout_lint = { src = "tests/e2e/_layout_lint.py", sha = "2d65d6c193cbda0b1f71165c22f50dcdda944a17", dest = "tests/e2e/_layout_lint.py" }
-page-foot = { src = "app/webapp/static/_vendored/page-foot", sha = "35c1f11348e100fa6b5da487411424c6d6ced43c", dest = "app/webapp/static/_vendored/page-foot" }
+page-foot = { src = "app/webapp/static/_vendored/page-foot", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "app/webapp/static/_vendored/page-foot" }
 login_lockout = { src = "src/login_lockout.py", sha = "ea4e1e80f83c4f5a1a6b33e8a029e46ca63150c5", dest = "src/login_lockout.py" }
-webapp_serve = { src = "app/webapp/serve.py", sha = "41ca8abd5a2755a06bd8a620a72967211161d58e", dest = "app/webapp/serve.py" }
+webapp_serve = { src = "app/webapp/serve.py", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "app/webapp/serve.py" }
 instruction_frontmatter = { src = "scripts/instruction_frontmatter.py", sha = "c5535ac326c398df8f44486f386ff0e0b6d4c61c", dest = "scripts/instruction_frontmatter.py" }
 instruction_repeats = { src = "scripts/instruction_repeats.py", sha = "c5535ac326c398df8f44486f386ff0e0b6d4c61c", dest = "scripts/instruction_repeats.py" }
-tray_watchdog = { src = "app/tray/watchdog.py", sha = "ad2fe4cdd355e1fe7b9f1ec54ffcfec337310f8d", dest = "app/tray/watchdog.py" }
+tray_watchdog = { src = "app/tray/watchdog.py", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "app/tray/watchdog.py" }
 
 # ---------------------------------------------------------------------------
 # [verify] -- the launch recipe the generated verify-app-launcher skill reads
