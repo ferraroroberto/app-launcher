@@ -325,4 +325,5 @@ The gate also runs a static ratchet (new duplicate blocks and unused imports fai
 | [docs/pi-coding-agent.md](docs/pi-coding-agent.md) | Pi as a Coding-tab agent |
 | [docs/life-os-zombie-cleanup.md](docs/life-os-zombie-cleanup.md) | Removing mistaken Life OS sessions |
 | [docs/life-os-title-sync.md](docs/life-os-title-sync.md) | Mirroring a rename between a conversation and its sessions |
+| [docs/life-os-relay-state.md](docs/life-os-relay-state.md) | The states a Life OS relay reply names |
 

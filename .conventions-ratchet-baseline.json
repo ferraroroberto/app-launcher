@@ -1,7 +1,6 @@
 {
   "version": 1,
   "entries": [
-    {"key": "app/webapp/routers/life_os_relay.py", "counts": {"state-literal": 4}},
     {"key": "app/webapp/static/apps/apps-perf.js", "counts": {"state-literal": 3}},
     {"key": "app/webapp/static/background-tasks/background-tasks-sheet.js", "counts": {"state-literal": 1}},
     {"key": "app/webapp/static/board.js", "counts": {"state-literal": 3}},
@@ -11,7 +10,6 @@
     {"key": "app/webapp/static/sessions.js", "counts": {"state-literal": 1}},
     {"key": "app/webapp/static/settings/inspiration.js", "counts": {"state-literal": 4}},
     {"key": "scripts/design_review_synthetic.py", "counts": {"state-literal": 1}},
-    {"key": "scripts/telegram_relay.py", "counts": {"state-literal": 1}},
     {"key": "src/board/backlog_buckets.py", "counts": {"state-literal": 1}},
     {"key": "src/notifications.py", "counts": {"state-literal": 1}},
     {"key": "src/session_view/background_tasks.py", "counts": {"state-literal": 2}},

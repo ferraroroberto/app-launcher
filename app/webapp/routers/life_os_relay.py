@@ -37,7 +37,8 @@ Board's own ``/input`` route and read is the Board's ``/exchange``. This module
 adds the identity and scope checks, and names every outcome.
 
 **Every reply names a ``state``**, success or not, so the bot can say what
-happened and never fold a failure into "ok". Refusals are HTTP errors whose
+happened and never fold a failure into "ok"; the closed set is
+:class:`src.life_os.relay_state.RelayState`. Refusals are HTTP errors whose
 ``detail`` is ``{"state", "message"}``. The bot's own wording for each state
 is life-os's to write.
 
@@ -99,6 +100,7 @@ from src.launching.channel_profiles import (
 from src.launching.flags import build_claude_flags
 from src.life_os import relay_registry
 from src.life_os.bot_titles import bot_conversation_ids, bot_rule
+from src.life_os.relay_state import RelayState, steer_state
 from src.middleware import is_pc_itself
 from src.scanner import Skill
 from src.webapp_config import WebappConfig
@@ -119,8 +121,8 @@ _CHAT_MAX_CHARS = 64
 # the one-per-chat check before either has registered its session.
 _NEW_LOCKS: Dict[str, asyncio.Lock] = {}
 # HTTP status for each stop outcome that did nothing.
-_STOP_STATUS = {"not_relay_owned": 403, "gone": 409, "busy": 409,
-                "capture_unconfirmed": 409, "stop_unconfirmed": 502}
+_STOP_STATUS = {RelayState.NOT_RELAY_OWNED: 403, RelayState.GONE: 409, RelayState.BUSY: 409,
+                RelayState.CAPTURE_UNCONFIRMED: 409, RelayState.STOP_UNCONFIRMED: 502}
 # How long ``new`` waits for the session's first turn to end before answering
 # ``started`` anyway; under the bot's 60 s call timeout, which also covers the launch.
 NEW_READY_WAIT_SECONDS = 40.0
@@ -130,7 +132,7 @@ NEW_READY_POLL_SECONDS = 1.0
 _NEW_READY_CLOCK_SLACK_SECONDS = 2.0
 
 
-def _refuse(status: int, state: str, message: str) -> NoReturn:
+def _refuse(status: int, state: RelayState, message: str) -> NoReturn:
     raise HTTPException(status_code=status, detail={"state": state, "message": message})
 
 
@@ -139,10 +141,10 @@ def _chat(value: Any) -> str:
     if value is None or value == "":
         return ""
     if isinstance(value, bool) or not isinstance(value, (str, int)):
-        _refuse(400, "refused", "The chat key must be a string or a number.")
+        _refuse(400, RelayState.REFUSED, "The chat key must be a string or a number.")
     text = str(value).strip()
     if len(text) > _CHAT_MAX_CHARS:
-        _refuse(400, "refused", "The chat key is too long.")
+        _refuse(400, RelayState.REFUSED, "The chat key is too long.")
     return text
 
 
@@ -163,35 +165,35 @@ async def _caller(profile_id: str, request: Request) -> _Caller:
     """
     host = request.client.host if request.client else ""
     if not is_pc_itself(host, request.headers):
-        _refuse(403, "refused", "The relay answers only callers on this PC.")
+        _refuse(403, RelayState.REFUSED, "The relay answers only callers on this PC.")
     cfg: WebappConfig = request.app.state.webapp_config
     profiles, _problems = load_channel_profiles(
         getattr(request.app.state, "channel_profiles_path", None)
     )
     profile = next((p for p in profiles if p.id == profile_id), None)
     if profile is None:
-        _refuse(404, "refused", f"Unknown channel profile: {profile_id}.")
+        _refuse(404, RelayState.REFUSED, f"Unknown channel profile: {profile_id}.")
     if not profile.relay:
-        _refuse(403, "relay_off", f"Relay is off for {profile.label}.")
+        _refuse(403, RelayState.RELAY_OFF, f"Relay is off for {profile.label}.")
     if not relay_token_matches(profile, request.headers.get(TOKEN_HEADER, "")):
         logger.warning(f"⚠️ relay {profile.id}: refused a call with a wrong or missing token")
-        _refuse(401, "refused",
+        _refuse(401, RelayState.REFUSED,
                 f"The relay token is not {profile.label}'s current one; restart the bot "
                 "after turning relay on.")
     try:
         skill = _resolve_skill(cfg, profile.skill)
     except HTTPException:
-        _refuse(404, "not_found", f"{profile.label}'s skill {profile.skill!r} was not found.")
+        _refuse(404, RelayState.NOT_FOUND, f"{profile.label}'s skill {profile.skill!r} was not found.")
     try:
         sessions = await asyncio.to_thread(session_client.list_sessions, cfg.session_host_port)
     except session_client.SessionHostError as exc:
         logger.warning(f"⚠️ relay {profile.id}: session host unreachable ({exc})")
-        _refuse(503, "host_unreachable",
+        _refuse(503, RelayState.HOST_UNREACHABLE,
                 "The session host can't be reached, so it isn't known which "
                 "conversations are open. Nothing was done.")
     label = profile_session_label(profile.id)
     if not any(s.get("label") == label and s.get("alive", True) for s in sessions):
-        _refuse(403, "refused", f"{profile.label}'s bot session is not running.")
+        _refuse(403, RelayState.REFUSED, f"{profile.label}'s bot session is not running.")
     return _Caller(cfg=cfg, profile=profile, skill=skill, sessions=sessions)
 
 
@@ -243,10 +245,10 @@ async def _target(caller: _Caller, sid: str) -> Dict[str, Any]:
     conversations; a refusal naming why otherwise."""
     sess = next((s for s in caller.sessions if str(s.get("session_id")) == sid), None)
     if not sid or sess is None or not sess.get("alive", True):
-        _refuse(404, "not_found", "No running session with that id.")
+        _refuse(404, RelayState.NOT_FOUND, "No running session with that id.")
     label = str(sess.get("label") or "")
     if label.startswith(LABEL_PREFIX) or label == "chief":
-        _refuse(403, "not_this_skill",
+        _refuse(403, RelayState.NOT_THIS_SKILL,
                 "That session is a bot or the fleet chief; the relay only steers "
                 f"{caller.skill.name}'s conversations.")
     groups = await _group_by_conversation(caller.cfg, caller.sessions)
@@ -266,13 +268,16 @@ async def _target(caller: _Caller, sid: str) -> Dict[str, Any]:
                 str(row.get("title") or row.get("topic") or ""))
         return sess
     if not held & set(mine):
-        _refuse(403, "not_this_skill",
+        _refuse(403, RelayState.NOT_THIS_SKILL,
                 f"That session is not on one of {caller.skill.name}'s conversations.")
     return sess
 
 
 async def _audit(caller: _Caller, request: Request, action: str, **fields: Any) -> None:
-    # Facts only: never the steer's text, the query or the reply.
+    # Facts only: never the steer's text, the query or the reply. The log
+    # writes each value's repr, so a state goes in as its plain string.
+    fields = {key: str(value) if isinstance(value, RelayState) else value
+              for key, value in fields.items()}
     await audit_off_loop(
         audit.audit_event, "lifeos_relay", action=action, profile=caller.profile.id,
         skill=caller.skill.id, client=client_ip(request), **fields,
@@ -327,12 +332,12 @@ async def relay_find(profile_id: str, request: Request) -> Dict[str, Any]:
     query = (request.query_params.get("q") or "").strip()
     limit = _search_limit(request.query_params.get("limit"))
     if len(query) > _MAX_QUERY_CHARS:
-        _refuse(400, "refused", "The search text is too long.")
+        _refuse(400, RelayState.REFUSED, "The search text is too long.")
     groups = await _group_by_conversation(caller.cfg, caller.sessions)
     if query:
         reply = await _search_offerable(caller, query, limit, groups)
         if not reply["available"]:
-            return {"state": "unavailable", "reason": reply["reason"], "conversations": []}
+            return {"state": RelayState.UNAVAILABLE, "reason": reply["reason"], "conversations": []}
         rows, excluded = reply["results"], reply["excluded"]
     else:
         everything = await skill_conversations(caller.cfg, caller.skill)
@@ -351,7 +356,7 @@ async def relay_find(profile_id: str, request: Request) -> Dict[str, Any]:
         })
     await _audit(caller, request, "find", searched=bool(query), hits=len(found))
     logger.info(f"ℹ️ relay {caller.profile.id}: find returned {len(found)} conversation(s)")
-    return {"state": "found" if found else "none", "skill": caller.skill.id,
+    return {"state": RelayState.FOUND if found else RelayState.NONE, "skill": caller.skill.id,
             "conversations": found}
 
 
@@ -378,31 +383,31 @@ async def relay_resume(profile_id: str, request: Request) -> Dict[str, Any]:
     if path:
         row = next((r for r in everything if r["path"] == path), None)
         if row is None:
-            _refuse(404, "not_found", f"No conversation of {caller.skill.name} at that path.")
+            _refuse(404, RelayState.NOT_FOUND, f"No conversation of {caller.skill.name} at that path.")
         if row not in rows:
-            _refuse(409, "not_resumable",
+            _refuse(409, RelayState.NOT_RESUMABLE,
                     "That is a Telegram bot's own conversation; the relay never resumes it.")
         if not (row["resumable"] and row["path"]):
-            _refuse(409, "not_resumable",
+            _refuse(409, RelayState.NOT_RESUMABLE,
                     row["resume_reason"] or "That conversation can't be resumed.")
     else:
         if not everything:
-            _refuse(409, "not_resumable", f"{caller.skill.name} has no conversation yet.")
+            _refuse(409, RelayState.NOT_RESUMABLE, f"{caller.skill.name} has no conversation yet.")
         row = next((r for r in rows if r["resumable"] and r["path"]), None)
         if row is None:
-            _refuse(409, "not_resumable", f"None of {caller.skill.name}'s conversations can be resumed.")
+            _refuse(409, RelayState.NOT_RESUMABLE, f"None of {caller.skill.name}'s conversations can be resumed.")
     try:
         result = await resume_or_open(
             caller.skill, request, {}, row, mirror=False,
             label=relay_session_label(caller.profile.id))
     except HTTPException as exc:
-        state = {409: "not_resumable", 404: "not_found", 503: "host_unreachable"}.get(
-            exc.status_code, "unknown")
+        state = {409: RelayState.NOT_RESUMABLE, 404: RelayState.NOT_FOUND, 503: RelayState.HOST_UNREACHABLE}.get(
+            exc.status_code, RelayState.UNKNOWN)
         logger.warning(f"⚠️ relay {caller.profile.id}: resume failed ({exc.status_code})")
         _refuse(exc.status_code, state, str(exc.detail))
     session = result.get("session") or {}
     action = result.get("conversation_action")
-    state = "opened" if action == "open" else "resumed"
+    state = RelayState.OPENED if action == "open" else RelayState.RESUMED
     sid = str(session.get("session_id") or "")
     title = row.get("title") or row.get("topic") or ""
     registered = await _register(caller, state, sid, chat, row["path"], title)
@@ -425,15 +430,15 @@ async def _open_in_chat(caller: _Caller, request: Request, chat: str,
     entry = held[-1]
     sid = str(entry.get("session_id"))
     await asyncio.to_thread(relay_registry.touch, caller.profile.id, sid, time.time())
-    await _audit(caller, request, action, session=sid, outcome="already_open")
+    await _audit(caller, request, action, session=sid, outcome=RelayState.ALREADY_OPEN)
     logger.info(f"ℹ️ relay {caller.profile.id}: this chat already has "
                 f"{sid[:8]} open; {action} launched nothing")
-    return {"state": "already_open", "session_id": sid,
+    return {"state": RelayState.ALREADY_OPEN, "session_id": sid,
             "conversation": entry.get("conversation", ""),
             "title": entry.get("title", "")}
 
 
-async def _register(caller: _Caller, state: str, sid: str, chat: str,
+async def _register(caller: _Caller, state: RelayState, sid: str, chat: str,
                     conversation: str, title: str) -> bool:
     """Record a session ``resume`` launched; an ``opened`` one is only
     touched when the relay already owns it, never added.
@@ -442,7 +447,7 @@ async def _register(caller: _Caller, state: str, sid: str, chat: str,
     write leaves the session running and unowned, so never stoppable by the
     relay: the safe side."""
     try:
-        if state == "resumed" and sid:
+        if state == RelayState.RESUMED and sid:
             await asyncio.to_thread(relay_registry.add, caller.profile.id, chat, sid,
                                     conversation, title, time.time())
             return True
@@ -474,7 +479,7 @@ async def relay_new(profile_id: str, request: Request) -> Dict[str, Any]:
     chat = _chat(body.get("chat"))
     life_os_dir = Path(caller.cfg.life_os_dir)
     if not life_os_dir.is_dir():
-        _refuse(409, "unknown", "The Life OS folder is not available, so nothing was started.")
+        _refuse(409, RelayState.UNKNOWN, "The Life OS folder is not available, so nothing was started.")
     async with _NEW_LOCKS.setdefault(caller.profile.id, asyncio.Lock()):
         held = await _open_in_chat(caller, request, chat, "new")
         if held:
@@ -493,7 +498,8 @@ async def relay_new(profile_id: str, request: Request) -> Dict[str, Any]:
             )
         except HTTPException as exc:
             logger.warning(f"⚠️ relay {caller.profile.id}: new failed ({exc.status_code})")
-            _refuse(exc.status_code, "host_unreachable" if exc.status_code == 503 else "unknown",
+            _refuse(exc.status_code,
+                    RelayState.HOST_UNREACHABLE if exc.status_code == 503 else RelayState.UNKNOWN,
                     str(exc.detail))
         sid = str((result.get("session") or {}).get("session_id") or "")
         try:
@@ -504,13 +510,13 @@ async def relay_new(profile_id: str, request: Request) -> Dict[str, Any]:
                            f"{sid[:8]} ({exc.__class__.__name__}); ending it")
             await _end_unregistered(caller, sid)
             await _audit(caller, request, "relay_new", session=sid, outcome="unregistered")
-            _refuse(500, "unknown", "The new conversation could not be recorded, so it was "
+            _refuse(500, RelayState.UNKNOWN, "The new conversation could not be recorded, so it was "
                                     "ended. Nothing is left running.")
     ready = await _await_first_idle(caller, sid, launched_at - _NEW_READY_CLOCK_SLACK_SECONDS)
-    await _audit(caller, request, "relay_new", session=sid, outcome="started", ready=ready)
+    await _audit(caller, request, "relay_new", session=sid, outcome=RelayState.STARTED, ready=ready)
     logger.info(f"✅ relay {caller.profile.id}: new conversation started in session "
                 f"{sid[:8]} (ready={ready})")
-    reply = {"state": "started", "session_id": sid, "title": title}
+    reply = {"state": RelayState.STARTED, "session_id": sid, "title": title}
     return reply if ready else {**reply, "ready": "unconfirmed"}
 
 
@@ -578,28 +584,24 @@ async def relay_steer(profile_id: str, request: Request) -> Dict[str, Any]:
     sid = str(body.get("session_id") or "")
     data = body.get("data")
     if not isinstance(data, str) or not data.strip():
-        _refuse(400, "refused", "Nothing to send.")
+        _refuse(400, RelayState.REFUSED, "Nothing to send.")
     if body.get("submit", True) is not True:
-        _refuse(400, "refused", "The relay always submits what it sends.")
+        _refuse(400, RelayState.REFUSED, "The relay always submits what it sends.")
     await _target(caller, sid)
     status = Response()
     try:
         verdict = await session_input(sid, request, status)
     except HTTPException as exc:
-        state = {502: "stranded", 409: "gone", 503: "host_unreachable"}.get(
-            exc.status_code, "unknown")
+        state = {502: RelayState.STRANDED, 409: RelayState.GONE, 503: RelayState.HOST_UNREACHABLE}.get(
+            exc.status_code, RelayState.UNKNOWN)
         await _audit(caller, request, "steer", session=sid, outcome=state)
         logger.warning(f"⚠️ relay {caller.profile.id}: steer to {sid[:8]} {state} "
                        f"({exc.status_code})")
         _refuse(exc.status_code, state, str(exc.detail))
     await asyncio.to_thread(relay_registry.touch, caller.profile.id, sid, time.time())
     reason = verdict.get("reason")
-    if reason == session_client.INPUT_DEFERRED:
-        state = "queued"
-    elif verdict.get("submit_state") == "confirmed":
-        state = "delivered"
-    else:
-        state = "unconfirmed"
+    state = steer_state(deferred=reason == session_client.INPUT_DEFERRED,
+                        confirmed=verdict.get("submit_state") == "confirmed")
     await _audit(caller, request, "steer", session=sid, outcome=state)
     logger.info(f"ℹ️ relay {caller.profile.id}: steer to {sid[:8]} {state}")
     return {"state": state, "session_id": sid, "reason": reason}
@@ -626,11 +628,11 @@ async def relay_read(profile_id: str, request: Request) -> Dict[str, Any]:
     base = {"session_id": sid, "status": status,
             "last_output_at": sess.get("last_output_at")}
     if exchange.get("stale"):
-        return {**base, "state": "unavailable", "reason": "stale"}
+        return {**base, "state": RelayState.UNAVAILABLE, "reason": "stale"}
     if not exchange.get("available"):
-        return {**base, "state": "unavailable", "reason": exchange.get("reason")}
+        return {**base, "state": RelayState.UNAVAILABLE, "reason": exchange.get("reason")}
     assistant = exchange.get("assistant") or {}
-    return {**base, "state": "reply", "text": str(assistant.get("text") or ""),
+    return {**base, "state": RelayState.REPLY, "text": str(assistant.get("text") or ""),
             "timestamp": assistant.get("timestamp")}
 
 
@@ -650,18 +652,18 @@ async def stop_conversation(caller: _Caller, sid: str, reason: str) -> Dict[str,
     """
     entry = await asyncio.to_thread(relay_registry.find, caller.profile.id, sid) if sid else None
     if entry is None:
-        return {"state": "not_relay_owned",
+        return {"state": RelayState.NOT_RELAY_OWNED,
                 "message": f"The relay did not reopen that session for "
                            f"{caller.profile.label}; it was left alone."}
     if sid not in _live_ids(caller):
         await asyncio.to_thread(relay_registry.forget, caller.profile.id, sid)
-        return {"state": "gone", "message": "That conversation's session already ended."}
+        return {"state": RelayState.GONE, "message": "That conversation's session already ended."}
     try:
         await _target(caller, sid)
     except HTTPException as exc:
         logger.warning(f"⚠️ relay {caller.profile.id}: stop of {sid[:8]} refused, it no "
                        f"longer passes the relay's checks ({exc.detail})")
-        return {"state": "not_relay_owned",
+        return {"state": RelayState.NOT_RELAY_OWNED,
                 "message": f"That session is no longer one of {caller.skill.name}'s "
                            "conversations; it was left alone."}
     entry = await asyncio.to_thread(relay_registry.find, caller.profile.id, sid) or entry
@@ -669,7 +671,7 @@ async def stop_conversation(caller: _Caller, sid: str, reason: str) -> Dict[str,
     status = facts.get("status")
     if status not in card_status.QUIT_SAFE:
         why = _busy_reason(status)
-        return {"state": "busy", "message": f"Not stopped: {why}. Nothing was done."}
+        return {"state": RelayState.BUSY, "message": f"Not stopped: {why}. Nothing was done."}
     conversation = str(entry.get("conversation") or "")
     # A ``new`` session still unbound has no capture to compare: not confirmed,
     # and never the Life OS folder's own mtime from an empty relative path.
@@ -679,7 +681,7 @@ async def stop_conversation(caller: _Caller, sid: str, reason: str) -> Dict[str,
     if not captured or last_turn is None or captured < last_turn:
         logger.info(f"ℹ️ relay {caller.profile.id}: stop of {sid[:8]} waits, capture at "
                     f"{captured or 'none'} vs last turn at {last_turn}")
-        return {"state": "capture_unconfirmed",
+        return {"state": RelayState.CAPTURE_UNCONFIRMED,
                 "message": "Not stopped: its last turn is not confirmed saved yet. "
                            "Nothing was done."}
     what = f"relay {caller.profile.id} stop"
@@ -688,13 +690,13 @@ async def stop_conversation(caller: _Caller, sid: str, reason: str) -> Dict[str,
                                      RESTART_QUIT_WAIT_SECONDS, what)
     except session_client.SessionHostError as exc:
         logger.warning(f"⚠️ {what}: session-host stopped answering ({exc}); entry kept")
-        return {"state": "stop_unconfirmed",
+        return {"state": RelayState.STOP_UNCONFIRMED,
                 "message": "Quit sent, but the session host stopped answering, so it is "
                            "not confirmed closed."}
     if not gone:
         logger.warning(f"⚠️ {what}: {sid[:8]} still alive after the quit; entry kept, "
                        "no kill")
-        return {"state": "stop_unconfirmed",
+        return {"state": RelayState.STOP_UNCONFIRMED,
                 "message": "Quit sent, but the session is still running."}
     try:
         await asyncio.to_thread(relay_registry.record_stop, caller.profile.id, sid,
@@ -703,7 +705,7 @@ async def stop_conversation(caller: _Caller, sid: str, reason: str) -> Dict[str,
         logger.warning(f"⚠️ {what}: closed, but the stop was not recorded "
                        f"({exc.__class__.__name__})")
     logger.info(f"✅ {what}: {sid[:8]} closed ({reason})")
-    return {"state": "stopped",
+    return {"state": RelayState.STOPPED,
             "message": f"Closed {entry.get('title') or 'the conversation'}."}
 
 
@@ -718,7 +720,7 @@ async def relay_stop(profile_id: str, request: Request) -> Dict[str, Any]:
     sid = str(body.get("session_id") or "")
     result = await stop_conversation(caller, sid, "done")
     await _audit(caller, request, "relay_stop", session=sid, outcome=result["state"])
-    if result["state"] != "stopped":
+    if result["state"] != RelayState.STOPPED:
         logger.info(f"ℹ️ relay {caller.profile.id}: stop of {sid[:8]} {result['state']}")
         _refuse(_STOP_STATUS[result["state"]], result["state"], result["message"])
     return {**result, "session_id": sid}
@@ -785,7 +787,7 @@ async def relay_status(profile_id: str, request: Request) -> Dict[str, Any]:
     stops = await asyncio.to_thread(relay_registry.take_stops, caller.profile.id, chat=chat)
     await _audit(caller, request, "status", open=len(open_rows), stops=len(stops))
     return {
-        "state": "open" if open_rows else "none",
+        "state": RelayState.OPEN if open_rows else RelayState.NONE,
         "conversations": open_rows,
         "resume_offer": caller.profile.resume_offer,
         "stops": [{**{key: stop.get(key, "") for key in

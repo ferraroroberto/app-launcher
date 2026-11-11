@@ -51,6 +51,7 @@ from src.launching.channel_profiles import (
     profile_session_label,
 )
 from src.life_os import relay_registry
+from src.life_os.relay_state import RelayState
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +63,7 @@ NOTICE_PREFIX = "[launcher-relay] closed after idle: "
 # The title rides on one typed line; the cap keeps it one short line.
 _TITLE_MAX_CHARS = 120
 # Outcomes that leave the entry for the next tick.
-_WAITING = ("busy", "capture_unconfirmed", "composer_not_empty")
+_WAITING = (RelayState.BUSY, RelayState.CAPTURE_UNCONFIRMED, "composer_not_empty")
 
 
 @dataclass
@@ -136,7 +137,7 @@ async def _close_profile(cfg: Any, profile: ChannelProfile, sessions: List[Dict[
             outcome = "composer_not_empty"
         else:
             outcome = (await life_os_relay.stop_conversation(caller, sid, "idle"))["state"]
-        if outcome == "capture_unconfirmed":
+        if outcome == RelayState.CAPTURE_UNCONFIRMED:
             count = misses[1] + 1 if misses and misses[0] == active else 1
             state.capture_misses[sid] = (active, count)
             if count >= CAPTURE_TRIES:
@@ -145,14 +146,14 @@ async def _close_profile(cfg: Any, profile: ChannelProfile, sessions: List[Dict[
         else:
             state.capture_misses.pop(sid, None)
         notice = await _send_notice(caller, str(entry.get("title") or "")) \
-            if outcome == "stopped" else None
+            if outcome == RelayState.STOPPED else None
         if outcome in _WAITING and state.last_outcome.get(sid) == outcome:
             continue
         state.last_outcome[sid] = outcome
         fields = {"notice": notice} if notice else {}
         await asyncio.to_thread(
             audit.audit_event, "lifeos_relay", action="relay_idle_stop", profile=profile.id,
-            skill=skill.id, session=sid, idle_minutes=idle_minutes, outcome=outcome, **fields)
+            skill=skill.id, session=sid, idle_minutes=idle_minutes, outcome=str(outcome), **fields)
         logger.info(f"ℹ️ relay {profile.id} idle close: {sid[:8]} idle {idle_minutes} min, "
                     f"{outcome}" + (f", notice {notice}" if notice else ""))
 
