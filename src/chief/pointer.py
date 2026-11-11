@@ -1,9 +1,9 @@
-"""Durable pointer to the fleet chief's own conversation (issue #675).
+"""Durable pointer to the fleet chief's own conversation.
 
-The Board's chief **Resume** used to answer purely from ``sessions-state.json``
-— the hook-written rows :mod:`src.board.state` reads. #670 made that lookup
-pick the *right* conversation rather than merely the newest one, but it stayed
-dependent on two things that can both be absent: a row whose ``name`` is
+The Board's chief **Resume** answers from ``sessions-state.json`` — the
+hook-written rows :mod:`src.board.state` reads — and picks the *right*
+conversation rather than merely the newest one. That lookup depends on two
+things that can both be absent: a row whose ``name`` is
 ``"chief"``, and a live PTY to prefer. Two perfectly resumable conversations
 are therefore invisible to a row scan:
 

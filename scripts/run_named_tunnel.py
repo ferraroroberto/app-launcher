@@ -55,11 +55,11 @@ def _have_listener(port: int) -> bool:
 def _spawn_uvicorn(port: int) -> subprocess.Popen:
     """Start uvicorn with the *same* argv the app builds everywhere else.
 
-    This script used to compose its own uvicorn command line (#1003), and
+    This script used to compose its own uvicorn command line, and
     it had already drifted: the ``--loop`` selector shim every other spawn
     site passes went missing here, so the documented no-tray path booted on
     the Windows proactor loop whose accept path closes the listening socket
-    on one aborted client (#388, fixed in #1007). Building the argv through
+    on one aborted client. Building the argv through
     :meth:`WebappManager._build_command` means the next uvicorn flag lands
     in both places at once instead of only in the app.
 

@@ -1,4 +1,4 @@
-"""``inline-shell`` job-kind (issue #70) — the script body lives directly in
+"""``inline-shell`` job-kind — the script body lives directly in
 ``jobs.json`` (``kind_config.script_body`` + ``kind_config.ext``) instead of
 as a standalone file on disk. At fire time the body is written to a temp
 file inside the run's own directory (preserved alongside ``run.json`` /

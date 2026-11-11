@@ -76,7 +76,7 @@ def _request(method: str, port: int, path: str, *, timeout: float = _TIMEOUT, **
 
 
 def identity(port: int) -> Optional[Dict[str, Any]]:
-    """The session-host's ``/healthz`` body (``git_sha``/``started_at``, #615),
+    """The session-host's ``/healthz`` body (``git_sha``/``started_at``),
     or ``None`` when unreachable — the build identity ``/api/version`` uses to
     report whether the session-host is running current code."""
     try:
@@ -141,7 +141,7 @@ def get_session(port: int, session_id: str) -> Dict[str, Any]:
 
 
 def send_input(port: int, session_id: str, data: str, submit: bool = True) -> Dict[str, Any]:
-    """Write ``data`` and, if ``submit``, submit it (issue #611).
+    """Write ``data`` and, if ``submit``, submit it.
 
     One call, not two — the session-host now owns the whole framing +
     settle-then-submit sequence internally (``PtySession.submit_input``), so
@@ -150,7 +150,7 @@ def send_input(port: int, session_id: str, data: str, submit: bool = True) -> Di
 
     The returned body carries the host's delivery verdict (``reason``,
     ``ingested``, ``submitted``, ``submit_confirmed``, ``submit_state``,
-    ``delivered``, ``deferred``, ``queued`` — issues #760/#763/#929/#1548;
+    ``delivered``, ``deferred``, ``queued`` —
     ``delivered`` is
     never true for a requested submit that was not sent — see
     ``docs/board.md``); a payload the terminal never echoed raises
@@ -190,7 +190,7 @@ def stop(port: int, session_id: str, mode: str = "quit") -> Dict[str, Any]:
 
 
 def rename(port: int, session_id: str, title: str) -> Dict[str, Any]:
-    """Set (empty ``title`` clears) a manual title override (issue #458)."""
+    """Set (empty ``title`` clears) a manual title override."""
     return _request(
         "POST", port, f"/sessions/{session_id}/rename", json={"title": title}
     )
@@ -205,7 +205,7 @@ def upload_image(
     inline: bool = False,
 ) -> Dict[str, Any]:
     """Upload an image into a session. With ``inline`` the session-host
-    skips pasting the path into the PTY and just returns it (issue #41)."""
+    skips pasting the path into the PTY and just returns it."""
     return _request(
         "POST",
         port,
@@ -216,7 +216,7 @@ def upload_image(
 
 
 def supports_large_upload(port: int) -> Optional[bool]:
-    """Whether the running session-host has the large-file route (#1430):
+    """Whether the running session-host has the large-file route:
     None when it is unreachable, so the caller can tell "down" from
     "older than the feature" (it is excluded from the webapp's restart and
     may run an old build for days)."""
@@ -233,7 +233,7 @@ async def upload_large_file(
     chunks: AsyncIterator[bytes],
     max_bytes: int,
 ) -> Dict[str, Any]:
-    """Stream a large file into a session (#1430), never holding it whole.
+    """Stream a large file into a session, never holding it whole.
 
     Async and on its own short-lived client rather than the pooled
     requests session: the body is an async stream straight off the

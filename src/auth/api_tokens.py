@@ -1,4 +1,4 @@
-"""Scoped API bearer tokens (issue #72).
+"""Scoped API bearer tokens.
 
 Reduces the blast radius of the single ``auth_token``: a *scoped* token
 can fire only its allowed jobs (``POST /api/jobs/<id>/run``) and nothing

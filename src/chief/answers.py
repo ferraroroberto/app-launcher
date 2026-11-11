@@ -1,6 +1,6 @@
-"""Which of the chief's questions the Board already answered (#1487).
+"""Which of the chief's questions the Board already answered.
 
-The answer sheet (#1295) sends one message to the chief, and the chief removes
+The answer sheet sends one message to the chief, and the chief removes
 the items it has taken by rewriting its plan. Until it does, the Board marks
 the sent items "answered, waiting for the chief". Those marks used to live in
 the answering browser's localStorage, so another device showed the same
@@ -21,7 +21,7 @@ Degradation contract: missing, corrupt or for another plan version reads as
 ``[]`` — never an exception. A failed write raises :class:`OSError` to the
 route, which says so to the device that answered.
 
-How many questions still wait (#1502) is counted here too, for the Board tab's
+How many questions still wait is counted here too, for the Board tab's
 badge on every tab: :func:`unanswered_count` applies :func:`item_key`, the
 Python twin of ``chief-keys.js``'s ``itemKey``. Both sides are pinned to one
 shared fixture (``tests/fixtures/chief_question_keys.json``).

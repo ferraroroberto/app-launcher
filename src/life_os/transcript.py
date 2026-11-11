@@ -1,4 +1,4 @@
-"""Removing the Claude Code transcript a Life OS conversation was captured from (#1410).
+"""Removing the Claude Code transcript a Life OS conversation was captured from.
 
 A Life OS capture (``<skill>/conversations/<date>-<slug>.md``) is a *copy*:
 Claude Code keeps the conversation itself at
@@ -77,7 +77,7 @@ def remove_claude_transcript(
     """Delete ``<project>/<sid>.jsonl`` and its ``<sid>/`` sidecar, by exact id.
 
     With ``dest`` the two entries are *moved* into that folder instead (the
-    zombie cleanup's backup, #1738): same lookup, same link/escape jail, and a
+    zombie cleanup's backup): same lookup, same link/escape jail, and a
     name already present in ``dest`` raises rather than being overwritten.
 
     Returns ``{"status", "files", "folders", "project"}``: ``status`` is one of

@@ -1,4 +1,4 @@
-"""Thin HTTP client for the sibling voice-transcriber session API (issue #165).
+"""Thin HTTP client for the sibling voice-transcriber session API.
 
 The Coding terminal's compose bar can dictate a prompt: the phone records
 audio and POSTs it to the webapp, which proxies the blob here — to the

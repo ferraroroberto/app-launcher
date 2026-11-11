@@ -1,4 +1,4 @@
-"""Is the PC's interactive session a Remote Desktop session (#1996).
+"""Is the PC's interactive session a Remote Desktop session.
 
 A Remote Desktop session has no microphone of its own: dictation in the PC's
 own browser only works when the RDP client redirects its mic, so a failed
@@ -33,7 +33,7 @@ _WTS_WIN_STATION_NAME = 6
 
 
 def _station_name() -> str:
-    """This process's window-station name (``Console``, ``RDP-Tcp#0``...).
+    """This process's window-station name (``Console``, or ``RDP-Tcp`` plus an instance suffix).
 
     Raises ``OSError`` when Windows will not say.
     """

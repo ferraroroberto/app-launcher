@@ -1,4 +1,4 @@
-"""Open a scanned Coding project in the local Visual Studio Code (issue #802).
+"""Open a scanned Coding project in the local Visual Studio Code.
 
 The Coding tab's per-row VS Code button is deliberately *not* an agent launch:
 there is no PTY, no session, and nothing for the launcher to track once the
@@ -42,7 +42,7 @@ def is_vscode_installed() -> bool:
     Resolved exactly like :func:`src.agents.is_installed` — through
     :func:`src.env_path.effective_path`, not the inherited ``PATH`` — so a
     VS Code installed while the launcher is running lights the button up on
-    the next detection poll rather than after an Explorer restart (#668).
+    the next detection poll rather than after an Explorer restart.
     """
     return shutil.which(VSCODE_COMMAND, path=effective_path()) is not None
 
@@ -92,7 +92,7 @@ def open_workspace(workspace_path: Path) -> int:
 
 
 def open_file(file_path: Path) -> int:
-    """Spawn ``code <file_path>`` and return the spawned PID (#1689).
+    """Spawn ``code <file_path>`` and return the spawned PID.
 
     The Changed files panel's Open on PC: the file opens as a tab in the
     editor's last active window, the same ``code`` shim as

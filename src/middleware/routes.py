@@ -9,7 +9,7 @@ AUTH_EXEMPT_EXACT = frozenset({"/", "/healthz", "/api/login"})
 
 
 def is_webhook_hook_path(path: str) -> bool:
-    """``POST /api/jobs/<id>/hook`` (issue #73) authenticates itself via the
+    """``POST /api/jobs/<id>/hook`` authenticates itself via the
     job's provider-specific signature, never the bearer token — an external
     service (GitHub, Stripe, …) can't carry it, and the whole point is a URL
     that's safe to hand to a third party in plaintext.
@@ -348,7 +348,7 @@ def terminal_guard_level(path: str) -> Optional[str]:
     ``"tailnet"`` — Tailscale-only (the WebAuthn ceremony endpoints).
     ``None``      — not a terminal endpoint; normal bearer-token rules apply.
 
-    Driven by :data:`_TERMINAL_GUARD_RULES` (issue #408).
+    Driven by :data:`_TERMINAL_GUARD_RULES`.
     """
     for predicate, level, _comment in _TERMINAL_GUARD_RULES:
         if predicate(path):

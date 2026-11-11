@@ -4,12 +4,12 @@ Mirrors photo-ocr's manager: status() probes /healthz and the TCP port,
 start() adopts an already-listening webapp or spawns one, stop() only
 terminates a process this manager owns.
 
-Health is a THREE-state fact, not a boolean (#1005). A wedged uvicorn still
+Health is a THREE-state fact, not a boolean. A wedged uvicorn still
 LISTENs, so "the port accepts a connection" cannot establish that the webapp
 is serving - it only rules out "nothing is there". Folding that into
 ``running=True`` is what let start() adopt a wedge and report it ready, and
 made restart() refuse it with the wrong reason ("started externally"); the
-sibling ``app/tray/watchdog.py`` exists because that conflation hid the #386
+sibling ``app/tray/watchdog.py`` exists because that conflation hid the
 wedge for hours. So ``WebappStatus.health`` reports ``answering``,
 ``bound_not_answering`` (honestly unknown - a connection succeeded and
 /healthz did not answer) or ``down``, ``running`` is True only for
@@ -116,7 +116,7 @@ def _probe_url(scheme: str, host: str, port: int) -> str:
 
 def check_tailscale_cert() -> None:
     """Auto-renew a Tailscale cert expiring within 30 days, before uvicorn
-    binds (project-scaffolding#89). No-op on a self-signed cert or when no
+    binds. No-op on a self-signed cert or when no
     cert exists; best-effort — a cert problem must never block startup.
     """
     script = PROJECT_ROOT / "scripts" / "gen_tailscale_cert.py"

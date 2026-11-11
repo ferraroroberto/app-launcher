@@ -1,7 +1,7 @@
-"""Launcher-owned storage for a Board issue-start dispatch brief (issue #1114).
+"""Launcher-owned storage for a Board issue-start dispatch brief.
 
 A chief-dispatched lane trusts exactly one thing as coming from the operator:
-its launch command (fleet-config#944). ``POST /api/board/issues/start`` can
+its launch command. ``POST /api/board/issues/start`` can
 therefore carry an optional free-text **brief** — the dispatcher's scope,
 queue and constraints — but that text must never reach the session-host's
 unquoted ``cmd /c`` line. So the brief is written here, to a file whose name
@@ -10,7 +10,7 @@ as ``--brief <path>``. No client-derived character reaches the command line;
 :func:`write_brief` asserts it rather than assuming it.
 
 Store: ``<audit dir>/briefs/<uuid hex>.md`` — the same directory
-``LAUNCHER_AUDIT_DIR`` relocates for :mod:`src.audit` (issue #913), so a test
+``LAUNCHER_AUDIT_DIR`` relocates for :mod:`src.audit`, so a test
 or e2e-gate run never writes into the checkout's live ``webapp/``. Gitignored.
 
 Bounded: every write first prunes briefs older than :data:`BRIEF_TTL` and

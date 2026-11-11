@@ -1,4 +1,4 @@
-"""The ``http-check`` job-kind's actual probe (issue #70).
+"""The ``http-check`` job-kind's actual probe.
 
 Invoked as ``python -m src.jobs_kinds.http_check_probe`` by
 :class:`~src.jobs_kinds.http_check.HttpCheckKind`. Deliberately a plain

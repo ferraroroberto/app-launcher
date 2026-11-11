@@ -1,11 +1,10 @@
-"""A throwaway app-launcher with synthetic data, for ``/design-review --synthetic`` (#1227).
+"""A throwaway app-launcher with synthetic data, for ``/design-review --synthetic``.
 
 fleet-config's design-review walk must never attach to a real session, so a
 session's Chat and Terminal views, and every surface that needs data (a
 session row, a Board card, a job, a Life OS skill), can only be measured on
 an instance nobody uses. This script is that instance. It speaks the
-launcher contract fleet-config's ``capture.SyntheticInstance`` expects
-(fleet-config#995): run with this repo's ``.venv`` from the checkout root, it
+launcher contract fleet-config's ``capture.SyntheticInstance`` expects: run with this repo's ``.venv`` from the checkout root, it
 prints ``URL=<base>`` once the webapp answers, runs until its stdin reaches
 EOF, then stops everything it started and deletes its temp tree.
 
@@ -21,7 +20,7 @@ What makes it throwaway, and synthetic only:
   notifies. ``USERPROFILE``/``HOME`` and ``CLAUDE_CONFIG_DIR`` point at a temp
   home, so no home-relative reader (``~/.claude/projects``, other agents'
   session folders) sees real content.
-* **GitHub is synthetic too (#1286).** ``LAUNCHER_GH_CMD`` points the Board's
+* **GitHub is synthetic too.** ``LAUNCHER_GH_CMD`` points the Board's
   GitHub refresh at ``scripts/synthetic_gh.py``, whose rows name only the
   synthetic repo, and ``github_owner`` is a synthetic owner. The real ``gh``
   keeps its login under ``%APPDATA%``, beyond the ``HOME`` redirect, so

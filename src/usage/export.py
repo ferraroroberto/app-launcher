@@ -1,4 +1,4 @@
-"""Send the launcher's Screen time to task-os's Time tracker (#1678, step 2/2).
+"""Send the launcher's Screen time to task-os's Time tracker.
 
 The Screen time sheet (step 1) draws foreground minutes from the vendored
 usage log (:func:`src.usage_log.foreground_time`). This module sends the same
@@ -8,7 +8,7 @@ numbers to task-os as one duration-only Time entry per completed local day:
   across devices (phone and PC at once count once); the device split goes in
   the entry's note. One entry per device would double-count in task-os.
 - **Idempotent by key.** Each day is ``PUT /api/time/entries/by-source/
-  usage:app-launcher:<YYYY-MM-DD>`` (task-os#469): a resend replaces the
+  usage:app-launcher:<YYYY-MM-DD>``: a resend replaces the
   entry, never duplicates it. A day that rounds to 0 minutes is a ``DELETE``
   of the same key; a 404 there means it was never sent, which is fine.
 - **The last 7 completed days plus today by default.** Today goes as a running

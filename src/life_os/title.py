@@ -1,6 +1,6 @@
 """Running fleet-config's conversation-title writer for one Life OS capture.
 
-Moved out of ``app/webapp/routers/life_os_conversations.py`` (#1738) so the
+Moved out of ``app/webapp/routers/life_os_conversations.py`` so the
 zombie cleanup job, which shares the Delete code path with that route, can clear
 a deleted capture's title and put one back on restore without importing a
 router. The route's rename and the Delete both still go through

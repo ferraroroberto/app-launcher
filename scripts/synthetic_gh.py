@@ -1,6 +1,6 @@
-"""A fake ``gh`` for the design-review synthetic instance (#1286).
+"""A fake ``gh`` for the design-review synthetic instance.
 
-The synthetic instance (``scripts/design_review_synthetic.py``, #1227) points
+The synthetic instance (``scripts/design_review_synthetic.py``) points
 ``src.clients.github``'s ``LAUNCHER_GH_CMD`` at this script, so the Board's
 GitHub refresh reads the synthetic rows below instead of the real ``gh`` CLI,
 whose login would otherwise put the real fleet's issue titles into a
@@ -9,8 +9,7 @@ throwaway walk's screenshots and report. It answers the three searches
 with the fields they ask for, and refuses anything else with a non-zero exit,
 which the Board shows as a refresh error rather than as real data.
 
-The e2e gate's disposable webapp uses it too (``tests/e2e/fixtures/autoboot.py``,
-#1516), so no gate run reaches real GitHub.
+The e2e gate's disposable webapp uses it too (``tests/e2e/fixtures/autoboot.py``), so no gate run reaches real GitHub.
 
 Run as ``python synthetic_gh.py <gh args>``; stdlib only, no network.
 """

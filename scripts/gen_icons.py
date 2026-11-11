@@ -2,7 +2,7 @@
 
 Thin caller onto ``project-scaffolding``'s ``brand_gen.render_set()`` — the
 master art is app-launcher's vendored Lucide ``rocket.svg``, not a bespoke
-Pillow-drawn silhouette (issue #65: a coherent icon family across the fleet).
+Pillow-drawn silhouette, so the icon family stays coherent across the fleet.
 
 Writes into ``app/webapp/static/``: ``icon-512.png``, ``icon-512-maskable.png``,
 ``icon-180.png``, ``icon-192.png``, ``favicon.ico``. Into ``assets/tray/``:

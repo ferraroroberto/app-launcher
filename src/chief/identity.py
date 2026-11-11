@@ -26,7 +26,7 @@ CHIEF_PROJECT_DIR_NAME = "fleet-config"
 def live_title_names_chief(sess: Dict[str, Any]) -> bool:
     """Whether ``live_title`` — the OSC window-title session_host parses
     directly off the PTY's own raw output (``PtySession._read_loop``) —
-    names this conversation "chief" (#628).
+    names this conversation "chief".
 
     This is the fastest of the three self-heal signals: it needs no hook and
     no transcript read, just Claude Code's own title escape sequence, which
@@ -51,7 +51,7 @@ def live_title_names_chief(sess: Dict[str, Any]) -> bool:
 
 
 def reconcile_chief_label(sess: Dict[str, Any], shared_name: Any) -> Dict[str, Any]:
-    """Self-heal ``label`` for a chief PTY spawned outside ``ensure`` (#617).
+    """Self-heal ``label`` for a chief PTY spawned outside ``ensure``.
 
     ``ensure_chief`` is spawn-if-absent, but it is not the only way a chief
     gets started. Two ways it slips past the label: Roberto opens a plain
@@ -71,17 +71,17 @@ def reconcile_chief_label(sess: Dict[str, Any], shared_name: Any) -> Dict[str, A
     each read from wherever Claude Code's own self-declared identity surfaces
     earliest:
 
-    * ``live_title`` (#628, :func:`live_title_names_chief`): checked first
+    * ``live_title`` (:func:`live_title_names_chief`): checked first
       here because it is available earliest — Claude Code re-emits its own
       established OSC title on a Resume, before any hook fires or the user
-      types anything, closing the exact gap #628 was filed over (a resumed
-      chief unidentifiable "until its first hook fires").
-    * ``prompt_title`` (#266): the session-host's own capture of the first
+      types anything, so a resumed
+      chief is not unidentifiable "until its first hook fires".
+    * ``prompt_title``: the session-host's own capture of the first
       line ever *submitted* into this PTY. Exact for a freshly typed
       ``/chief`` — but a Resume never re-submits it (the conversation is
       already past that point), so this alone misses exactly the observed
       case.
-    * ``shared_name`` (fleet-config#302): Claude Code's own self-derived name
+    * ``shared_name``: Claude Code's own self-derived name
       for the *conversation*, not the PTY — read from its live per-process
       registry via the hook state file, joined by the same agent-aware claim
       walk every other cross-tab title uses (:func:`board.attach_shared_names`).

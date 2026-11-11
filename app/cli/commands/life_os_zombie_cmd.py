@@ -1,4 +1,4 @@
-"""`life-os-zombie-cleanup` subcommand — back up or delete Life OS zombie conversations (#1738).
+"""`life-os-zombie-cleanup` subcommand — back up or delete Life OS zombie conversations.
 
 ``--mode backup`` (the default) moves each zombie's capture, native transcript
 and index entries into a dated backup folder; ``--mode delete`` removes them

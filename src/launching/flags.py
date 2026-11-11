@@ -1,7 +1,6 @@
 """Per-agent command-line composition — the launch shape of every coding agent.
 
-Split off ``src/webapp_config.py`` (issue #691, a `/codebase-audit`
-maintainability finding). That module owns *configuration*: the
+Split off ``src/webapp_config.py``. That module owns *configuration*: the
 :class:`~src.webapp_config.WebappConfig` dataclass plus its load / save /
 validate plumbing. What lives here is not config plumbing at all — it is the
 business logic that turns those persisted knobs into the exact argv each
@@ -55,7 +54,7 @@ CHANNEL_PLUGIN = "plugin:telegram@claude-plugins-official"
 
 
 def default_effort(agent: str, model: str) -> str:
-    """The catalog ``default_effort`` of ``model``, else ``high`` (#1711)."""
+    """The catalog ``default_effort`` of ``model``, else ``high``."""
     if agent == "claude":
         spec = CLAUDE_MODEL_SPECS.get(model, {})
         default = spec.get("default_effort") or LEGACY_CLAUDE_DEFAULT_EFFORTS.get(model)
@@ -69,7 +68,7 @@ def default_effort(agent: str, model: str) -> str:
 
 
 def effective_effort(agent: str, model: str, cfg: WebappConfig) -> str:
-    """The effort ``model`` launches at (#1711): the owner's override for that
+    """The effort ``model`` launches at: the owner's override for that
     model, else the catalog ``default_effort``, else ``high``.
 
     The one copy of the precedence rule; every builder asks it for the model it
@@ -77,7 +76,7 @@ def effective_effort(agent: str, model: str, cfg: WebappConfig) -> str:
     not support is ignored rather than trusted, and an unknown model resolves
     to ``high``. For Claude the value may be ``off`` (an override meaning "send
     no ``--effort``"); the builder, not this function, acts on it. For Pi the
-    value is a ``--thinking`` level (``off`` included) sent as is (#1713).
+    value is a ``--thinking`` level (``off`` included) sent as is.
     """
     if agent == "claude":
         overrides, allowed = cfg.claude_model_efforts, valid_claude_efforts_for(model)
@@ -110,13 +109,13 @@ def build_claude_flags(
     """Compose the `claude` CLI flags from the persisted defaults.
 
     ``model_override`` forces a specific ``--model`` regardless of the
-    persisted ``claude_model`` — used by the Life OS tab (issue #102),
+    persisted ``claude_model`` — used by the Life OS tab,
     whose ``opus`` toggle picks ``opus``/``sonnet`` per launch while the
     rest of the flags (verbose, debug, permission) still come from the
     shared Coding options. Other callers pass nothing and keep the persisted
     model.
 
-    ``--effort`` is that model's own (:func:`effective_effort`, #1711): the
+    ``--effort`` is that model's own (:func:`effective_effort`): the
     model actually launched, never the selected one. When no valid model is
     sent (a keep-model resume leaves the model to the conversation), the
     effort is resolved for ``effort_model`` — the conversation's recorded
@@ -128,11 +127,11 @@ def build_claude_flags(
     it. ``None`` keeps the persisted per-model effort.
 
     ``channel_settings`` — the path of a per-profile settings file — turns the
-    session into a Telegram channel session (#1366): ``--channels`` starts the
+    session into a Telegram channel session: ``--channels`` starts the
     plugin and ``--settings <file>`` hands it its ``TELEGRAM_STATE_DIR``
     through Claude's own settings ``env`` block, so the variable reaches that
     session's plugin server and no other. A channel session never runs in
-    bypass mode, whatever the shared Coding option says (#1338 constraint).
+    bypass mode, whatever the shared Coding option says.
     ``None`` (every other caller) leaves the output exactly as before.
     """
     parts: list[str] = list(ALWAYS_ON_CLAUDE_FLAGS)
@@ -162,7 +161,7 @@ def build_antigravity_flags(cfg: WebappConfig) -> str:
 
     The Antigravity CLI (`agy`) does have `--model` and `--effort`, but its
     model is chosen in-session with `/model`, so the launcher has no model to
-    key an effort on and sends neither (#1711, skipped by decision). It has no
+    key an effort on and sends neither. It has no
     verbose flag. So this is just the two opt-in launch switches; an
     all-default config yields an empty string (the CLI is launched bare).
     """
@@ -210,7 +209,7 @@ def build_copilot_flags(cfg: WebappConfig) -> str:
     permission without prompting). An all-default config yields an empty
     string — the CLI is launched bare.
 
-    **No ``--model`` is sent, deliberately (issue #1017).** The launcher
+    **No ``--model`` is sent, deliberately.** The launcher
     used to append one from a hand-maintained catalogue, and the phone
     then displayed a model the session was not running: Copilot resolves
     the flag against the account's *entitlement* at launch and silently
@@ -242,7 +241,7 @@ def build_copilot_flags(cfg: WebappConfig) -> str:
 
 
 def build_pi_flags(cfg: WebappConfig) -> str:
-    """Compose the `pi` CLI flags from the persisted Pi knobs (issues #273, #288).
+    """Compose the `pi` CLI flags from the persisted Pi knobs.
 
     Three pieces, all passed explicitly because pi's settings.json defaults
     do not reliably reroute a launch:
@@ -256,7 +255,7 @@ def build_pi_flags(cfg: WebappConfig) -> str:
       can't slip onto a billing path (pi's native ``anthropic`` provider is
       deliberately bypassed, and disconnected on this machine).
     - **thinking** — ``--thinking <effort>``: the chosen model's own
-      (:func:`effective_effort`, #1713), its override else ``high``.
+      (:func:`effective_effort`), its override else ``high``.
     - **trust** — ``--approve`` (trust mode) or ``--no-approve`` (ask mode).
       This is project *trust* (loading project-local ``.pi/`` resources), NOT
       a tool-permission gate: pi has no tool sandbox or per-action prompt.
@@ -279,10 +278,10 @@ def build_grok_flags(
     effort_override: Optional[str] = None,
     unattended: bool = False,
 ) -> str:
-    """Compose the `grok` CLI flags from the persisted Grok knobs (#626, #667).
+    """Compose the `grok` CLI flags from the persisted Grok knobs.
 
     Two pieces, both verified against the running binary rather than the
-    docs (0.2.114) — #626's premise was that Grok's properties get probed,
+    docs (0.2.114) — Grok's properties are probed,
     not assumed:
 
     - **permission mode** — ``--permission-mode auto`` or
@@ -318,7 +317,7 @@ def build_resume_flags(
     session_id: Optional[str] = None, *, keep_model: bool = False,
     effort_model: Optional[str] = None,
 ) -> str:
-    """Compose the full flags string for a *Resume* launch (issue #151).
+    """Compose the full flags string for a *Resume* launch.
 
     Splices the agent's native resume token (see
     :func:`src.agents.resume_command_for`) ahead of the flags its resume
@@ -338,13 +337,13 @@ def build_resume_flags(
 
     ``session_id``, when given, pins the resume token to that specific
     conversation (``<token> <session_id> <flags>``) so the agent reattaches
-    directly instead of rendering its interactive picker (issue #633, the
+    directly instead of rendering its interactive picker (the
     fleet chief's Resume control — verified empirically that Claude's
     ``--resume <id>`` accepts a session id directly, non-interactively).
-    Omitted (the default, and every caller before #633), the bare token
+    Omitted (the default), the bare token
     renders the picker exactly as before.
 
-    ``keep_model`` (#1503, Life OS's swipe-Resume) resumes a Claude
+    ``keep_model`` (Life OS's swipe-Resume) resumes a Claude
     conversation on its own model: no ``--model`` at all, because a bare
     ``--resume <id>`` keeps the conversation's model and ``--model`` would
     override it (probed, see :mod:`src.session_view.conversation_model`). Codex has no such
@@ -354,7 +353,7 @@ def build_resume_flags(
 
     ``effort_model`` (Claude, with ``keep_model``) is the conversation's
     recorded model id: no ``--model`` is sent, so the effort is resolved for
-    that model's family, and omitted when it is unknown (#1711).
+    that model's family, and omitted when it is unknown.
     """
     token = resume_command_for(agent_id)
     if session_id:

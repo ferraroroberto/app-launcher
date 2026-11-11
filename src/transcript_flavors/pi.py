@@ -1,4 +1,4 @@
-"""Pi session-history JSONL line grammar (#1309, split out of ``src/session_view/transcript.py``)."""
+"""Pi session-history JSONL line grammar."""
 
 from __future__ import annotations
 
@@ -79,7 +79,7 @@ def pi_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
     **whole content list on that one line**, so a single line can produce a
     ``thinking``, an ``assistant`` and several ``tool_call`` entries, all
     sharing its byte offset. Measured on the 57 sessions on disk plus a
-    probe taken for #1013:
+    probe:
 
     * A tool call is an assistant content block (``{"type": "toolCall",
       "id", "name", "arguments"}``), not a record of its own; its result is
@@ -91,7 +91,7 @@ def pi_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
     * A message's ``text`` blocks are never separated by a ``toolCall``
       (0 of 1490 assistant messages), so merging them into one
       ``assistant`` entry cannot hoist a reply above the tool call that
-      produced it — the trap the Grok flavour had to avoid (#1012). It also
+      produced it — the trap the Grok flavour had to avoid. It also
       keeps exactly one turn entry per offset, which is what
       :func:`src.session_view.transcript.entry_full_text` resolves against.
 
@@ -100,7 +100,7 @@ def pi_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
     rather than as 1970.
 
     A failed tool result (``isError: true``) is recorded on the paired call
-    as ``error`` (#1020); Pi writes the field on every ``toolResult``, so
+    as ``error``; Pi writes the field on every ``toolResult``, so
     ``FLAVORS`` declares it ``reported``.
 
     ``uncapped`` — see :func:`src.transcript_flavors.claude.claude_entries`.

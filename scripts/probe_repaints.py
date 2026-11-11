@@ -1,6 +1,6 @@
 """Count Claude Code's full-viewport repaints in a PTY session transcript.
 
-The measurement behind issue #930. A Coding/PTY session's scrollback shows
+The measurement behind the duplicated-scrollback diagnosis. A Coding/PTY session's scrollback shows
 the same paragraph two or three times; the copies are genuinely in the raw
 PTY byte stream, and each one is preceded by a *full-viewport repaint
 preamble* — cursor home, erase every viewport row, cursor home again::
@@ -15,14 +15,14 @@ what row counts the PTY was driven at.
 
 Two things this tool is for:
 
-* **Reproducing #930's evidence.** ``--by-rows`` prints repaints per MB of
+* **Reproducing the evidence.** ``--by-rows`` prints repaints per MB of
   output at each viewport height — the dose-response that shows the rate
   scales roughly with ``1/rows``.
 * **Checking a session after a change.** Point it at a fresh transcript and
   compare against the resize breadcrumbs ``PtySession.resize()`` writes to
   ``webapp/session-host.log`` (``--resize-log``). Repaints far exceeding
   logged resizes means the repaints are *not* resize-driven — which is what
-  #930's reopening found, and what rules out a resize-side fix.
+  the measurement found, and what rules out a resize-side fix.
 
 This is a read-only diagnostic. Nothing in the serving path imports it: the
 repaint is legitimate output from the agent and the terminal renders it

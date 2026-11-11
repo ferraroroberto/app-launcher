@@ -1,4 +1,4 @@
-"""Screen control (#1521): click, drag, scroll and type on the PC from the phone.
+"""Screen control: click, drag, scroll and type on the PC from the phone.
 
 The Screen view's socket (:mod:`app.webapp.routers.desktop_screen`) hands
 each input message to an :class:`InputSession`, which turns it into Windows
@@ -24,7 +24,7 @@ the user's interactive session), so no admin rights and no extra tool.
   phone never leaves Ctrl or a mouse button stuck on the PC.
 * **Nothing typed is logged.** The session counts accepted messages for the
   audit line; it never logs their content.
-* **The clipboard rides the same socket (#1719).** A ``clipboard_set``
+* **The clipboard rides the same socket.** A ``clipboard_set``
   message puts its text on the PC's clipboard through
   :mod:`src.desktop.clipboard`, its own seam; it has its own size cap and its
   own reply (``{"type": "clipboard", ...}``, which says only whether it

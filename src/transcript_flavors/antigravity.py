@@ -1,4 +1,4 @@
-"""Antigravity CLI conversation-log line grammar (#1309, split out of ``src/session_view/transcript.py``)."""
+"""Antigravity CLI conversation-log line grammar."""
 
 from __future__ import annotations
 
@@ -98,14 +98,14 @@ def antigravity_entries(lines: List[Line], *, uncapped: bool = False) -> List[En
     ever needs a neighbouring line (:func:`antigravity_line_key`) and a
     line yields at most one turn, which is what
     :func:`src.session_view.transcript.entry_full_text` resolves against. Measured on
-    a session launched through the launcher's own API for #1014 plus the
+    a session launched through the launcher's own API plus the
     264 conversations already on disk:
 
     * A ``PLANNER_RESPONSE`` carries ``thinking``, ``content`` and
       ``tool_calls`` in any combination — when the model calls a tool there
       is usually **no** ``content`` at all. All three come from one line at
       one offset, so nothing is merged across records and a reply can never
-      be hoisted above the call that produced it (the trap #1012 hit).
+      be hoisted above the call that produced it.
     * **A tool result is the next ``MODEL`` step that is not a
       ``PLANNER_RESPONSE``, and its type does not name the tool** — a
       ``list_dir`` call answered as ``GENERIC``, not ``LIST_DIRECTORY``.
@@ -122,9 +122,9 @@ def antigravity_entries(lines: List[Line], *, uncapped: bool = False) -> List[En
       produces nothing.
     * Timestamps are ISO strings already, in a mix of ``Z`` and local-offset
       forms within one file, both of which the client's ``new Date`` reads —
-      no epoch normalisation is needed here, unlike Grok's (#1012).
+      no epoch normalisation is needed here, unlike Grok's.
 
-    Known omission, shared with the Codex, Grok and Pi flavours (#1020): a
+    Known omission, shared with the Codex, Grok and Pi flavours: a
     failed tool result reads the same as a successful one. Antigravity gives
     a reader nothing structured to tell them apart — a command that exits 1
     is still ``status: "DONE"``, with the failure only in the result's

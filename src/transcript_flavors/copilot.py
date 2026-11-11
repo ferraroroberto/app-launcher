@@ -1,4 +1,4 @@
-"""GitHub Copilot CLI ``events.jsonl`` line grammar (#1309, split out of ``src/session_view/transcript.py``)."""
+"""GitHub Copilot CLI ``events.jsonl`` line grammar."""
 
 from __future__ import annotations
 
@@ -60,7 +60,7 @@ def _copilot_result_text(result: Any) -> str:
 
 
 def _copilot_outcome(data: Dict[str, Any]) -> Tuple[str, bool]:
-    """A ``tool.execution_complete``'s card text and whether it failed (#1020).
+    """A ``tool.execution_complete``'s card text and whether it failed.
 
     Copilot has **two** outcome fields, at two different levels, and only
     both together cover a failure:
@@ -106,7 +106,7 @@ def copilot_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]
     "parentId", "timestamp"}`` — so no entry ever needs a neighbouring line
     (:func:`copilot_line_key`) and a line yields at most one turn, which is
     what :func:`src.session_view.transcript.entry_full_text` resolves against.
-    Measured on a session launched through the launcher's own API for #1015,
+    Measured on a session launched through the launcher's own API,
     plus the 37 event logs already on disk:
 
     * A typed prompt is ``user.message``'s ``data.content``. Its sibling
@@ -121,10 +121,10 @@ def copilot_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]
       ``content`` at all (5 of 5 in the capture) but may carry narration;
       either way its text is emitted at its own offset and the call comes
       from a *later* line, so a reply can never be hoisted above the call
-      that produced it (the trap #1012 hit).
+      that produced it.
     * **Call and result pair by an exact id** — ``data.toolCallId`` on both
       ``tool.execution_start`` and ``tool.execution_complete`` — so unlike
-      Antigravity (#1014) there is no positional guessing. A result whose
+      Antigravity there is no positional guessing. A result whose
       call fell off the page stands alone, as in every other flavour.
     * ``data.reasoningText`` is readable thinking and folds as ``thinking``
       (14 of 68 assistant messages here). Its neighbours
@@ -132,13 +132,13 @@ def copilot_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]
       (52, 44 and 7 of them) are **encrypted provider blobs** and are never
       read — a card must not show a screenful of base64.
     * ``session.error`` folds as ``system``: it is where the launcher's
-      rejected ``--model`` flag surfaces (#1017), worth seeing folded
+      rejected ``--model`` flag surfaces, worth seeing folded
       rather than dropping silently.
     * Everything else is plumbing (:data:`_COPILOT_PLUMBING`), dropped by
       not being matched.
     * Timestamps are ISO-8601 ``Z`` strings on the event envelope, which the
-      client's ``new Date`` reads directly — no epoch conversion, so none of
-      #1012's 1970 cards.
+      client's ``new Date`` reads directly — no epoch conversion, so no
+      1970-epoch cards.
 
     **This is by far the least byte-efficient of the five flavours.** The
     capture ran 670 KB for three short turns — ~220 KB per turn, of which
@@ -153,7 +153,7 @@ def copilot_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]
     lost, and the system prompt never reaches a card.
 
     Known omission, shared with the Codex, Grok, Pi and Antigravity
-    flavours (#1020): a failed tool call reads much like a successful one.
+    flavours: a failed tool call reads much like a successful one.
     Copilot's ``data.success`` describes whether the *tool* ran, not whether
     the command succeeded — a shell command exiting 1 is still
     ``success: true``, with the failure only in the result's own

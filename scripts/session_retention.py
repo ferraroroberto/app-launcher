@@ -1,4 +1,4 @@
-"""Report what the webapp/sessions retention sweep would remove (issue #902).
+"""Report what the webapp/sessions retention sweep would remove.
 
 Dry-run only — this script never deletes anything. It runs the exact
 selection the webapp's daily sweep runs (``src/session_retention.py::sweep``)

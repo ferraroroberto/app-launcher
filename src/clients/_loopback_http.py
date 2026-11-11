@@ -15,7 +15,7 @@ Each client declares a trivial :class:`LoopbackError` subclass (e.g.
 without catching another's; the shared ``status``-carrying ``__init__`` lives
 on the base.
 
-Every call also shares one pooled, keep-alive :data:`SESSION` (issue #605) —
+Every call also shares one pooled, keep-alive :data:`SESSION` —
 a bare ``requests.get``/``requests.request`` opens a fresh TCP connection per
 call, and each closed connection parks its ephemeral port in ``TIME_WAIT`` for
 ~120 s on Windows. The Board and Coding tabs poll the session-host
@@ -91,7 +91,7 @@ class LoopbackError(RuntimeError):
 def detail(resp: Any, service: str) -> str:
     """The cleanest message we can surface for a ``>= 400`` response: the
     upstream body's ``detail`` field when present, else a bare status line.
-    Duck-typed: a ``requests`` or an ``httpx`` response (#1430)."""
+    Duck-typed: a ``requests`` or an ``httpx`` response."""
     try:
         body = resp.json()
         if isinstance(body, dict) and body.get("detail"):
@@ -123,7 +123,7 @@ def request(
     of the transport failures: a *read* timeout — the peer accepted the call and
     never answered in time — raises that status with a "still working" message
     instead of the 503 "unreachable" a refused or timed-out connect gets, for a
-    caller whose upstream legitimately runs long (photo-ocr, #1420). ``**kwargs`` (``json``, ``params``, ``files``, ``data``,
+    caller whose upstream legitimately runs long (photo-ocr). ``**kwargs`` (``json``, ``params``, ``files``, ``data``,
     ``headers``, ...) flow straight to ``requests.request``.
     """
     try:

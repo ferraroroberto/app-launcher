@@ -1,4 +1,4 @@
-"""Job-kind registry (issue #70).
+"""Job-kind registry.
 
 Replaces the old ``if suffix == ".py": … elif ".bat": …`` ladder in
 ``app/cli/commands/run_job_cmd.py`` with one module per *kind* — each

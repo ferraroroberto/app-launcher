@@ -1,4 +1,4 @@
-"""Per-harness transcript-line grammars (#1309).
+"""Per-harness transcript-line grammars.
 
 One module per flavour — ``claude``, ``codex``, ``grok``, ``pi``,
 ``antigravity``, ``copilot`` — each exporting an ``EntryBuilder`` and a

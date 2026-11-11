@@ -129,7 +129,7 @@ ready_selector = "#homeHeadStatus"
 [comment_ratchet]
 enabled  = true
 baseline = ".comment-ratchet-baseline.json"
-# docstrings stays off: the rule counts 444 findings in 100 files, burned down folder by folder.
+# docstrings stays off: the rule counts 184 findings in 29 files, burned down folder by folder.
 history_phrases = true
 
 # ---------------------------------------------------------------------------

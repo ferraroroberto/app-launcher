@@ -1,4 +1,4 @@
-"""`usage-export` subcommand — send Screen time to task-os (#1678).
+"""`usage-export` subcommand — send Screen time to task-os.
 
 Sends the last 7 completed days and today's running total (or every day from
 ``--since``) as one task-os Time entry per day, skipping days that have not

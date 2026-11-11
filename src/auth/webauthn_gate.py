@@ -285,7 +285,7 @@ class WebAuthnGate:
 
     def mint_local_token(self) -> str:
         """Mint a terminal token without a passkey ceremony — for windows the
-        webapp spawns itself (the PC mirror, issue #356). Trust-equivalent to
+        webapp spawns itself (the PC mirror). Trust-equivalent to
         the loopback bypass: same server, same machine, same user. Never
         callable from a route on behalf of a remote client.
         """

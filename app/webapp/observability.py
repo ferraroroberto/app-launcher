@@ -1,4 +1,4 @@
-"""Slow-request breadcrumbs for the webapp (issue #386).
+"""Slow-request breadcrumbs for the webapp.
 
 The webapp runs under ``--log-level warning`` and the tray spawns it with
 stdout/stderr DEVNULL'd, so when :8445 wedges there is zero evidence trail.
@@ -8,7 +8,7 @@ This middleware leaves one, in ``webapp/slow-requests.log``:
   method, path, status, elapsed, and how many other requests were still in
   flight when it finished;
 * one line per hot-path GET (``/``, ``/api/jobs``, ``/api/board``) over its
-  :data:`HOT_PATH_BUDGET_S` budget (#1324), so a regression in the paths the
+  :data:`HOT_PATH_BUDGET_S` budget, so a regression in the paths the
   phone opens on is on disk before anyone notices it by feel;
 * a rate-limited in-flight line whenever a new request arrives while more
   than ``LAUNCHER_INFLIGHT_WARN`` (default 16) are already in flight — with
@@ -112,13 +112,13 @@ def ensure_slow_log_handler() -> None:
     """Attach the slow-requests.log file handler exactly once. Idempotent —
     safe to call from ``create_app()`` on every boot. Without a file handler
     the breadcrumbs would vanish into the tray's DEVNULL exactly when they
-    matter. INFO, so the hot polls' step timings (#1597) land here too."""
+    matter. INFO, so the hot polls' step timings land here too."""
     ensure_file_log_handler(_SLOW_LOG_PATH, slow_logger)
 
 
 def ensure_autostart_log_handler(*targets: logging.Logger) -> None:
-    """Send the Telegram autostart breadcrumbs (#1542) to
-    ``webapp/channel-autostart.log`` at INFO (#1546). Idempotent per logger —
+    """Send the Telegram autostart breadcrumbs to
+    ``webapp/channel-autostart.log`` at INFO. Idempotent per logger —
     safe to call from ``create_app()`` on every boot. Under the tray's
     ``pythonw`` there is no stderr and these loggers have no file handler, so
     the "autostart is off" / per-profile started-or-skipped lines (and the
@@ -133,7 +133,7 @@ def ensure_autostart_log_handler(*targets: logging.Logger) -> None:
 
 
 def ensure_doorbell_log_handler(target: logging.Logger) -> None:
-    """Send the chief doorbell's rings and skip reasons (#1645) to
+    """Send the chief doorbell's rings and skip reasons to
     ``webapp/chief-doorbell.log`` at INFO, for the same reason as the
     autostart log: under the tray's ``pythonw`` they would otherwise vanish."""
     ensure_file_log_handler(_DOORBELL_LOG_PATH, target)

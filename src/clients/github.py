@@ -1,4 +1,4 @@
-"""Fleet-wide GitHub reads for the Board tab, via the ``gh`` CLI (issue #300).
+"""Fleet-wide GitHub reads for the Board tab, via the ``gh`` CLI.
 
 Wraps the exact cross-repo queries the ``/issue-triage`` skill runs — open
 issues, open PRs, and today's merged/closed items across every repo the
@@ -8,8 +8,8 @@ never invoked on a poll** — :func:`refresh` runs the searches only when the
 user asks (or once on first Board activation), while :func:`snapshot` is a
 pure memory read the 5s board poll can hit for free.
 
-Shared ownership note (#164 ↔ #251): this module is the single fetch layer —
-the future Issues tab (#251) builds its rich inbox on these same functions
+Shared ownership note: this module is the single fetch layer —
+the future Issues tab builds its rich inbox on these same functions
 instead of growing a second ``gh`` wrapper.
 
 The one write is :func:`create_issue`, behind the Board's issue-filing route.
@@ -19,7 +19,7 @@ snapshot's data and surfaces ``error`` so the UI can badge it.
 
 The cache is process memory, so every webapp restart starts it empty with
 ``fetched_at: None`` — "never fetched", which is *not* "fetched, nothing
-open". Readers must consult ``fetched_at`` before counting the lists (#910).
+open". Readers must consult ``fetched_at`` before counting the lists.
 """
 
 from __future__ import annotations
@@ -331,7 +331,7 @@ def lookup_unpaired(
 def search_done_on(
     owner: str, day: date, tz: Optional[tzinfo] = None
 ) -> List[Dict[str, Any]]:
-    """Issues closed on the local day ``day``, latest close first (#399, #1638).
+    """Issues closed on the local day ``day``, latest close first.
 
     Merged PRs no longer get their own Done card — a PR that closed an issue
     is already reflected by that issue showing closed, so this is just the
@@ -625,7 +625,7 @@ def refresh(owner: str) -> Dict[str, Any]:
 
     *Every* failure records ``error``, not just :class:`GhError` — a
     malformed row the normalisers choke on used to escape as a 500 and leave
-    ``error: None`` behind, so the next reader saw no trace of it (#910).
+    ``error: None`` behind, so the next reader saw no trace of it.
     """
     fetched_at = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
     try:
