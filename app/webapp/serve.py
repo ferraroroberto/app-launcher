@@ -52,6 +52,15 @@ TRUSTED_PROXY_HOSTS = "127.0.0.1"
 # Server-side pings find a suspended phone's dead socket; 20 s is the interval
 # the apps ran with under uvicorn.
 WS_PING_INTERVAL_S = 20.0
+# Hypercorn 0.18 ends an HTTP/2 connection at its per-connection request cap
+# (default 1000) with h2's close_connection(), which puts the connection in its
+# CLOSED state while the streams it just accepted are still running. Their
+# responses then fail to send, the error is swallowed, and the browser waits
+# for the 5 s keep-alive timer to drop the socket before it retries. One phone
+# boot is ~330 requests on one connection, and a polling PWA crosses the cap
+# within minutes. So the cap stays off; the idle timeout still recycles
+# connections, and release_h2_streams_on_disconnect frees what a dead one holds.
+UNCAPPED_REQUESTS = sys.maxsize
 HYPERCORN = "hypercorn"
 UVICORN = "uvicorn"
 SERVERS = (HYPERCORN, UVICORN)
@@ -95,6 +104,7 @@ def build_config(
     cfg.bind = [f"{host}:{port}"]
     cfg.loglevel = log_level.upper()
     cfg.websocket_ping_interval = WS_PING_INTERVAL_S
+    cfg.keep_alive_max_requests = UNCAPPED_REQUESTS
     if certfile and keyfile:
         cfg.certfile = certfile
         cfg.keyfile = keyfile
