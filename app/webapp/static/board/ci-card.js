@@ -7,6 +7,7 @@
 import { actionRow } from '../action-rows.js';
 import { chip } from '../glance.js';
 import { fmtDuration } from '../shared/format.js';
+import { AttentionState } from './attention-state.js';
 
 // A failed workflow is danger, like a failed Job; an unread repo wants a look.
 const CI_CHIPS = {
@@ -14,13 +15,9 @@ const CI_CHIPS = {
   unknown: ['CI unknown', 'attention'],
 };
 
-export function ciFailing(card) {
-  return card.kind === 'ci' && card.state === 'failed';
-}
-
 export function renderCiCard(card) {
   const c = CI_CHIPS[card.state] || CI_CHIPS.unknown;
-  const failed = card.state === 'failed';
+  const failed = card.state === AttentionState.FAILED;
   const meta = [
     card.workflow || '',
     failed && card.age_seconds != null ? 'red ' + fmtDuration(card.age_seconds) : '',

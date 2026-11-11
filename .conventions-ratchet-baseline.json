@@ -3,8 +3,7 @@
   "entries": [
     {"key": "app/webapp/static/apps/apps-perf.js", "counts": {"state-literal": 3}},
     {"key": "app/webapp/static/background-tasks/background-tasks-sheet.js", "counts": {"state-literal": 1}},
-    {"key": "app/webapp/static/board.js", "counts": {"state-literal": 3}},
-    {"key": "app/webapp/static/board/ci-card.js", "counts": {"state-literal": 2}},
+    {"key": "app/webapp/static/board.js", "counts": {"state-literal": 1}},
     {"key": "app/webapp/static/board/drawer.js", "counts": {"state-literal": 2}},
     {"key": "app/webapp/static/chat/chat-pending.js", "counts": {"state-literal": 1}},
     {"key": "app/webapp/static/sessions.js", "counts": {"state-literal": 1}},

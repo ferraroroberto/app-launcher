@@ -73,7 +73,8 @@ import { agoText, openOwnerAnswersAt, renderChiefPlan } from './board/chief-plan
 import { ownerNeedsCount, renderOwnerChecks } from './board/owner-checks.js';
 import { doneEarlierLoaded, renderDoneEarlier } from './board/done-earlier.js';
 import { doneActions, proofGapChips } from './board/proof-chip.js';
-import { ciFailing, renderCiCard } from './board/ci-card.js';
+import { renderCiCard } from './board/ci-card.js';
+import { isDismissible, isFailing } from './board/attention-state.js';
 import { pollIdeas, renderIdeas, wireIdeas } from './board/ideas-card.js';
 import {
   bucketChipEls, bucketNodes, hasBuckets, notPlannedCount,
@@ -398,20 +399,6 @@ const JOB_CHIPS = {
   unreadable: ['unreadable', 'attention'],
 };
 
-// A job or CI row in PRs and jobs that counts as failing: the header's
-// "N failing" and the folded lane's meta.
-function jobFailing(card) {
-  return ciFailing(card) ||
-    (card.kind === 'job' && (card.state === 'failed' || card.state === 'stuck'));
-}
-
-// A failed or unconfirmed run is a past event, so it can be dismissed once
-// dealt with. Stuck and unreadable describe a live problem: no verb.
-function jobDismissible(card) {
-  return card.kind === 'job' && !!card.run_id &&
-    (card.state === 'failed' || card.state === 'unconfirmed');
-}
-
 // Drop the card at once rather than wait out the 5 s poll. Bumping the edit
 // seq discards a Board read already in flight, which would put it back.
 async function dismissJob(card, btn) {
@@ -440,7 +427,7 @@ function renderJobCard(card) {
     .filter(Boolean).join(' · ');
   const name = card.job_name || card.job_id || 'job';
   let dismiss = null;
-  if (jobDismissible(card)) {
+  if (isDismissible(card)) {
     dismiss = document.createElement('button');
     dismiss.dataset.track = 'board.job-dismiss';
     dismiss.type = 'button';
@@ -612,7 +599,7 @@ function renderBoardHead(body, ghLoaded, liveRead) {
   };
   const questions = openQuestionCount(state.chiefPlan);
   const yours = sessions('your_turn') + (ownerNeedsCount(body) || 0);
-  const failing = (columns.other || []).filter(jobFailing).length;
+  const failing = (columns.other || []).filter(isFailing).length;
   const exceptions = [];
   if (questions) exceptions.push({ text: plural(questions, 'question', 'questions'), short: questions + ' Q', tone: 'attention' });
   if (yours) exceptions.push({ text: yours + ' needs you', short: yours + ' you', tone: 'attention' });
@@ -704,7 +691,7 @@ function renderLane(col, cards, openItem, body, ghLoaded, liveRead, extra) {
       total === 0 && !(col.key === 'done' && doneEarlierLoaded()));
     // PRs and jobs, folded, says what is wrong instead of its count.
     if (col.key === 'other') {
-      const failing = cards.filter(jobFailing).length;
+      const failing = cards.filter(isFailing).length;
       setLaneException(section, failing ? failing + ' failing' : '', 'danger');
     }
     // The Backlog, folded, says how much is in no plan: the chief keeps it at zero.
