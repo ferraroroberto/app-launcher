@@ -36,6 +36,7 @@ import { closeSessionOverlay, openSessionOverlay, resolveSessionMode } from './s
 import { revealInCard } from './dom-utils.js';
 import { CHIEF_KILL_CONFIRM, CHIEF_RESTART_CONFIRM, channelKillConfirm, channelSessionName, isChannelSession, isChiefSession } from './shared/session-kinds.js';
 import { fmtDuration } from './shared/format.js';
+import { SubmitState, submitState } from './chat/submit-state.js';
 import { SensitiveOutcome, runSensitiveAction } from './shared/sensitive-action.js';
 import { confirmDialog } from './confirm-dialog.js';
 import { attentionChip, chip, sessionRowBody, sessionStatusBits } from './glance.js';
@@ -690,17 +691,17 @@ export function sendOutcome(verdict, opts) {
   if (v.delivered === 'unconfirmed') {
     return { text: 'Sent, not confirmed: typed into the PC console', kind: '' };
   }
-  switch (v.submit_state) {
-    case 'confirmed':
+  switch (submitState(v)) {
+    case SubmitState.CONFIRMED:
       return { text: 'Sent', kind: 'good' };
-    case 'unconfirmed':
+    case SubmitState.UNCONFIRMED:
       // A short payload or a bare submit: Enter went in, nothing checked it.
       if (opts && opts.watch) return { text: 'Sent', kind: '', watch: true };
       return { text: 'Sent, not confirmed: nothing verified the agent took it', kind: '' };
-    case 'pending':
+    case SubmitState.PENDING:
       // 202: in the agent's composer, Enter still with the watcher.
       return { text: 'Queued: the agent is busy, Enter goes in once it settles', kind: '' };
-    case 'not_submitted':
+    case SubmitState.NOT_SUBMITTED:
       return { text: 'Not submitted: the text reached the agent but Enter was never sent', kind: 'error' };
     default:
       break;

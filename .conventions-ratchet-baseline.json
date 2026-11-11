@@ -1,6 +1,4 @@
 {
   "version": 1,
-  "entries": [
-    {"key": "app/webapp/static/sessions.js", "counts": {"state-literal": 1}}
-  ]
+  "entries": []
 }
