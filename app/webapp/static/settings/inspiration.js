@@ -18,6 +18,7 @@ import { apiFailToast, jsonApi, toast } from '../api.js';
 import { ACTION_ROW_MENU, actionRow } from '../action-rows.js';
 import { createRowMenu } from '../_vendored/row-menu/row-menu.js';
 import { confirmDialog } from '../confirm-dialog.js';
+import { LoginState, isOpen, loginState } from './login-state.js';
 
 const LOGIN_POLL_MS = 2000;
 const KINDS = ['newsletter', 'youtube', 'x'];
@@ -225,18 +226,20 @@ async function submitForm(kind, form) {
 
 // ---------------------------------------------------------------- login
 function loginText(s) {
-  if (s.state === 'running') return 'A Chrome window is open on this PC. Log into X there, then close the window.';
-  if (s.state === 'closed') return 'The login window was closed. X is read at the next scan.';
-  if (s.state === 'failed') return 'The login window did not complete' + (s.detail ? ': ' + s.detail : '.');
-  return '';
+  switch (loginState(s)) {
+    case LoginState.RUNNING: return 'A Chrome window is open on this PC. Log into X there, then close the window.';
+    case LoginState.CLOSED: return 'The login window was closed. X is read at the next scan.';
+    case LoginState.FAILED: return 'The login window did not complete' + (s.detail ? ': ' + s.detail : '.');
+    default: return '';
+  }
 }
 
 function drawLogin(s) {
   const btn = byId('inspirationLoginBtn');
-  btn.disabled = s.state === 'running';
+  btn.disabled = isOpen(s);
   byId('inspirationLoginStatus').textContent = loginText(s);
   window.clearTimeout(loginTimer);
-  if (s.state === 'running') loginTimer = window.setTimeout(pollLogin, LOGIN_POLL_MS);
+  if (isOpen(s)) loginTimer = window.setTimeout(pollLogin, LOGIN_POLL_MS);
 }
 
 async function pollLogin() {

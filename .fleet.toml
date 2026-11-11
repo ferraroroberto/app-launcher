@@ -1172,3 +1172,15 @@ name   = "board-attention-state-ui"
 module = "app/webapp/static/board/attention-state.js"
 type   = "AttentionState"
 derive = "attentionState"
+
+[[state_machines]]
+name   = "inspiration-login-state"
+module = "src/inspiration/login.py"
+type   = "LoginState"
+derive = "exit_state"
+
+[[state_machines]]
+name   = "inspiration-login-state-ui"
+module = "app/webapp/static/settings/login-state.js"
+type   = "LoginState"
+derive = "loginState"

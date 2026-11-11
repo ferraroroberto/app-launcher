@@ -7,7 +7,6 @@
     {"key": "app/webapp/static/board/drawer.js", "counts": {"state-literal": 2}},
     {"key": "app/webapp/static/chat/chat-pending.js", "counts": {"state-literal": 1}},
     {"key": "app/webapp/static/sessions.js", "counts": {"state-literal": 1}},
-    {"key": "app/webapp/static/settings/inspiration.js", "counts": {"state-literal": 4}},
     {"key": "scripts/design_review_synthetic.py", "counts": {"state-literal": 1}},
     {"key": "src/board/backlog_buckets.py", "counts": {"state-literal": 1}},
     {"key": "src/notifications.py", "counts": {"state-literal": 1}},
