@@ -324,4 +324,5 @@ The gate also runs a static ratchet (new duplicate blocks and unused imports fai
 | [docs/detached-stop-decision.md](docs/detached-stop-decision.md) | Why detached sessions get a single Stop |
 | [docs/pi-coding-agent.md](docs/pi-coding-agent.md) | Pi as a Coding-tab agent |
 | [docs/life-os-zombie-cleanup.md](docs/life-os-zombie-cleanup.md) | Removing mistaken Life OS sessions |
+| [docs/life-os-title-sync.md](docs/life-os-title-sync.md) | Mirroring a rename between a conversation and its sessions |
 

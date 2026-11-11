@@ -44,6 +44,7 @@ import { icon } from './_vendored/icons/icons.js';
 import { hasTranscriptReader } from './chat/session-transcript.js';
 import { hasBackgroundTasks, openBackgroundTasks } from './background-tasks/background-tasks-sheet.js';
 import { hasLinks, openLinks } from './links/links-sheet.js';
+import { syncFailed } from './life-os/title-sync.js';
 // runChiefAction (and the ensureChief it wraps) lives in board-dispatch.js
 // (split off board.js), exported
 // for this cross-tab use, as is the chief settings dialog; board.js already imports
@@ -735,7 +736,7 @@ function wireSessionRenameDialog() {
       );
       els.sessionRenameDialog.close();
       // The session is renamed; its Life OS conversation not following says so.
-      if (reply && reply.life_os_sync && reply.life_os_sync.status === 'failed') {
+      if (syncFailed(reply && reply.life_os_sync)) {
         toast(reply.life_os_sync.error, 'error');
       }
       if (renameSessionOnDone) {

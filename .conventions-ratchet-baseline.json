@@ -1,7 +1,6 @@
 {
   "version": 1,
   "entries": [
-    {"key": "app/webapp/routers/life_os_conversations.py", "counts": {"state-literal": 6}},
     {"key": "app/webapp/routers/life_os_relay.py", "counts": {"state-literal": 4}},
     {"key": "app/webapp/static/apps/apps-perf.js", "counts": {"state-literal": 3}},
     {"key": "app/webapp/static/background-tasks/background-tasks-sheet.js", "counts": {"state-literal": 1}},
@@ -9,8 +8,7 @@
     {"key": "app/webapp/static/board/ci-card.js", "counts": {"state-literal": 2}},
     {"key": "app/webapp/static/board/drawer.js", "counts": {"state-literal": 2}},
     {"key": "app/webapp/static/chat/chat-pending.js", "counts": {"state-literal": 1}},
-    {"key": "app/webapp/static/life-os/life-os-convos.js", "counts": {"state-literal": 1}},
-    {"key": "app/webapp/static/sessions.js", "counts": {"state-literal": 2}},
+    {"key": "app/webapp/static/sessions.js", "counts": {"state-literal": 1}},
     {"key": "app/webapp/static/settings/inspiration.js", "counts": {"state-literal": 4}},
     {"key": "scripts/design_review_synthetic.py", "counts": {"state-literal": 1}},
     {"key": "scripts/telegram_relay.py", "counts": {"state-literal": 1}},

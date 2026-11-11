@@ -631,6 +631,26 @@ class TestConversationNameSync:
         assert sync["status"] == "failed" and sync["failed"] == 1 and sync["error"]
         assert any("live session was not renamed" in r.getMessage() for r in caplog.records)
 
+    def test_a_partial_mirror_is_failed_never_synced(self):
+        """One twin renamed and one refusing reads ``failed``: a stale name is never ``synced``.
+
+        state-machine-proof: life-os-title-sync
+        """
+        from src.clients import session as session_client
+
+        self.sessions.append({"session_id": "s-twin", "alive": True,
+                              "flags": f"--resume {RESUMABLE_SID}"})
+
+        def rename(port, session_id, title):
+            if session_id == "s-twin":
+                raise session_client.SessionHostError("rename refused", status=500)
+            self.renamed.append((session_id, title))
+        self.monkeypatch.setattr(session_client, "rename", rename)
+        resp = self._rename_conversation("Ferry")
+        assert resp.status_code == 200, resp.text
+        sync = resp.json()["session_sync"]
+        assert (sync["status"], sync["renamed"], sync["failed"]) == ("failed", 1, 1) and sync["error"]
+
     def test_an_unreachable_session_host_never_fails_the_conversation_rename(self, caplog):
         self.host_down = True
         with caplog.at_level("WARNING"):

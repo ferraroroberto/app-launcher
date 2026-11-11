@@ -80,6 +80,7 @@ from src.life_os.history import (
 )
 from src.life_os.skill_refresh import plan_refresh, record_refresh
 from src.life_os.title import run_title_cli as _run_title_cli
+from src.life_os.title_sync import TitleSync, title_sync
 from src.middleware import is_pc_itself, terminal_http_gate
 from src.scanner import Skill, scan_skills, skills_dir_for
 from src.session_view.conversation_model import recorded_model
@@ -415,8 +416,9 @@ async def _name_resumed_session(
     except session_client.SessionHostError as exc:
         logger.warning("⚠️ Life OS resume: the resumed session was not named after its "
                        "conversation title (%s)", exc)
-        return {"status": "failed", "error": "Resumed, but the session couldn't be given the conversation's name."}
-    return {"status": "synced"}
+        return {"status": TitleSync.FAILED,
+                "error": "Resumed, but the session couldn't be given the conversation's name."}
+    return {"status": TitleSync.SYNCED}
 
 
 async def _kept_model(cfg: WebappConfig, agent: str, sid: str) -> tuple[str, bool]:
@@ -866,13 +868,13 @@ async def sync_title_to_sessions(
     conversation. Never raises; otherwise ``status`` is ``synced`` or ``failed``
     (with an ``error`` for the phone).
     """
-    verdict: Dict[str, Any] = {"status": "none", "renamed": 0, "failed": 0}
+    counts = {"renamed": 0, "failed": 0}
     if not title:
         return None
     if "sid" not in source:
         logger.warning("⚠️ Life OS rename: live sessions not renamed, the capture's session id "
                        "is unreadable (%s)", source.get("reason") or "no reason given")
-        return {**verdict, "status": "failed",
+        return {"status": TitleSync.FAILED, **counts,
                 "error": "Renamed, but the open session wasn't: the conversation's session id is unreadable."}
     conversation = str(source["sid"]).lower()
     if not conversation:
@@ -882,24 +884,23 @@ async def sync_title_to_sessions(
     except (session_client.SessionHostError, OSError) as exc:
         logger.warning("⚠️ Life OS rename: the session host could not be asked which sessions "
                        "have this conversation open (%s)", exc)
-        return {**verdict, "status": "failed",
+        return {"status": TitleSync.FAILED, **counts,
                 "error": "Renamed, but the session host can't be reached, so an open session keeps its old name."}
     name = session_name_for(title)
     for sess in owners:
         try:
             await asyncio.to_thread(
                 session_client.rename, cfg.session_host_port, str(sess.get("session_id")), name)
-            verdict["renamed"] += 1
+            counts["renamed"] += 1
         except session_client.SessionHostError as exc:
-            verdict["failed"] += 1
+            counts["failed"] += 1
             logger.warning("⚠️ Life OS rename: a live session was not renamed (%s)", exc)
-    if verdict["failed"]:
-        verdict.update(status="failed",
-                       error="Renamed, but an open session of this conversation kept its old name.")
-    elif verdict["renamed"]:
-        verdict["status"] = "synced"
-    else:
+    status = title_sync(counts["renamed"], counts["failed"])
+    if status is None:
         return None
+    verdict: Dict[str, Any] = {"status": status, **counts}
+    if status is TitleSync.FAILED:
+        verdict["error"] = "Renamed, but an open session of this conversation kept its old name."
     return verdict
 
 
@@ -960,11 +961,11 @@ async def sync_session_title(
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         logger.warning("⚠️ Session rename: could not tell which Life OS conversation the session "
                        "has open, its title was not updated (%s)", exc)
-        return {"status": "failed", "conversations": 0,
+        return {"status": TitleSync.FAILED, "conversations": 0,
                 "error": "Renamed, but the Life OS conversation couldn't be looked up."}
     if not found:
         return None
-    titled, error = 0, ""
+    titled, untitled = 0, 0
     for skill, path in found:
         try:
             proc = await asyncio.to_thread(_run_title_cli, cfg, skill.id, path.name, title)
@@ -980,10 +981,11 @@ async def sync_session_title(
                 client=client,
             )
             continue
-        error = "Renamed, but the Life OS conversation title couldn't be saved."
+        untitled += 1
         logger.warning("⚠️ Session rename: the Life OS conversation title was not updated "
                        "(skill=%s file=%s, %s)", skill.id, path.name, reason)
-    if error:
-        return {"status": "failed", "conversations": titled, "error": error}
+    if title_sync(titled, untitled) is TitleSync.FAILED:
+        return {"status": TitleSync.FAILED, "conversations": titled,
+                "error": "Renamed, but the Life OS conversation title couldn't be saved."}
     logger.info("ℹ️ Session rename: Life OS conversation title set from the session (%d)", titled)
-    return {"status": "synced", "conversations": titled}
+    return {"status": TitleSync.SYNCED, "conversations": titled}
