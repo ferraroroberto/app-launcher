@@ -133,6 +133,11 @@ HOST_STATE_KEYS = {
     "chief_inbox_dir": "hooks-state/chief-inbox",
     "context_filter_mode_file": "context-filter/mode.json",
     "context_filter_log_file": "context-filter/shadow.jsonl",
+    # Never created: an absent folder reads as "no fleet". The default is the
+    # owner's real sibling fleet-config, whose repo list the GitHub refresh's
+    # CI sweep and owner-check list would walk, putting real repo names on the
+    # disposable Board.
+    "fleet_config_dir": "fleet-config",
 }
 
 _SYNTHETIC_SEVEN_DAY_PCT = 12

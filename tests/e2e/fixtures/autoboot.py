@@ -106,6 +106,16 @@ class Servers:
                 pass
 
 
+def gate_webapp_config(
+    auth_token: str, host_state_dir: Path, target: Optional[Path] = None
+) -> dict:
+    """The disposable webapp's whole config: hermetic, launch target and UI prefs pinned."""
+    cfg = disposable_webapp_config(auth_token, host_state_dir)
+    pin_launch_target(cfg, target or launch_target_dir() or REPO_ROOT)
+    pin_ui_prefs(cfg)
+    return cfg
+
+
 def prepare_isolation(tmp_path_factory: pytest.TempPathFactory, auth_token: str) -> Isolation:
     """Give the run private config, Startup, audit, upload and runtime-data folders."""
     from src import boot_autostart
@@ -129,9 +139,7 @@ def prepare_isolation(tmp_path_factory: pytest.TempPathFactory, auth_token: str)
     # filter) are pinned into a per-run temp folder, so a capture shows
     # synthetic usage rather than the machine's real percentages.
     host_state_dir = tmp_path_factory.mktemp("host-state")
-    disposable_cfg = disposable_webapp_config(auth_token, host_state_dir)
-    pin_launch_target(disposable_cfg, launch_target_dir() or REPO_ROOT)
-    pin_ui_prefs(disposable_cfg)
+    disposable_cfg = gate_webapp_config(auth_token, host_state_dir)
     if count_leaked_credentials(WEBAPP_CONFIG, disposable_cfg):
         pytest.fail(
             "autoboot: the disposable webapp config still holds a credential "
