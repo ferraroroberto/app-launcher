@@ -1,6 +1,6 @@
 """Generic parsing primitives shared by two or more harness flavours.
 
-Split out of ``src/session_view/transcript.py`` (#1309) alongside the per-flavour
+Split out of ``src/session_view/transcript.py`` alongside the per-flavour
 modules in this package. Everything here is either used by two or more
 flavour builders (``claude.py``, ``codex.py``, ``grok.py``, ``pi.py``,
 ``antigravity.py``, ``copilot.py``) or by the paging/image code that stays
@@ -284,7 +284,7 @@ def _with_diff(action: Dict[str, Any], hunks: List[Hunk]) -> Dict[str, Any]:
 def recorded_hunks(patch: Any, created_text: Optional[str] = None) -> List[Hunk]:
     """The diff a harness recorded for one edit: ``patch`` in Claude's
     ``structuredPatch`` shape, else ``created_text`` as a new file from line
-    1, else nothing. The one reading both a Chat step (#1349) and the
+    1, else nothing. The one reading both a Chat step and the
     session's Changed files fold count from, so their totals agree."""
     hunks = _patch_hunks(patch)
     if hunks is None and isinstance(created_text, str):
@@ -294,7 +294,7 @@ def recorded_hunks(patch: Any, created_text: Optional[str] = None) -> List[Hunk]
 
 
 def _tool_description(inputs: Any, key: str = "description") -> str:
-    """The call's own one-line description (#1532), else ``""``. Claude's
+    """The call's own one-line description, else ``""``. Claude's
     Bash/PowerShell/Agent, Copilot's ``powershell`` and Grok's
     ``run_terminal_command`` carry ``description``, Antigravity its
     ``toolSummary`` UI label (probed from the newest transcripts of each
@@ -307,7 +307,7 @@ def _tool_description(inputs: Any, key: str = "description") -> str:
 
 def _with_action(entry: Entry, action: Optional[Dict[str, Any]], description: str = "") -> Entry:
     """Finish a ``tool_call`` entry: :func:`_tool_action`'s result, when there
-    is one, and its ``label`` (#1532) -- the call's ``description``, else its
+    is one, and its ``label`` -- the call's ``description``, else its
     ``summary``. Every flavour's calls pass through here, so a harness that
     records no description still gets a label."""
     if action:
@@ -395,7 +395,7 @@ def _attach_result(entries: List[Entry], calls: Dict[str, Entry], call_id: Any,
                    error: bool = False,
                    decision: Optional[Dict[str, Any]] = None,
                    images: Optional[List[Dict[str, int]]] = None) -> None:
-    """Pair one tool result with its call (#1020 adds ``error``).
+    """Pair one tool result with its call.
 
     ``error`` is written onto the entry **only when true** — the single
     place every flavour funnels through, so a harness that records a
@@ -408,8 +408,8 @@ def _attach_result(entries: List[Entry], calls: Dict[str, Entry], call_id: Any,
     ``tool_errors`` — the client reads that to decide whether an unmarked
     call means "fine" or "nobody can tell".
 
-    ``decision`` is what a decision card needs from the answer (#1149's
-    ``answers``, #1151's ``plan_outcome``…), written onto the call — or onto
+    ``decision`` is what a decision card needs from the answer (``answers``,
+    ``plan_outcome``…), written onto the call — or onto
     the standalone result, so a card whose call is already on screen can
     still close.
     """

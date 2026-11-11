@@ -1,4 +1,4 @@
-"""``powershell`` job-kind (issue #70) — runs a ``.ps1`` script natively via
+"""``powershell`` job-kind — runs a ``.ps1`` script natively via
 the absolute Windows PowerShell 5.1 path, per the global CLAUDE.md
 "Windows PowerShell in spawned commands" convention (``pwsh`` on PATH is an
 unreliable WindowsApps reparse stub).

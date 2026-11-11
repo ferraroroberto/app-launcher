@@ -1,4 +1,4 @@
-"""Finding and cleaning up Life OS "zombie" conversations (#1738).
+"""Finding and cleaning up Life OS "zombie" conversations.
 
 A zombie is a skill session opened by mistake: it loaded the skill's context and
 posted its greeting, and the capture pipeline recorded it as a real

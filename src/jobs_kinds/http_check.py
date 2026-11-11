@@ -1,4 +1,4 @@
-"""``http-check`` job-kind (issue #70) — a synthetic kind with no script on
+"""``http-check`` job-kind — a synthetic kind with no script on
 disk: polls a URL and succeeds/fails on the response status.
 
 Rather than teach the executor an in-process code path, ``build_argv``

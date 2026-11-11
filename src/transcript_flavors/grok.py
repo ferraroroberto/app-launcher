@@ -1,4 +1,4 @@
-"""Grok Build ACP-style ``updates.jsonl`` line grammar (#1309, split out of ``src/session_view/transcript.py``)."""
+"""Grok Build ACP-style ``updates.jsonl`` line grammar."""
 
 from __future__ import annotations
 
@@ -76,7 +76,7 @@ _GROK_RESULT_STATUSES = frozenset({"completed", "failed"})
 def _grok_result_text(update: Dict[str, Any]) -> str:
     """The text of a result-carrying ``tool_call_update``.
 
-    Same for a ``completed`` and a ``failed`` one: the probe on #1020
+    Same for a ``completed`` and a ``failed`` one: the probe
     showed a failure carrying its message in the very same ``content``
     blocks, so nothing here branches on the status.
 

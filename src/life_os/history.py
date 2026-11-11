@@ -130,7 +130,7 @@ def read_captures(fleet_dir: Path, paths: list[Optional[Path]],
 
     A capture over :data:`MAX_CAPTURE_BYTES` gets header identity only (agent,
     sid, provenance, a streamed ``revision``) and ``oversized: True``; it carries
-    no ``body``, so resume works while a handoff stays unavailable (#1739).
+    no ``body``, so resume works while a handoff stays unavailable.
     Every readable capture carries ``bot_chat`` and the ``bot_chat_rule`` that
     set it (:func:`bot_chat_rule`), read from the same prefix when oversized.
     ``refusals`` parallels ``paths``: the reason to show for a ``None`` path.

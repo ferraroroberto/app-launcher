@@ -1,4 +1,4 @@
-"""Time the launcher's hot GET endpoints against a running webapp (#1324).
+"""Time the launcher's hot GET endpoints against a running webapp.
 
 The regression check for "Jobs, Board and the homepage in under a second":
 ``/api/jobs`` and ``/api/board`` must answer in < 100 ms p95 on a warm

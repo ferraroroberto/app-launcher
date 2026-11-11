@@ -1,4 +1,4 @@
-"""Backup, restore and retention for the Life OS zombie cleanup (#1738).
+"""Backup, restore and retention for the Life OS zombie cleanup.
 
 ``backup`` mode moves what a Delete would remove into a dated folder under the
 launcher's runtime data (outside the Life OS tree, so the capture pipeline never

@@ -30,7 +30,7 @@ full per-family surface.  Top-level families:
     sessions     GET  /api/claude-code/sessions           → running sessions
                  POST /api/claude-code/sessions/{sid}/stop
                  POST /api/claude-code/sessions/{sid}/image
-                 POST /api/claude-code/sessions/{sid}/large-file → streamed, not read (#1430)
+                 POST /api/claude-code/sessions/{sid}/large-file → streamed, not read
                  WS   /api/claude-code/sessions/{sid}/ws
                  POST /api/transcribe                     → one-shot audio → text
                  POST /api/transcribe/sessions            → start streaming dictation
@@ -39,8 +39,8 @@ full per-family surface.  Top-level families:
                  GET  /api/ocr                            → screenshot OCR
 
     claude_code  GET  /api/claude-code/git-status         → per-project branch+dirty
-                 POST /api/claude-code/vscode/{id}        → open in VS Code (#802)
-                 GET  /api/claude-code/changes/{id}       → working-tree file list (#977)
+                 POST /api/claude-code/vscode/{id}        → open in VS Code
+                 GET  /api/claude-code/changes/{id}       → working-tree file list
                  GET  /api/claude-code/changes/{id}/diff  → one file's unified diff
                  POST /api/claude-code/folder/{id}        → open in Explorer
 
@@ -233,7 +233,7 @@ def _load_stylesheet_bundle(app: FastAPI, asset_hashes: Dict[str, str]) -> Optio
 
 
 async def _reconcile_orphan_mirror_windows(app: FastAPI) -> None:
-    """On boot, close Edge mirror windows no live session backs (issue #199).
+    """On boot, close Edge mirror windows no live session backs.
 
     The in-memory HWND registry (``src.launching.launcher._mirror_hwnds``) is dropped
     on every webapp restart, so mirrors opened before the restart can no
@@ -247,8 +247,8 @@ async def _reconcile_orphan_mirror_windows(app: FastAPI) -> None:
     pointed at an empty disposable session-host — would see an empty live list
     and ``WM_CLOSE`` every real ``app-launcher-mirror-*`` window on the desktop,
     killing the user's live session mirrors while the sessions survive headless
-    on the real ``:8446`` (issue #278). ``#260`` isolated the session-host but
-    left this window sweep machine-wide. Only the canonical instance owns the
+    on the real ``:8446``. The disposable instance isolates the session-host but
+    not this window sweep, which is machine-wide. Only the canonical instance owns the
     desktop, so a disposable instance (``instance_role.is_disposable``) skips
     the sweep entirely.
     """
@@ -310,8 +310,7 @@ def _coverage_interval_minutes(cfg: object) -> float:
 
 
 async def _coverage_cycle(cfg: object) -> None:
-    """One sweep: stranded-run reap (issue #809) then missed-fire coverage
-    (#697).
+    """One sweep: stranded-run reap then missed-fire coverage.
 
     Reap runs first — :func:`src.jobs.reap.reap_stranded_runs_all` is
     otherwise lazy-on-read (only ``GET /api/jobs`` or the Board trigger it),
@@ -345,16 +344,16 @@ async def _coverage_cycle(cfg: object) -> None:
 
 
 async def _coverage_tick(app: FastAPI) -> None:
-    """Periodically reap stranded runs and scan schedule coverage (#809, #697).
+    """Periodically reap stranded runs and scan schedule coverage.
 
     Started only on the **canonical** instance
     (:func:`src.instance_role.canonical_instance`): a non-canonical checkout
     carries the real config and real credentials but derives coverage (and
     reaps) from its own empty ``webapp/jobs/``, so it must never push a real
     alert to the user's phone. That covers the e2e / verify-before-ship
-    autoboot webapp — the ``LAUNCHER_SESSION_HOST_PORT`` case #697
-    anticipated, and the same marker the mirror-window sweep above uses —
-    *and* the git worktree that actually pushed three false alerts (#736).
+    autoboot webapp — the ``LAUNCHER_SESSION_HOST_PORT`` case
+    and the same marker the mirror-window sweep above uses —
+    *and* the git worktree that actually pushed three false alerts.
     """
     cfg = getattr(app.state, "webapp_config", None)
     if cfg is None:
@@ -388,7 +387,7 @@ def _session_retention_days(cfg: object) -> int:
 
 
 async def _session_retention_tick(app: FastAPI) -> None:
-    """Sweep expired ``webapp/sessions`` files once a day (issue #902).
+    """Sweep expired ``webapp/sessions`` files once a day.
 
     Canonical-instance only, like the coverage tick: a disposable gate webapp
     shares this checkout's ``webapp/sessions`` but talks to its own empty
@@ -415,14 +414,14 @@ async def _session_retention_tick(app: FastAPI) -> None:
 
 
 def _autostart_channel_sessions_on(cfg: object) -> bool:
-    """Whether the Telegram autostart (#1542) is switched on. Only a real
+    """Whether the Telegram autostart is switched on. Only a real
     ``True`` arms it: it launches sessions, so a config without the key (a
     stub) or a non-boolean must read as off, like the retention sweep."""
     return getattr(cfg, "autostart_channel_sessions", False) is True
 
 
 async def _channel_autostart(app: FastAPI) -> None:
-    """Start the ready Telegram channel profiles once, at boot (#1542).
+    """Start the ready Telegram channel profiles once, at boot.
 
     Canonical-instance only: a disposable gate webapp has its own empty
     session-host, so its "already running" check would see none of the live

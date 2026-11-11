@@ -1,4 +1,4 @@
-"""Claude Code hook-JSONL line grammar (#1309, split out of ``src/session_view/transcript.py``)."""
+"""Claude Code hook-JSONL line grammar."""
 
 from __future__ import annotations
 
@@ -64,7 +64,7 @@ def _same_path(a: Any, b: Any) -> bool:
 
 def recorded_edit(tool_use_result: Any) -> Optional[Tuple[str, List[Hunk], bool]]:
     """``(file path, hunks, created)`` Claude recorded for one successful
-    edit, or None (#1349).
+    edit, or None.
 
     A successful Edit/Write/MultiEdit line carries ``toolUseResult`` with
     ``filePath``, ``structuredPatch`` (hunks with real line numbers) and, for
@@ -88,7 +88,7 @@ def recorded_edit(tool_use_result: Any) -> Optional[Tuple[str, List[Hunk], bool]
 
 
 def _patch_from_result(call: Optional[Entry], tool_use_result: Any) -> None:
-    """Give an Edit/Write/MultiEdit step Claude's own recorded diff (#1349),
+    """Give an Edit/Write/MultiEdit step Claude's own recorded diff,
     when the line holds this one result and it names the call's own file."""
     action = call.get("action") if call is not None else None
     if not isinstance(action, dict) or action.get("verb") not in ("edited", "wrote"):
@@ -118,9 +118,9 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
     ``sidechain: True`` so the client folds them and pagination doesn't count
     them as turns. Metadata rows (``mode``, ``ai-title``, ``attachment``, …)
     carry no conversation text and are dropped; the exception is an
-    ``attachment`` of type ``queued_command`` (a mid-turn message, #1674).
+    ``attachment`` of type ``queued_command`` (a mid-turn message).
 
-    ``uncapped`` (#985) drops the ``assistant``/``user`` display caps for
+    ``uncapped`` drops the ``assistant``/``user`` display caps for
     :func:`src.session_view.transcript.entry_full_text` — the folded kinds keep their
     normal caps either way, since only a turn's own text is ever read back
     from an uncapped call.

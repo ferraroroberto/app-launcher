@@ -1,5 +1,5 @@
 """Telegram relay CLI: a skill's bot finds, resumes and steers its own
-conversations (#1639).
+conversations.
 
 Run by a relay-enabled Telegram bot session (``"relay": true`` in
 ``config/channel_profiles.json``), never by hand. The launch put everything it

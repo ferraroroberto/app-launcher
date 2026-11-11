@@ -1,11 +1,11 @@
 """Provision a Tailscale HTTPS certificate for this machine.
 
-The app's only HTTPS provisioner (issue #383 retired the self-signed-CA
+The app's only HTTPS provisioner (there is no self-signed-CA
 generator): browsers trust https://<machine>.tail*.ts.net:8445 without any
 manual certificate installation on any device — ``tailscale cert`` issues a
 real Let's Encrypt leaf for the tailnet MagicDNS name, so there is no CA
 install, no mobileconfig detour, no Certificate Trust toggle.
-Fleet standard: ferraroroberto/project-scaffolding#89.
+Fleet standard: the shared Tailscale-cert provisioning convention.
 
 Prerequisites:
   1. Enable HTTPS in the Tailscale admin console:

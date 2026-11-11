@@ -1,4 +1,4 @@
-"""Shared types for the job-kind registry (issue #70).
+"""Shared types for the job-kind registry.
 
 Deliberately a leaf module — no import of :mod:`src.jobs.preflight` or
 :mod:`src.jobs_kinds` (the registry) — so that ``src.jobs.preflight`` can

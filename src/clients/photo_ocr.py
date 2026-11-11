@@ -1,4 +1,4 @@
-"""Thin HTTP client for the sibling photo-ocr single-shot API (issue #171).
+"""Thin HTTP client for the sibling photo-ocr single-shot API.
 
 The Coding terminal's compose bar can OCR a screenshot: the phone captures
 an image and POSTs it to the webapp, which proxies the blob here — to the

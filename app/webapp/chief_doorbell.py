@@ -1,4 +1,4 @@
-"""The chief doorbell (#1645, step 5/7 of fleet-config#1372).
+"""The chief doorbell.
 
 Every :data:`TICK_SECONDS` the canonical webapp checks three facts about the
 standing fleet chief and, when all hold, types one fixed, data-free line into
@@ -13,9 +13,9 @@ its terminal (:data:`DOORBELL_LINE`):
   ``awaiting-decision`` (a picker) are not idle: a typed line would land in
   the dialog, not the composer. A ``working`` label whose terminal has been
   silent for :data:`STALE_WORKING_SECONDS` is also idle: the label is known to
-  stick (fleet-config#662), and the measured output age is the evidence, never
+  stick, and the measured output age is the evidence, never
   the label alone;
-* its composer is **clean**: the session-host's ``composer_dirty`` (#1643) is
+* its composer is **clean**: the session-host's ``composer_dirty`` is
   ``False``. ``None`` (unknown, or a session-host too old to send it) never
   rings;
 * its mailbox holds **pending** events, counted by file name alone per
@@ -28,13 +28,13 @@ that never got the ring, so it rings again. Seeing the chief busy, or the
 mailbox empty, means the ring landed, and the back-off ends early.
 
 Off unless ``WebappConfig.chief_doorbell`` is on (default off; the owner turns
-it on from Settings > Chief > Doorbell, fleet-config#1457). The config is re-read every
+it on from Settings > Chief > Doorbell). The config is re-read every
 tick, so a Settings save takes effect without a restart. Canonical instance
 only, like the coverage tick: a disposable gate webapp must never type into a
 real session.
 
 The line carries no count, issue number or worker text. Everything the chief
-acts on comes from ``chief_ops.py inbox`` (fleet-config#622).
+acts on comes from ``chief_ops.py inbox``.
 
 Breadcrumbs go to ``webapp/chief-doorbell.log``: every ring, and every skip
 reason when it changes, repeated every :data:`SKIP_REPEAT_SECONDS` while it

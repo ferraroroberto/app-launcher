@@ -1,4 +1,4 @@
-"""Process supervision for a ``run-job`` execution (issue #723).
+"""Process supervision for a ``run-job`` execution.
 
 Split out of :mod:`app.cli.commands.run_job_cmd`, which had grown to bundle
 three unrelated concerns in one module: low-level OS process supervision
@@ -9,14 +9,12 @@ one; it supervises a spawned process tree and reports what it saw.
 Three pieces, all of them threads that must survive whatever the child does:
 
 * :func:`tee_pipe_to_file_and_console` — drains the child's output pipe to
-  ``output.log`` and, best-effort and lossily, to the launcher's console
-  (issue #694).
+  ``output.log`` and, best-effort and lossily, to the launcher's console.
 * :class:`ResourceSampler` — peak RSS and accumulated CPU across the live
-  tree (issue #67).
+  tree.
 * :class:`RunWatchdog` — the last-resort kill for a wedged run, plus
   :func:`resolve_watchdog_limits`, which resolves its ceilings on the main
-  thread so the watchdog thread itself never reads config or run history
-  (issue #695).
+  thread so the watchdog thread itself never reads config or run history.
 
 The one rule the whole module is built around: a safety net that shares fate
 with the thing it guards is not a safety net. Nothing in here may block on
@@ -90,10 +88,9 @@ def _log_off_thread(name: str, level: int, msg: str, *args: Any) -> None:
     put into mark/select mode blocks every write to it indefinitely, with
     no exception and no timeout. Any breadcrumb emitted *by* the machinery
     that exists to survive a wedged console must therefore not be written
-    on that machinery's own thread; ``fleet-config#514`` is the same
-    lesson learned the expensive way (a stall watchdog that announced the
-    kill before performing it, and was captured by the very jam it was
-    built to break). Fire-and-forget on a daemon thread: worst case the
+    on that machinery's own thread: a stall watchdog that announced the
+    kill before performing it would be captured by the very jam it was
+    built to break. Fire-and-forget on a daemon thread: worst case the
     record is never written, which costs a log line, not a run.
     """
     threading.Thread(
@@ -153,7 +150,7 @@ def tee_pipe_to_file_and_console(pipe: Any, fh: Any) -> None:
     child closes the pipe (EOF at child exit); the caller then ``wait()``s.
 
     This thread does pipe-read → file-write only, so nothing the console
-    does can stop the child's pipe being drained (issue #694). Console
+    does can stop the child's pipe being drained. Console
     chunks go onto a bounded queue consumed by :func:`_console_writer_loop`;
     when that queue is full the chunk is **dropped** — the console is
     lossy live display, ``fh`` is the record.
@@ -423,7 +420,7 @@ class RunWatchdog:
     def _fire(self, reason: str, detail: str) -> None:
         """Kill the child's tree and record why — kill first, log after.
 
-        The ordering is the whole point (``fleet-config#514``): a
+        The ordering is the whole point: a
         breadcrumb emitted before the kill can be swallowed by the same
         wedge the kill exists to break, and then nothing happens at all.
         The race where the child exits normally a moment before this
@@ -452,7 +449,7 @@ def resolve_watchdog_limits(job: Job) -> Tuple[Optional[float], Optional[float]]
 
     Called on the **main** thread before :class:`RunWatchdog` starts, so
     the watchdog thread itself never reads config or run history — the
-    "nothing that can block, inside the thread" constraint of issue #695.
+    "nothing that can block, inside the thread" constraint.
 
     Both fields are tri-state on :class:`~src.jobs.config.Job`: ``None``
     means "use the default", a positive int is that many seconds, and

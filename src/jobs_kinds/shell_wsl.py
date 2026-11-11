@@ -1,4 +1,4 @@
-"""``shell-wsl`` job-kind (issue #70) — runs a ``.sh`` script via ``wsl
+"""``shell-wsl`` job-kind — runs a ``.sh`` script via ``wsl
 bash``. Opt-in: ``validate()`` warns (doesn't block) when ``wsl.exe`` isn't
 resolvable on PATH, since WSL isn't installed on every machine this
 launcher runs on.

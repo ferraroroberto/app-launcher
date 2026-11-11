@@ -1,4 +1,4 @@
-"""Parse a Life OS conversation capture into Chat-pane transcript entries (#1119).
+"""Parse a Life OS conversation capture into Chat-pane transcript entries.
 
 A capture is the markdown fleet-config's ``conversation_capture.render_markdown``
 writes: a description line, an optional ``<!-- capture sid="…" agent="…" … -->``
@@ -11,7 +11,7 @@ ever yields ``user`` and ``assistant`` entries.
 The entries use the shape the live ``/api/claude-code/sessions/{sid}/transcript``
 route returns (``kind``/``text``/``offset``/``timestamp``/``truncated``), so the
 Life OS viewer renders them through the session overlay's own Chat renderer
-(``session-transcript.js``) rather than a second one (#979).
+(``session-transcript.js``) rather than a second one.
 
 Only the four speaker labels delimit turns, and only at the start of a line
 that follows a blank line (or opens the body): a reply routinely contains its

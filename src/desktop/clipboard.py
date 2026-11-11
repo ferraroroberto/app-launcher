@@ -1,4 +1,4 @@
-"""Screen clipboard (#1719): the phone's text onto the PC's clipboard.
+"""Screen clipboard: the phone's text onto the PC's clipboard.
 
 The Screen view's input session (the input module's ``InputSession``) hands a
 ``clipboard_set`` message's text to a :class:`Clipboard`, the clipboard's own

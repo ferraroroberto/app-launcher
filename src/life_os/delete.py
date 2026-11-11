@@ -1,4 +1,4 @@
-"""Deleting one Life OS conversation everywhere it lives (#1410, shared in #1738).
+"""Deleting one Life OS conversation everywhere it lives.
 
 The body of ``DELETE /api/life-os/skills/{id}/conversations`` lives here so the
 route and the zombie cleanup job run **one** deletion routine. The route keeps

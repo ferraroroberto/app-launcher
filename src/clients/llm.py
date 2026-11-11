@@ -1,4 +1,4 @@
-"""Thin HTTP client for the local-llm-hub chat endpoint (issue #210).
+"""Thin HTTP client for the local-llm-hub chat endpoint.
 
 The Coding terminal's read-aloud control offers a "summarize & read" action: the
 agent's last reply is condensed by the hub's cheap ``claude-haiku-4-5`` into a
@@ -66,7 +66,7 @@ def build_summary_payload(
     Defaults to the driving-mode reply summary (:data:`SUMMARY_SYSTEM_PROMPT`).
     ``system_prompt``/``max_tokens`` let a caller ask a different question of
     the same hub client instead of hand-rolling a second one — e.g.
-    :func:`src.notifications.summarise_failure` (issue #520) asks for a
+    :func:`src.notifications.summarise_failure` asks for a
     one-line failure root cause.
     """
     payload: Dict[str, Any] = {
@@ -117,8 +117,8 @@ def summarize(
 ) -> str:
     """Return a short response from the hub about ``text``.
 
-    Defaults to the driving-mode reply summary (Coding tab read-aloud,
-    issue #210). ``system_prompt``/``max_tokens``/``timeout`` let a caller
+    Defaults to the driving-mode reply summary (Coding tab read-aloud).
+    ``system_prompt``/``max_tokens``/``timeout`` let a caller
     ask a different question through this same hub client — see
     :func:`build_summary_payload`.
 

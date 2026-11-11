@@ -1,4 +1,4 @@
-"""Screen view (#1598): where the PC's mouse cursor is, and what shape it has.
+"""Screen view: where the PC's mouse cursor is, and what shape it has.
 
 The capture is a plain BitBlt, so the cursor is never in the picture, and a
 cursor-only move changes no pixel the frame digest sees. The phone draws the
@@ -23,7 +23,7 @@ cursor itself from small JSON messages on the same socket instead:
   picture is still. :func:`stream_cursor` stops with the socket.
 * **Read on the event loop.** ``GetCursorInfo`` reads shared user32 state and
   never waits on another process, so a poll this frequent stays off the
-  default executor the slow transcript reads contend for (#1605).
+  default executor the slow transcript reads contend for.
 
 While the cursor can't be read (the locked workstation's secure desktop),
 it is sent hidden once, logged once, and retried at the capture loop's slow

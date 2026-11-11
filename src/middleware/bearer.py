@@ -27,7 +27,7 @@ auth_logger = logging.getLogger("launcher.auth")
 class BearerTokenMiddleware(BaseHTTPMiddleware):
     """Require Authorization: Bearer <token> on API endpoints (non-loopback only).
 
-    Two credential classes (issue #72): the legacy ``auth_token`` (full
+    Two credential classes: the legacy ``auth_token`` (full
     access, unchanged) and minted ``api_tokens`` records — full-scope
     (``"*"``) tokens behave like the legacy one; job-scoped tokens may
     only call ``POST /api/jobs/<id>/run`` on their allowed jobs. A

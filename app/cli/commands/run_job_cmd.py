@@ -10,7 +10,7 @@ Every Jobs-tab trigger funnels through this one entry point:
 Both paths produce identical run records under ``webapp/jobs/<id>/<rid>/``
 — ``run.json`` (metadata) plus ``output.log`` (combined stdout+stderr).
 
-Target dispatch (issue #70) goes through the job-kind registry in
+Target dispatch goes through the job-kind registry in
 :mod:`src.jobs_kinds` — one module per kind (``python``, ``batch``,
 ``powershell``, ``shell-wsl``, ``inline-shell``, ``http-check``), each
 contributing a ``build_argv()``. ``build_invocation`` here just resolves
@@ -22,7 +22,7 @@ need arguments containing spaces should put the argument inside the
 script/wrapper itself rather than relying on shell quoting.
 
 Every spawned run is guarded by
-:class:`~app.cli.commands.run_job_supervision.RunWatchdog` (issue #695), the
+:class:`~app.cli.commands.run_job_supervision.RunWatchdog`, the
 last-resort backstop that kills a wedged tree and finalises the record
 ``failed`` no matter *why* it wedged — because every safety net further
 downstream shares fate with the thing it is guarding.
@@ -30,8 +30,7 @@ downstream shares fate with the thing it is guarding.
 This module owns job-lifecycle *orchestration* (cooldown, the mutex queue,
 chain dispatch, finalisation) plus the CLI wiring. The OS-level process
 supervision a run depends on — the output tee, the resource sampler and that
-watchdog — lives next door in :mod:`app.cli.commands.run_job_supervision`,
-split out in issue #723.
+watchdog — lives next door in :mod:`app.cli.commands.run_job_supervision`.
 """
 
 from __future__ import annotations
@@ -95,17 +94,17 @@ def build_invocation(
     job: Job, values: Optional[Dict[str, Any]] = None, run_dir: Optional[Path] = None
 ) -> Tuple[List[str], Path, Dict[str, str]]:
     """Resolve how to spawn ``job`` by dispatching through the job-kind
-    registry (:mod:`src.jobs_kinds`, issue #70).
+    registry (:mod:`src.jobs_kinds`).
 
     Returns ``(argv, cwd, extra_env)``:
 
     * ``argv`` — list passed to :func:`subprocess.Popen`.
     * ``cwd`` — working directory for the spawn.
     * ``extra_env`` — env-var overlay merged onto ``os.environ``. Every
-      kind carries any ``env``-mapped typed params (issue #67); ``python``
+      kind carries any ``env``-mapped typed params; ``python``
       additionally sets ``PYTHONPATH = <project root>``.
 
-    ``values`` is the typed-parameter payload (issue #67). When empty,
+    ``values`` is the typed-parameter payload. When empty,
     composition collapses to today's behaviour: argv = [script] +
     job.args.split() with no extra env. ``run_dir`` is the run's own
     directory — required so ``inline-shell`` can write its temp script
@@ -130,7 +129,7 @@ def build_invocation(
 def _parse_run_params(
     job: Job, params_raw: Optional[str]
 ) -> Tuple[Dict[str, Any], Optional[int]]:
-    """Decode the ``--params`` JSON payload (issue #67).
+    """Decode the ``--params`` JSON payload.
 
     Returns ``(values, error_exit_code)``. ``error_exit_code`` is ``None``
     on success (``values`` may be an empty dict for parameter-less runs);
@@ -168,7 +167,7 @@ def _finalize_cooldown_skip(job: Job, args: argparse.Namespace) -> Optional[int]
     inside its own cooldown window (e.g. a manual fire of the same job
     landed while it sat queued). Finalising that as skipped without
     draining again stranded any sibling still queued behind it until some
-    unrelated job in the group happened to finish (issue #755).
+    unrelated job in the group happened to finish.
 
     Fixed by draining the job's own ``mutex_group`` here too — but only
     for that replay case (``args.run_id`` set), mirroring
@@ -226,7 +225,7 @@ def _finalize_mutex_queue(
     values: Optional[Dict[str, Any]] = None,
 ) -> Optional[int]:
     """Queue a **scheduled** fire that collides with a live sibling in the
-    same ``mutex_group`` instead of running it concurrently (issue #696).
+    same ``mutex_group`` instead of running it concurrently.
 
     The webapp admission path enforces ``mutex_group`` too, but a
     schtasks-fired run never passes through it — and that is exactly
@@ -234,7 +233,7 @@ def _finalize_mutex_queue(
     This is the executor-side half of that gate; the drain half already
     lived here (:func:`_drain_mutex_queue_for`). The queueing itself is
     :func:`~src.jobs.queue.admit_and_spawn` in its ``spawn_when_free=False``
-    mode, shared with the route and the chain dispatcher (issue #794) —
+    mode, shared with the route and the chain dispatcher —
     only the scoping below is executor-specific.
 
     Returns ``0`` when the fire was queued and finalised, ``None`` when
@@ -283,7 +282,7 @@ def _record_failed_run(
     note: str,
 ) -> None:
     """Finalise ``run_dir`` as a visible ``failed`` record, then prune and
-    invalidate the stats cache (issue #689).
+    invalidate the stats cache.
 
     The shared bookkeeping of every pre-spawn failure path: the run
     directory already exists, so leaving it empty would silently strand a
@@ -335,7 +334,7 @@ def _resolve_job_env_or_record_failure(
     args: argparse.Namespace,
     run_dir: Path,
 ) -> Optional[Dict[str, str]]:
-    """Resolve the job's ``env`` overlay (issue #72), or finalise a
+    """Resolve the job's ``env`` overlay, or finalise a
     ``failed`` run record on an unresolvable ``$secret:`` reference and
     return ``None``.
 
@@ -484,13 +483,13 @@ def _finalize_run(
     before chain dispatch / once-cleanup / mutex drain — those steps read
     the finalised run record.
 
-    A watchdog kill (issue #695) is stamped as its own state —
+    A watchdog kill is stamped as its own state —
     ``watchdog: true`` plus a ``watchdog_reason`` and a human ``note`` —
     so it is never confused with a plain ``failed`` (the job's own bad
     exit code) or with ``killed: true`` (an operator tapped Kill). A run
     the watchdog never touched gains none of those keys, so the common
     case's record shape is unchanged. The same ``note`` is forwarded to
-    :func:`~src.notifications.notify_failure` (issue #819) so the alert
+    :func:`~src.notifications.notify_failure` so the alert
     names the watchdog instead of a bare, otherwise-unproducible exit code.
     """
     finished_at = datetime.now().isoformat(timespec="seconds")
@@ -623,7 +622,7 @@ def _trigger_arg(value: str) -> str:
     shape, and enumerating only the two literals the *user* ever types
     silently rejected the two values the code itself constructs —
     ``chain:<id>`` and ``webhook`` — killing every chained and every
-    webhook fire in argparse before the executor ran (issue #687). The
+    webhook fire in argparse before the executor ran. The
     vocabulary lives in :mod:`src.jobs.trigger`; this only adapts it to
     argparse's error protocol, so an unknown value still fails loudly
     rather than being accepted as free text.

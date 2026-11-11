@@ -31,7 +31,7 @@ build names the steps it is still in.
 
 The Chat pane's per-session polls (``/context``, ``/plan-picker``,
 ``/transcript``, the Board drawer's ``/exchange``) read the same files, so
-they go through a :class:`HotPoll` too (#1605), one per session and request
+they go through a :class:`HotPoll` too, one per session and request
 shape (:func:`session_poll`). Theirs build on a pool of their own,
 :data:`SESSION_READS_POOL`: a stalled transcript then holds that pool's
 threads, never the default executor every ``POST /input`` send waits on,
@@ -130,7 +130,7 @@ class HotPoll:
     """Single-flight, deadline-bounded payload builds for one endpoint.
 
     Keeps its own ``_running``/``_next`` bookkeeping instead of calling
-    :func:`start_or_join` (#1791 audit): that function's contract is "wait
+    :func:`start_or_join`: that function's contract is "wait
     for the next build, however long it takes", with no deadline and no
     last-good fallback. ``HotPoll.get`` needs both — a bounded wait that
     falls back to :attr:`_last` and reports which named step is still
@@ -262,7 +262,7 @@ def start_or_join(
 ) -> "asyncio.Future[Any]":
     """The future a caller arriving now should await for ``key`` — the build
     already running, the one already queued behind it, or a newly started
-    one — never a stale result (the git-status rule, #1268): a call that
+    one — never a stale result (the git-status rule): a call that
     arrives while a build runs waits for the *next* build, shared with every
     other call from that window, so each caller sees state from at or after
     its own arrival.
@@ -323,7 +323,7 @@ def hot_poll(state: State, label: str) -> HotPoll:
 
 
 def session_poll(state: State, label: str, sid: str, *shape: Any) -> HotPoll:
-    """The app's :class:`HotPoll` for one session's ``label`` poll (#1605).
+    """The app's :class:`HotPoll` for one session's ``label`` poll.
 
     ``shape`` is the rest of what makes two requests the same answer (a
     transcript's cursor and page size), so only identical requests share a

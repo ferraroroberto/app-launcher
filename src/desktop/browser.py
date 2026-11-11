@@ -1,9 +1,9 @@
-"""Open a link on the PC in the browser the user works in (#1274).
+"""Open a link on the PC in the browser the user works in.
 
 Links in Chat and the transcript views are plain ``target=_blank`` anchors,
 so they open in whatever browser hosts the page, and on the PC that is Edge:
 the tray opens the app with the system default, and a session's mirror
-window is an Edge ``--app`` window (#241). The page hands a link to
+window is an Edge ``--app`` window. The page hands a link to
 :func:`open_url` instead when it runs on the PC itself, which opens it in
 Chrome when Chrome is installed and ``desktop_browser`` asks for it.
 

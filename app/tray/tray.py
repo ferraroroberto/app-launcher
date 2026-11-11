@@ -261,7 +261,7 @@ class TrayApp:
         """Bring up the loopback PTY session-host, ADOPTING one that already
         survived a tray restart instead of spawning a duplicate.
 
-        Linked-but-independent (project-scaffolding#35): it hosts the user's
+        Linked-but-independent: it hosts the user's
         Coding PTYs, which MUST survive `tray.bat --restart`. So it is spawned
         DETACHED via `cmd /c start` — re-parented out of this tray's process
         subtree so `taskkill /T` cannot reach it. (DETACHED_PROCESS /

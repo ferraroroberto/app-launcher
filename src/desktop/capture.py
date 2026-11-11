@@ -1,4 +1,4 @@
-"""Screen view (#1520): capture one monitor of the PC's desktop for the phone.
+"""Screen view: capture one monitor of the PC's desktop for the phone.
 
 The webapp is the capturing process. It runs in the user's interactive
 session under the tray, so plain GDI reaches the desktop with no admin
@@ -378,7 +378,7 @@ async def stream_frames(
     is set, so at most one frame is ever in flight. ``send_status`` reports
     ``"unavailable"`` once when the desktop stops being readable and
     ``"live"`` once when it comes back. ``quality`` and ``interval`` come from
-    the viewer's preset (#1721); ``stats``, when given, collects how long each
+    the viewer's preset; ``stats``, when given, collects how long each
     stage took (grab, digest, resize, encode) for the readout.
     """
 

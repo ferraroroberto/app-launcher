@@ -1,4 +1,4 @@
-"""Read the fleet chief's plan file for the Board's "Chief's plan" card (#1279).
+"""Read the fleet chief's plan file for the Board's "Chief's plan" card.
 
 The chief records its lanes, its queue and what waits on Roberto in
 ``~/.claude/hooks/state/chief-plan.json`` (format v1, written only through
@@ -9,18 +9,16 @@ never an exception, never an error toast. Status values pass through
 unvalidated; the card shows an unknown one as a neutral chip.
 
 A ``waiting_on_roberto`` item is one of the chief's questions for the Board's
-answer sheet (#1295). Beyond v1's ``text`` and ``ref`` it may carry the
+answer sheet. Beyond v1's ``text`` and ``ref`` it may carry the
 additive fields ``id``, ``repo``, ``question``, ``detail``, ``recommendation``,
 ``options``, ``multi`` and ``asked_at`` (a ``YYYY-MM-DD`` date, blank when
 absent or malformed so no date is invented). A field of the wrong type is
 dropped on its own, never failing the item, and an old text-only item reads as a free-text
 question. A ``ref`` shaped ``repo#N`` (or ``#N`` beside a ``repo``) gains a
 ``ref_url`` on the configured GitHub owner; any other ref stays plain text.
-Queue rows gain a ``ref_url`` the same way, and lanes from their ``item``
-(#1578): the card's rows open that issue on a tap (#1297, #1578).
+Queue rows gain a ``ref_url`` the same way, and lanes from their ``item``: the card's rows open that issue on a tap.
 
-Lane and queue rows may carry an optional ``model`` (``opus`` | ``sonnet``,
-#1352). It passes through unvalidated for the card's quiet text; anything but
+Lane and queue rows may carry an optional ``model`` (``opus`` | ``sonnet``). It passes through unvalidated for the card's quiet text; anything but
 a string reads as blank.
 """
 

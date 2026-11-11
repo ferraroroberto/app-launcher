@@ -1,4 +1,4 @@
-"""Telegram channel launch profiles — ``config/channel_profiles.json`` (#1366).
+"""Telegram channel launch profiles — ``config/channel_profiles.json``.
 
 A *profile* is one Telegram bot bound to one life-os skill: ``health`` opens the
 Health skill with its own bot, ``school`` opens School with another. Each
@@ -19,7 +19,7 @@ the launch passes it with ``--settings`` (see
 block to its own process, and the plugin's server is that process's child. No
 session-host change is involved.
 
-**Relay (#1639), opt-in per profile.** A profile with ``"relay": true`` lets its
+**Relay, opt-in per profile.** A profile with ``"relay": true`` lets its
 bot find, resume and steer the skill's *other* conversations through the
 launcher's relay routes (:mod:`app.webapp.routers.life_os_relay`) and read the
 reply back, while the bot stays the only Telegram reader. Its settings file then
@@ -29,7 +29,7 @@ loopback URL and command, and a ``permissions.allow`` rule for exactly that
 command. The same file turns the fleet context filter off for that one session:
 its PreToolUse rewrite re-encodes every Bash command, so the allow rule never
 matches and the auto-mode classifier decides instead (the read-back refusal
-#1639's Probe 2 hit). Without the flag the file is exactly as before.
+the probe hit). Without the flag the file is exactly as before.
 
 **Router commands.** A profile running the ``general`` skill suggests which skill
 and conversation fit a message by running two read-only commands of the skill's

@@ -1,16 +1,14 @@
 """Reconciling the artefacts a Life OS conversation mutation leaves behind.
 
-Split out of ``app/webapp/routers/life_os_files.py`` (a ``/codebase-audit``
-maintainability finding, #1006), where 159 of the router's 501 lines were
-best-effort maintenance of two artefacts the module explicitly disclaims
-owning, dwarfing the three routes they support.
+Split out of ``app/webapp/routers/life_os_files.py``, where best-effort maintenance of two artefacts the module explicitly disclaims
+owning would dwarf the three routes they support.
 
 **This repo does not own any of these formats.** ``index.json`` and
 ``index.md`` are written by fleet-config's external capture/index pipeline,
 and ``.search.db`` is built by its ``conversation_search.py``. So every
 operation here is best-effort: a read, parse, write or subprocess failure is
 logged and swallowed rather than failing the delete or rename that triggered
-it (#906/#971). That single contract belongs to the module rather than to
+it. That single contract belongs to the module rather than to
 each function's docstring, which is the clearest argument for the module
 existing.
 
@@ -64,12 +62,12 @@ def _patch_conversation_index(
 ) -> bool:
     """Best-effort read-mutate-write of a skill's ``conversations/index.json``.
 
-    The index is written by an external capture/index pipeline (life-os#68) —
+    The index is written by an external capture/index pipeline —
     this repo doesn't own its format, so any read/parse/write failure is
     logged and swallowed rather than failing the delete/rename that triggered
-    it (#906). ``mutate`` returns the new row list, or ``None`` to skip the
+    it. ``mutate`` returns the new row list, or ``None`` to skip the
     write (nothing matched). Answers whether the file was rewritten, so a
-    caller can report what it actually changed (#1410).
+    caller can report what it actually changed.
     """
     try:
         raw = index_path.read_text(encoding="utf-8")
@@ -94,7 +92,7 @@ def _patch_conversation_index(
 
 
 def _prune_conversation_index(resolved: Path) -> bool:
-    """Drop ``resolved``'s row from its skill's digested index, if present (#906).
+    """Drop ``resolved``'s row from its skill's digested index, if present.
 
     Keeps the Conversations view from showing a just-deleted log until the
     external indexer next runs — see ``_patch_conversation_index``.
@@ -106,7 +104,7 @@ def _prune_conversation_index(resolved: Path) -> bool:
 
 
 def _rename_conversation_index(resolved: Path, new_name: str) -> None:
-    """Point ``resolved``'s row at its new filename, if present (#906)."""
+    """Point ``resolved``'s row at its new filename, if present."""
     def _rename_row(rows: List[Any]) -> Optional[List[Any]]:
         changed = False
         for row in rows:
@@ -118,7 +116,7 @@ def _rename_conversation_index(resolved: Path, new_name: str) -> None:
 
 
 def _rename_index_md(resolved: Path, new_name: str) -> None:
-    """Point ``resolved``'s ``<!-- idx file="..." -->`` entry at its new name (#971).
+    """Point ``resolved``'s ``<!-- idx file="..." -->`` entry at its new name.
 
     Best-effort exact substring swap of the ``file="<old>"`` attribute —
     conservative on purpose: this repo doesn't own ``index.md``'s format, so
@@ -153,8 +151,8 @@ def _find_idx_block(lines: List[str], name: str) -> Optional[Tuple[int, int]]:
     ``len(lines)``. The one definition of the block boundary
     ``conversation_index.py``'s own ``render_index()`` writes — one ``idx``
     comment line, one ``###`` heading line, the body lines, one blank
-    separator — shared by the prune, read (#1738 backup) and insert
-    duplicate-guard call sites so it can't drift between them (#1791). ``None``
+    separator — shared by the prune, read (backup) and insert
+    duplicate-guard call sites so it can't drift between them. ``None``
     when ``name`` has no block in ``lines``.
     """
     marker = f'file="{name}"'
@@ -175,7 +173,7 @@ def _find_idx_block(lines: List[str], name: str) -> Optional[Tuple[int, int]]:
 
 
 def _prune_index_md(resolved: Path) -> bool:
-    """Drop ``resolved``'s whole ``<!-- idx file="..." -->`` entry from index.md (#971).
+    """Drop ``resolved``'s whole ``<!-- idx file="..." -->`` entry from index.md.
 
     Deterministic line-based removal matching the exact block shape
     :func:`_find_idx_block` locates, cut at the next entry / decay-zone
@@ -203,7 +201,7 @@ def _prune_index_md(resolved: Path) -> bool:
 
 
 def search_cli(cfg: WebappConfig) -> Optional[List[str]]:
-    """``[python, script]`` for fleet-config's search CLI, or ``None`` (#971).
+    """``[python, script]`` for fleet-config's search CLI, or ``None``.
 
     Resolved per request from ``fleet_config_dir`` (the fleet-config
     checkout the Board already shells into) so pointing Settings at a
@@ -211,7 +209,7 @@ def search_cli(cfg: WebappConfig) -> Optional[List[str]]:
     half is missing — a machine without fleet-config still gets a working
     Life OS tab, minus search.
 
-    The single copy (#1003). ``life_os_conversations`` used to carry a
+    The single copy. ``life_os_conversations`` used to carry a
     byte-identical body and its own ``_SEARCH_SCRIPT_REL``; it already
     imports :func:`resolve_within` from here, so the import edge ran in the
     right direction and this module stays the leaf its docstring describes.
@@ -220,7 +218,7 @@ def search_cli(cfg: WebappConfig) -> Optional[List[str]]:
 
 
 def title_cli(cfg: WebappConfig) -> Optional[List[str]]:
-    """``[python, script]`` for fleet-config's conversation-title writer, or ``None`` (#1495)."""
+    """``[python, script]`` for fleet-config's conversation-title writer, or ``None``."""
     return _fleet_cli(cfg, _TITLE_SCRIPT_REL)
 
 
@@ -237,7 +235,7 @@ def _fleet_cli(cfg: WebappConfig, script_rel: tuple[str, ...]) -> Optional[List[
 
 
 def _resync_search_index(cfg: WebappConfig) -> None:
-    """Best-effort rebuild fleet-config's cross-skill search db (#971).
+    """Best-effort rebuild fleet-config's cross-skill search db.
 
     Without this, a rename/delete this endpoint just made stays invisible to
     ``conversations/.search.db`` (built by fleet-config's
@@ -284,7 +282,7 @@ def reconcile_delete_sync(resolved: Path, cfg: WebappConfig) -> dict[str, bool]:
 
     Answers which index files actually lost the row (a file that was absent
     or had no matching row is ``False``, not an error), so the caller can say
-    what it removed rather than what it hoped to (#1410).
+    what it removed rather than what it hoped to.
     """
     removed = _prune_artefacts(resolved)
     _resync_search_index(cfg)
@@ -327,7 +325,7 @@ def read_index_entry(resolved: Path) -> dict[str, Any]:
 def restore_index_entry(
     resolved: Path, row: Optional[dict], block: Optional[str],
 ) -> dict[str, bool]:
-    """Put a saved ``index.json`` row and ``index.md`` block back (#1738).
+    """Put a saved ``index.json`` row and ``index.md`` block back.
 
     Both indexes list newest first, which their file names (a leading
     date-time) sort by, so an entry goes before the first one that sorts lower.
@@ -385,7 +383,7 @@ def _insert_index_md_block(resolved: Path, block: str) -> bool:
 
 
 def resync_search_index(cfg: WebappConfig) -> None:
-    """Public name for the best-effort search-db rebuild (#1738 restore)."""
+    """Public name for the best-effort search-db rebuild (restore)."""
     _resync_search_index(cfg)
 
 

@@ -1,4 +1,4 @@
-"""Thin HTTP client for the local-llm-hub TTS endpoint (issue #203).
+"""Thin HTTP client for the local-llm-hub TTS endpoint.
 
 The Coding terminal's 🔊 read-aloud button can synthesize the agent's last
 reply with the hub's high-quality Orpheus voice instead of the on-device Web
@@ -75,7 +75,7 @@ def build_speech_payload(
     ``response_format="pcm"`` + ``stream_format="audio"`` makes the hub stream
     **headerless PCM16** (``content-type: audio/L16``, ``X-Sample-Rate``) as it
     synthesizes — the browser plays it through the Web Audio API for low
-    time-to-first-audio (issue #206). WAV is deliberately avoided: the hub's
+    time-to-first-audio. WAV is deliberately avoided: the hub's
     streaming WAV uses an open-ended RIFF header that an ``<audio>`` element
     can't play progressively. An unknown ``voice`` falls back to the Orpheus
     default rather than erroring.

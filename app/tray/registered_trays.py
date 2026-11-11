@@ -1,18 +1,18 @@
-"""Registered Trays sequential autostart boot sequence (issue #456 part 2/2).
+"""Registered Trays sequential autostart boot sequence.
 
 Split off ``app/tray/tray.py`` (a single-file god-module flagged by
 ``/codebase-audit``). These are pure functions with no ``TrayApp`` state —
 ``port_listening`` is also reused by ``tray.py`` for its own session-host
 adoption check, since it's a general-purpose loopback-port probe.
 
-Diagnosability (issue #788): ``launch_all()`` runs at real boot time under
+Diagnosability: ``launch_all()`` runs at real boot time under
 ``pythonw.exe`` (no console), spawned by ``tray_lifecycle.ps1``'s
 ``Start-Process`` — which never redirects stdout/stderr anywhere. So the
 ``logger.info``/``logger.warning`` calls below are silently discarded in
 production; a sister tray failing to launch, or taking an unusually long
 time to become reachable, left no trace. Mirrors the breadcrumb log
 ``src/boot_autostart.py`` already writes for app-launcher's own Startup
-wrapper (issue #582): every attempt appends a timestamped line to a
+wrapper: every attempt appends a timestamped line to a
 gitignored ``webapp/registered_trays.log``, so a login-time failure is
 diagnosable from that log alone instead of requiring a live re-run.
 """
@@ -90,7 +90,7 @@ def _fleet_toml_port(repo_dir: Path) -> Optional[int]:
     """Read the ``port`` field out of ``repo_dir/.fleet.toml``.
 
     This is the fleet-wide anti-staleness-enforced convention every
-    tray-owning repo already keeps current (project-scaffolding#83/#148) —
+    tray-owning repo already keeps current —
     the only per-repo-agnostic readiness signal available here. PID-tree
     port discovery (as the Running Apps panel uses for launcher-spawned
     bats) does NOT work for a Registered Trays entry: every sister
