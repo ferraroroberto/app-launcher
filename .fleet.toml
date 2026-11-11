@@ -1231,3 +1231,9 @@ name   = "chat-pending-state-ui"
 module = "app/webapp/static/chat/pending-state.js"
 type   = "PendingState"
 derive = "pendingState"
+
+[[state_machines]]
+name   = "send-submit-state-ui"
+module = "app/webapp/static/chat/submit-state.js"
+type   = "SubmitState"
+derive = "submitState"
