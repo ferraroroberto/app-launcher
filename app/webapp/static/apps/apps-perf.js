@@ -13,6 +13,7 @@ import { chip } from '../glance.js';
 import { setAsyncState } from '../async-state.js';
 import { els } from '../state.js';
 import { fmtAgo } from '../sessions.js';
+import { LEDGER_UNREADABLE, PerfCardState, perfCardState } from './perf-card-state.js';
 
 // A ledger changes once per /perf-review run, so a slow cadence is plenty; the
 // Apps poll that triggers this runs every few seconds.
@@ -54,12 +55,12 @@ function node(tag, cls, text) {
 }
 
 // What the card can say, split from the registry rows and the last read:
-// `status` is 'loading' | 'unknown' | 'ok'; `measured` is a list of
+// `status` is a PerfCardState; `measured` is a list of
 // { name, entry } (one per ledger app, named by its first registry row);
 // `unmeasured` maps a reason to the row names it covers.
 export function perfSplit(apps) {
-  if (perf.failed || perf.ledger === 'unreadable') return { status: 'unknown' };
-  if (perf.ledger === null) return { status: 'loading' };
+  const status = perfCardState(perf);
+  if (status !== PerfCardState.OK) return { status: status };
   const measured = [];
   const seen = {};
   const unmeasured = {};
@@ -81,7 +82,7 @@ export function perfSplit(apps) {
     }
     skip(entry.state === 'unmeasured' ? 'blank-run' : 'unrecognised', a.name);
   });
-  return { status: 'ok', measured: measured, unmeasured: unmeasured };
+  return { status: status, measured: measured, unmeasured: unmeasured };
 }
 
 // "cold 3.1 s / 2.5 s": measured against budget; the failing ones flagged.
@@ -191,8 +192,8 @@ function renderUnmeasured(host, unmeasured) {
 }
 
 function summaryText(split) {
-  if (split.status === 'unknown') return { text: 'Unknown', over: false };
-  if (split.status === 'loading') return null;
+  if (split.status === PerfCardState.UNKNOWN) return { text: 'Unknown', over: false };
+  if (split.status === PerfCardState.LOADING) return null;
   const over = split.measured.filter(function (m) { return m.entry.state === 'over-budget'; }).length;
   if (!split.measured.length) return { text: 'None measured', over: false };
   return {
@@ -216,11 +217,11 @@ export function renderPerfCard(apps, retry) {
   els.perfSummaryMeta.textContent = meta ? meta.text : '';
   els.perfSummaryMeta.classList.toggle('is-over', !!(meta && meta.over));
   els.perfMeasured.replaceChildren();
-  if (split.status !== 'ok') {
+  if (split.status !== PerfCardState.OK) {
     els.perfNone.hidden = true;
     els.perfUnmeasured.replaceChildren();
     els.perfUnmeasured.hidden = true;
-    if (split.status === 'loading') {
+    if (split.status === PerfCardState.LOADING) {
       setAsyncState(els.perfState, 'loading', { message: 'Reading performance results…' });
     } else {
       setAsyncState(els.perfState, 'error', {
@@ -243,7 +244,7 @@ export function fetchAppsPerf(onChange, force) {
   if (!force && perf.readAt && Date.now() - perf.readAt < REFRESH_MS) return Promise.resolve();
   const before = JSON.stringify([perf.ledger, perf.apps, perf.rows, perf.failed]);
   perf.inflight = jsonApi('/api/apps/perf').then(function (body) {
-    perf.ledger = body.ledger || 'unreadable';
+    perf.ledger = body.ledger || LEDGER_UNREADABLE;
     perf.apps = body.apps || {};
     perf.rows = body.rows || {};
     perf.failed = false;

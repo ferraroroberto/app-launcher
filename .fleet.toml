@@ -1184,3 +1184,9 @@ name   = "inspiration-login-state-ui"
 module = "app/webapp/static/settings/login-state.js"
 type   = "LoginState"
 derive = "loginState"
+
+[[state_machines]]
+name   = "apps-perf-card-state"
+module = "app/webapp/static/apps/perf-card-state.js"
+type   = "PerfCardState"
+derive = "perfCardState"
