@@ -54,6 +54,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src.board import active_issue_claims, card_status
+from src.board.attention_state import AttentionState, finished_run_state
 from src.board.sessions import (  # noqa: F401 — re-exported for board.<name> callers
     _live_launcher_session_ids,
     active_issue_repos,
@@ -79,7 +80,7 @@ from src.board.transcript_exchange import (  # noqa: F401 — re-exported
     last_exchange,
 )
 from src.jobs import dismissed as jobs_dismissed
-from src.jobs.outcome import OUTCOME_DEFERRED, OUTCOME_UNCONFIRMED
+from src.jobs.outcome import OUTCOME_DEFERRED
 from src.jobs.run_status import RunStatus, run_status
 
 logger = logging.getLogger(__name__)
@@ -149,7 +150,7 @@ def _job_attention_card(job: Any, runtime: Any, now_local: datetime, dismissed: 
             "kind": "job",
             "job_id": job.id,
             "job_name": job.name,
-            "state": "unreadable",
+            "state": AttentionState.UNREADABLE,
             "run_id": None,
             "finished_at": None,
             "age_seconds": None,
@@ -166,7 +167,7 @@ def _job_attention_card(job: Any, runtime: Any, now_local: datetime, dismissed: 
             "kind": "job",
             "job_id": job.id,
             "job_name": job.name,
-            "state": "stuck",
+            "state": AttentionState.STUCK,
             "run_id": latest.get("run_id"),
             "finished_at": None,
             "age_seconds": age_seconds(started, now_local),
@@ -189,15 +190,11 @@ def _job_attention_card(job: Any, runtime: Any, now_local: datetime, dismissed: 
             # wants a human's eye, so it keeps its card — but it is not a
             # failure and must not be drawn as one. ``outcome`` is
             # decorated onto every record by ``jobs_history.read_run``.
-            outcome = latest.get("outcome") or "failed"
             return {
                 "kind": "job",
                 "job_id": job.id,
                 "job_name": job.name,
-                "state": (
-                    "unconfirmed" if outcome == OUTCOME_UNCONFIRMED
-                    else "failed"
-                ),
+                "state": finished_run_state(latest.get("outcome")),
                 "run_id": latest.get("run_id"),
                 "finished_at": latest.get("finished_at"),
                 "age_seconds": age_seconds(finished, now_local),

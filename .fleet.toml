@@ -1160,3 +1160,15 @@ name   = "life-os-relay-state-cli"
 module = "scripts/telegram_relay.py"
 type   = "RelayState"
 derive = "exit_code"
+
+[[state_machines]]
+name   = "board-attention-state"
+module = "src/board/attention_state.py"
+type   = "AttentionState"
+derive = "finished_run_state"
+
+[[state_machines]]
+name   = "board-attention-state-ui"
+module = "app/webapp/static/board/attention-state.js"
+type   = "AttentionState"
+derive = "attentionState"
