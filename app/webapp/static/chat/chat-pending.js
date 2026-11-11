@@ -16,18 +16,19 @@ import { apiFailToast, sessionRoute, toast } from '../api.js';
 import { terminalJsonApi } from '../webauthn.js';
 import { pendingNotTaken } from './send-confirm.js';
 import { scheduleLive, view } from './session-transcript.js';
+import { PendingState, isUnconfirmed, pendingState } from './pending-state.js';
 
 const STATE_LABEL = {
-  in_composer: 'In the agent’s input box',
-  queued: 'Queued in the agent',
-  discarding: 'Clearing from the input box',
+  [PendingState.IN_COMPOSER]: 'In the agent’s input box',
+  [PendingState.QUEUED]: 'Queued in the agent',
+  [PendingState.DISCARDING]: 'Clearing from the input box',
 };
 
 // Why an entry has no Discard button, by state.
 const FIXED_NOTE = {
-  in_composer: 'Can’t be removed from here',
-  queued: 'Can’t be removed from here',
-  discarding: 'Being cleared, it won’t be sent',
+  [PendingState.IN_COMPOSER]: 'Can’t be removed from here',
+  [PendingState.QUEUED]: 'Can’t be removed from here',
+  [PendingState.DISCARDING]: 'Being cleared, it won’t be sent',
 };
 
 // The rows the open sheet was last built from (see sheetKey).
@@ -73,7 +74,7 @@ function rowFor(entry) {
   li.dataset.id = entry.id;
   const meta = document.createElement('div');
   meta.className = 'pending-meta';
-  const unconfirmed = entry.state === 'queued' && entry.confirmed === false;
+  const unconfirmed = isUnconfirmed(entry);
   meta.textContent = [
     unconfirmed ? 'Sent while the agent works' : (STATE_LABEL[entry.state] || entry.state),
     timeOf(entry.at),
@@ -95,7 +96,7 @@ function rowFor(entry) {
     fixed.className = 'pending-fixed';
     fixed.textContent = unconfirmed
       ? 'Checking the agent queued it'
-      : (FIXED_NOTE[entry.state] || FIXED_NOTE.queued);
+      : (FIXED_NOTE[pendingState(entry)] || FIXED_NOTE[PendingState.QUEUED]);
     li.appendChild(fixed);
   }
   return li;
@@ -106,7 +107,7 @@ function rowFor(entry) {
 function togetherNote(list) {
   const counts = {};
   list.forEach(function (e) { if (e.removable) counts[e.state] = (counts[e.state] || 0) + 1; });
-  const n = Math.max(counts.queued || 0, counts.in_composer || 0);
+  const n = Math.max(counts[PendingState.QUEUED] || 0, counts[PendingState.IN_COMPOSER] || 0);
   return n > 1
     ? 'Messages in the same place leave the agent together: Discard removes all ' + n + '.'
     : '';
@@ -182,7 +183,7 @@ async function discardEntry(entry, button) {
   const ids = (body && body.ids) || [entry.id];
   if (body && body.reason === 'discarding') {
     (target.pendingInput || []).forEach(function (p) {
-      if (ids.indexOf(p.id) !== -1) { p.state = 'discarding'; p.removable = false; }
+      if (ids.indexOf(p.id) !== -1) { p.state = PendingState.DISCARDING; p.removable = false; }
     });
   } else {
     forget(target, ids);

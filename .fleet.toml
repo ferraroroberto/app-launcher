@@ -1225,3 +1225,9 @@ name   = "chief-plan-queue-status"
 module = "src/chief/queue_status.py"
 type   = "QueueStatus"
 derive = "queue_status"
+
+[[state_machines]]
+name   = "chat-pending-state-ui"
+module = "app/webapp/static/chat/pending-state.js"
+type   = "PendingState"
+derive = "pendingState"
