@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from src.jobs.config import Job
 from src.jobs.history import latest_run, list_runs
 from src.jobs.outcome import OUTCOME_DEFERRED, OUTCOME_UNCONFIRMED
+from src.jobs.run_status import FINISHED, NOT_A_FIRE, RunStatus, run_status
 
 # Process-local TTL cache. Reset per job by `invalidate_stats_cache` once a
 # run finalises so the row updates promptly without waiting out the TTL.
@@ -63,11 +64,7 @@ def cooldown_check(
         # skipped (cooldown no-ops) and dry-run records are
         # not real fires — counting them as the anchor would let a dry
         # verification reset the cooldown window.
-        if run.get("status") in (
-            "skipped",
-            "dry_run_success",
-            "dry_run_failed",
-        ):
+        if run_status(run) in NOT_A_FIRE:
             continue
         anchor = run
         break
@@ -127,7 +124,7 @@ def _compute_stats(job_id: str, *, now: Optional[datetime] = None) -> Dict[str, 
             # stays out of the p95 that sets the stuck and watchdog
             # thresholds.
             continue
-        if status in {"success", "failed"}:
+        if run_status(r) in FINISHED:
             d = _duration_for(r)
             if d is not None:
                 completed_durations.append(d)
@@ -139,7 +136,7 @@ def _compute_stats(job_id: str, *, now: Optional[datetime] = None) -> Dict[str, 
                 # reported as its own number instead.
                 if outcome == OUTCOME_UNCONFIRMED:
                     unconfirmed_recent += 1
-                elif status == "success":
+                elif run_status(r) is RunStatus.SUCCESS:
                     success_recent += 1
                 else:
                     failed_recent += 1
@@ -308,7 +305,7 @@ def is_stuck(
     """
     if latest is None:
         latest = latest_run(job_id)
-    if not latest or latest.get("status") != "running":
+    if run_status(latest) is not RunStatus.RUNNING:
         return False
     started = _parse_iso(latest.get("started_at"))
     if not started:

@@ -69,6 +69,7 @@ from src.jobs.config import (
 )
 from src.jobs.outcome import OUTCOME_DEFERRED
 from src.jobs.preflight import has_errors, preflight
+from src.jobs.run_status import RunStatus, is_active, run_status
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -195,7 +196,7 @@ def _decorate_job(
         }
     else:
         payload["last_run"] = None
-    payload["running"] = bool(latest and latest.get("status") == "running")
+    payload["running"] = run_status(latest) is RunStatus.RUNNING
     payload["stats"] = runtime.stats
     payload["stuck"] = runtime.stuck
     # Missed-fire coverage. Reads a process-local cached scan —
@@ -602,7 +603,7 @@ async def kill_job_run(job_id: str, run_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"unknown run {run_id}")
     record = await asyncio.to_thread(jobs_mod.read_run, run_dir)
     status = record.get("status")
-    if status not in {"running", "pending"}:
+    if not is_active(record):
         raise HTTPException(
             status_code=409,
             detail=f"run is {status!r}, not killable",
@@ -625,7 +626,7 @@ async def kill_job_run(job_id: str, run_id: str) -> Dict[str, Any]:
     await asyncio.to_thread(
         jobs_mod.write_run_json,
         run_dir,
-        status="failed",
+        status=RunStatus.FAILED,
         exit_code=-9,
         finished_at=finished_at,
         duration_seconds=duration,
@@ -664,7 +665,7 @@ async def dismiss_job_run(job_id: str, run_id: str) -> Dict[str, Any]:
     if run_dir is None:
         raise HTTPException(status_code=404, detail=f"unknown run {run_id}")
     record = await asyncio.to_thread(jobs_mod.read_run, run_dir)
-    if record.get("status") != "failed" or record.get("outcome") == OUTCOME_DEFERRED:
+    if run_status(record) is not RunStatus.FAILED or record.get("outcome") == OUTCOME_DEFERRED:
         raise HTTPException(
             status_code=409,
             detail=f"run is {record.get('outcome') or record.get('status')!r}, not dismissible",

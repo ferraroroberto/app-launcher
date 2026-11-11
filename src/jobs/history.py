@@ -25,6 +25,7 @@ from src import runtime_files
 from src._json_io import atomic_write_json, file_lock
 from src.jobs.config import exit_outcomes_for
 from src.jobs.outcome import run_outcome
+from src.jobs.run_status import RunStatus, run_status
 
 logger = logging.getLogger(__name__)
 
@@ -275,7 +276,7 @@ def latest_run(job_id: str) -> Optional[Dict[str, Any]]:
 def is_running(job_id: str) -> bool:
     """Cheap check — is the most recent run still in ``running`` state?"""
     latest = latest_run(job_id)
-    return bool(latest and latest.get("status") == "running")
+    return run_status(latest) is RunStatus.RUNNING
 
 
 def prune_runs(job_id: str, keep: int = MAX_RUNS_PER_JOB) -> int:

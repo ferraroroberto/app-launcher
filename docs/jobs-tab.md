@@ -554,7 +554,7 @@ The file goes through the session outbox's own guards, caps and refusals (*Files
 
 The owner sees the files on the Jobs tab, with no push: the selected run's panel shows *N sent files* under its output. **Show** loads them as the Chat's file cards (inline image, PDF, text, sandboxed HTML, archive download). The run detail carries only the count (`sent_files`). The list and the bytes are Tailscale + passkey, like a session's sent files, so they load on that tap and never from the panel's poll.
 
-`status` transitions: `pending` (webapp pre-create) → `running` (executor takes over) → `success` | `failed`. The runs list remains on the Jobs tab's lightweight 4 s refresh. Selecting a live run opens `/api/jobs/<id>/runs/<rid>/stream`: the server sends one current-tail snapshot, incremental output chunks, then a final status frame and closes. Finalized output is fetched once over JSON and never streamed.
+`status` transitions: `pending` (webapp pre-create) → `running` (executor takes over) → `success` | `failed`; the full set and its rules are in [job-run-state.md](job-run-state.md). The runs list remains on the Jobs tab's lightweight 4 s refresh. Selecting a live run opens `/api/jobs/<id>/runs/<rid>/stream`: the server sends one current-tail snapshot, incremental output chunks, then a final status frame and closes. Finalized output is fetched once over JSON and never streamed.
 
 ### `run.json` schema
 
@@ -572,7 +572,7 @@ The owner sees the files on the Jobs tab, with no push: the selected run's panel
 | `args` | str | both | Whitespace-split into argv |
 | `params` | object | webapp + executor | Typed-parameter payload; only written when non-empty |
 | `started_at` | ISO 8601 | both | `pending` write or `running` re-write |
-| `status` | `"pending"` \| `"running"` \| `"success"` \| `"failed"` | both | Final value lands at executor exit |
+| `status` | one of the states in [job-run-state.md](job-run-state.md) | both | Final value lands at executor exit |
 | `finished_at` | ISO 8601 | executor | Only on final write |
 | `exit_code` | int | executor | `-9` is reserved for `/kill` (`SIGKILL` analogue). Also the input to the derived `outcome` below — see "Terminal outcomes" |
 | `pid` | int | executor | The child PID, persisted at spawn so the kill endpoint works even if the executor itself crashes between spawn and `wait()` |

@@ -61,6 +61,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from src.diagnostics import is_pid_alive
 from src.jobs.config import Job, load_jobs
 from src.jobs.history import list_runs, read_run, runs_dir, write_run_json_if
+from src.jobs.run_status import RunStatus, is_active, run_status
 from src.jobs.stats import invalidate_stats_cache
 from src.notifications import notify_failure
 from src.webapp_config import load_webapp_config
@@ -120,16 +121,13 @@ def _is_unfinalised(record: Dict[str, Any]) -> bool:
     """True while nothing has finalised ``record``: still ``running``/``pending``
     and no ``exit_code`` yet. Evaluated under the run lock, against the record
     on disk, so a finalise that landed after the reaper's read wins."""
-    return (
-        record.get("status") in ("running", "pending")
-        and record.get("exit_code") is None
-    )
+    return is_active(record) and record.get("exit_code") is None
 
 
 def _is_pidless_pending(record: Dict[str, Any]) -> bool:
     return (
         _is_unfinalised(record)
-        and record.get("status") == "pending"
+        and run_status(record) is RunStatus.PENDING
         and not isinstance(record.get("pid"), int)
     )
 
@@ -166,7 +164,7 @@ def _reap_pidless_pending(
     it), so a pid-less ``running`` record is an unexpected shape this
     deliberately leaves alone rather than reaping on a guess.
     """
-    if record.get("status") != "pending":
+    if run_status(record) is not RunStatus.PENDING:
         return None
     started_at = record.get("started_at")
     if not isinstance(started_at, str):
@@ -186,7 +184,7 @@ def _reap_pidless_pending(
     if not write_run_json_if(
         run_dir,
         _is_pidless_pending,
-        status="failed",
+        status=RunStatus.FAILED,
         reaped=True,
         never_started=True,
         end_time_unknown=True,
@@ -206,7 +204,7 @@ def _reap_pidless_pending(
     else:
         notify_failure(
             cfg, job, run_dir,
-            status="failed",
+            status=RunStatus.FAILED,
             exit_code=None,
             reaped=True,
         )
@@ -267,7 +265,7 @@ def _reap_one(job: Job, record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     finished_at, duration_seconds = _evidence_finished_at(
         run_dir, record.get("started_at")
     )
-    fields: Dict[str, Any] = {"status": "failed", "reaped": True}
+    fields: Dict[str, Any] = {"status": RunStatus.FAILED, "reaped": True}
     if finished_at is not None:
         fields["finished_at"] = finished_at
         fields["duration_seconds"] = duration_seconds
@@ -291,7 +289,7 @@ def _reap_one(job: Job, record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     else:
         notify_failure(
             cfg, job, run_dir,
-            status="failed",
+            status=RunStatus.FAILED,
             exit_code=record.get("exit_code"),
             reaped=True,
         )
@@ -306,7 +304,7 @@ def finalize_dead_runs(job: Job) -> List[Dict[str, Any]]:
     """
     reaped: List[Dict[str, Any]] = []
     for record in list_runs(job.id):
-        if record.get("status") not in ("running", "pending"):
+        if not is_active(record):
             continue
         updated = _reap_one(job, record)
         if updated is not None:

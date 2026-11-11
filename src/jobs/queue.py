@@ -35,6 +35,7 @@ from src.jobs.history import (
     runs_dir,
     write_run_json,
 )
+from src.jobs.run_status import RunStatus, is_active, run_status
 from src.jobs.spawn import spawn_run_job_detached
 from src.jobs.trigger import chain_trigger
 
@@ -163,7 +164,7 @@ def mutex_collision(jobs: List[Job], job: Job) -> Optional[Job]:
         latest = latest_run(other.id)
         if latest is None:
             continue
-        if latest.get("status") in ("running", "pending"):
+        if is_active(latest):
             return other
     return None
 
@@ -277,7 +278,7 @@ def admit_and_spawn(
     if holder is not None:
         return _queue_behind(job, holder, run_dir, meta, trigger, params)
 
-    meta["status"] = "pending"
+    meta["status"] = RunStatus.PENDING
     write_run_json(run_dir, **meta)
     try:
         spawn_run_job_detached(job.id, run_dir.name, trigger, params or None)
@@ -298,7 +299,7 @@ def _record_spawn_failure(
     failure: Dict[str, Any] = {
         "finished_at": datetime.now().isoformat(timespec="seconds"),
         "exit_code": -1,
-        "status": "failed",
+        "status": RunStatus.FAILED,
         spawn_error_key: str(exc),
         "refused": isinstance(exc, ArgvRejected),
     }
@@ -317,7 +318,7 @@ def _queue_behind(
 ) -> Dict[str, Any]:
     """Record the run as ``queued`` behind ``holder`` and push it on the group's FIFO."""
     meta.update(
-        status="queued",
+        status=RunStatus.QUEUED,
         mutex_group=job.mutex_group,
         mutex_blocked_by=holder.id,
     )
@@ -404,7 +405,7 @@ def drain_mutex_queue(
         return None
     run_dir = runs_dir(job_id) / run_id
     record = read_run(run_dir)
-    if record.get("status") != "queued":
+    if run_status(record) is not RunStatus.QUEUED:
         logger.warning(
             f"⚠️  mutex queue {group!r}: head {job_id}/{run_id} status "
             f"{record.get('status')!r} (expected 'queued'); skipping spawn"
