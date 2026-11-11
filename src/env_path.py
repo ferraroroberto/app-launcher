@@ -8,7 +8,7 @@ everything launched from the taskbar afterwards — keeps the pre-install
 block. So a coding-agent CLI installed while the launcher is running stays
 invisible to :func:`shutil.which`, its Coding-tab button greyed, and stays
 that way across tray restarts whenever the restart itself is launched from a
-stale-environment shell (issue #668 — hit four times in one day while
+stale-environment shell (hit four times in one day while
 integrating Grok Build). Restarting Explorer or logging off were the only
 reliable remedies; a launcher should not require either.
 

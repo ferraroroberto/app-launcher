@@ -1,4 +1,4 @@
-"""Claude Code's ``AskUserQuestion`` tool, for the Chat pane (#1149).
+"""Claude Code's ``AskUserQuestion`` tool, for the Chat pane.
 
 Two halves, both pure:
 

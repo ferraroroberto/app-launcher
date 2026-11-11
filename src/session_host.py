@@ -449,7 +449,7 @@ class PtySession(PendingInputProtocol):
 
     # --------------------------------------------------------------- io
     def _maybe_capture_prompt(self, data: str) -> None:
-        """Accumulate input until the first submit, then derive a title (#266).
+        """Accumulate input until the first submit, then derive a title.
 
         Every keystroke and paste the browser sends routes through
         :meth:`write`, so this is the single chokepoint that sees the user's
@@ -503,12 +503,12 @@ class PtySession(PendingInputProtocol):
 
         ``False`` means the write never reached ``self._pty`` at all — the
         session had already exited, or the underlying write raised — so a
-        caller (the session-host's ``/input`` route, issue #607) can turn a
-        drop into an honest failure instead of the previous unconditional
+        caller (the session-host's ``/input`` route) can turn a
+        drop into an honest failure instead of an unconditional
         ``{"ok": true}`` regardless of outcome. An empty payload is trivially
         ``True``: there was nothing to deliver, so nothing was dropped.
 
-        Serialized on ``_write_lock`` (issue #721) so a concurrent writer
+        Serialized on ``_write_lock`` so a concurrent writer
         can't interleave its own bytes between this payload's chunks.
         """
         with self._write_lock:
@@ -606,13 +606,13 @@ class PtySession(PendingInputProtocol):
         keystrokes, not one burst: ESC, the command, the submitting CR, with
         ``key_settle_seconds`` between them so neither the ESC nor the
         command runs into what follows it (see
-        ``_STOP_KEY_SETTLE_SECONDS``, issue #1016). The clean exit
+        ``_STOP_KEY_SETTLE_SECONDS``). The clean exit
         lets the agent run its shutdown path (Claude Code SessionEnd hooks,
         transcript finalisation, …) deterministically, rather than relying
         on the abnormal console-close path a bare force-terminate triggers.
         Only if the agent has not exited within the grace window do we
         force-terminate the ConPTY — the guarantee that a stop always ends
-        the session (issue #253).
+        the session.
 
         ``STOP_KILL`` force-terminates immediately (no graceful step);
         ``STOP_INTERRUPT`` sends Ctrl+C and leaves the session running.
@@ -781,13 +781,13 @@ class SessionManager:
         its real terminal dimensions through the launch request so a
         full-screen differential TUI (Codex's ratatui) paints its *first*
         frame at the correct width instead of the legacy ``40×120`` — which
-        wrapped/cut on a portrait phone (issue #126). They are clamped to
+        wrapped/cut on a portrait phone. They are clamped to
         the same bounds as :meth:`PtySession.resize`; an omitted value
         falls back to the legacy default.
 
         ``history_lines`` bounds the headless-VT scrollback a full-screen
-        agent's session mirrors for a (re)connect (issue #435 follow-up,
-        user-configurable via Settings). ``None`` falls back to
+        agent's session mirrors for a (re)connect (user-configurable via
+        Settings). ``None`` falls back to
         :class:`~src.vt_snapshot.VtSnapshot`'s own default. Ignored for a
         non-fullscreen agent (no VT mirror is created at all).
         """
@@ -865,7 +865,7 @@ class SessionManager:
 
         The window is **orphaned out of the session-host's process tree** so a
         ``tray.bat --restart`` — which tears the tray subtree down with
-        ``taskkill /T`` — cannot cascade into it (issue #130); detached
+        ``taskkill /T`` — cannot cascade into it; detached
         sessions are meant to outlive a launcher / session-host restart, which
         is the entire point of the mode. We launch through a transient
         PowerShell ``Start-Process`` that exits the moment the console is up:
@@ -925,11 +925,10 @@ class SessionManager:
 
         The ``manual_title`` override works identically for
         :class:`PtySession` and :class:`RemoteSession` — the one title channel
-        that reaches a detached session (issue #458), and the only one the
+        that reaches a detached session, and the only one the
         launcher needs: it names the session in the UI, the window title, the
-        Coding tab, and the Board without any PTY involvement. (Forwarding the
-        rename into the agent's own CLI — #503 — was removed in #555 as
-        unfixably racy against the live TUI; see that issue.)
+        Coding tab, and the Board without any PTY involvement. (The rename is never forwarded into the
+        agent's own CLI: that is unfixably racy against the live TUI.)
         """
         session = self.get(session_id)
         if session is None:
@@ -939,8 +938,7 @@ class SessionManager:
 
     def reap_dead(self) -> List[Any]:
         """Drop sessions whose process has exited. Returns the sessions
-        reaped, so the caller can clean up after them (their large uploads,
-        #1430)."""
+        reaped, so the caller can clean up after them (their large uploads)."""
         with self._lock:
             dead = [sid for sid, s in self._sessions.items() if not s.alive]
             return [self._sessions.pop(sid) for sid in dead]

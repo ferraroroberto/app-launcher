@@ -13,10 +13,10 @@ session-host (it owns the output stream) to
 ``webapp/sessions/<session_id>.transcript``.
 
 Both per-session kinds are kept for ``WebappConfig.session_retention_days``
-(issue #902) and then removed by :mod:`src.session_retention`; this module
+and then removed by :mod:`src.session_retention`; this module
 only ever appends.
 
-``LAUNCHER_AUDIT_DIR`` relocates that whole directory (issue #913). Nothing in
+``LAUNCHER_AUDIT_DIR`` relocates that whole directory. Nothing in
 production sets it; the e2e autoboot does, so a gate run inside the primary
 checkout writes its throwaway sessions to a per-run temp dir instead of the
 live ``webapp/sessions`` the phone reads. Resolved once at import — every

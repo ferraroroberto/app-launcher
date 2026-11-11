@@ -1,4 +1,4 @@
-"""Claude Code's ``ExitPlanMode`` tool, for the Chat pane's plan card (#1151).
+"""Claude Code's ``ExitPlanMode`` tool, for the Chat pane's plan card.
 
 Reading only. The call's input is ``{"plan": "<markdown>", ...}`` (sometimes
 beside ``planFilePath`` / ``allowedPrompts``); its result says how the user
@@ -18,7 +18,7 @@ the dev box and re-probed on Claude Code 2.1.281):
 Answering is not read from here: the pending call is not reliably in the
 transcript while the picker is up, and the first option's meaning depends on
 the session's permission mode. :mod:`src.session_view.plan_picker` reads the picker off
-the terminal's screen instead (#1151).
+the terminal's screen instead.
 """
 
 from __future__ import annotations

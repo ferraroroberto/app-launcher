@@ -68,7 +68,7 @@ class ProjectDir:
     ``project_dir`` is the directory the agent will be cwd'd into; ``id``
     is a stable slug of its name; ``name`` is the **bare on-disk folder
     name**, shown verbatim on the tile (no prettification — that's the
-    Coding-tab tile design from issue #45).
+    Coding-tab tile design).
     """
 
     id: str
@@ -401,7 +401,7 @@ def _run_git(project_dir: Path, args: Sequence[str]) -> Optional[str]:
 
     Returns ``None`` on any non-zero exit, missing ``git`` binary, or
     timeout — callers treat ``None`` as "couldn't determine". Thin wrapper
-    around the shared :func:`src.git_utils.run_git` (issue #794) with this
+    around the shared :func:`src.git_utils.run_git` with this
     module's own 10s timeout (``git status`` can run longer than a plain
     rev-parse).
     """
@@ -414,7 +414,7 @@ def _default_branch(project_dir: Path) -> Optional[str]:
     Prefers the symbolic ``origin/HEAD`` ref (set on clone); falls back to
     whichever of ``main`` / ``master`` exists as a local branch. ``None``
     when none of these resolve. Thin wrapper around the shared
-    :func:`src.git_utils.resolve_default_ref` (issue #794) that adapts the
+    :func:`src.git_utils.resolve_default_ref` that adapts the
     local ``refs/heads/*`` fallback shape to this module's bare-name return.
     """
     ref = resolve_default_ref(
@@ -435,7 +435,7 @@ def git_status(project_dir: Path) -> GitStatus:
     shells out to ``git`` — ``status --porcelain=v2 --branch`` for the
     current branch and dirty flag in one call, then a default-branch
     resolve. Fanned out across threads by ``/api/claude-code/git-status``
-    on a slow (~45 s) poll (#496) — the per-file detail is deliberately
+    on a slow (~45 s) poll — the per-file detail is deliberately
     dropped here so that poll stays cheap; :mod:`src.session_view.git_changes` lists
     it on demand. Non-git folders and any git failure return
     :data:`_NOT_GIT`.
@@ -474,7 +474,7 @@ def classify_bat(bat_path: Path) -> Optional[str]:
     Classification is mutually exclusive — the first match wins:
 
     * ``tray`` — filename stem is ``tray`` AND the body references
-      ``tray_lifecycle.ps1`` (issue #456), the one shared marker every
+      ``tray_lifecycle.ps1``, the one shared marker every
       fleet ``tray.bat`` carries (project-scaffolding's tray.bat.template).
       Checked first: a tray.bat never also matches the other signatures.
     * ``streamlit`` — body contains ``streamlit run``. Bats that *also*

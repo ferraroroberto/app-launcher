@@ -1,4 +1,4 @@
-"""App-launcher's own boot-at-log-on toggle (issue #456, part 1/2).
+"""App-launcher's own boot-at-log-on toggle.
 
 The README's manual recipe (`Auto-start at log on with Task Scheduler`)
 creates an "At log on" scheduled task pointing at ``tray.bat``. Reproducing
@@ -16,7 +16,7 @@ elevation needed, and the standard no-admin mechanism Windows itself
 offers for per-user login autostart (other installed apps, e.g. Telegram,
 already use it on this machine).
 
-Diagnosability (issue #582): a login-time launch that dies silently is
+Diagnosability: a login-time launch that dies silently is
 un-debuggable, so the wrapper is not a bare ``call tray.bat`` — it writes
 a timestamped breadcrumb, redirects ``tray.bat``'s own output, and logs
 its exit code to ``webapp\\startup.log`` (gitignored via ``*.log``) on
@@ -89,8 +89,7 @@ def _wrapper_bat_content(tray_bat: Path) -> str:
     ``tray.bat`` is idempotent (no-op if a tray is already running), so a
     Startup-folder run racing an already-running tray (e.g. a prior manual
     launch) is safe. The breadcrumb + redirected ``tray.bat`` output + logged
-    exit code exist because a login-time failure was otherwise silent (issue
-    #582). The precondition check mirrors the one hard-fail in ``tray.bat``
+    exit code exist because a login-time failure was otherwise silent. The precondition check mirrors the one hard-fail in ``tray.bat``
     (missing shared ``tray_lifecycle.ps1`` → ``exit /b 1``) so that
     machine-config gap is named in the log rather than showing up as a bare
     non-zero exit code.
@@ -123,7 +122,7 @@ def enable(*, tray_bat: Path = TRAY_BAT_PATH, startup_dir: Optional[Path] = None
     content) and raises ``OSError`` otherwise, so a partial/failed write
     surfaces to the caller (the ``/api/settings/boot-autostart`` route turns
     it into a 400) instead of silently reporting success — the failure mode
-    behind issue #582 was exactly a silent no-op.
+    to avoid is a silent no-op.
     """
     target_dir = startup_dir if startup_dir is not None else _startup_dir()
     runtime_files.make_dirs(target_dir)

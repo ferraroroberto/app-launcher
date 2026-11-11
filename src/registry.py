@@ -59,7 +59,7 @@ class RegistryReadError(Exception):
     or parse failed" case, which non-strict callers still fold into an empty
     ``Registry`` (unchanged, so the Apps-tab scan/save flow keeps its existing
     tolerance) but which a strict caller needs to distinguish from a
-    legitimately empty/unconfigured registry (issue #925).
+    legitimately empty/unconfigured registry.
     """
 
 
@@ -116,7 +116,7 @@ def load_registry(path: Optional[Path] = None, *, strict: bool = False) -> Regis
     the original behavior — a missing file, or a read/parse failure, both
     just return an empty ``Registry``. Only ``app.tray.registered_trays``'s
     boot-time autostart walk needs to tell "genuinely nothing configured"
-    apart from "couldn't read the file this time" (issue #925); the Apps-tab
+    apart from "couldn't read the file this time"; the Apps-tab
     scan/save flow and the CLI's ``scan`` command are unaffected.
     """
     target = Path(path) if path is not None else DEFAULT_REGISTRY_PATH

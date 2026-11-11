@@ -19,8 +19,8 @@ Holds:
 - auth secrets (bearer token + login password)
 
 Config only — turning those settings into each agent's actual CLI argv is
-launch logic, and lives in :mod:`src.launching.flags` (``build_*_flags``, split
-out in issue #691). That module imports this one; never the reverse.
+launch logic, and lives in :mod:`src.launching.flags` (``build_*_flags``).
+That module imports this one; never the reverse.
 """
 
 from __future__ import annotations
@@ -96,34 +96,34 @@ def _default_sessions_state_file() -> str:
 
 
 def _default_chief_plan_file() -> str:
-    """Where fleet-config's ``chief_ops.py plan`` writes the chief's plan (#1279)."""
+    """Where fleet-config's ``chief_ops.py plan`` writes the chief's plan."""
     return str(Path.home() / ".claude" / "hooks" / "state" / "chief-plan.json")
 
 
 def _default_chief_managed_file() -> str:
-    """Where fleet-config's ``chief_managed.py`` records chief-dispatched sessions (#1644)."""
+    """Where fleet-config's ``chief_managed.py`` records chief-dispatched sessions."""
     return str(Path.home() / ".claude" / "hooks" / "state" / "chief-managed.json")
 
 
 def _default_chief_inbox_dir() -> str:
-    """The chief's mailbox directory (fleet-config ``docs/chief-mailbox.md``, #1644)."""
+    """The chief's mailbox directory (fleet-config ``docs/chief-mailbox.md``)."""
     return str(Path.home() / ".claude" / "hooks" / "state" / "chief-inbox")
 
 
 def _default_rate_limits_file() -> str:
-    """Where fleet-config's statusline writer caches the 7d usage % (issue #326)."""
+    """Where fleet-config's statusline writer caches the 7d usage %."""
     return str(Path.home() / ".claude" / "hooks" / "state" / "rate-limits.json")
 
 
 def _default_context_filter_mode_file() -> str:
     """Where the fleet context filter's PreToolUse hook reads its machine-wide
-    off/shadow/rewrite switch (fleet-config#544, issue #713)."""
+    off/shadow/rewrite switch."""
     return str(Path.home() / ".fleet-context-filter" / "mode.json")
 
 
 def _default_context_filter_log_file() -> str:
     """Where the fleet context filter appends its shadow/rewrite telemetry
-    (fleet-config#544, issue #713) — one JSON row per hook invocation."""
+    — one JSON row per hook invocation."""
     return str(Path.home() / ".fleet-context-filter" / "shadow.jsonl")
 
 
@@ -485,8 +485,8 @@ def _apply_session_host_override(cfg: WebappConfig) -> WebappConfig:
 
     The webapp subprocess reads its session-host port from config; the e2e
     pre-ship gate sets this env var so its disposable webapp connects to a
-    disposable, free-port session-host rather than adopting the live :8446
-    (issue #260). A missing/blank/invalid value leaves the configured port
+    disposable, free-port session-host rather than adopting the live :8446.
+    A missing/blank/invalid value leaves the configured port
     untouched, so normal runs are unaffected.
     """
     raw = os.environ.get(SESSION_HOST_PORT_ENV, "").strip()
@@ -511,9 +511,8 @@ def _apply_session_host_override(cfg: WebappConfig) -> WebappConfig:
 def _load_secrets(raw: dict) -> Dict[str, str]:
     """``secrets``, honouring the legacy ``webhook_secrets`` key.
 
-    The block shipped under ``webhook_secrets`` before #72 generalized it
-    from webhook secrets to every ``Job.env`` value, and old config files in
-    the wild still spell it that way.
+    The block holds every ``Job.env`` value, but it began as webhook secrets
+    only, and old config files in the wild still spell it that way.
     """
     return {
         str(key): str(value)
@@ -545,7 +544,7 @@ def _load_documents(raw: dict) -> list:
 
 
 def _load_pi_model(raw: dict) -> str:
-    """Migrate the three pre-#845 pinned ids to their current successors."""
+    """Migrate the three retired pinned ids to their current successors."""
     value = str(raw.get("pi_model") or DEFAULT_PI_MODEL)
     return {
         "claude-opus-4-8": "claude-opus-5",
@@ -698,7 +697,7 @@ def _load_field(spec, raw: dict) -> Any:
 
 def _resolve_config_path(path: Optional[Path]) -> Path:
     """Resolve the config file path: explicit arg > ``LAUNCHER_WEBAPP_CONFIG``
-    env override (e2e-gate isolation, issue #441) > the repo default.
+    env override (e2e-gate isolation) > the repo default.
 
     Consulted by both :func:`load_webapp_config` and
     :func:`save_webapp_config` so the override is symmetric — a process
@@ -759,7 +758,7 @@ def _migrate_global_effort(
     models: Tuple[str, ...],
     allowed_for: Callable[[str], Tuple[str, ...]],
 ) -> Dict[str, Any]:
-    """Turn a pre-#1711 global effort key into per-model overrides.
+    """Turn a legacy global effort key into per-model overrides.
 
     One global value was sent to every model of the agent, so ``default`` (the
     old default, ``high``) cannot be told from "never chose" and is dropped:
@@ -768,7 +767,7 @@ def _migrate_global_effort(
     every model that supports it, so nothing changes silently (the live Pi
     ``medium`` stays ``medium``). An existing ``dict_key`` wins. In memory only,
     like the key renames above: the next save writes the new shape and drops the
-    old key. Claude was Step 1 (#1712), Pi Step 2 (#1713).
+    old key.
     """
     if legacy_key not in raw:
         return raw

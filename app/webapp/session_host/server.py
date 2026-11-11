@@ -12,13 +12,13 @@ Routes:
     GET    /sessions/{sid}            → one session's detail
     POST   /sessions/{sid}/input      → write text to the PTY (or, for a
                                         detached session, type it into its
-                                        console — delivered "unconfirmed", #967)
+                                        console — delivered "unconfirmed")
     POST   /sessions/{sid}/resize     → resize the PTY
     POST   /sessions/{sid}/stop       → interrupt | quit | kill
     POST   /sessions/{sid}/rename     → set/clear a manual title override
     POST   /sessions/{sid}/image      → save an uploaded image, type its path
     POST   /sessions/{sid}/large-file → stream a large file to disk, return
-                                        its path (never typed, #1430)
+                                        its path (never typed)
     WS     /sessions/{sid}/ws?role=   → scrollback snapshot + live duplex stream
 
 Only ``kind=pty`` sessions have a WebSocket. ``role`` (``pc`` | ``phone``,
@@ -398,7 +398,7 @@ async def session_image(
 async def session_large_file(
     sid: str, request: Request, max_bytes: int, name: str = ""
 ) -> Dict[str, Any]:
-    """Stream a raw request body to disk (#1430). The body is the file
+    """Stream a raw request body to disk. The body is the file
     itself, not a multipart form, so it can be written as it arrives;
     ``name`` carries the original filename. The path is only returned,
     never typed into the PTY: the caller drops it into the composer with
@@ -504,7 +504,7 @@ async def _json(request: Request) -> Dict[str, Any]:
 
 async def _force_repaint(session) -> None:
     """Nudge a full-screen TUI into repainting a clean frame after a
-    (re)connect (issue #128).
+    (re)connect.
 
     We skip the raw differential-ring replay for these agents, so the
     viewport is blank until the agent next draws. Toggle the PTY width by
@@ -513,7 +513,7 @@ async def _force_repaint(session) -> None:
     The toggle guarantees a change even on a same-size reconnect (where a
     single ``setwinsize`` to the unchanged size is a no-op). A PTY already at
     the width floor toggles one column *up* instead — ``resize`` clamps to
-    the floor and skips an unchanged size (#930), so a toggle down would be
+    the floor and skips an unchanged size, so a toggle down would be
     swallowed and fire no SIGWINCH. Best-effort — a dead PTY's ``resize``
     already swallows its own errors.
     """
@@ -599,15 +599,15 @@ def _upload_name(filename: str) -> str:
 
 
 def _large_dir(project_dir: str, sid: str) -> Path:
-    """Where session ``sid``'s large uploads land (#1430):
+    """Where session ``sid``'s large uploads land:
     ``<upload dir>/large/<sid>``."""
     return _upload_dir(project_dir) / _LARGE_DIR_NAME / re.sub(r"[^A-Za-z0-9_-]", "_", sid)
 
 
 async def _save_image(project_dir: str, file: UploadFile) -> str:
     """Persist an uploaded file under ``<project>/.launcher-tmp`` (see
-    :func:`_upload_dir`) and return its absolute path. Any type is stored
-    (issue #366); oversize and empty uploads are rejected, and an odd-looking
+    :func:`_upload_dir`) and return its absolute path. Any type is stored;
+    oversize and empty uploads are rejected, and an odd-looking
     extension is stripped rather than written."""
     data = await file.read()
     if len(data) > _MAX_IMAGE_BYTES:
@@ -629,7 +629,7 @@ async def _save_large_upload(
     project_dir: str, sid: str, filename: str, request: Request, max_bytes: int
 ) -> Tuple[str, int]:
     """Stream ``request``'s body to ``<upload dir>/large/<sid>/`` and return
-    ``(path, size)`` (#1430).
+    ``(path, size)``.
 
     Written as it arrives, buffered to :data:`_LARGE_FLUSH_BYTES` and flushed
     off the event loop, which keeps serving every live PTY meanwhile. A body
@@ -716,7 +716,7 @@ def _prune_files(directory: Path, ttl_seconds: float, now: float) -> int:
 
 
 def _prune_uploads(project_dir: str, now: Optional[float] = None) -> int:
-    """TTL-prune one project's upload dir (#1430): ordinary attachments past
+    """TTL-prune one project's upload dir: ordinary attachments past
     :data:`_UPLOAD_TTL_SECONDS`, large uploads past :data:`_LARGE_TTL_SECONDS`,
     then any per-session large dir left empty. Returns the files removed."""
     now = time.time() if now is None else now
@@ -749,7 +749,7 @@ def _rmdir_if_empty(path: Path) -> None:
 
 
 def _drop_session_uploads(project_dir: str, sid: str) -> int:
-    """Session end (#1430): delete the large uploads ``sid`` took, i.e. the
+    """Session end: delete the large uploads ``sid`` took, i.e. the
     regular files directly in its leaf. A file the agent moved elsewhere is
     simply no longer there; anything the agent created inside the leaf (a
     subfolder it extracted into) is left alone, and so is the leaf then."""
@@ -777,7 +777,7 @@ def _cleanup_ended_sessions(sessions: Iterable[Any]) -> None:
 
 
 def _publish_chief_session_ends(sessions: Iterable[Any]) -> None:
-    """Tell the chief about reaped chief-managed sessions (#1644). Never raises."""
+    """Tell the chief about reaped chief-managed sessions. Never raises."""
     try:
         registry, inbox = resolve_paths()
         publish_session_ends(sessions, registry=registry, inbox=inbox)

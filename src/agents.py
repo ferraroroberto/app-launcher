@@ -50,10 +50,10 @@ class Agent:
     differently: it must **not** replay the raw scrollback ring on
     (re)connect — doing so dumps stale move-cursor/clear deltas into a
     fresh xterm and re-answers the agent's startup terminal queries (the
-    ``[?1;2c`` DA leak, issue #128) — and instead forces a clean repaint.
+    ``[?1;2c`` DA leak) — and instead forces a clean repaint.
 
     ``resume_token`` is the agent's *native* resume invocation, spliced
-    between the command and the flags for a Resume launch (issue #151) so
+    between the command and the flags for a Resume launch so
     the agent renders its own session picker over the PTY — the launcher
     never builds a session list of its own. It is a flag for the
     flag-shaped agents (Claude/Copilot ``--resume``) and a subcommand for
@@ -63,7 +63,7 @@ class Agent:
 
     ``native_name_flag`` is a spawn-time flag that gives a new session a
     picker-visible title. It is intentionally separate from a live rename:
-    the launcher must never type into a running agent TUI (#555). Empty means
+    the launcher must never type into a running agent TUI. Empty means
     the agent exposes no verified non-PTY naming mechanism.
 
     ``per_launch_model`` records whether a **per-launch** model override
@@ -74,29 +74,29 @@ class Agent:
     means a launch route may pass a ``model_override`` and the agent will
     actually run on it; ``False`` means the launcher cannot honour a
     per-launch model at all, and a route handed one must say so rather than
-    drop it (issue #1044). Adding a seventh agent sets this, and the launch
+    drop it. Adding a seventh agent sets this, and the launch
     route's model catalog and cfg-only builder table are both checked against
     it by ``tests/test_apps_launch_dispatch.py``.
 
     ``console_input`` records whether a *detached* session of this agent
     was empirically shown to take a follow-up message typed into its
     console from outside (``AttachConsole`` + ``WriteConsoleInputW`` key
-    records — ``src/console_input.py``, issue #967). Only agents the probe
-    on the issue proved get the Coding tab's **Send message** item and the
+    records — ``src/console_input.py``). Only agents the probe
+    proved get the Coding tab's **Send message** item and the
     session-host's remote input path; ``False`` means *not probed*, never
     *known broken* — a menu must not offer a dead end, so an unprobed
     agent simply gets no item until it is probed.
 
     ``type_ahead`` records whether a CR typed while the agent is mid-turn was
     empirically shown to *queue* the composer for the agent rather than be
-    lost (issue #1548: Claude Code v2.1.296 paints "Press up to edit queued
+    lost (Claude Code v2.1.296 paints "Press up to edit queued
     messages" and answers the message once the turn yields). The
     session-host's deferred submit presses Enter at once for such an agent
     instead of waiting for the turn to go quiet. ``False`` means *not
     probed*, and keeps the wait-for-quiet watcher.
 
     ``composer_tracked`` records whether the agent's composer was probed for
-    the keys :mod:`src.session_host_composer` reads (issue #1643: typed text,
+    the keys :mod:`src.session_host_composer` reads (typed text,
     Backspace, Ctrl-U, Ctrl-C and Enter, idle and mid-turn, on Claude Code,
     Codex and Pi on 2026-10-17). Only those sessions report
     ``composer_dirty`` as ``True``/``False``; ``False`` here means *not
@@ -236,7 +236,7 @@ def quit_command_for(agent_id: str) -> str:
 
 
 def resume_command_for(agent_id: str) -> str:
-    """Return the agent's native resume token (issue #151).
+    """Return the agent's native resume token.
 
     Spliced between the command and the flags for a Resume launch so the
     agent shows its own session picker (Claude/Copilot ``--resume``, Codex
@@ -286,7 +286,7 @@ _SAFE_TITLE_CHARS = " .,:;()[]{}_-/#?"
 
 
 def native_session_name_flags_for(agent_id: str, title: str) -> str:
-    """Return safe spawn-time picker-name flags for ``title`` (issue #556).
+    """Return safe spawn-time picker-name flags for ``title``.
 
     The title originates outside the command line (for example, from a
     GitHub issue). Only pass it through ``cmd.exe`` when it contains no
@@ -306,8 +306,8 @@ def is_fullscreen(agent_id: str) -> bool:
     """Whether ``agent_id`` is a full-screen differential TUI.
 
     Drives the session-host's (re)connect handling: full-screen agents
-    skip the raw scrollback-ring replay and get a forced repaint instead
-    (issue #128). An unknown id is treated as non-fullscreen — the safe
+    skip the raw scrollback-ring replay and get a forced repaint instead.
+    An unknown id is treated as non-fullscreen — the safe
     inline default, matching Claude Code.
     """
     agent = SESSION_HOST_AGENTS.get(agent_id)
@@ -316,7 +316,7 @@ def is_fullscreen(agent_id: str) -> bool:
 
 def supports_console_input(agent_id: str) -> bool:
     """Whether a detached session of ``agent_id`` may be sent a message
-    through its console (``Agent.console_input``, issue #967).
+    through its console (``Agent.console_input``).
 
     Unknown ids are ``False`` — the same *not probed* reading as an agent
     whose flag is unset, and the guard the session-host's remote input path
@@ -328,7 +328,7 @@ def supports_console_input(agent_id: str) -> bool:
 
 def supports_type_ahead(agent_id: str) -> bool:
     """Whether a CR sent to a mid-turn ``agent_id`` queues its composer
-    (``Agent.type_ahead``, issue #1548). Unknown ids are ``False``."""
+    (``Agent.type_ahead``). Unknown ids are ``False``."""
     agent = SESSION_HOST_AGENTS.get(agent_id)
     return bool(agent is not None and agent.type_ahead)
 
@@ -344,7 +344,7 @@ def supports_queue_edit(agent_id: str) -> bool:
 def is_installed(agent_id: str) -> bool:
     """Whether ``agent_id``'s command resolves on the **effective** PATH.
 
-    Not the inherited one (issue #668): a CLI installed while the launcher
+    Not the inherited one: a CLI installed while the launcher
     is running writes its directory into the registry, which no running
     process ever re-reads — so ``shutil.which`` against ``os.environ`` would
     keep reporting "not installed" until Explorer restarted or the user
@@ -363,12 +363,12 @@ def detect_agents() -> List[Dict[str, object]]:
 
     Each dict is ``{"id", "label", "available", "fullscreen",
     "console_input"}``; ``available`` is the live ``PATH`` check,
-    ``console_input`` is the probe-proven detached-send flag (#967) the
+    ``console_input`` is the probe-proven detached-send flag the
     Coding tab gates its **Send message** item on, and ``fullscreen`` lets the
     SPA tell a differential TUI (Codex/ratatui) apart from inline Claude so
     the phone terminal can pan the fixed canvas above the keyboard instead
     of reflowing — reflowing resizes the PTY and makes ratatui repaint on
-    every keyboard open/close (issue #264). The Coding tab disables an
+    every keyboard open/close. The Coding tab disables an
     agent's launch button (with a hover hint) when ``available`` is
     ``False``.
     """
