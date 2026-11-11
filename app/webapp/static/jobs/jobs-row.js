@@ -15,6 +15,7 @@ import { ACTION_ROW_MENU, actionRow } from '../action-rows.js';
 import { avatar, chip } from '../glance.js';
 import { createRowMenu } from '../_vendored/row-menu/row-menu.js';
 import { icon } from '../_vendored/icons/icons.js';
+import { isActive } from './run-status.js';
 
 // One menu instance for every job row (the pattern apps-coding.js uses for
 // the ⋯ project menu): it remembers which row was open across the 4s poll's
@@ -268,7 +269,7 @@ function describeLastRun(job) {
     const ago = fmtAgo(toEpoch(job.last_run.started_at));
     const status = runOutcome(job.last_run) || '?';
     const duration = formatDuration(job.last_run.duration_seconds);
-    if (job.running || status === 'running' || status === 'pending') {
+    if (job.running || isActive(status)) {
       bits.push('running now' + (ago ? ' · started ' + ago + ' ago' : ''));
     } else {
       const label = status === 'unconfirmed' ? 'not confirmed' : status;
