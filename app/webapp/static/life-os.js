@@ -28,6 +28,7 @@ import { renderHomeHead, renderSettingsHead } from './home-head.js';
 import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
 import { applyLaunchSizePayload } from './shared/launch-size.js';
 import { handleLaunchResponse } from './terminal.js';
+import { SensitiveOutcome, runSensitiveAction } from './shared/sensitive-action.js';
 import { icon } from './_vendored/icons/icons.js';
 import { wireModelCombo } from './shared/model-combo.js';
 import { calendarDaysFromToday } from './shared/format.js';
@@ -233,22 +234,22 @@ async function launchChannel(p) {
   const resume = launchResume();
   const payload = { mode: 'pty', resume: resume };
   applyLaunchSizePayload(payload);
-  try {
-    const body = await terminalJsonApi(
-      '/api/life-os/channels/' + encodeURIComponent(p.id) + '/launch',
-      { method: 'POST', body: payload }
-    );
-    toast(
-      (resume ? 'Resumed ' : 'Launched ') + p.label + ' on Telegram',
-      'good',
-      { icon: resume ? 'rotate-ccw' : 'send-horizontal' }
-    );
-    fetchChannels().catch(function () {});
-    handleLaunchResponse(body.session);
-  } catch (exc) {
-    apiFailToast('Telegram launch failed', exc);
-    fetchChannels().catch(function () {});
-  }
+  const verdict = await runSensitiveAction({
+    key: 'channel:' + p.id,
+    pending: (resume ? 'Resuming ' : 'Launching ') + p.label + ' on Telegram…',
+    icon: resume ? 'rotate-ccw' : 'send-horizontal',
+    run: function () {
+      return terminalJsonApi(
+        '/api/life-os/channels/' + encodeURIComponent(p.id) + '/launch',
+        { method: 'POST', body: payload }
+      );
+    },
+    done: function () { return (resume ? 'Resumed ' : 'Launched ') + p.label + ' on Telegram'; },
+    failPrefix: 'Telegram launch failed',
+    unconfirmed: 'Launch of ' + p.label + ' not confirmed — check the Telegram sessions before trying again.',
+  });
+  fetchChannels().catch(function () {});
+  if (verdict.outcome === SensitiveOutcome.DONE) handleLaunchResponse(verdict.result.session);
 }
 
 // Restart a running bot: the server quits it, confirms it is gone and
@@ -265,22 +266,24 @@ async function restartChannel(p) {
   if (!ok) return;
   const payload = {};
   applyLaunchSizePayload(payload);
-  try {
-    const body = await terminalJsonApi(
-      '/api/life-os/channels/' + encodeURIComponent(p.id) + '/restart',
-      { method: 'POST', body: payload }
-    );
-    toast(
-      (body.restarted ? 'Restarted ' : 'Started ') + p.label + ' on Telegram',
-      'good',
-      { icon: 'refresh-cw' }
-    );
-    fetchChannels().catch(function () {});
-    handleLaunchResponse(body.session);
-  } catch (exc) {
-    apiFailToast('Telegram restart failed', exc);
-    fetchChannels().catch(function () {});
-  }
+  const verdict = await runSensitiveAction({
+    key: 'channel:' + p.id,
+    pending: 'Restarting ' + p.label + ' on Telegram…',
+    icon: 'refresh-cw',
+    run: function () {
+      return terminalJsonApi(
+        '/api/life-os/channels/' + encodeURIComponent(p.id) + '/restart',
+        { method: 'POST', body: payload }
+      );
+    },
+    done: function (body) {
+      return (body.restarted ? 'Restarted ' : 'Started ') + p.label + ' on Telegram';
+    },
+    failPrefix: 'Telegram restart failed',
+    unconfirmed: 'Restart of ' + p.label + ' not confirmed — check the Telegram sessions before trying again.',
+  });
+  fetchChannels().catch(function () {});
+  if (verdict.outcome === SensitiveOutcome.DONE) handleLaunchResponse(verdict.result.session);
 }
 
 // A skill counts as in use for this many days after its last captured
@@ -623,22 +626,24 @@ async function launchRecap() {
   // the width the overlay will fit() to. Remote
   // launches have no terminal/mirror, so it only matters for pty.
   if (mode !== 'remote') applyLaunchSizePayload(payload);
-  try {
+  const verdict = await runSensitiveAction({
+    key: 'recap',
+    pending: 'Launching weekly recap…',
+    icon: 'sprout',
     // Passkey-gated like /api/board/issues/start: a spawn is
     // terminal-grade, so the terminal token must ride along.
-    const body = await terminalJsonApi('/api/life-os/recap/launch', { method: 'POST', body: payload });
-    toast(
-      'Launched weekly recap' + modelTag(model) +
-        (mode === 'remote' ? ' (detached)' : ''),
-      'good',
-      { icon: 'sprout' }
-    );
-    // A desktop browser gets its terminal in a dedicated PC Edge window,
-    // not in-page — so it stays on the launcher SPA.
-    handleLaunchResponse(body.session);
-  } catch (exc) {
-    apiFailToast('Recap launch failed', exc);
-  }
+    run: function () {
+      return terminalJsonApi('/api/life-os/recap/launch', { method: 'POST', body: payload });
+    },
+    done: function () {
+      return 'Launched weekly recap' + modelTag(model) + (mode === 'remote' ? ' (detached)' : '');
+    },
+    failPrefix: 'Recap launch failed',
+    unconfirmed: 'Recap launch not confirmed — check the session list before trying again.',
+  });
+  // A desktop browser gets its terminal in a dedicated PC Edge window,
+  // not in-page — so it stays on the launcher SPA.
+  if (verdict.outcome === SensitiveOutcome.DONE) handleLaunchResponse(verdict.result.session);
 }
 
 // A new conversation with the skill: the kebab's "Start new
@@ -659,27 +664,31 @@ export async function launchSkill(s, opts) {
   // Same size contract as launchRecap. Remote
   // launches have no terminal/mirror, so it only matters for pty.
   if (mode !== 'remote') applyLaunchSizePayload(payload);
-  try {
+  const verdict = await runSensitiveAction({
+    // One key for a skill's launch and its picker: both spawn a session in it.
+    key: 'skill-launch:' + s.id,
+    pending: (picker ? 'Opening the session picker for ' : 'Launching ') + s.name + '…',
+    icon: picker ? 'clipboard-list' : 'sprout',
     // Passkey-gated, same as launchRecap.
-    const body = await terminalJsonApi(
-      '/api/life-os/skills/' + encodeURIComponent(s.id) + '/launch',
-      { method: 'POST', body: payload }
-    );
-    toast(
-      (picker ? 'Opening Claude’s session picker for ' + s.name
+    run: function () {
+      return terminalJsonApi(
+        '/api/life-os/skills/' + encodeURIComponent(s.id) + '/launch',
+        { method: 'POST', body: payload }
+      );
+    },
+    done: function () {
+      return (picker ? 'Opening Claude’s session picker for ' + s.name
         : 'Launched ' + s.name + modelTag(model)) +
-        (mode === 'remote' ? ' (detached)' : ''),
-      'good',
-      { icon: picker ? 'clipboard-list' : 'sprout' }
-    );
-    // Full-control sessions drop straight into the terminal; detached
-    // ones only appear in the Coding tab's running-sessions list. A
-    // desktop browser gets its terminal in a dedicated PC Edge window
-    // instead of in-page, so it stays on the launcher SPA.
-    handleLaunchResponse(body.session);
-  } catch (exc) {
-    apiFailToast('Launch failed', exc);
-  }
+        (mode === 'remote' ? ' (detached)' : '');
+    },
+    failPrefix: 'Launch failed',
+    unconfirmed: 'Launch of ' + s.name + ' not confirmed — check the session list before trying again.',
+  });
+  // Full-control sessions drop straight into the terminal; detached
+  // ones only appear in the Coding tab's running-sessions list. A
+  // desktop browser gets its terminal in a dedicated PC Edge window
+  // instead of in-page, so it stays on the launcher SPA.
+  if (verdict.outcome === SensitiveOutcome.DONE) handleLaunchResponse(verdict.result.session);
 }
 
 // The model a resumed conversation came back on, for its toast: the
@@ -706,22 +715,25 @@ async function resumeLatest(s) {
   const mode = launchDetached() ? 'remote' : 'pty';
   const payload = { mode: mode };
   if (mode !== 'remote') applyLaunchSizePayload(payload);
-  try {
-    const body = await terminalJsonApi(
-      '/api/life-os/skills/' + encodeURIComponent(s.id) + '/conversations/resume-latest',
-      { method: 'POST', body: payload }
-    );
-    if (body.conversation_action === 'open') {
-      toast('Opened ' + s.name + ': that conversation is already running', 'good',
-        { icon: 'rotate-ccw' });
-    } else {
-      toast('Resumed ' + s.name + resumedModelTag(body) +
-        (mode === 'remote' ? ' (detached)' : ''), 'good', { icon: 'rotate-ccw' });
-    }
-    handleLaunchResponse(body.session);
-  } catch (exc) {
-    apiFailToast('Resume failed', exc);
-  }
+  const verdict = await runSensitiveAction({
+    key: 'resume-latest:' + s.id,
+    pending: 'Resuming ' + s.name + '…',
+    icon: 'rotate-ccw',
+    run: function () {
+      return terminalJsonApi(
+        '/api/life-os/skills/' + encodeURIComponent(s.id) + '/conversations/resume-latest',
+        { method: 'POST', body: payload }
+      );
+    },
+    done: function (body) {
+      return body.conversation_action === 'open'
+        ? 'Opened ' + s.name + ': that conversation is already running'
+        : 'Resumed ' + s.name + resumedModelTag(body) + (mode === 'remote' ? ' (detached)' : '');
+    },
+    failPrefix: 'Resume failed',
+    unconfirmed: 'Resume of ' + s.name + ' not confirmed — check the session list before trying again.',
+  });
+  if (verdict.outcome === SensitiveOutcome.DONE) handleLaunchResponse(verdict.result.session);
 }
 
 // A sheet (the browser, document, start picker, conversation sheets) that

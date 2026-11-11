@@ -541,7 +541,10 @@ time_budget_s         = 1200
 # and sheet, so no existing same-setup test could carry its assertions.
 # 2026-11-10: 646 -> 647, one node for the Board Ideas card (tests/e2e/board/test_board_ideas.py):
 # a new card and sheet with their own route, so no existing Board test shares its setup.
-test_budget = 647
+# 2026-11-11: 647 -> 651, four nodes (two tests, both projections) for tests/e2e/life_os/test_sensitive_action_feedback.py: a held (never-answered)
+# stop route and a held resume route, so no existing test shares their setup. The tests carry the iphone marker
+# (the iPhone projection is the phone-width run) and the stop failure is folded into the stop test.
+test_budget = 651
 
 # --- static assets under the webapp's static dir -> Chromium smoke ----------
 [[e2e.rule]]

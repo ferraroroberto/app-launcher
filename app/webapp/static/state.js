@@ -282,6 +282,7 @@ export const els = {
   lifeOsConvoSheetSummary: document.getElementById('lifeOsConvoSheetSummary'),
   lifeOsConvoSheetNote: document.getElementById('lifeOsConvoSheetNote'),
   lifeOsConvoSheetResume: document.getElementById('lifeOsConvoSheetResume'),
+  lifeOsConvoToast: document.getElementById('lifeOsConvoToast'),
   lifeOsConvoViewer: document.getElementById('lifeOsConvoViewer'),
   lifeOsViewerTitle: document.getElementById('lifeOsViewerTitle'),
   lifeOsViewerClose: document.getElementById('lifeOsViewerClose'),

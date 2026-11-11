@@ -20,6 +20,7 @@ import { els, state } from '../state.js';
 import { apiFailToast, jsonApi, toast } from '../api.js';
 import { applyLaunchSizePayload } from '../shared/launch-size.js';
 import { handleLaunchResponse } from '../terminal.js';
+import { SensitiveOutcome, runSensitiveAction } from '../shared/sensitive-action.js';
 import { icon } from '../_vendored/icons/icons.js';
 import { calendarDaysFromToday, fitTitle, nameLabel } from '../shared/format.js';
 import { actionRow } from '../action-rows.js';
@@ -750,26 +751,38 @@ async function resumeConversation(r, action) {
     payload.confirm_new = true;
   }
   if (mode !== 'remote') applyLaunchSizePayload(payload);
-  try {
-    const body = await jsonApi(
-      '/api/life-os/skills/' + encodeURIComponent(r.skill) + '/conversations/launch',
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }
-    );
-    toast(
-      (action === 'handoff' ? 'Started new conversation from ' : 'Resumed ') +
-        (r.title || r.topic || r.skill) +
-        (action === 'handoff' ? modelTag(model) : resumedModelTag(body)) +
+  const name = r.title || r.topic || r.skill;
+  const handoff = action === 'handoff';
+  // The sheet is a modal: the page's toast would sit under it, so the pending
+  // and failure toasts ride the sheet's own.
+  const sheetOpen = !!(els.lifeOsConvoSheet && els.lifeOsConvoSheet.open);
+  const verdict = await runSensitiveAction({
+    key: 'convo-launch:' + r.path,
+    pending: (handoff ? 'Starting a new conversation from ' : 'Resuming ') + name + '…',
+    icon: handoff ? 'messages-square' : 'rotate-ccw',
+    host: sheetOpen ? els.lifeOsConvoToast : undefined,
+    doneOnPage: true,
+    run: function () {
+      return jsonApi(
+        '/api/life-os/skills/' + encodeURIComponent(r.skill) + '/conversations/launch',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }
+      );
+    },
+    done: function (body) {
+      return (handoff ? 'Started new conversation from ' : 'Resumed ') + name +
+        (handoff ? modelTag(model) : resumedModelTag(body)) +
         (body.handoff_truncated ? ' (selected context truncated)' : '') +
-        (mode === 'remote' ? ' (detached)' : ''),
-      'good', { icon: action === 'handoff' ? 'messages-square' : 'rotate-ccw' }
-    );
-    // The terminal opens over the page, not in the top layer: the sheets
-    // must go first.
-    closeConvoLayers();
-    handleLaunchResponse(body.session);
-  } catch (exc) {
-    apiFailToast(action === 'handoff' ? 'New conversation failed' : 'Resume failed', exc);
-  }
+        (mode === 'remote' ? ' (detached)' : '');
+    },
+    failPrefix: handoff ? 'New conversation failed' : 'Resume failed',
+    unconfirmed: (handoff ? 'Starting from ' : 'Resume of ') + name +
+      ' not confirmed — check the session list before trying again.',
+  });
+  if (verdict.outcome !== SensitiveOutcome.DONE) return;
+  // The terminal opens over the page, not in the top layer: the sheets
+  // must go first.
+  closeConvoLayers();
+  handleLaunchResponse(verdict.result.session);
 }
 
 // The sheet's actions read the conversation it shows at tap time, and hold

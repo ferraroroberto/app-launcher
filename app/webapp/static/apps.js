@@ -16,6 +16,7 @@ import { renderHomeHead } from './home-head.js';
 import { fmtAgo } from './sessions.js';
 import { applyLaunchSizePayload } from './shared/launch-size.js';
 import { handleLaunchResponse } from './terminal.js';
+import { SensitiveOutcome, runSensitiveAction } from './shared/sensitive-action.js';
 import { switchEl } from './_vendored/switch/switch.js';
 import {
   codingLaunch, renderAgentVisibility, renderCodingList, renderFavoriteAgent,
@@ -295,25 +296,32 @@ export async function launchApp(a, agentId, stealth) {
       opts.headers = { 'Content-Type': 'application/json' };
       opts.body = JSON.stringify(payload);
     }
-    const body = await jsonApi(
-      '/api/apps/' + encodeURIComponent(a.id) + '/launch', opts
-    );
-    // Tag the toast with the agent's label for any non-default agent;
-    // resolved against the registry so a new agent needs no change here.
-    let agentTag = '';
-    if (a.kind === 'claude-code' && body.agent && body.agent !== 'claude') {
-      const known = state.agents.find(function (ag) { return ag.id === body.agent; });
-      agentTag = ' (' + (known ? known.label : body.agent) + ')';
-    }
-    // A stealth launch leaves nothing on screen to confirm it worked, so
-    // the toast is the only feedback — say the mode out loud.
-    toast(
-      (resume ? 'Resumed ' : 'Launched ') + a.name + agentTag +
-        (mode === 'remote' ? ' (detached)' : '') +
-        (stealth ? ' (stealth)' : ''),
-      'good',
-      { icon: resume ? 'rotate-ccw' : (stealth ? 'eye-off' : 'rocket') }
-    );
+    const verdict = await runSensitiveAction({
+      key: 'app-launch:' + a.id,
+      pending: (resume ? 'Resuming ' : 'Launching ') + a.name + '…',
+      icon: resume ? 'rotate-ccw' : (stealth ? 'eye-off' : 'rocket'),
+      run: function () {
+        return jsonApi('/api/apps/' + encodeURIComponent(a.id) + '/launch', opts);
+      },
+      done: function (reply) {
+        // Tag the toast with the agent's label for any non-default agent;
+        // resolved against the registry so a new agent needs no change here.
+        let agentTag = '';
+        if (a.kind === 'claude-code' && reply.agent && reply.agent !== 'claude') {
+          const known = state.agents.find(function (ag) { return ag.id === reply.agent; });
+          agentTag = ' (' + (known ? known.label : reply.agent) + ')';
+        }
+        // A stealth launch leaves nothing on screen to confirm it worked, so
+        // the toast is the only feedback — say the mode out loud.
+        return (resume ? 'Resumed ' : 'Launched ') + a.name + agentTag +
+          (mode === 'remote' ? ' (detached)' : '') +
+          (stealth ? ' (stealth)' : '');
+      },
+      failPrefix: 'Launch failed',
+      unconfirmed: 'Launch of ' + a.name + ' not confirmed — check the session list before trying again.',
+    });
+    if (verdict.outcome !== SensitiveOutcome.DONE) return;
+    const body = verdict.result;
     if (a.kind === 'claude-code' && body.session) {
       // Full-control sessions drop straight into the terminal; detached
       // ones only appear in the running-sessions list. A desktop browser

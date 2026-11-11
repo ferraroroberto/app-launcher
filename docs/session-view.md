@@ -84,6 +84,8 @@ The quit command is typed as **three separate keystrokes with a beat between the
 
 Same bytes, same order, just not glued together.
 
+**Every stop, resume, hand-off and start answers the tap at once.** One wrapper (`static/shared/sensitive-action.js`) serves the Coding tab, the terminal overlay, the Board drawer and Life OS. The pending toast ("Stopping X…") shows before the request is sent, and a repeat tap on the same target (a session, a capture, a skill, an issue) sends nothing while the first is in flight. The toast is then replaced by the outcome: *done*; *failed*, with the server's reason; or *not confirmed*, when the request outlives 20 seconds or the connection dies with no answer, so the server may have acted. A timeout never reads as success, and the target stays held until the late request really settles. A tap inside the Life OS conversation sheet uses the sheet's own toast, since the page's would sit under the modal. The chief guard and the Telegram protection still run before the wrapper does.
+
 ## Terminal ⇄ Chat
 
 Switching modes never reconnects or reloads anything: the live terminal keeps its socket and scrollback while Chat is up (no repaint, no duplicated output), and Chat keeps its loaded pages while the terminal is up.
