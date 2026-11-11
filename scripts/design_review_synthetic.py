@@ -65,6 +65,7 @@ if str(REPO_ROOT) not in sys.path:
 from app.webapp.event_loop import LOOP_FACTORY  # noqa: E402
 from scripts import synthetic_gh  # noqa: E402
 from src import runtime_files
+from src.chief.queue_status import QueueStatus  # noqa: E402
 from src.clients.github import GH_CMD_ENV  # noqa: E402
 from src.git_utils import run_git  # noqa: E402
 from src.subprocess_flags import NO_WINDOW  # noqa: E402
@@ -183,8 +184,9 @@ def seed(root: Path, app: Path, session_host_port: int, webapp_port: int) -> Pat
         "version": 1, "updated_at": _iso(now - _dt.timedelta(minutes=12)),
         "lanes": [{"repo": PROJECT_NAME, "session": "", "item": "#12", "status": "building"}],
         "queue": [
-            {"repo": PROJECT_NAME, "ref": "#12", "title": "Synthetic item in progress", "status": "building", "note": ""},
-            {"repo": PROJECT_NAME, "ref": "#13", "title": "Synthetic item queued next", "status": "queued",
+            {"repo": PROJECT_NAME, "ref": "#12", "title": "Synthetic item in progress",
+             "status": QueueStatus.BUILDING, "note": ""},
+            {"repo": PROJECT_NAME, "ref": "#13", "title": "Synthetic item queued next", "status": QueueStatus.QUEUED,
              "note": "after #12"}],
         "waiting_on_roberto": [{"text": "A synthetic decision", "ref": f"{PROJECT_NAME}#14"}]})
 

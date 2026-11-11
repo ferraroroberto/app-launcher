@@ -1219,3 +1219,9 @@ name   = "board-claim-state-ui"
 module = "app/webapp/static/board/claim-state.js"
 type   = "ClaimState"
 derive = "claimState"
+
+[[state_machines]]
+name   = "chief-plan-queue-status"
+module = "src/chief/queue_status.py"
+type   = "QueueStatus"
+derive = "queue_status"

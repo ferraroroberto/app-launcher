@@ -51,6 +51,7 @@ from src.chief.job_failed import publish_job_failed
 from src.clients import llm as llm_client
 from src.jobs.history import read_output_tail
 from src.jobs.outcome import OUTCOME_DEFERRED, OUTCOME_UNCONFIRMED, run_outcome
+from src.jobs.run_status import RunStatus
 from src.jobs.stats import consecutive_failed_runs
 from src.notify import NotifierError as TelegramNotifierError
 from src.notify import TelegramNotifier
@@ -311,7 +312,7 @@ def notify_failure(
     the job itself declares ``deferred`` (#1316) sends nothing at all.
     """
     try:
-        if status != "failed":
+        if status != RunStatus.FAILED:
             return
         wording = _failure_wording(job, run_dir, status, exit_code, reaped, watchdog_note)
         if wording is None:

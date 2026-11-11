@@ -197,6 +197,7 @@ def grok_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
             _attach_result(
                 entries, open_calls, update.get("toolCallId"),
                 _grok_result_text(update), offset, ts, False,
+                # state-literal-exempt: ACP's tool-call status, written by the grok CLI; this reader never moves it
                 error=update.get("status") == "failed",
             )
         # `turn_completed` and `hook_execution` carry no conversation text.

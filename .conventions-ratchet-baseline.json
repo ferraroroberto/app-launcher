@@ -2,10 +2,6 @@
   "version": 1,
   "entries": [
     {"key": "app/webapp/static/chat/chat-pending.js", "counts": {"state-literal": 1}},
-    {"key": "app/webapp/static/sessions.js", "counts": {"state-literal": 1}},
-    {"key": "scripts/design_review_synthetic.py", "counts": {"state-literal": 1}},
-    {"key": "src/board/backlog_buckets.py", "counts": {"state-literal": 1}},
-    {"key": "src/notifications.py", "counts": {"state-literal": 1}},
-    {"key": "src/transcript_flavors/grok.py", "counts": {"state-literal": 1}}
+    {"key": "app/webapp/static/sessions.js", "counts": {"state-literal": 1}}
   ]
 }
