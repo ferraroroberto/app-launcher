@@ -1,30 +1,28 @@
-/* Floating bottom-tab navigation — visual contract for the fleet's canonical
- * primary nav. VENDORED VERBATIM from project-scaffolding; do NOT edit per-app.
+/* Floating bottom-tab navigation: the visual contract for the fleet's primary
+ * nav. VENDORED VERBATIM from project-scaffolding; do NOT edit per-app.
  *
- * Every colour, radius, and spacing value is a design-system CSS custom property
- * (see ~/.claude/design.md + design.dark.md). The consuming app MUST define
- * these tokens (in its own :root / [data-theme] blocks); this file only
- * *references* them so one spec drives every app's look. The required tokens are
- * listed in this folder's README.md.
+ * Every colour, radius and spacing value is a design-system custom property
+ * (~/.claude/design.md + design.dark.md) that the consuming app defines in its
+ * own :root / [data-theme] blocks; this file only references them. The tokens
+ * are listed in this folder's README.md.
  *
- * Pairs with nav-tabs.js (behaviour) and nav-tabs.html (markup skeleton).
- *
- * Desktop (pointer: fine) renders a top segmented control, which becomes an 80px
- * left rail on a wide window (min-width: 1100px); touch / installed-PWA
- * (pointer: coarse, narrow) renders the floating bottom-tab pill — that pill is
- * the fleet navigation contract every app must feel identical on. */
+ * Pairs with nav-tabs.js (behaviour) and nav-tabs.html (markup skeleton). A
+ * fine pointer gets a top segmented control, a wide window (1100px) a left
+ * rail, a phone (coarse pointer, 520px or less) the floating glass pill: the
+ * navigation contract every app must feel identical on. */
 
-/* ----------------------------------------------------------- tabs (desktop) */
+/* ------------------------------------------------- inline segmented control */
 .tabs {
   display: flex;
   gap: var(--space-xs);
-  /* Body-level nav: match .app's content column (layout.measure, 772px,
-     minus 2×--gap) because the nav is intentionally outside .app on iOS PWA. */
+  /* The nav is a body-level sibling of .app (iOS anchors a fixed descendant of
+     a scroller to the scrolled content), so it sizes itself to .app's column:
+     layout.measure minus the gap on each side. */
   width: calc(100% - var(--gap) - var(--gap));
   max-width: calc(var(--layout-measure, 772px) - var(--gap) - var(--gap));
   margin: calc(env(safe-area-inset-top, 0px) + var(--gap) + var(--space-xs)) auto 14px;
-  background: var(--card);
   padding: var(--space-xs);
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   position: sticky;
@@ -37,28 +35,24 @@
   align-items: center;
   justify-content: center;
   gap: 0.35em;
+  padding: 9px 10px;
   background: transparent;
   border: 0;
-  padding: 9px 10px;
   border-radius: var(--radius-pill);
   color: var(--muted);
   font: inherit;
   line-height: normal;
   font-size: var(--font-label);
   font-weight: 600;
-  cursor: pointer;
   white-space: nowrap;
+  cursor: pointer;
 }
 .tab.active { background: var(--accent-soft); color: var(--accent-text); }
 .tab:active { transform: scale(0.97); }
-/* The stroke SVG icon shows everywhere — desktop segmented control and mobile
-   pill alike (icon-as-SVG is the fleet's direction). Sized in `em` so it
-   tracks the label's font-size; the coarse-pointer block below re-sizes it to
-   the pill's --bottom-tabs-icon and stacks it above the label.
-   Scoped under .tabs (0,2,0) here and in both re-sizes below, so an app's own
-   single-class icon utility (`.icon { width: 1em }`, loaded after this file)
-   can't resize the nav's glyphs: it shrank the rail's icons to 12px in
-   home-automation. */
+/* The stroke icon shows in every layout, sized in em so it tracks the label.
+   Every icon size is scoped under .tabs, so an app's own one-class icon
+   utility (`.icon { width: 1em }`) cannot resize the glyphs whatever the load
+   order. */
 .tabs .tab-icon {
   display: block;
   flex: none;
@@ -70,21 +64,15 @@
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-/* Optional count badge: nav-tabs.js setBadge() adds
-   it, so a nav that never calls setBadge carries none of these elements. It sits
-   on the icon's top-right corner in all three placements (inline tabs, pill,
-   rail) because the first badge wraps the icon in .tab-icon-wrap, the box it is
-   positioned against. design.md: rounded.pill, the caption weight, attention
-   fill with card text (4.5:1 in light and dark, measured in test_vendored_nav).
-   Geometry is px, not rem/em: the badge must not reflow with the Large text
-   size. Never animated, so there is nothing for prefers-reduced-motion to
-   cancel. Opaque, so the active tab's accent-soft tint can't hide it.
-   The optional danger tone (setBadge's `tone`) swaps
-   the fill for the danger one (--deficit) under the same card text, for a count
-   that is an alarm rather than a to-do; attention stays the default. Both tones
-   are contrast-measured in test_vendored_nav.
-   Requires --attention (and --deficit for the danger tone), read with no
-   fallback, only when a badge is shown. */
+/* The capsule behind the active tab exists only in the phone pill; the other
+   layouts tint the tab itself. nav-tabs.js inserts it, never the markup. */
+.tabs .tab-pill { display: none; }
+
+/* Optional count badge, added by setBadge(): a nav that never calls it carries
+   none of these elements. It sits on the corner of the icon's wrapper in every
+   layout. Sized in px so it does not reflow with the Large text size, opaque
+   so the active tint cannot hide it, never animated. Reads --attention (and
+   --deficit for the danger tone) with no fallback, only while a badge shows. */
 .tabs .tab-icon-wrap {
   position: relative;
   display: block;
@@ -109,20 +97,20 @@
   font-variant-numeric: tabular-nums;
   pointer-events: none;
 }
-.tabs .tab-badge[data-tone="danger"] {
-  background: var(--deficit);
-}
-/* Spoken as part of the tab's name, never painted. Deliberately inline with a
-   zero font size, not the usual absolutely positioned 1px box: an absolute box
-   is block-level, and the accessible-name computation then puts a space before
-   it ("Board , 2 waiting"). Zero-size text has no width, so it also cannot push
-   the label into its ellipsis. */
+.tabs .tab-badge[data-tone="danger"] { background: var(--deficit); }
+/* Spoken as part of the tab's name, never painted. Inline zero-size text, not
+   an absolutely positioned 1px box: a block puts a space before it in the
+   accessible name ("Board , 2 waiting"), and zero-size text cannot push the
+   label into its ellipsis. */
 .tabs .tab-badge-sr {
   font-size: 0;
   line-height: 0;
   white-space: nowrap;
   user-select: none;
 }
+
+/* A narrow window on a device that reports no pointer at all: the layouts
+   below each set their own size, so this is all such a device gets. */
 @media (max-width: 430px) {
   .tab {
     min-width: 0;
@@ -130,25 +118,15 @@
     padding: 8px 2px;
   }
 }
-/* Narrow non-touch windows (a squeezed desktop browser, fine-pointer tablets):
-   an icon BESIDE its label no longer fits, and labels collided with the next
-   tab. Stack the icon OVER the label instead, the
-   mobile pill's own shape, so every tab keeps its label: the nav contract is
-   "icon and label, never icon-only". Measured at five tabs
-   from 320 to 520px, Chromium and WebKit: inline, 7-8 letter labels clipped
-   below ~440px; stacked, every label fits. The
-   ellipsis is the safety net for the Large text step at 320px. min-height
-   holds the 44px floor the stack would otherwise miss by 2px. The
-   coarse-pointer pill below is untouched: it matches (pointer: coarse). */
-@media (pointer: fine) and (max-width: 520px) {
+/* Icon over label wherever a tab is narrow or tall: a squeezed fine-pointer
+   window, the phone pill, the rail. The nav is never icon-only; the label
+   ellipsizes as the last resort. */
+@media (pointer: fine) and (max-width: 520px),
+       (pointer: coarse) and (max-width: 520px),
+       (min-width: 1100px) and (pointer: fine) {
   .tab {
     flex-direction: column;
-    gap: 3px;
     min-width: 0;
-    min-height: var(--row-sm);
-    padding: 6px 2px;
-    font-size: var(--font-caption);
-    line-height: 1.1;
   }
   .tab-label {
     display: block;
@@ -157,30 +135,35 @@
     text-overflow: ellipsis;
   }
 }
-/* A touch device wider than the phone pill (a tablet, a large phone in
-   landscape) keeps the inline segmented control, whose padding alone is 37px
-   tall. The 44px floor is a min-height, so the tab grows by 7px and the icon
-   and label stay centred; the pill (max-width 520px) and the rail's own
-   --row-lg are untouched. */
+/* A squeezed fine-pointer window: an icon beside a 7-8 letter label no longer
+   fits five tabs, so the stack takes the caption size; min-height holds the
+   44px floor the stack would miss by 2px. */
+@media (pointer: fine) and (max-width: 520px) {
+  .tab {
+    gap: 3px;
+    min-height: var(--row-sm);
+    padding: 6px 2px;
+    font-size: var(--font-caption);
+    line-height: 1.1;
+  }
+}
+/* A touch device wider than the pill (a tablet, a large phone in landscape)
+   keeps the inline control, whose padding alone is 37px tall: the 44px floor
+   is a min-height, so the icon and label stay centred. */
 @media (pointer: coarse) and (min-width: 521px) {
   .tab { min-height: var(--row-sm); }
 }
 
 /* ------------------------------------------------- wide layout: left rail */
-/* design.md Layout, "Wide layout": on a wide, fine-pointer
-   window the top segmented control becomes a full-height left rail
-   (layout.rail, 80px) on the card surface with a line hairline on its right
-   edge, each tab an icon over its label, never icon-only. Placement only: the
-   active tint, aria-selected and persistence are the rules above, unchanged.
-   The content offsets
-   key on the nav itself (body:has(> .tabs), .tabs ~ .app) so they outrank an
-   app's own `body`/`.app` padding shorthand loaded after this file; without
-   that, content slides under the rail. Master-detail and a board's
-   full-width exception stay app-side. Below 1100px, or on a coarse pointer at
-   any width, none of this applies. */
+/* design.md "Wide layout": a full-height rail (layout.rail) on the card
+   surface with a line hairline on its right edge. Placement only: the active
+   tint, aria-selected and persistence are the rules above. The content
+   offsets key on the nav itself (body:has(> .tabs), .tabs ~ .app) so they
+   outrank an app's own body/.app padding shorthand loaded after this file;
+   without that, content slides under the rail. */
 @media (min-width: 1100px) and (pointer: fine) {
   body:has(> .tabs) { padding-left: var(--layout-rail, 80px); }
-  /* The sticky top control used to supply the column's top gap. */
+  /* The top gap the sticky control supplies below this width. */
   .tabs ~ .app { padding-top: calc(env(safe-area-inset-top, 0px) + var(--gap) + var(--space-xs)); }
   .tabs {
     position: fixed;
@@ -188,6 +171,7 @@
     bottom: 0;
     left: 0;
     flex-direction: column;
+    box-sizing: border-box;
     width: var(--layout-rail, 80px);
     max-width: none;
     margin: 0;
@@ -195,13 +179,10 @@
     border: 0;
     border-right: 1px solid var(--line);
     border-radius: 0;
-    box-sizing: border-box;
   }
   .tab {
     flex: none;
-    flex-direction: column;
     gap: var(--space-xs);
-    min-width: 0;
     min-height: var(--row-lg);
     padding: var(--space-sm) var(--space-xs);
     border-radius: var(--radius-md);
@@ -212,54 +193,41 @@
     width: var(--icon-feature, 24px);
     height: var(--icon-feature, 24px);
   }
-  .tab-label {
-    display: block;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
 }
 
-/* The sliding active capsule exists only in the mobile pill; desktop keeps the
-   per-tab accent-soft tint above. nav-tabs.js inserts it, so markup never
-   carries it. */
-.tabs .tab-pill { display: none; }
+/* ------------------------------------------- floating bottom tab bar (phone) */
+/* The fleet navigation contract: position, radius, glass and the safe-area
+   handling stay identical across apps.
 
-/* ------------------------------------------- floating bottom tab bar (mobile) */
-/* Gated on touch + narrow width so desktop keeps the top segmented control
-   byte-for-byte unchanged. This block is the fleet navigation contract —
-   position, radius, glass and the safe-area handling must stay identical
-   across apps (don't re-author it per-app).
-
-   Instant on the first frame: the page head uses the `default` status-bar
-   style, so an installed iOS app starts with its final viewport and a plain
-   bottom-anchored fixed bar is in place from frame one. The bar's position
-   never derives from the viewport height and nothing on it animates on load. */
+   The page head uses the `black-translucent` status-bar style with
+   `viewport-fit=auto`: the installed iOS app's web view then starts below the
+   status bar with a zero safe-area inset, and the top glass below covers the
+   viewport's top edge. The bar's position never derives from a measured
+   viewport height and nothing on it animates on load. */
 @media (pointer: coarse) and (max-width: 520px) {
-  /* The document is always one pixel taller than the viewport: an installed
-     iOS app shrinks its viewport 59px whenever the document can't scroll and
-     grows it back over ~3s, painting nothing below the moving edge. On the
-     root, not .app, so it still holds while scroll-lock.js pins the body
-     under an open dialog. vh first as the no-dvh fallback. */
+  /* Always one pixel taller than the viewport: an installed iOS app shrinks
+     its viewport 59px whenever the document cannot scroll and grows it back
+     over ~3s, painting nothing below the moving edge. On the root, not .app,
+     so it holds while a dialog's scroll lock pins the body. vh first, for an
+     engine without dvh. */
   html {
     min-height: calc(100vh + 1px);
     min-height: calc(100dvh + 1px);
   }
 
   .app {
-    /* Bottom reserve = the bottom fade's full height (the bar, its bottom
-       margin, and whichever reaches higher above the bar: the fade's tail or
-       the bar's top margin) + the gap, so scrolled to the end the last row
-       and the build footer sit a gap above the fade, never dimmed, and clear
-       of the bar's taps. Keep the bar a body-level sibling of .app: iOS
-       captures fixed descendants of scrollers. */
+    /* The bottom fade's full height (the bar, its bottom margin, and whichever
+       reaches higher above the bar: the fade's tail or the bar's top margin)
+       plus the gap: scrolled to the end, the last row and the build footer sit
+       a gap above the fade, never dimmed, and clear of the bar's taps. */
     --nav-bottom-reserve: calc(
       env(safe-area-inset-bottom, 0px) +
       max(var(--nav-fade-tail, 24px), var(--bottom-tabs-margin, 21px)) +
       var(--bottom-tabs-height, 61px) + var(--bottom-tabs-margin, 21px) + var(--gap)
     );
-    /* Top = the safe area only: the top fade is off at scroll-top, so the
-       first card sits right under the status bar. */
+    /* Top is the safe area alone, in a browser tab and the installed app
+       alike: the top glass is off at scroll-top, so the first card sits right
+       under the status bar. */
     padding: env(safe-area-inset-top, 0px) var(--gap) var(--nav-bottom-reserve);
     scroll-padding-bottom: var(--nav-bottom-reserve);
   }
@@ -272,7 +240,7 @@
     bottom: var(--bottom-tabs-margin, 21px);
     z-index: 120;
     display: grid;
-    /* One equal column per tab; the outer geometry is identical for 4–6 tabs. */
+    /* One equal column per tab; the outer geometry is the same for 4 to 6. */
     grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
     grid-auto-rows: var(--bottom-tabs-pill-height, 53px);
     align-content: center;
@@ -283,38 +251,40 @@
     max-width: 480px;
     margin: 0 auto;
     padding: var(--bottom-tabs-padding, 4px);
-    /* iOS 26 system tab-bar glass: clear tint + heavy blur, a hairline rim all
-       round, a soft drop shadow, no specular gradient. Blur stays on this
-       small capsule only, never on a full-screen layer. */
+    /* The iOS system tab-bar glass: clear tint, heavy blur, a hairline rim all
+       round, a soft drop shadow. The blur stays on this small capsule only,
+       never on a full-screen layer. */
     background: var(--tabbar-bg);
     border: 1px solid var(--tabbar-border);
     border-radius: var(--radius-nav);
     box-shadow: var(--tabbar-shadow, 0 10px 30px -6px rgba(0, 0, 0, 0.6));
     -webkit-backdrop-filter: blur(24px) saturate(180%);
     backdrop-filter: blur(24px) saturate(180%);
-    /* Own composited layer so iOS repaints the fixed bar on the same frame
-       after a modal hides and shows it. Identity transform only — never a
-       load-time animation or a measured offset. */
+    /* Own composited layer, so iOS repaints the fixed bar on the same frame
+       after a modal hides and shows it. Identity only, never a load-time
+       animation or a measured offset. */
     transform: translateZ(0);
     will-change: transform;
+    /* Press-and-slide owns every finger that lands on the bar: no page pan,
+       no text selection, no callout from a long press. */
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
   }
-  /* One-frame rebuild that nav-tabs.js sets each time the installed app's
-     viewport settles (launch, return to the foreground). The filter drop makes
-     iOS rebuild the glass layer at its final bounds. The promotion drop (bar,
+  /* One frame, set by nav-tabs.js each time the installed app's viewport
+     settles (launch, return to the foreground). Dropping the filter makes iOS
+     rebuild the glass layer at its final bounds. Dropping the promotions (bar,
      labels, badges) makes WebKit paint those layers' contents again: a
      promoted layer keeps its bitmap across a filter toggle, so a raster taken
-     while the viewport was still growing would otherwise stay soft. Both
-     return on the next frame, so the modal-repaint reason above still holds. */
+     while the viewport was still growing would otherwise stay soft. */
   .tabs.glass-rebuild {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
     transform: none;
     will-change: auto;
   }
-  .tabs.glass-rebuild .tab-label,
-  .tabs.glass-rebuild .tab-badge {
-    transform: none;
-  }
+  .tabs.glass-rebuild :is(.tab-label, .tab-badge) { transform: none; }
   /* Hit area only, never painted: the rounded corners would otherwise let a
      row scrolled under the bar take taps in the outer tabs' corner slivers. */
   .tabs::before {
@@ -323,16 +293,14 @@
     inset: 0;
   }
 
-  /* Scroll-edge fades: a gentle hint that more content lies past each edge,
-     never a wall, and no solid zone. Both edges use one eased curve: from
-     the screen edge inward the content's opacity runs 0, .25, .5, .75, .92
-     and 1 at 0, 10, 25, 50, 75 and 100% of the band, so content stays at
-     least half visible over three quarters of each band and only vanishes at
-     the edge. Drawn as page colour (--bg) over the content, coverage being
-     one minus that opacity. Inert: above .app, below the bar's 120, and
+  /* Scroll-edge layers: a gentle hint that more content lies past each edge,
+     never a wall. Inert: above .app, below the bar's 120, and
      pointer-events: none so taps reach the row beneath.
      Bottom: from --nav-fade-tail above the bar's top edge down to the screen
-     edge, so rows show through the bar's glass and fade out under it. */
+     edge, so rows show through the bar's glass and fade out under it. One
+     eased curve: from the screen edge inward the content's opacity runs 0,
+     .25, .5, .75, .92 and 1 at 0, 10, 25, 50, 75 and 100% of the band, drawn
+     as page colour (--bg) over the content, with no solid zone. */
   body::before {
     content: '';
     position: fixed;
@@ -352,37 +320,38 @@
       var(--bg) 100%
     );
   }
-  /* Top: a --nav-fade-band band from the top of the viewport, solid only
-     through the safe area. In an installed iOS app with the `default` status
-     bar the viewport starts below the status bar and no fixed layer paints in
-     that strip, so the band starts at the viewport top and stays thin.
-     Its opacity is --nav-fade-on, which nav-tabs.js raises from 0 at
-     scroll-top to 1 over the first band of scroll: at rest the first row sits
-     right under the status bar, undimmed, with no top padding past the safe
-     area. */
+  /* Top: the translucent top glass the owner validated on the installed
+     iPhone app. A layer pinned to the viewport top through the safe area
+     plus --nav-fade-band: the page colour at 50% under a 20px blur, its last
+     --nav-fade-band masked out to transparent so it has no bottom edge, on
+     its own compositing layer. Its opacity is --nav-fade-on, which
+     nav-tabs.js raises from 0 at scroll-top to 1 over the first band of
+     scroll. At scroll-top the layer is not generated at all (no
+     data-nav-top-glass on <html>): an installed iOS app still paints a
+     promoted backdrop-filter layer at opacity 0, frosting the header under
+     it, so at rest the first row sits right under the status bar, crisp.
+     The page head (black-translucent, viewport-fit=auto, theme-color in the
+     page colour) is part of the same recipe. */
   body::after {
-    content: '';
+    content: none;
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
-    height: calc(env(safe-area-inset-top, 0px) + var(--nav-fade-band, 12px));
+    height: calc(env(safe-area-inset-top, 0px) + var(--nav-fade-band, 16px));
     z-index: 110;
     pointer-events: none;
     opacity: var(--nav-fade-on, 0);
-    background: linear-gradient(
-      to bottom,
-      var(--bg) env(safe-area-inset-top, 0px),
-      color-mix(in srgb, var(--bg) 75%, transparent)
-        calc(env(safe-area-inset-top, 0px) + var(--nav-fade-band, 12px) * 0.1),
-      color-mix(in srgb, var(--bg) 50%, transparent)
-        calc(env(safe-area-inset-top, 0px) + var(--nav-fade-band, 12px) * 0.25),
-      color-mix(in srgb, var(--bg) 25%, transparent)
-        calc(env(safe-area-inset-top, 0px) + var(--nav-fade-band, 12px) * 0.5),
-      color-mix(in srgb, var(--bg) 8%, transparent)
-        calc(env(safe-area-inset-top, 0px) + var(--nav-fade-band, 12px) * 0.75),
-      transparent calc(env(safe-area-inset-top, 0px) + var(--nav-fade-band, 12px))
-    );
+    background: color-mix(in srgb, var(--bg) 50%, transparent);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - var(--nav-fade-band, 16px)), transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - var(--nav-fade-band, 16px)), transparent 100%);
+    transform: translateZ(0);
+    will-change: transform;
+  }
+  html[data-nav-top-glass] body::after {
+    content: '';
   }
   @media (prefers-reduced-transparency: reduce) {
     body::before,
@@ -392,17 +361,12 @@
   /* Installed iOS app: the web view starts 59px short of the screen and, once
      the page can scroll, grows to full height 1px at a time over ~3s, so a
      bottom anchor slides down with it. 100lvh is the final height from the
-     first frame, so the bar and its fade anchor from the stable top edge.
+     first frame, so the floor, the bar and its fade key to it; a dvh floor
+     would also re-lay the document out on every frame of a keyboard close.
      Standalone only: in a browser tab lvh would hide the bar under the
-     toolbar. vh first: on iOS it equals the large viewport too. */
+     toolbar and make a short tab scroll by the toolbar's height. vh first: on
+     iOS it equals the large viewport too. */
   @media (display-mode: standalone) {
-    /* The scrollable-document floor keys to the large viewport here: iOS
-       resizes the installed app's viewport on a cold launch and again each
-       time the keyboard closes, and a dvh floor re-laid out the whole
-       document on every frame of that resize, which painted as the page
-       sliding. lvh is the final height from the first frame, so the floor
-       never moves. A browser tab keeps dvh, where lvh would make a short tab
-       scroll by the toolbar's height. */
     html {
       min-height: calc(100vh + 1px);
       min-height: calc(100lvh + 1px);
@@ -419,9 +383,10 @@
     }
   }
 
-  /* One capsule behind the tabs that springs to the tapped tab: the 1.35
-     control point overshoots and settles. Its first placement (load, resize,
-     rotate) jumps via .no-anim, so launch stays instant. */
+  /* One capsule behind the tabs. nav-tabs.js parks it on the active tab at
+     the whole pixels the layout reports for that tab (--pill-x, --pill-w) and
+     moves it under a sliding finger. The 1.35 control point overshoots and
+     settles. */
   .tabs .tab-pill {
     display: block;
     position: absolute;
@@ -435,73 +400,59 @@
     pointer-events: none;
     transition: transform 0.5s cubic-bezier(0.3, 1.35, 0.5, 1), width 0.5s cubic-bezier(0.3, 1.35, 0.5, 1);
   }
-  .tabs .tab-pill.no-anim { transition: none; }
+  /* Under a finger the capsule keeps up instead of springing. */
+  .tabs.sliding .tab-pill {
+    transition-duration: 0.12s;
+    transition-timing-function: ease-out;
+  }
   @media (prefers-reduced-motion: reduce) {
     .tabs .tab-pill { transition: none; }
   }
 
   .tab {
+    /* Above the capsule. */
     position: relative;
     z-index: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
     gap: 4px;
-    min-width: 0;
     height: var(--bottom-tabs-pill-height, 53px);
     padding: 0 2px;
-    border-radius: var(--radius-pill);
-    border: 0;
     font-size: var(--bottom-tabs-label, 11px);
-    font-weight: 600;
-    /* 1.25, not tighter: .tab-label clips overflow, and below this the
-       descenders (g, y) of a semibold label are cut off. */
+    /* Not tighter: .tab-label clips overflow, and below 1.25 the descenders
+       (g, y) of a semibold label are cut off. */
     line-height: 1.25;
     /* Inactive tabs in full ink, not muted: the iOS system bar's contrast. */
     color: var(--ink);
     transition: color 0.2s ease;
   }
-  /* Active: icon and label in the accent over the sliding capsule. Until
-     nav-tabs.js has placed the capsule (.has-pill), the active tab paints the
-     same capsule itself, so frame one already shows the right state. */
-  .tab.active {
-    background: transparent;
-    color: var(--accent-text);
-    box-shadow: none;
-  }
-  .tabs:not(.has-pill) .tab.active { background: var(--tabbar-pill); }
+  /* The capsule carries the active state. Until nav-tabs.js has mounted it,
+     the active tab paints the same capsule itself, so frame one is right. */
+  .tab.active { background: transparent; }
+  .tabs:not(:has(.tab-pill)) .tab.active { background: var(--tabbar-pill); }
   .tab:active { opacity: 0.6; }
-
-  /* 24px, the iOS tab-bar glyph size; a fixed px so the 11px label can't
-     shrink it. Stroke presentation is inherited from the base rule. */
+  /* A slide is not a press: the tab the finger started on is not dimmed. */
+  .tabs.sliding .tab:active {
+    opacity: 1;
+    transform: none;
+  }
+  /* 24px, the iOS tab-bar glyph size, fixed so the 11px label cannot shrink it. */
   .tabs .tab-icon {
     width: 24px;
     height: 24px;
   }
-  .tab-label {
-    display: block;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    /* Own compositing layer so the glyphs are not rasterized into the bar's
-       backdrop-filter texture: iOS WebKit re-composites that texture without
-       re-rasterizing baked-in text when a <dialog> closes, leaving labels
-       blank until something forces a repaint. Validated on a real iPhone PWA. */
-    transform: translateZ(0);
-    backface-visibility: hidden;
-  }
-  /* Same own-layer rule as the label, for the same iOS reason. */
+  /* Own layers, so the glyphs are not rasterized into the bar's
+     backdrop-filter texture: iOS re-composites that texture without
+     re-rasterizing baked-in text when a <dialog> closes, leaving labels blank
+     until something repaints. Validated on a real iPhone PWA. */
+  .tab-label,
   .tabs .tab-badge {
     transform: translateZ(0);
     backface-visibility: hidden;
   }
 
-  /* Never let the floating bar hover over a modal / overlay. visibility, not
-     display, keeps the fixed bar in the render tree across open/close, which
-     is gentler on iOS fixed-layer repainting. Add `nav-hidden` to <body> for
-     non-<dialog> overlays. */
+  /* Never over a modal. visibility, not display, keeps the fixed bar in the
+     render tree across open and close, which is gentler on iOS fixed-layer
+     repainting. `nav-hidden` on <body> covers an overlay that is not a
+     <dialog>. */
   body:has(dialog[open]) .tabs,
   body.nav-hidden .tabs {
     visibility: hidden;

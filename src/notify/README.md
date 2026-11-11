@@ -1,13 +1,13 @@
 # `src/notify/` — vendored Telegram notifier
 
-A tiny, **stdlib-only** notifier primitive shared across fleet apps: deliver a short plain-text message to a Telegram chat (e.g. "🚨 alarm triggered", "⚠️ mains power lost"). This is the **Python** counterpart to the tray's vendored primitive (`app/tray/single_instance.py`) and the shared `tray_lifecycle.ps1` helper — the same "copy byte-for-byte, never fork per-app" channel, for a non-UI library module. (The web-UI `_vendored/` channel under `app/webapp/static/` is HTML/CSS/JS only.)
+A tiny, **stdlib-only** notifier primitive shared across fleet apps: deliver a plain-text message to a Telegram chat (e.g. "🚨 alarm triggered", "⚠️ mains power lost"). This is the **Python** counterpart to the tray's vendored primitive (`app/tray/single_instance.py`) and the shared `tray_lifecycle.ps1` helper — the same "copy byte-for-byte, never fork per-app" channel, for a non-UI library module. (The web-UI `_vendored/` channel under `app/webapp/static/` is HTML/CSS/JS only.)
 
 ## Files
 
 | File | What |
 | --- | --- |
 | `base.py` | `NotifierError` + the universal `Notifier` Protocol (one method: `send_text`). |
-| `telegram.py` | `TelegramNotifier(bot_token, chat_id)` — one Bot-API `sendMessage` HTTPS POST via `urllib`. |
+| `telegram.py` | `TelegramNotifier(bot_token, chat_id)` — Bot-API `sendMessage` HTTPS POSTs via `urllib`, chunked past 4096 characters. |
 | `config.py` | `TelegramConfig(bot_token, chat_id)` — a resolved-values dataclass, no env names baked in. |
 | `factory.py` | `build_notifier(name, telegram)` over `'none' | 'telegram'`. |
 | `__init__.py` | Re-exports the public surface. |
@@ -30,6 +30,10 @@ A tiny, **stdlib-only** notifier primitive shared across fleet apps: deliver a s
    ```
 
 4. Keep secrets out of git (gitignored `config/*.json` + a committed `*.sample.json`, mirroring the rest of the app's config).
+
+## Long messages
+
+`send_text` handles Telegram's documented 4096-character message limit itself: text of 4096 characters or fewer is one `sendMessage` call; longer text is split into pieces of at most 4096 characters and sent one call each, in order. Each cut lands after the last newline that fits, so a line is never split when it fits; a single line longer than the limit is hard-cut. The pieces rejoin to the original text exactly. Delivery stops at the first failing piece and raises `NotifierError`, so a caller that retries resends the whole message. Callers need no chunking of their own.
 
 ## Rules
 

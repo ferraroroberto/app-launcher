@@ -169,6 +169,77 @@ def assert_no_overlap(targets: Locator | Iterable[Locator]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Unpainted rest state
+
+# One row per match: the four computed properties that paint a control. The
+# border is the sum of the four side widths so any single visible side counts.
+_UNPAINTED_JS = """els => els.map(el => {
+  const s = getComputedStyle(el);
+  return {
+    fill: s.backgroundColor,
+    image: s.backgroundImage,
+    border: parseFloat(s.borderTopWidth) + parseFloat(s.borderRightWidth)
+          + parseFloat(s.borderBottomWidth) + parseFloat(s.borderLeftWidth),
+    shadow: s.boxShadow,
+  };
+})"""
+
+_UNPAINTED_FILLS = ("rgba(0, 0, 0, 0)", "transparent")
+_THEMES = ("light", "dark")
+
+
+def assert_unpainted(page: Page, locator: Locator) -> None:
+    """Every match is a plain glyph at rest, in both themes: nothing is drawn.
+
+    Transparent fill, no background image, zero border width on all four sides
+    and no box-shadow, read from `getComputedStyle` after stamping
+    `document.documentElement.dataset.theme` to `light` and then `dark`. A
+    painted row verb reads as a button on a row, which the design canon
+    forbids. Zero matches raise, and the theme the page started with is
+    restored in a `finally`. Move the pointer off the control first if its
+    hover state paints; this helper reads whatever state the page is in.
+    """
+    original: str | None = page.evaluate(
+        "() => document.documentElement.dataset.theme ?? null"
+    )
+    try:
+        for theme in _THEMES:
+            page.evaluate(
+                "t => { document.documentElement.dataset.theme = t; }", theme
+            )
+            rows: list[dict[str, Any]] = locator.evaluate_all(_UNPAINTED_JS)
+            if not rows:
+                raise AssertionError(
+                    f"no elements match {locator} — zero matches must fail "
+                    "loud, not pass as unpainted"
+                )
+            for index, row in enumerate(rows):
+                painted = [
+                    f"{label} {row[key]}"
+                    for label, key, ok in (
+                        ("fill", "fill", row["fill"] in _UNPAINTED_FILLS),
+                        ("background image", "image", row["image"] == "none"),
+                        ("border width", "border", row["border"] == 0),
+                        ("box-shadow", "shadow", row["shadow"] == "none"),
+                    )
+                    if not ok
+                ]
+                if painted:
+                    raise AssertionError(
+                        f"match #{index} of {locator} is painted at rest in "
+                        f"the {theme} theme: {', '.join(painted)}"
+                    )
+    finally:
+        page.evaluate(
+            """t => {
+              if (t === null) delete document.documentElement.dataset.theme;
+              else document.documentElement.dataset.theme = t;
+            }""",
+            original,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Page overflow
 
 def assert_no_horizontal_overflow(page: Page) -> None:

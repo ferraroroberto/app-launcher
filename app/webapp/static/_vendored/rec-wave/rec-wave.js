@@ -96,6 +96,7 @@ export function createLevelSource(stream) {
   return {
     // Running and wired to a stream: the only state in which a level means anything.
     get running() {
+      // state-literal-exempt: the browser AudioContext's own state vocabulary, not a machine this app owns
       return connected && !closed && (!ctx.state || ctx.state === 'running');
     },
     connect,

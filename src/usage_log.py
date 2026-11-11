@@ -1,4 +1,4 @@
-"""Local-only usage log for a fleet web app: views, taps, device class (#349).
+"""Local-only usage log for a fleet web app: views, taps, device class.
 
 Design reviews used to ask the owner "how often do you use X?" because no app
 recorded which views or controls were actually used. This module is the
@@ -7,7 +7,7 @@ vendored client's batched events (``app/webapp/static/_vendored/usage-log/``)
 into one SQLite file on the machine that serves the app, and a summary query
 that ``scripts/usage_summary.py`` and ``GET /api/usage/summary`` both read.
 
-**Foreground time** (#403): :func:`foreground_time` turns the same rows into
+**Foreground time:** :func:`foreground_time` turns the same rows into
 Screen-Time-style minutes per local day, per device class and per view, read
 by ``GET /api/usage/time`` and ``usage_summary.py --time``. Arithmetic over
 existing rows only — no new event kind, column or client signal. The rules:

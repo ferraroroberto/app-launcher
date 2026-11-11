@@ -127,7 +127,7 @@ The owner asked for one ⋮ menu everywhere: same font, same glyph size, same pl
 
 Differences resolved: app-launcher also supported a CSS-placed (`position: absolute`) menu bounded by its clipping ancestors; this component only ever places a `fixed` menu mounted outside every scroller, so that branch is not carried. The hub's "hidden until first placed" CSS isn't needed either: `row-menu.js` places the menu synchronously when it mounts, before the first paint.
 
-The placement rule is pinned by `tests/e2e/test_vendored_row_menu_placement.py` at 390×844 with the real nav pill.
+The placement rule is pinned by `tests/e2e/test_vendored_row_menu.py` at 390×844 with the real nav pill.
 
 **Options for adoption (#362, step 3).** app-launcher's menu also had a header line, brand marks in place of named glyphs, a separate screen-reader name, a menu floated against another element than its button (its Sessions menu left of the row's button column, its Composer image menu above the composer), and the `--card-2` surface. Those are the `header`, `brand`, `ariaLabel` and `placement` options and the surface above, built so app-launcher can adopt this component with no visible change (its rendering check, `app-launcher#1565`, is what confirms it). What app-launcher maps on its side: per-item classes become `dataset`, and its `disabled` buttons become `aria-disabled` rows.
 
