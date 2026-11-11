@@ -22,7 +22,7 @@ keeps meaning exactly what it has always meant for every consumer that has not
 been taught the new vocabulary.
 
 **Provenance of the table below.** These codes are *defined* by fleet-config's
-``skills/_lib/scheduled/progress.py`` (``scheduled_runner.py`` re-imports them);
+``skills/_lib/scheduled/run_outcome.py`` (its ``RunState`` enum);
 this is a reader's copy, which is why
 ``tests/unit/jobs/test_jobs_outcome.py::test_exit_code_table_matches_scheduled_runner``
 parses that file (when the sibling fleet-config checkout is present) and fails
@@ -63,7 +63,7 @@ OUTCOME_DEFERRED = "deferred"
 DECLARABLE_OUTCOMES = frozenset({OUTCOME_DEFERRED})
 
 # exit code -> (outcome, one-line reason). Wording condensed from the verdict
-# strings ``ProgressFormatter.finish`` prints beside each code, so a job card
+# headlines ``run_outcome.status_line`` prints beside each code, so a job card
 # and its own log agree. Codes absent here (a child's own exit code, e.g. a
 # plain `1`) carry no reason and stay whatever ``status`` said.
 _EXIT_CODES: Dict[int, Tuple[str, str]] = {

@@ -15,7 +15,6 @@ is present rather than trusted to stay correct on its own.
 from __future__ import annotations
 
 import ast
-import re
 from pathlib import Path
 
 import pytest
@@ -146,11 +145,12 @@ def test_booleans_are_not_exit_codes():
 # ------------------------------------------------------------- the drift guard
 
 
-def _scheduled_runner() -> Path | None:
-    """fleet-config's scheduled-run progress module, if this machine has the checkout.
+def _run_outcome_module() -> Path | None:
+    """fleet-config's scheduled-run outcome module, if this machine has the checkout.
 
-    ``scheduled/progress.py`` defines the ``*_EXIT_CODE`` constants and
-    ``ProgressFormatter``; ``scheduled_runner.py`` only re-imports them.
+    ``scheduled/run_outcome.py`` declares every way a scheduled run ends as one
+    ``RunState`` enum (value: exit code, meaning) and the verdict headline each
+    state prints (``_HEADLINE``; a state left out prints ``❌ failed``).
 
     Resolved the same way :mod:`src.webapp_config` resolves its default
     ``fleet_config_dir`` — the sibling ``fleet-config`` next to this repo — so
@@ -164,18 +164,68 @@ def _scheduled_runner() -> Path | None:
         / "skills"
         / "_lib"
         / "scheduled"
-        / "progress.py"
+        / "run_outcome.py"
     )
     return candidate if candidate.is_file() else None
+
+
+#: ``RunState.FAILED`` keeps the child's own non-zero exit code, so it names no
+#: reason of its own; src.jobs.outcome leaves such codes to ``status``.
+_CHILD_OWN_CODE_STATES = {"FAILED"}
+
+_GLYPH_OUTCOMES = {
+    "✅": OUTCOME_SUCCESS,
+    "❓": OUTCOME_UNCONFIRMED,
+    "❌": OUTCOME_FAILED,
+    "⏱": OUTCOME_FAILED,
+}
+#: The headline ``status_line`` prints for a state ``_HEADLINE`` leaves out.
+_DEFAULT_GLYPH = "❌"
+
+
+def _run_states(tree: ast.Module) -> dict:
+    """``{RunState member name: exit code}`` read from the enum's value tuples."""
+    enum_cls = next(
+        node for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "RunState"
+    )
+    states = {}
+    for stmt in enum_cls.body:
+        if (
+            isinstance(stmt, ast.Assign)
+            and len(stmt.targets) == 1
+            and isinstance(stmt.targets[0], ast.Name)
+            and isinstance(stmt.value, ast.Tuple)
+            and isinstance(stmt.value.elts[0], ast.Constant)
+            and isinstance(stmt.value.elts[0].value, int)
+        ):
+            states[stmt.targets[0].id] = stmt.value.elts[0].value
+    return states
+
+
+def _headline_glyphs(tree: ast.Module) -> dict:
+    """``{RunState member name: leading glyph}`` for every ``_HEADLINE`` entry."""
+    for node in tree.body:
+        targets = node.targets if isinstance(node, ast.Assign) else (
+            [node.target] if isinstance(node, ast.AnnAssign) else []
+        )
+        if any(isinstance(t, ast.Name) and t.id == "_HEADLINE" for t in targets):
+            assert isinstance(node.value, ast.Dict), "_HEADLINE is no longer a dict literal"
+            return {
+                key.attr: value.value[:1]
+                for key, value in zip(node.value.keys, node.value.values)
+                if isinstance(key, ast.Attribute) and isinstance(value, ast.Constant)
+            }
+    raise AssertionError("run_outcome.py no longer defines _HEADLINE")
 
 
 def test_exit_code_table_matches_scheduled_runner():
     """Every exit code the adapter defines is one this repo can explain.
 
     :mod:`src.jobs.outcome` holds a *copy* of a table that is authored in
-    another repo, which is exactly the drift the issue warned about: a seventh
-    detector added upstream would land here as a silent generic ``failed``,
-    with no test going red and nobody noticing until a Board card lied again.
+    another repo, which is exactly the drift the issue warned about: a new
+    state added upstream would land here as a silent generic ``failed``, with
+    no test going red and nobody noticing until a Board card lied again.
     An importable single source across two repos does not exist (the launcher
     must not depend on fleet-config being installed), so the next best thing is
     to *check* the copy against the original whenever the original is reachable.
@@ -183,134 +233,47 @@ def test_exit_code_table_matches_scheduled_runner():
     Skips where the sibling checkout is absent — CI, a fresh clone — so this is
     a guard on the dev box that owns both, never a portability trap.
     """
-    source = _scheduled_runner()
+    source = _run_outcome_module()
     if source is None:
         pytest.skip("sibling fleet-config checkout not present")
-    text = source.read_text(encoding="utf-8")
-    defined = {
-        int(match.group(2))
-        for match in re.finditer(
-            r"^([A-Z_]*EXIT_CODE)\s*=\s*(\d+)\s*$", text, flags=re.MULTILINE
-        )
+    states = _run_states(ast.parse(source.read_text(encoding="utf-8")))
+    assert states, "parsed no RunState members — has the adapter moved?"
+    unexplained = {
+        f"{name}={code}" for name, code in states.items()
+        if name not in _CHILD_OWN_CODE_STATES and classify_exit_code(code) is None
     }
-    assert defined, "parsed no *_EXIT_CODE constants — has the adapter moved?"
-    unexplained = {code for code in defined if classify_exit_code(code) is None}
     assert not unexplained, (
-        "scheduled/progress.py defines exit code(s) src.jobs.outcome does not "
+        "scheduled/run_outcome.py defines exit code(s) src.jobs.outcome does not "
         f"name: {sorted(unexplained)}. Classify each one (failed vs "
         "unconfirmed) rather than letting it render as a generic failure."
     )
 
 
-# Codes whose verdict rung in ``ProgressFormatter.finish`` keys on a formatter
-# flag rather than on the exit code itself (or that are decided outside
-# ``finish`` altogether), so no glyph can be read off a code comparison. Keyed
-# by constant *name*, so a renumbered or newly added constant still has to be
-# classified here or picked up by the parsed rungs.
-_FLAG_KEYED_OUTCOMES = {
-    "STALL_EXIT_CODE": OUTCOME_FAILED,                    # ⏱ stalled
-    "BACKGROUND_KILL_EXIT_CODE": OUTCOME_FAILED,          # ❌ background tasks killed
-    "SELF_REPORTED_FAILURE_EXIT_CODE": OUTCOME_FAILED,    # ❌ delivered no work
-    "DELIVERY_NOT_CONFIRMED_EXIT_CODE": OUTCOME_UNCONFIRMED,  # ❓ final outcome
-}
-
-_GLYPH_OUTCOMES = {"❓": OUTCOME_UNCONFIRMED, "❌": OUTCOME_FAILED, "⏱": OUTCOME_FAILED}
-
-
-def _code_keyed_verdicts(text: str) -> dict:
-    """``{constant name: outcome}`` for every rung in ``ProgressFormatter`` (its
-    ``finish`` and the helpers ``finish`` calls) whose condition compares
-    ``exit_code`` against a ``*_EXIT_CODE`` constant.
-
-    The outcome is read off the leading glyph of the ``status`` string that
-    rung assigns — the same line the job's own ``output.log`` ends with — so the
-    guard pins what each code *means*, not merely that it exists (#959: 118
-    sat in the table as ``failed`` under 123's wording while the adapter
-    printed ``❓ not confirmed`` beside it).
-    """
-    tree = ast.parse(text)
-    formatter = next(
-        cls
-        for cls in tree.body
-        if isinstance(cls, ast.ClassDef) and cls.name == "ProgressFormatter"
-    )
-
-    def status_glyph(body):
-        for stmt in body:
-            if not (isinstance(stmt, ast.Assign) and any(
-                isinstance(t, ast.Name) and t.id == "status" for t in stmt.targets
-            )):
-                continue
-            value = stmt.value
-            if isinstance(value, ast.JoinedStr):
-                value = value.values[0]
-            if isinstance(value, ast.Constant) and isinstance(value.value, str):
-                return value.value[:1]
-        return None
-
-    verdicts = {}
-    for node in ast.walk(formatter):
-        if not isinstance(node, ast.If):
-            continue
-        compares_code = any(
-            isinstance(sub, ast.Compare)
-            and isinstance(sub.left, ast.Name)
-            and sub.left.id == "exit_code"
-            for sub in ast.walk(node.test)
-        )
-        if not compares_code:
-            continue
-        names = {
-            sub.id
-            for sub in ast.walk(node.test)
-            if isinstance(sub, ast.Name) and sub.id.endswith("_EXIT_CODE")
-        }
-        glyph = status_glyph(node.body)
-        for name in names:
-            verdicts[name] = _GLYPH_OUTCOMES.get(glyph)
-    return verdicts
-
-
 def test_exit_code_outcomes_match_scheduled_runner_verdicts():
     """Every adapter code's outcome class agrees with the verdict the adapter
-    prints for it — ``❓`` → unconfirmed, ``❌``/``⏱`` → failed.
+    prints for it — ``✅`` → success, ``❓`` → unconfirmed, ``❌``/``⏱`` → failed.
 
     Presence alone (the guard above) let 118 carry a failure class and another
     code's reason for a week. Skips where the sibling checkout is absent.
     """
-    source = _scheduled_runner()
+    source = _run_outcome_module()
     if source is None:
         pytest.skip("sibling fleet-config checkout not present")
-    text = source.read_text(encoding="utf-8")
-    constants = {
-        match.group(1): int(match.group(2))
-        for match in re.finditer(
-            r"^([A-Z_]*EXIT_CODE)\s*=\s*(\d+)\s*$", text, flags=re.MULTILINE
-        )
-    }
-    parsed = _code_keyed_verdicts(text)
-    assert parsed, "parsed no exit-code rungs in ProgressFormatter"
-    assert None not in parsed.values(), (
-        f"a code-keyed rung assigns a status with no known glyph: {parsed}"
-    )
-
-    expected = {**_FLAG_KEYED_OUTCOMES, **parsed}
-    unclassified = sorted(set(constants) - set(expected))
-    assert not unclassified, (
-        f"no verdict rung or _FLAG_KEYED_OUTCOMES entry for {unclassified} — "
-        "read its verdict in scheduled/progress.py and classify it here"
-    )
-    overlap = {
-        name for name in set(parsed) & set(_FLAG_KEYED_OUTCOMES)
-        if parsed[name] != _FLAG_KEYED_OUTCOMES[name]
-    }
-    assert not overlap, f"_FLAG_KEYED_OUTCOMES contradicts the parsed rung for {overlap}"
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+    states = _run_states(tree)
+    glyphs = _headline_glyphs(tree)
+    assert glyphs, "parsed no _HEADLINE entries in run_outcome.py"
+    unknown = {name: g for name, g in glyphs.items() if g not in _GLYPH_OUTCOMES}
+    assert not unknown, f"a _HEADLINE entry starts with no known glyph: {unknown}"
 
     mismatched = []
-    for name, code in sorted(constants.items(), key=lambda item: item[1]):
+    for name, code in sorted(states.items(), key=lambda item: item[1]):
+        if name in _CHILD_OWN_CODE_STATES:
+            continue
+        expected = _GLYPH_OUTCOMES[glyphs.get(name, _DEFAULT_GLYPH)]
         got = (classify_exit_code(code) or (None,))[0]
-        if got != expected[name]:
-            mismatched.append(f"{name}={code}: table says {got}, adapter says {expected[name]}")
+        if got != expected:
+            mismatched.append(f"{name}={code}: table says {got}, adapter says {expected}")
     assert not mismatched, (
         "src.jobs.outcome disagrees with the adapter's own verdict: "
         + "; ".join(mismatched)
