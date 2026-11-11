@@ -66,12 +66,59 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
+from enum import StrEnum
 from typing import Any, Dict, Optional, Tuple
 
-_OK_STATES = frozenset({
-    "found", "none", "resumed", "opened", "started", "already_open", "delivered", "queued",
-    "unconfirmed", "reply", "stopped", "open",
+
+class RelayState(StrEnum):
+    """Every ``STATE=`` this CLI prints: the launcher's ``src/life_os/relay_state.py``
+    set, copied because this script imports nothing from the repo, plus its own
+    ``no_reply_yet``. A test holds the two equal."""
+
+    FOUND = "found"
+    NONE = "none"
+    RESUMED = "resumed"
+    OPENED = "opened"
+    STARTED = "started"
+    ALREADY_OPEN = "already_open"
+    DELIVERED = "delivered"
+    QUEUED = "queued"
+    UNCONFIRMED = "unconfirmed"
+    REPLY = "reply"
+    STOPPED = "stopped"
+    OPEN = "open"
+    UNAVAILABLE = "unavailable"
+    REFUSED = "refused"
+    RELAY_OFF = "relay_off"
+    NOT_FOUND = "not_found"
+    NOT_THIS_SKILL = "not_this_skill"
+    NOT_RESUMABLE = "not_resumable"
+    HOST_UNREACHABLE = "host_unreachable"
+    STRANDED = "stranded"
+    GONE = "gone"
+    UNKNOWN = "unknown"
+    NOT_RELAY_OWNED = "not_relay_owned"
+    BUSY = "busy"
+    CAPTURE_UNCONFIRMED = "capture_unconfirmed"
+    STOP_UNCONFIRMED = "stop_unconfirmed"
+    #: ``ask`` only: sent, but no finished reply within the wait.
+    NO_REPLY_YET = "no_reply_yet"
+
+
+# The states the call did what it was asked; the launcher's ``OUTCOMES``.
+OUTCOMES = frozenset({
+    RelayState.FOUND, RelayState.NONE, RelayState.RESUMED, RelayState.OPENED,
+    RelayState.STARTED, RelayState.ALREADY_OPEN, RelayState.DELIVERED, RelayState.QUEUED,
+    RelayState.UNCONFIRMED, RelayState.REPLY, RelayState.STOPPED, RelayState.OPEN,
 })
+# What ``read`` answers when the session is still there to read.
+_READABLE = (RelayState.REPLY, RelayState.UNAVAILABLE)
+
+
+def exit_code(state: str) -> int:
+    """0 when ``state`` is an outcome, 1 for a refusal, a failure or no answer yet."""
+    return 0 if state in OUTCOMES else 1
+
 _ROW_FIELDS = ("path", "conversation", "title", "topic", "last_interaction", "resumable",
                "tier", "session_id", "chat", "idle_minutes", "minutes_to_close")
 _STOP_FIELDS = ("session_id", "conversation", "title", "chat", "reason", "stopped_at")
@@ -126,17 +173,17 @@ def _call(method: str, path: str, *, query: Optional[Dict[str, str]] = None,
             detail = None
         if isinstance(detail, dict) and detail.get("state"):
             return {"state": str(detail["state"]), "message": str(detail.get("message") or "")}
-        return {"state": "unknown", "message": f"HTTP {exc.code}: {str(detail or exc.reason)[:300]}"}
+        return {"state": RelayState.UNKNOWN, "message": f"HTTP {exc.code}: {str(detail or exc.reason)[:300]}"}
     except (urllib.error.URLError, OSError) as exc:
-        return {"state": "unknown",
+        return {"state": RelayState.UNKNOWN,
                 "message": f"the launcher could not be reached ({exc}); whether anything "
                            "happened is unknown"}
     try:
         reply = json.loads(raw) if raw else {}
     except ValueError:
-        return {"state": "unknown", "message": "the launcher's reply was unreadable"}
+        return {"state": RelayState.UNKNOWN, "message": "the launcher's reply was unreadable"}
     return reply if isinstance(reply, dict) and reply.get("state") else {
-        "state": "unknown", "message": "the launcher's reply had no state"}
+        "state": RelayState.UNKNOWN, "message": "the launcher's reply had no state"}
 
 
 def _print(result: Dict[str, Any], *, text: Optional[str] = None) -> int:
@@ -155,7 +202,7 @@ def _print(result: Dict[str, Any], *, text: Optional[str] = None) -> int:
     if reply is not None:
         print("---")
         print(reply)
-    return 0 if result["state"] in _OK_STATES else 1
+    return exit_code(result["state"])
 
 
 def _message(args: argparse.Namespace) -> str:
@@ -224,14 +271,14 @@ def cmd_read(args: argparse.Namespace) -> int:
 def cmd_ask(args: argparse.Namespace) -> int:
     text = _message(args)
     before = _call("GET", "read", query={"session_id": args.session_id})
-    if before["state"] not in ("reply", "unavailable"):
+    if before["state"] not in _READABLE:
         return _print(before)  # a refusal: nothing was sent
-    baseline = _when(before.get("timestamp")) if before["state"] == "reply" else None
+    baseline = _when(before.get("timestamp")) if before["state"] == RelayState.REPLY else None
     sent_at = datetime.now(timezone.utc)
     steer = _call("POST", "steer", body={"session_id": args.session_id, "data": text})
-    if steer["state"] not in _OK_STATES:
+    if steer["state"] not in OUTCOMES:
         return _print(steer)
-    if steer["state"] == "queued":
+    if steer["state"] == RelayState.QUEUED:
         # The target is mid-turn: the next reply it finishes is the turn it was
         # already on, not an answer to this message. Say so instead of
         # passing that one off as the answer.
@@ -242,16 +289,16 @@ def cmd_ask(args: argparse.Namespace) -> int:
     while time.monotonic() < deadline:
         time.sleep(_POLL_SECONDS)
         read = _call("GET", "read", query={"session_id": args.session_id})
-        if read["state"] not in ("reply", "unavailable"):
+        if read["state"] not in _READABLE:
             # The target went away, or the relay stopped answering mid-wait.
             return _print({**read, "steer": steer["state"]})
-        if read["state"] != "reply":
+        if read["state"] != RelayState.REPLY:
             continue
         stamp = _when(read.get("timestamp"))
         newer = stamp is not None and (stamp > baseline if baseline else stamp >= sent_at)
         if newer and _settled(read):
             return _print({**read, "steer": steer["state"]})
-    return _print({"state": "no_reply_yet", "steer": steer["state"],
+    return _print({"state": RelayState.NO_REPLY_YET, "steer": steer["state"],
                    "session_id": args.session_id,
                    "message": f"sent once, no finished reply within {args.timeout:.0f}s; "
                               "run read later and do not send it again"})
@@ -299,11 +346,11 @@ def main(argv: Optional[list] = None) -> int:
             pass
     args = _parser().parse_args(argv)
     if args.command in ("steer", "ask") and not (args.file or args.text):
-        return _print({"state": "refused", "message": "nothing to send"})
+        return _print({"state": RelayState.REFUSED, "message": "nothing to send"})
     try:
         return args.func(args)
     except _Setup as exc:
-        print("STATE=refused")
+        print(f"STATE={RelayState.REFUSED}")
         print(f"MESSAGE={exc}")
         return 2
 
