@@ -76,6 +76,7 @@ import { doneEarlierLoaded, renderDoneEarlier } from './board/done-earlier.js';
 import { doneActions, proofGapChips } from './board/proof-chip.js';
 import { renderCiCard } from './board/ci-card.js';
 import { isDismissible, isFailing } from './board/attention-state.js';
+import { ClaimState, claimState } from './board/claim-state.js';
 import { pollIdeas, renderIdeas, wireIdeas } from './board/ideas-card.js';
 import {
   bucketChipEls, bucketNodes, hasBuckets, notPlannedCount,
@@ -317,12 +318,13 @@ function stampEl(text) {
 }
 
 function renderIssueCard(card) {
-  // Claim owner liveness: 'dead' is a provably gone lane — not in
-  // progress, startable again; 'unknown' keeps the in-progress lock but says
-  // the owner could not be verified.
+  // Claim owner liveness: a dead claim is a provably gone lane — not in
+  // progress, startable again; an unknown one keeps the in-progress lock but
+  // says the owner could not be verified.
   const isInProgress = card.in_progress === true;
-  const claimUnverified = isInProgress && card.claim_state === 'unknown';
-  const claimStale = card.claim_state === 'dead';
+  const claim = claimState(card);
+  const claimUnverified = isInProgress && claim === ClaimState.UNKNOWN;
+  const claimStale = claim === ClaimState.DEAD;
   const chips = [];
   if (claimUnverified) chips.push(chip('in progress (unverified)', 'accent', 'board-claim-chip'));
   else if (isInProgress) chips.push(chip('in progress', 'accent', 'board-claim-chip'));

@@ -1213,3 +1213,9 @@ name   = "board-exchange-state"
 module = "app/webapp/static/board/exchange-state.js"
 type   = "ExchangeState"
 derive = "exchangeState"
+
+[[state_machines]]
+name   = "board-claim-state-ui"
+module = "app/webapp/static/board/claim-state.js"
+type   = "ClaimState"
+derive = "claimState"
