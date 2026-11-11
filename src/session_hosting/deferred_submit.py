@@ -157,7 +157,7 @@ class DeferredSubmit(InputProtocol):
     ) -> None:
         """Record one server-initiated write's verdict and log a breadcrumb.
 
-        Shared by :meth:`submit_input` and the deferred-submit watcher (#763),
+        Shared by :meth:`submit_input` and the deferred-submit watcher,
         so a deferred outcome lands on ``last_input`` in exactly the same
         shape as an immediate one and ``to_api()`` needs no special case.
         """
@@ -210,7 +210,7 @@ class DeferredSubmit(InputProtocol):
     ) -> bool:
         """Is *our* payload the thing the composer is showing right now?
 
-        The deferred watcher's pre-fire check (#1075), and deliberately
+        The deferred watcher's pre-fire check, and deliberately
         stricter than :meth:`_payload_visible`. At ingest time any chip is
         fair evidence: the window opens at our own write, it closes within
         ``_INGEST_CAP_MS``, and the question is only "did anything land".
@@ -267,7 +267,7 @@ class DeferredSubmit(InputProtocol):
         """Thread body: run the watcher, then record whatever it concluded.
 
         Every path ends on a recorded verdict or a log line saying why there
-        is none (#1548): ``last_input`` left at ``pending`` by a watcher that
+        is none: ``last_input`` left at ``pending`` by a watcher that
         died is indistinguishable from one still waiting.
         """
         sid = self.session_id[:8]
@@ -316,7 +316,7 @@ class DeferredSubmit(InputProtocol):
 
         When to press, the first of:
 
-        - **The agent's turn is running and it takes type-ahead** (#1548): a
+        - **The agent's turn is running and it takes type-ahead**: a
           main-turn spinner painted within ``_TYPEAHEAD_LIVE_MS`` on an agent
           whose ``type_ahead`` was probed. Enter goes in now and the agent
           queues the message; the CR is confirmed afterwards by the queued
@@ -324,8 +324,8 @@ class DeferredSubmit(InputProtocol):
         - **A real quiet window** (``_DEFER_QUIET_MS``), inside
           ``_DEFER_CAP_MS``. A working agent repaints far more often than
           that, so quiet means its turn is genuinely over.
-        - **Idle at its prompt with background agents running** (#1319,
-          ``_bg_waiting``), a state whose agent rows repaint every second
+        - **Idle at its prompt with background agents running**
+          (``_bg_waiting``), a state whose agent rows repaint every second
           forever. Its CR is confirmed afterwards too: the main turn has to
           start (:meth:`_confirm_bg_submit`).
 
@@ -335,11 +335,11 @@ class DeferredSubmit(InputProtocol):
 
         1. **The payload — *ours* — is still in the composer.** Proven by no
            keystroke having touched the composer since the paste (``touches``
-           against ``_composer_touches``, #1548), or, once one has, by the
+           against ``_composer_touches``), or, once one has, by the
            payload showing in the terminal's recent output: scanning only
            from the oldest sample in the rolling ``frames`` window
            (~``_DEFER_FRAME_LOOKBACK_MS``) makes that "it is there now", and
-           ``chip_id`` (#1075) makes it "it is *mine*" — see
+           ``chip_id`` makes it "it is *mine*" — see
            :meth:`_payload_still_visible`. ``touches`` is ``None`` when the
            count was not taken; only the screen counts then.
         2. **No dialog in that same window** (``_DEFER_DIALOG_MARKERS``) —
@@ -531,7 +531,7 @@ class DeferredSubmit(InputProtocol):
     def _confirm_typeahead_submit(
         self, seq: int, cr_mark: int, waited_ms: int
     ) -> Optional["InputOutcome"]:
-        """Did the agent queue the message a mid-turn Enter sent? (#1548)
+        """Did the agent queue the message a mid-turn Enter sent?
 
         Confirmed by a queued-state marker (``_QUEUED_MARKERS``) painted after
         the CR, within ``_TYPEAHEAD_CONFIRM_MS``. Without one the outcome is
@@ -572,7 +572,7 @@ class DeferredSubmit(InputProtocol):
     def _confirm_bg_submit(
         self, seq: int, cr_mark: int, waited_ms: int
     ) -> Optional["InputOutcome"]:
-        """Did the CR a background-wait submit wrote start a main turn? (#1319)
+        """Did the CR a background-wait submit wrote start a main turn?
 
         The quiet-window path earns its ``submit_confirmed=True`` from the
         agent having gone silent. This path fires into a screen that is still

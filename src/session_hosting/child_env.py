@@ -53,7 +53,7 @@ def agent_child_env(session_id: str, agent: str) -> Dict[str, str]:
 
     The host's own environment minus :data:`_INHERITED_AGENT_MARKERS`, plus
     this session's ``APP_LAUNCHER_SESSION_ID``/``APP_LAUNCHER_AGENT`` stamp,
-    plus the **effective** ``PATH`` (issue #668).
+    plus the **effective** ``PATH``.
 
     That last part is what lets ``cmd /c <exe>`` find a CLI installed after
     this host process started: the inherited block is frozen at spawn, so

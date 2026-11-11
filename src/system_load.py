@@ -1,10 +1,10 @@
-"""Box load behind the page header's CPU reading (#1522).
+"""Box load behind the page header's CPU reading.
 
 When the Board or the Code tab feels slow, the header's reading answers "is
 the box loaded?" and its sheet answers "by what?": total CPU, memory, and
 the top three groups of processes by cores used over the last sample window
 (processes sharing a display name are summed, with a count), and an
-"everything else" remainder so the rows add up to the CPU line (#1646).
+"everything else" remainder so the rows add up to the CPU line.
 
 **One shared sampler, never a per-request scan.** A background tick
 (:func:`tick_forever`, started from the webapp lifespan) samples every
@@ -83,7 +83,7 @@ LEVEL_UNKNOWN = "unknown"
 
 @dataclass(frozen=True)
 class ProcLoad:
-    """One row: every busy process sharing a display name, summed (#1646)."""
+    """One row: every busy process sharing a display name, summed."""
 
     name: str
     cores: float
@@ -319,7 +319,7 @@ def level_for(samples: Iterable[Sample]) -> str:
 
 
 def _top(before: ProcTimes, after: ProcTimes, elapsed: float) -> List[ProcLoad]:
-    """The busiest groups of processes over the window (#1646).
+    """The busiest groups of processes over the window.
 
     Load spread over many processes (a CPU burn, pytest workers, a browser
     tree) never shows as one process, so processes are summed by display name

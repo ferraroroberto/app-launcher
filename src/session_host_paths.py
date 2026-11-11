@@ -1,14 +1,14 @@
 """Declared session-host paths + touched-path diff, for `/api/version`'s
-staleness scoping (#635), and the loaded-sha lineage check the webapp uses to
-name a session-host that predates a feature (#967).
+staleness scoping, and the loaded-sha lineage check the webapp uses to
+name a session-host that predates a feature.
 
-`_session_host_freshness()` in `app/webapp/routers/misc.py` used to flag the
+`_session_host_freshness()` in `app/webapp/routers/misc.py` would flag the
 session-host `stale` the instant its loaded `git_sha` differed from the
 repo's current `HEAD` — true after *any* merge anywhere in the repo, not just
 one that touched code the session-host actually loads. This module supplies
 the missing scope: which paths the session-host declares
 (`CLAUDE.md`'s `## session-host` block, project-scaffolding's deploy-coverage
-convention, `#629`) and whether the diff between two shas touched any of them.
+convention) and whether the diff between two shas touched any of them.
 
 Hand-rolled rather than importing `fleet-config`'s
 `skills/_lib/deploy_coverage.py` (which does the equivalent parse/intersect
@@ -21,9 +21,9 @@ The declaration stays the runtime source of truth (a sha-to-sha diff must be
 scoped by what was declared, not by the working tree's imports as they look
 today), but it is no longer hand-maintained on trust:
 :func:`session_host_import_closure` walks the session-host's real first-party
-import graph so a test can hold the declaration to it (#923 — `src/audit.py`
-was imported by the session-host and never declared, so a change to it could
-not make `stale_relevant` say `true`).
+import graph so a test can hold the declaration to it: a module the session-host
+imports but the declaration omits would never make `stale_relevant` say
+`true`.
 """
 
 from __future__ import annotations
@@ -97,7 +97,7 @@ def session_host_import_closure(
     ``None`` — never a partial list — when the entry module can't be resolved
     or any file in the walk can't be read or parsed. A truncated closure would
     silently under-declare, which is the exact failure this function exists to
-    catch; "couldn't compute" has to stay its own state (#923).
+    catch; "couldn't compute" has to stay its own state.
     """
     entry = _module_file(repo_root, entry_module)
     if entry is None:
@@ -205,7 +205,7 @@ def sha_contains_commit(repo_root: Path, sha: str, commit: str) -> Optional[bool
     The build-lineage companion to :func:`paths_touched_between`: it answers
     "does the session-host's loaded ``git_sha`` already have feature X", which
     the webapp needs to name a stale host instead of forwarding its bare
-    HTTP 500 (#967 reopen). ``None`` when either sha can't be resolved — never
+    HTTP 500. ``None`` when either sha can't be resolved — never
     a confident "predates" when the comparison couldn't actually run.
     """
     commit_full = run_git(repo_root, ["rev-parse", "--verify", "--quiet", f"{commit}^{{commit}}"])

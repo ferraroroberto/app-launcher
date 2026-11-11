@@ -1,4 +1,4 @@
-"""Publish a chief ``session-end`` event for a session that died without a hook (#1644).
+"""Publish a chief ``session-end`` event for a session that died without a hook.
 
 A worker the fleet chief dispatched reports its end through its own ``Stop`` /
 ``SessionEnd`` hook, which writes an event into the chief's mailbox. A worker
@@ -134,7 +134,7 @@ def _event(sid: str, row: Dict[str, Any], agent: str, now: datetime) -> Dict[str
 def publish(inbox: Path, event: Dict[str, Any], now_ms: Optional[int] = None) -> Path:
     """Write ``event`` into ``inbox`` atomically; returns the published path.
 
-    The one atomic writer for the chief-mailbox wire format (#1791):
+    The one atomic writer for the chief-mailbox wire format:
     ``src.chief_job_failed`` imports this instead of keeping its own copy.
     ``now_ms`` defaults to the current time; a caller that already pins a
     ``datetime`` (e.g. :func:`publish_session_ends`) passes it explicitly so

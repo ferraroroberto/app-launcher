@@ -1,4 +1,4 @@
-"""Is *this* checkout the canonical installed launcher? (issue #736)
+"""Is *this* checkout the canonical installed launcher?
 
 Anything that reaches out of the process and touches the user — a phone
 alert, a machine-global desktop sweep — must be owned by exactly one
@@ -21,7 +21,7 @@ The predicate, in order:
 
 1. ``LAUNCHER_SESSION_HOST_PORT`` set → disposable autoboot instance, never
    canonical. Checked **first and unconditionally**, so no override can
-   re-arm the e2e gate's webapp (issue #260 / #278's failure mode).
+   re-arm the e2e gate's webapp.
 2. :data:`CANONICAL_OVERRIDE_ENV` set to a boolean → that answer, for the
    cases inference cannot reach: a second full clone (which has a perfectly
    normal ``.git`` directory and is indistinguishable from the real one), or

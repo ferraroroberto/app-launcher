@@ -1,5 +1,5 @@
 """Type a message into another process's console — the detached-session send
-path (issue #967).
+path.
 
 A detached (``kind: remote``) session is a console window the launcher only
 tracks by PID: no PTY, no stdin handle, no output stream. The one channel
@@ -27,7 +27,7 @@ PTY.
 Empirical facts this encodes (probe on the issue, 2026-09-14, Windows
 Terminal host — the box's default — with Claude Code, Codex, Pi, Copilot and
 Antigravity. Grok was re-probed the same way on 2026-09-19 once it was
-signed in on the box — issue #1069, 4/4, same settle and same soft-newline
+signed in on the box — 4/4, same settle and same soft-newline
 behaviour — so every Coding-tab agent is now proven; classic conhost is
 still not probed):
 
@@ -130,7 +130,7 @@ def _user32():
     """``user32`` loaded once, with ``VkKeyScanW``'s return declared as the
     ``SHORT`` it is — ctypes' default ``c_int`` leaves the upper bits of a
     16-bit return undefined on x64, so the ``-1`` "no key" sentinel could
-    miss and a surrogate half would get a junk VK (review nit on #967)."""
+    miss and a surrogate half would get a junk VK."""
     global _USER32
     if _USER32 is None:
         lib = ctypes.WinDLL("user32", use_last_error=True)

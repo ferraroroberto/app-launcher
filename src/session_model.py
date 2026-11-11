@@ -1,4 +1,4 @@
-"""The model a live session runs, as a short display name (#1383).
+"""The model a live session runs, as a short display name.
 
 Derived on the webapp side from fields the session-host already reports --
 the spawn ``flags`` and, for Codex, its OSC ``live_title`` -- plus, for Claude,

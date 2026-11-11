@@ -1,6 +1,6 @@
-"""Does an agent's composer hold typed-but-unsent text? (issue #1643)
+"""Does an agent's composer hold typed-but-unsent text?
 
-An automated typer — the fleet chief's doorbell (#1645), a steer through
+An automated typer — the fleet chief's doorbell, a steer through
 ``/input`` — must not append its line to a half-typed human message and
 submit both. The session-host cannot read the composer itself, so
 :class:`ComposerTracker` infers it from the bytes written *into* the PTY:
@@ -21,7 +21,7 @@ CLI and Pi, each spawned alone, nothing attached to a live session):
   empties it, and so does Ctrl-U (``\\x15``) on a one-line draft and Ctrl-C
   (``\\x03``) on any draft. One bare Esc leaves the draft in place.
 - Enter on an empty composer does nothing. Enter on a draft submits it, and
-  mid-turn it still empties the composer: Claude queues it (#1548), Codex
+  mid-turn it still empties the composer: Claude queues it, Codex
   sends it as a steer, Pi shows it as "Steering:".
 - A backslash right before Enter inserts a newline instead of submitting in
   Claude Code and Pi (the backslash is consumed); Codex submits the line,

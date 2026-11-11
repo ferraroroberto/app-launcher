@@ -1,8 +1,8 @@
-"""Retention window for ``webapp/sessions/`` (issue #902).
+"""Retention window for ``webapp/sessions/``.
 
-Until #902 nothing reaped this directory at all: :mod:`src.audit` appends a
+Nothing else reaps this directory: :mod:`src.audit` appends a
 ``<session_id>.log`` per session and the session-host writes a
-``<session_id>.transcript`` next to it, and both lived forever (measured
+``<session_id>.transcript`` next to it, and both would live forever (measured
 2026-09-11: ~94,600 files, 4.9 GB, 99% of it transcripts).
 
 The window itself is **not** set here. It is one field,

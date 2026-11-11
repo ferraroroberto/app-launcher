@@ -1,18 +1,18 @@
-"""Server-initiated input-delivery protocol — issue #798.
+"""Server-initiated input-delivery protocol.
 
-Split out of ``src/session_host.py`` (a `/codebase-audit` maintainability
-finding): bracketed-paste framing, bulk settle-then-submit and ingest/echo
-verification (issues #611/#760) for the HTTP ``/input`` path, plus the
+Split out of ``src/session_host.py`` to keep that module focused:
+bracketed-paste framing, bulk settle-then-submit and ingest/echo
+verification for the HTTP ``/input`` path, plus the
 outcome vocabulary every input path reports in. Unlike
 ``session_host_scan.py``'s pure functions, this protocol is inherently
 stateful against a live ``PtySession`` — the settle/defer state
 (``_defer_seq``, ``_defer_args``, ``_output_total``, ``_last_output_at``) is
 already explicit ``PtySession`` dataclass fields, so it stays there. What
 moves is the *behaviour*: :class:`InputProtocol` is a mixin packaging every
-method that reasons about that state. The deferred-submit watcher (#763)
+method that reasons about that state. The deferred-submit watcher
 extends it in :mod:`src.session_hosting.deferred_submit`, and ``PtySession``
 inherits that, keeping only ``write()``/``_write_locked()`` — the raw PTY
-chunk-and-pace write path (#64).
+chunk-and-pace write path.
 """
 
 from __future__ import annotations
@@ -168,7 +168,7 @@ _CONTROL_KEY_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 
 def touches_composer(data: str) -> bool:
-    """Can this keyboard write change what the composer holds? (#1548)
+    """Can this keyboard write change what the composer holds?
 
     Plain typed text cannot remove a payload already there, so it does not
     count — consistent with a human typing never superseding the watcher.
@@ -225,7 +225,7 @@ SUBMIT_NOT_REQUESTED = "not_requested"  # the call did not ask for a submit
 
 @dataclass(frozen=True)
 class InputOutcome:
-    """What actually happened to one server-initiated write (issue #760).
+    """What actually happened to one server-initiated write.
 
     ``reason`` is the single source of truth; the booleans are the detail a
     caller renders. ``ingested``/``submit_confirmed`` are tri-state on
@@ -255,7 +255,7 @@ class InputOutcome:
 
     @property
     def submit_state(self) -> str:
-        """The submit's fate as one of the ``SUBMIT_*`` values (issue #929)."""
+        """The submit's fate as one of the ``SUBMIT_*`` values."""
         if self.submitted:
             return SUBMIT_CONFIRMED if self.submit_confirmed is True else SUBMIT_UNCONFIRMED
         if not self.submit_requested:
@@ -270,17 +270,17 @@ class InputOutcome:
 
         ``INPUT_NOT_INGESTED`` counts as *not* delivered: the write returned
         without raising, but the terminal never showed the payload, which is
-        exactly the silent drop #760 was filed over.
+        exactly the silent drop a delivery check exists to catch.
 
         A submit that was asked for and not sent is not delivered either
-        (issue #929) — including ``deferred`` (the CR is still with the
+        — including ``deferred`` (the CR is still with the
         watcher) and every watcher give-up (``defer_timeout`` /
         ``defer_vanished`` / ``defer_unclear``). The payload reached the
         composer, but a paste sitting unsubmitted there has not reached the
         agent, and ``delivered`` must never be more optimistic than
-        ``submitted``. Before #929 all of those read ``delivered: true`` next
-        to ``submitted: false``, and three stranded briefs were reported as
-        landed. ``submit_state`` says which of those it was.
+        ``submitted``: reporting ``delivered: true`` next to ``submitted: false``
+        would call a stranded brief landed. ``submit_state`` says which of
+        those it was.
         """
         if self.reason in (INPUT_DROPPED, INPUT_NOT_INGESTED):
             return False
@@ -354,7 +354,7 @@ def _echo_needles(data: str) -> List[str]:
 
 
 def _carries_image_path(data: str) -> bool:
-    """Does ``data`` hold an attached image path (issue #1212)?"""
+    """Does ``data`` hold an attached image path?"""
     return _IMAGE_PATH_RE.search(data) is not None
 
 
@@ -362,21 +362,21 @@ def attach_converting(normalized: str) -> bool:
     """Is an image conversion still in flight in ``normalized`` output?
 
     True while the newest "Pasting…" has no image chip painted after it —
-    terminal-compose.js's ``attachStartAt``/``attachChipAt`` comparison
-    (#1211), read off the ring instead of per-frame timestamps.
+    terminal-compose.js's ``attachStartAt``/``attachChipAt`` comparison,
+    read off the ring instead of per-frame timestamps.
     """
     start = normalized.rfind(_ATTACH_START_MARKER)
     return start != -1 and normalized.find(_IMAGE_CHIP_MARKER, start) == -1
 
 
 def _chip_id_in(normalized: str, image: bool = False) -> Optional[str]:
-    """The newest chip in ``normalized`` terminal output (#1075), as its
-    normalized token — ``"[pastedtext#7"``, or ``"[image#4"`` when ``image``.
+    """The newest chip in ``normalized`` terminal output, as its
+    normalized token — ``"[pastedtext#<n>"``, or ``"[image#<n>"`` when ``image``.
 
     Highest rather than last-in-paint-order: a composer holding several chips
     repaints them in ascending order, and Claude Code numbers pastes
     monotonically, so within a window that begins at our *own* write the
-    largest number is the chip our write created. ``image`` (#1212) pins the
+    largest number is the chip our write created. ``image`` pins the
     chip an image payload's path was converted into; a text payload keeps
     pinning its collapsed-paste chip.
 
@@ -392,7 +392,7 @@ def _chip_id_in(normalized: str, image: bool = False) -> Optional[str]:
 
 
 def _scan_turn_state(chunk: str) -> Optional[bool]:
-    """What a chunk of raw PTY output says about the main agent (#1319).
+    """What a chunk of raw PTY output says about the main agent.
 
     ``True`` when the last status marker in ``chunk`` is the "Waiting for N
     background agents" line (idle at the prompt, agents running), ``False``
@@ -413,8 +413,8 @@ def chip_visible(normalized: str, chip_id: str) -> bool:
     """Is *this* chip (a :func:`_chip_id_in` token) showing in ``normalized``
     terminal output?
 
-    The trailing boundary is the whole point: without it ``#1`` also matches
-    ``#12``, which hands back exactly the any-chip-will-do answer this exists
+    The trailing boundary is the whole point: without it chip number 1 also matches
+    chip number 12, which hands back exactly the any-chip-will-do answer this exists
     to avoid.
     """
     pattern = re.escape(chip_id) + r"(?!\d)"
@@ -439,7 +439,7 @@ class InputProtocol:
 
         Called with every chunk after it is counted into ``_output_total``,
         so ``_main_turn_at`` is a position a CR's own mark can be compared
-        against (#1319). State rather than a scan of recent output, because
+        against. State rather than a scan of recent output, because
         the wait line is painted once and then scrolls out of any window
         while the agent rows tick on for as long as the agents run.
         """
@@ -475,7 +475,7 @@ class InputProtocol:
         Evidence is either the payload itself coming back (normalized, so
         wrapping and box-drawing don't hide it) or Claude Code's
         collapsed-paste chip, which replaces the echo for a bulk paste. For a
-        payload carrying an image path (``image``, #1212) the "[Image #N]"
+        payload carrying an image path (``image``) the "[Image #N]"
         chip counts too: Claude Code replaces the path with it, so the path
         itself is never echoed.
         """
@@ -489,8 +489,8 @@ class InputProtocol:
         """Write ``data`` and, if ``submit``, follow it with a submitting CR.
 
         Ported from ``app/webapp/static/terminal-compose.js``'s
-        ``framePaste``/``sendSubmit``/``bulkSettle`` (issues #166/#450/#499)
-        for the HTTP ``/input`` path (issue #611), which previously wrote the
+        ``framePaste``/``sendSubmit``/``bulkSettle``
+        for the HTTP ``/input`` path, which would otherwise write the
         (unconditionally bracketed) text and the CR back-to-back with no
         settle logic — Claude Code's composer classifies a bulk write as a
         paste, and a CR arriving mid-ingest is absorbed as a literal newline
@@ -505,7 +505,7 @@ class InputProtocol:
           literal ``\\x1b[200~`` sent to an agent that never asked for it is
           garbage, not a paste.
         - The CR is always its own separate ``write()`` call, never
-          concatenated onto the framed text (#166).
+          concatenated onto the framed text.
         - ``data`` blank + ``submit`` → a bare submit against whatever is
           already sitting in the composer, with no text write at all — the
           escape hatch for a message already stranded by this exact race
@@ -514,34 +514,33 @@ class InputProtocol:
           phone's own Send control).
         - Payloads at/above ``_BULK_SUBMIT_THRESHOLD_CHARS`` hold the CR
           until the session's output stream shows the paste was echoed and
-          has gone quiet (floor/quiet/cap — #499); shorter payloads submit
+          has gone quiet (floor/quiet/cap); shorter payloads submit
           immediately, matching ``sendSubmit``'s "short sends stay instant".
         - A payload carrying an image path takes that same settle path
           however short it is, and also waits out an image conversion still
-          in flight, up to ``_ATTACH_CAP_MS`` (issue #1212) — ``sendSubmit``'s
-          ``attachSettle`` (#1211).
+          in flight, up to ``_ATTACH_CAP_MS`` — ``sendSubmit``'s
+          ``attachSettle``.
         - A bulk payload is additionally checked for *ingest evidence*
-          before the CR is written at all (issue #760): the terminal must
+          before the CR is written at all: the terminal must
           have painted the payload back (or its ``[Pasted text #N]`` chip)
           since the write. No evidence within ``_INGEST_CAP_MS`` → the CR is
           withheld and the outcome says ``not_ingested``, because a blind CR
           into a terminal that never showed the text can do real damage (it
           answers whatever modal dialog is open).
         - A bulk payload that *was* ingested but whose stream never goes
-          quiet — a busy agent, the 2026-08-14 shape — no longer gets a blind
-          CR at the settle cap either (issue #763). The submit is handed to a
+          quiet — a busy agent — does not get a blind
+          CR at the settle cap either. The submit is handed to a
           bounded background watcher instead, the call returns ``deferred``,
           and ``_write_lock`` is released immediately so a keyboard writer is
           never blocked behind the wait. For an agent that queues type-ahead
-          the watcher presses Enter at once while the turn runs (issue
-          #1548). See :meth:`_await_deferred_submit`.
+          the watcher presses Enter at once while the turn runs. See :meth:`_await_deferred_submit`.
 
-        Returns an :class:`InputOutcome` describing what actually happened —
-        superseding the old bare ``bool`` (#607), which could only say "the
-        write didn't raise" and so reported ``True`` for every silently
-        stranded steer in #760's three occurrences.
+        Returns an :class:`InputOutcome` describing what actually happened,
+        not a bare ``bool``, which could only say "the
+        write didn't raise" and so would report ``True`` for a silently
+        stranded steer.
 
-        The whole sequence runs under ``_write_lock`` (issue #721): the CR is
+        The whole sequence runs under ``_write_lock``: the CR is
         a separate PTY write from the text it submits, so without the lock a
         concurrent writer — the WebSocket pump serving a PC mirror on the
         same session — can land its own bytes *between* them and turn a

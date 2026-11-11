@@ -56,9 +56,8 @@ def git_env(base: Optional[dict] = None) -> dict:
     ~30 ms run — so the fan-out's lock windows **overlap in real time**, and
     one kill of the process tree in that band strands most of the wave at
     once, every lock stamped within a single Windows file-time tick. That is
-    the 2026-09-20 incident: 23 repos, one timestamp (#1111,
-    ferraroroberto/fleet-config#939), and nine repos on 2026-08-01 before it
-    (fleet-config#667).
+    what happened on 2026-09-20 (23 repos, one timestamp) and on 2026-08-01
+    (nine repos).
 
     It matters far more than a leftover file suggests, because a stale lock is
     **invisible to a read**: ``git status --porcelain``, ``git fetch``,

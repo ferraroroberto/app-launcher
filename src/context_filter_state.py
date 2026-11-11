@@ -1,6 +1,6 @@
-"""State-file IO for the fleet context filter's control surface (issue #713).
+"""State-file IO for the fleet context filter's control surface.
 
-The context filter itself (fleet-config#392/#541/#544) is a PreToolUse hook
+The context filter itself is a PreToolUse hook
 that shrinks tool-call output before it reaches a coding agent's context
 window. It is controlled machine-wide by two files under
 ``~/.fleet-context-filter`` (paths are configurable — see
@@ -212,9 +212,8 @@ def write_mode(path: Path, mode: str, *, updated_by: str = DEFAULT_UPDATED_BY) -
     Raises ``ValueError`` for an invalid ``mode`` — callers (the API router)
     map that onto a 4xx, never a 500. The write is a temp-file-then-
     ``os.replace`` swap (:func:`src._json_io.atomic_write_json`), which
-    cleans up its own sibling ``.tmp`` if the swap fails (#1003 — this
-    function used to do that itself, by re-deriving the helper's private
-    temp-file name, and was the only one of eleven call sites that did).
+    cleans up its own sibling ``.tmp`` if the swap fails, so this function
+    never re-derives the helper's private temp-file name.
     """
     if mode not in VALID_MODES:
         raise ValueError(f"mode must be one of {VALID_MODES}; got {mode!r}")

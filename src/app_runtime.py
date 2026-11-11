@@ -215,7 +215,7 @@ def _is_alive(inst: SpawnedInstance) -> bool:
     PID would exist but have a creation time far from ``started_at``. That
     guard is a real correctness fix, so it lives in exactly one place —
     :func:`src.diagnostics.is_pid_alive`, which ``src.jobs.reap`` calls for
-    the same reason on run records (issue #689). This is the spawned-app
+    the same reason on run records. This is the spawned-app
     binding of it: the recorded ``started_at`` is the create-time hint.
     """
     return is_pid_alive(

@@ -104,7 +104,7 @@ def launch_detached(
 
 @dataclass(frozen=True)
 class RemoteInputOutcome:
-    """What happened to one message typed into a detached console (#967).
+    """What happened to one message typed into a detached console.
 
     The console-shaped sibling of :class:`~src.session_host_input.InputOutcome`
     — same ``to_api()`` keys, so every reader of a PTY verdict (the webapp
@@ -112,7 +112,7 @@ class RemoteInputOutcome:
     the one difference the whole feature turns on: a console has no output
     stream to verify a write against, so a successful send reports
     ``delivered: "unconfirmed"`` (:data:`DELIVERED_UNCONFIRMED`), never
-    ``True``. ``reason`` is ``unverified`` on success (the #929 vocabulary
+    ``True``. ``reason`` is ``unverified`` on success (the ``SUBMIT_*`` vocabulary
     for "sent, nothing checked it"), ``dropped`` when the console process is
     gone, ``console_failed`` when the helper could not attach or type.
     """
@@ -138,7 +138,7 @@ class RemoteInputOutcome:
     @property
     def delivered(self) -> "bool | str":
         """``"unconfirmed"`` when the keystrokes went into the console,
-        ``False`` when they did not — never ``True`` (issue #967)."""
+        ``False`` when they did not — never ``True``."""
         return DELIVERED_UNCONFIRMED if self.sent else False
 
     def to_api(self) -> Dict[str, Any]:
@@ -162,13 +162,13 @@ class RemoteSession:
     Spawned in its own console window and deliberately **orphaned out of the
     session-host's process tree** (see :meth:`SessionManager.create_remote`),
     so it stays visible on the PC and survives a session-host *or* a
-    ``tray.bat --restart`` tear-down (issue #130) — that survival is the whole
+    ``tray.bat --restart`` tear-down — that survival is the whole
     point of the detached mode. The launcher keeps only the console PID, so the
     session shows up in the running-sessions list and can be killed from the
     phone — there is no PTY, no scrollback, and no WebSocket. Remote control
     comes from the Claude cloud app.
 
-    Since issue #967 the phone can also *type into* that console:
+    The phone can also *type into* that console:
     :meth:`submit_input` shells out to ``src/console_input.py``, which
     attaches to the console by this PID and writes key records into its
     shared input buffer. Nothing can observe the agent consuming them, so the
@@ -209,7 +209,7 @@ class RemoteSession:
 
     def submit_input(self, data: str, submit: bool) -> RemoteInputOutcome:
         """Type ``data`` into the detached console and, if ``submit``,
-        press Enter (issue #967).
+        press Enter.
 
         The shape of :meth:`PtySession.submit_input` minus everything that
         needs an output stream: no bracketed-paste decision, no ingest/echo
@@ -219,7 +219,7 @@ class RemoteSession:
         its own settle, then writes the one submitting Enter. The verdict is
         therefore ``delivered: "unconfirmed"`` on success — never ``True``.
 
-        Refused up front, without spawning anything, for an agent the #967
+        Refused up front, without spawning anything, for an agent the console-input
         probe did not prove (``agents.supports_console_input``): the menu
         never offers those a Send item, and an API caller gets the same
         ``console_failed`` answer rather than keystrokes into an unprobed TUI.
