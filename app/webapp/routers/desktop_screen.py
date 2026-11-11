@@ -1,11 +1,11 @@
-"""Screen view (#1520): the PC's desktop, live, on the phone.
+"""Screen view: the PC's desktop, live, on the phone.
 
 ``GET /api/screen/monitors`` lists the displays; ``WS /api/screen/ws`` streams
 one of them as JPEG binary frames. Capture lives in :mod:`src.desktop.capture`
 and runs only inside a connected socket.
 
 A picture of the desktop shows whatever is on it, so this is terminal-grade
-content (#1036): the HTTP route carries a ``passkey`` row in
+content: the HTTP route carries a ``passkey`` row in
 ``middleware._TERMINAL_GUARD_RULES``, and the WebSocket, which the HTTP
 middleware never sees, re-applies the same gate before a single grab via
 ``middleware.ws_terminal_gate`` — the same helper ``sessions.proxy_session_ws``
@@ -15,7 +15,7 @@ Protocol: the server sends binary JPEG frames and JSON text status messages
 (``{"type": "status", "state": "unavailable" | "live"}``); the client sends
 the text ``ack`` after drawing each frame, and the next frame waits for it.
 
-Input (#1521): every other text frame the client sends is a JSON input
+Input: every other text frame the client sends is a JSON input
 message (click, down/move/up, scroll, text, key), handed to a
 :class:`src.desktop.input.InputSession` for this socket's monitor. The reader
 that receives them only starts after the gate above has passed, so input
@@ -23,14 +23,14 @@ rides the same socket and the same gate as the picture; there is no other
 input path (``tests/unit/desktop/test_desktop_input.py`` fails if one appears). When the
 socket goes away, every key and button the session still holds is released.
 
-Clipboard (#1719): a ``clipboard_set`` input message puts its text on the PC's
+Clipboard: a ``clipboard_set`` input message puts its text on the PC's
 clipboard (its own size cap, its own seam, reached through the input
 session like every other message);
 the server answers with one JSON ``clipboard`` message that says whether it
 worked, never what was copied. The close audit line counts transfers by
 direction and records nothing of their content.
 
-Quality (#1721): the connect query's ``preset`` (sharp, balanced or saver;
+Quality: the connect query's ``preset`` (sharp, balanced or saver;
 anything else is balanced) picks the JPEG quality, the pause between frames
 and a width cap from one table in :mod:`src.desktop.capture`. The client can
 switch a readout on with ``{"type": "readout", "on": true}``, a control
@@ -38,7 +38,7 @@ message that is not input; while it is on, the server sends one JSON ``stats``
 message about once a second with the mean time of each capture stage
 (grab, digest, resize, encode, in ms), and nothing at all while it is off.
 
-Cursor (#1598): beside the frames, the server sends JSON ``cursor`` messages
+Cursor: beside the frames, the server sends JSON ``cursor`` messages
 (position as 0-1 in the shown monitor, a shape name, visible or not) from
 :func:`src.desktop.cursor.stream_cursor`, whenever the cursor changed. It is
 not paced by the frame ack, starts only after the gate, and stops with the

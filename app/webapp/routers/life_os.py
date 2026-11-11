@@ -1,12 +1,12 @@
 """Life OS tab — one-tap skill launch + read-only private-content browser.
 
-The Life OS tab (issue #102) is ~80% a clone of the Coding tab,
+The Life OS tab is ~80% a clone of the Coding tab,
 specialised to the skills in the sibling ``life-os`` repo:
 
     GET  /api/life-os/skills                  → list skills, with when each was last
                                                  used (public, token-gated)
     POST /api/life-os/skills/{id}/launch      → spawn a skill session (token)
-    GET  /api/life-os/channels                → Telegram channel profiles (#1366)
+    GET  /api/life-os/channels                → Telegram channel profiles
     POST /api/life-os/channels/{id}/launch    → start/resume a profile's skill session
                                                  with its Telegram bot (Tailscale + passkey)
     POST /api/life-os/skills/{id}/conversations/launch → verified source resume
@@ -27,14 +27,13 @@ slash-command; Codex receives a server-authored prompt pointing at that same
 validated skill's ``SKILL.md``. No caller-supplied free text is interpolated
 into either launch.
 
-Split by concern (issue #884, a `/codebase-audit` maintainability finding),
-the way ``board.py`` was under #691. This module is the launch surface — the
+Split by concern, as ``board.py`` is. This module is the launch surface — the
 skill list, the weekly-recap tile, skill launch, and a skill's file tree. The
 conversation history (index, search, targeted relaunch) lives in
 :mod:`app.webapp.routers.life_os_conversations` and the path-jailed content
 browser (read / delete / rename) in :mod:`app.webapp.routers.life_os_files`,
-the Telegram channel profiles (#1366) in
-:mod:`app.webapp.routers.life_os_channels` and their relay (#1639) in
+the Telegram channel profiles in
+:mod:`app.webapp.routers.life_os_channels` and their relay in
 :mod:`app.webapp.routers.life_os_relay`, the zombie cleanup's archive
 (list, read, restore) in :mod:`app.webapp.routers.life_os_archived`, all mounted here via ``include_router`` so ``app/webapp/server.py`` still
 registers one ``life_os.router``. Skill resolution and the spawn tail that
@@ -195,11 +194,11 @@ async def list_skills(request: Request) -> Dict[str, Any]:
 
 @router.post("/api/life-os/favorites")
 async def toggle_skill_favorite(request: Request) -> Dict[str, Any]:
-    """Star/unstar a Life OS skill (issue #1070).
+    """Star/unstar a Life OS skill.
 
     Body: ``{"id": "<skill-id>", "favorite": true|false}``. Deliberately the
     same shape, the same idempotence and the same persistence path as the
-    Coding tab's ``POST /api/claude-code/favorites`` (#250) — starring an
+    Coding tab's ``POST /api/claude-code/favorites`` — starring an
     already-starred (or unstarring an absent) id is a no-op that still
     returns 200, so a double-tap from the phone cannot corrupt the list.
 
@@ -274,7 +273,7 @@ async def launch_recap(request: Request) -> Dict[str, Any]:
     """Launch a Claude or Codex session for weekly-recap review in life-os.
 
     The Weekly-recap tile's 🚀 — the interactive **review** half of the recap
-    (issue #167 / life-os #15). Body: ``{"mode": "pty"|"remote", "model": str}``
+    Body: ``{"mode": "pty"|"remote", "model": str}``
     (``model`` is a provider-qualified catalog value; a legacy unqualified
     Claude value or ``opus`` bool is still accepted).
     The drafting half runs headless on a schedule (the recap-draft Job), so this
@@ -313,15 +312,15 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
     """Launch a Claude or Codex session that invokes a skill in life-os.
 
     Body: ``{"mode": "pty"|"remote", "model": str, "resume": bool}``, where
-    ``model`` is a provider-qualified catalog value (#540/#845; legacy Claude
+    ``model`` is a provider-qualified catalog value (legacy Claude
     values remain accepted). cwd is fixed to ``life_os_dir``. Claude gets the
     native slash command; Codex gets a server-authored prompt pointing at the
     validated skill file. Both use the Coding tab's PTY/detached machinery.
 
-    Resume (issue #151) reopens the selected provider's native session picker
+    Resume reopens the selected provider's native session picker
     instead of invoking the skill: it **drops the skill prompt** so the user
     lands on the picker to pick up a prior conversation rather than starting
-    the skill afresh. Resume is orthogonal to Detached (issue #157, matching
+    the skill afresh. Resume is orthogonal to Detached (matching
     the Coding tab): the requested ``mode`` still decides where the picker
     renders — a detached console window (``mode="remote"``) or a streamed PTY
     (``mode="pty"``). Resume no longer forces a PTY.

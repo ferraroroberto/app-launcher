@@ -61,7 +61,7 @@ def _stamped_index(app: Any) -> Tuple[str, str]:
     """The hash-stamped index.html and its ETag, re-rendered only on change.
 
     Every page load used to re-read the 135 KB file and regex-rewrite its
-    asset_hashes (#1324). The rendered body is cached on the app, keyed on
+    asset_hashes. The rendered body is cached on the app, keyed on
     the mtime and size of index.html and its view fragments, so an edit on
     disk is still picked up on the next load without a restart; the asset
     hashes are fixed per process.
@@ -111,7 +111,7 @@ async def version(request: Request) -> Dict[str, Any]:
     load) plus a live staleness check of the session-host on ``:8446``.
 
     The session-host is deliberately excluded from ``tray.bat --restart``'s
-    reclaim sweep (project-scaffolding#35, to protect live PTYs), so it can
+    reclaim sweep (to protect live PTYs), so it can
     keep running code that is days old with nothing else surfacing that —
     a merged fix can sit unapplied on the live session-host indefinitely
     unless something checks for it. ``session_host.stale``
@@ -217,7 +217,7 @@ def _session_host_freshness(
 ) -> Dict[str, Any]:
     """``{"reachable", "git_sha", "started_at", "stale", "stale_relevant",
     "freshness"}``
-    (#615, scoped by #635, ref fixed by #641) from the session-host's own
+    from the session-host's own
     ``/healthz`` body and the repo's resolved ``deployed_sha`` (its default
     remote branch tip, e.g. ``origin/main`` — not the live checkout's current
     branch, which can transiently point anywhere).
@@ -273,7 +273,7 @@ def _session_host_path_relevance(host_sha: str, deployed_sha: str) -> Optional[b
 
 @router.get("/api/terminal-themes")
 async def terminal_themes() -> Dict[str, Any]:
-    """User-tunable xterm theme overrides (issue #381), VS Code-style.
+    """User-tunable xterm theme overrides, VS Code-style.
 
     Reads the machine-local ``webapp/terminal-themes.json`` — per-mode
     xterm theme keys plus an optional ``minimumContrastRatio`` knob, e.g.
@@ -305,7 +305,7 @@ async def agents() -> Dict[str, Any]:
     The Coding tab uses ``available`` to disable an agent's per-tile
     launch button (with a hover hint) when its CLI isn't installed.
 
-    ``vscode_available`` rides along for the row's VS Code button (#802).
+    ``vscode_available`` rides along for the row's VS Code button.
     It is detected the same way but is *not* an agent — it opens a GUI
     editor, not a PTY session, so it has no entry in ``src.agents``. One
     already-polled endpoint beats a second fetch for a single boolean.
@@ -320,7 +320,7 @@ async def healthz() -> Dict[str, Any]:
 
 @router.get("/api/system/load")
 async def system_load_reading() -> Dict[str, Any]:
-    """The page header's CPU reading (#1522): the shared sampler's cached
+    """The page header's CPU reading: the shared sampler's cached
     sample, never a scan on request. A read also keeps the sampler awake."""
     return system_load.read()
 
@@ -379,7 +379,7 @@ def _is_this_pc(request: Request) -> bool:
 
 @router.get("/api/desktop-session")
 async def desktop_session(request: Request) -> Dict[str, Any]:
-    """Whether the PC's interactive session is a Remote Desktop one (#1996).
+    """Whether the PC's interactive session is a Remote Desktop one.
 
     ``state`` is ``remote`` / ``local`` / ``unknown`` (never guessed), and
     ``this_pc`` says whether the caller is a browser on this PC: only that
@@ -413,7 +413,7 @@ async def _listener_url(tailnet_host: str, pid: int, port: int) -> Optional[str]
 
 @router.post("/api/open-url")
 async def open_link_on_pc(request: Request) -> Dict[str, Any]:
-    """Open a link from Chat or a transcript in the PC's browser (#1274).
+    """Open a link from Chat or a transcript in the PC's browser.
 
     Only the PC itself may ask: the page calls this when it is running on the
     PC (a loopback connection, or a session's mirror window), so the link
@@ -446,7 +446,7 @@ async def probe_ports(request: Request) -> Dict[str, Any]:
     list misses apps — this enumerates listeners dynamically. Each
     listener is labelled with the app it belongs to (matched on the
     process's working directory) so you know what you're killing, and
-    carries the ``url`` its row's Open uses (#1129).
+    carries the ``url`` its row's Open uses.
     """
     dir_names = _registered_dir_names()
     # psutil's socket + process scan takes ~1 s. On the event loop it stalled

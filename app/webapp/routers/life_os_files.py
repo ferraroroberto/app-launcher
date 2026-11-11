@@ -2,12 +2,11 @@
 
     GET    /api/life-os/file?path=…            → file content (Tailscale + passkey)
     GET    /api/life-os/file/transcript?path=… → a conversation log as Chat
-                                                 transcript entries (#1119)
+                                                 transcript entries
     DELETE /api/life-os/file?path=…            → delete one conversation log
     POST   /api/life-os/file/rename            → rename one conversation log
 
-Split off ``app/webapp/routers/life_os.py`` (issue #884, a `/codebase-audit`
-maintainability finding) and mounted on ``life_os.router`` via
+Split off ``app/webapp/routers/life_os.py`` and mounted on ``life_os.router`` via
 ``include_router``, so ``app/webapp/server.py`` still registers one
 ``life_os.router``. A leaf: it imports no other Life OS module. ``life_os.py``
 lists a skill's tree through :func:`_walk_files`, and the conversations router
@@ -118,7 +117,7 @@ async def get_file(request: Request) -> Dict[str, Any]:
 
 @router.get("/api/life-os/file/transcript")
 async def get_file_transcript(request: Request) -> Dict[str, Any]:
-    """One conversation log as Chat-pane transcript entries (#1119).
+    """One conversation log as Chat-pane transcript entries.
 
     Same gate and jail as the raw read above (the ``/api/life-os/file/``
     prefix is passkey-gated), narrowed like delete/rename to real logs under
@@ -173,7 +172,7 @@ async def delete_file(request: Request) -> Dict[str, Any]:
     edit-mode 🗑️ to declutter trial-run logs.
 
     Shares :func:`src.life_os.delete.delete_conversation` with the
-    skill-scoped ``DELETE /api/life-os/skills/{id}/conversations`` (#1410) so
+    skill-scoped ``DELETE /api/life-os/skills/{id}/conversations`` so
     there is one routine for "delete a conversation everywhere it lives":
     this route also drops the matching Claude Code transcript, title and
     index rows instead of only unlinking the capture, and refuses a capture
@@ -343,9 +342,9 @@ def _walk_files(
     ``memory`` and a top-level ``SKILL.md`` under ``skill``). When the
     category is derived from that leading directory, ``name`` drops it —
     the section header already shows it, so repeating it in the row just
-    wastes horizontal space (#118). Sorted by category then path, except
+    wastes horizontal space. Sorted by category then path, except
     ``conversations`` — date-prefixed filenames, shown newest-first like
-    the digested conversation index endpoint below (#863).
+    the digested conversation index endpoint below.
     """
     if not root.is_dir():
         return []

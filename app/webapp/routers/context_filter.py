@@ -1,7 +1,6 @@
-"""Context-filter control surface (issue #713): the machine-wide off/shadow/
+"""Context-filter control surface: the machine-wide off/shadow/
 rewrite mode switch, the per-harness applicability matrix, and savings
-telemetry from the fleet's PreToolUse context-filter hook
-(fleet-config#392/#541/#544).
+telemetry from the fleet's PreToolUse context-filter hook.
 
 ``GET /api/context-filter`` -> ``{mode, harnesses, stats, age_seconds}``.
 ``PUT /api/context-filter/mode`` -> validate, write, return the fresh mode.

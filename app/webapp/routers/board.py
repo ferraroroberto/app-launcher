@@ -1,4 +1,4 @@
-"""Board tab — the fleet kanban's data plane (issues #300, #301, #302 / #164 / #399).
+"""Board tab — the fleet kanban's data plane.
 
     GET  /api/board                       → the five computed columns (token-gated)
     GET  /api/board/done?days_back=N      → issues closed on one earlier local day
@@ -6,8 +6,8 @@
     GET  /api/board/proof/{repo}/{pr}     → a merged UI PR's stored visual-proof report
                                             (Tailscale + passkey)
     GET  /api/board/chief-plan            → the chief's plan + answered marks (token-gated)
-    POST /api/board/chief/answered        → record answered questions (#1487;
-                                            Tailscale + passkey)
+    POST /api/board/chief/answered        → record answered questions
+                                            (Tailscale + passkey)
     POST /api/board/chief-plan/prune      → clear the plan's merged rows through
                                             fleet-config's writer (Tailscale + passkey)
     POST /api/board/github/refresh        → run the gh searches now, and start the
@@ -22,9 +22,8 @@
     POST /api/board/issues/start          → spawn /issue-start|yolo <N> in the
                                             issue's repo (Tailscale + passkey)
 
-Split off a single-file god-router (issue #691, `/codebase-audit`), the way
-``jobs.py`` and ``sessions.py`` already were: the fleet-chief lifecycle and its
-settings routes (``/api/board/chief/*``) live in
+Split into modules by concern, like ``jobs.py`` and ``sessions.py``: the
+fleet-chief lifecycle and its settings routes (``/api/board/chief/*``) live in
 :mod:`app.webapp.routers.board_chief`, mounted here via ``include_router`` so
 ``app/webapp/server.py`` still registers one ``board.router``. The spawn-then-
 type mechanics both route modules share (readiness, quiescence, framing, the
@@ -40,7 +39,7 @@ button. Column assembly is pure logic in :mod:`src.board`.
 
 The board + refresh routes are read-only repo/session metadata — the same gate
 class as ``GET /api/claude-code/sessions`` (bearer token, no passkey). The
-drill-down exchange and issue-start routes (#301) are terminal-grade and get
+drill-down exchange and issue-start routes are terminal-grade and get
 the passkey gate in ``middleware._terminal_guard_level``; the reply proxy
 lives beside its session siblings in ``routers/sessions.py``.
 
@@ -48,7 +47,7 @@ Issue-start is injection-safe by construction: the positional prompt is built
 **server-side** as ``/issue-<mode> <N>`` with ``mode`` allowlisted and ``N``
 int-validated, so the string that reaches the session-host's unquoted
 ``cmd /c`` line can never contain a metacharacter. An optional dispatch brief
-(#1114) keeps that property: its text goes to a launcher-owned file and only
+keeps that property: its text goes to a launcher-owned file and only
 the uuid-named path rides the prompt as ``--brief <path>``.
 """
 
@@ -114,7 +113,7 @@ _quota_refresh_task: asyncio.Task[str] | None = None
 
 
 def _github_section(snap: Dict[str, Any]) -> Dict[str, Any]:
-    """``available`` says whether the GitHub-sourced columns are real (#910).
+    """``available`` says whether the GitHub-sourced columns are real.
 
     ``False`` means the cache has never been filled in this process (a
     webapp restart empties it), so an empty Backlog/Done is *unknown*, not
@@ -134,7 +133,7 @@ def _github_section(snap: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _read_quota_lines(cfg: WebappConfig) -> List[Dict[str, Any]]:
-    """Both heavy agents, always, independent of the current selection (#860)."""
+    """Both heavy agents, always, independent of the current selection."""
     legacy_path = Path(cfg.rate_limits_file)
     return quota_usage.read_quota_lines(
         Path(cfg.fleet_config_dir),
@@ -179,11 +178,11 @@ def _maybe_refresh_codex(cfg: WebappConfig, rate_limits: Dict[str, Any]) -> None
 def _refresh_codex_for_lines(
     cfg: WebappConfig, quota_lines: List[Dict[str, Any]]
 ) -> None:
-    """Keep Codex fresh even while Claude is the selected harness (#860).
+    """Keep Codex fresh even while Claude is the selected harness.
 
-    The compact rows always show Codex, so the native collector can no
-    longer be scheduled off the *selected* view alone — pointing the model
-    picker at Claude used to leave Codex's row permanently stale.
+    The compact rows always show Codex, so the native collector cannot be
+    scheduled off the *selected* view alone — pointing the model picker at
+    Claude would otherwise leave Codex's row permanently stale.
     """
     for line in quota_lines:
         if line.get("harness") == "codex":
@@ -199,10 +198,10 @@ def _mark_active_backlog(
     """Annotate each backlog card from the shared ``repo#number`` mapping.
 
     ``claim_state`` is ``None`` (no claim) or the row owner's ``live`` /
-    ``dead`` / ``unknown`` verdict (#948). A ``dead`` claim is a lane that
+    ``dead`` / ``unknown`` verdict. A ``dead`` claim is a lane that
     is provably gone, so the card is not ``in_progress``; ``unknown`` (an
-    owner-less row, or liveness that could not be read) keeps the pre-#948
-    ``in_progress`` behaviour and the UI flags it unverified.
+    owner-less row, or liveness that could not be read) stays
+    ``in_progress`` and the UI flags it unverified.
     """
     active_keys = {str(key).lower(): key for key in active_rows}
     for card in columns.get("backlog", []):
@@ -225,7 +224,7 @@ def _mark_active_backlog(
 async def get_board(request: Request) -> Dict[str, Any]:
     """The five columns + source health, cheap enough for the 5s poll.
 
-    Built through :class:`app.webapp.hot_poll.HotPoll` (#1597): ``stale``
+    Built through :class:`app.webapp.hot_poll.HotPoll`: ``stale``
     is ``true`` when the build ran past its deadline and this is the last
     good board, ``age_seconds`` old (``generated_at`` says when it was built).
     """
@@ -434,14 +433,14 @@ def _read_bucket_sources(
 
 @router.get("/api/board/chief-plan")
 async def get_chief_plan(request: Request) -> Dict[str, Any]:
-    """The chief's plan for the Board's "Chief's plan" card (#1279).
+    """The chief's plan for the Board's "Chief's plan" card.
 
     Read-only, polled alongside ``/api/board``: ``state`` is ``ok`` (with
     ``updated_at``, ``lanes``, ``queue``, ``waiting_on_roberto``), ``empty``
     or ``unreadable``. Whether the chief is running is the client's to say,
     from the session cards ``/api/board`` already carries.
 
-    An ``ok`` plan also carries ``answered`` (#1487): the keys of the
+    An ``ok`` plan also carries ``answered``: the keys of the
     questions any device already answered on this version of the plan, so
     every device marks them alike.
     """
@@ -475,7 +474,7 @@ async def post_chief_plan_prune(request: Request) -> Dict[str, Any]:
 
 @router.post("/api/board/chief/answered")
 async def post_chief_answered(request: Request) -> Dict[str, Any]:
-    """Record the questions the answer sheet just sent (#1487; Tailscale +
+    """Record the questions the answer sheet just sent (Tailscale +
     passkey, as every ``/api/board/chief/`` route).
 
     Body: ``{"updated_at": <the plan version answered>, "ids": [<key>]}``.
@@ -507,7 +506,7 @@ async def post_chief_answered(request: Request) -> Dict[str, Any]:
 
 @router.get("/api/rate-limits")
 async def get_rate_limits(request: Request) -> Dict[str, Any]:
-    """The quota rows behind both tabs' usage meters (#1433).
+    """The quota rows behind both tabs' usage meters.
 
     The one quota endpoint: the Coding tab's full meter and the Board's
     compact one both render from the client's single poll of this route,
@@ -515,8 +514,8 @@ async def get_rate_limits(request: Request) -> Dict[str, Any]:
     been opened and the two can never disagree. ``GET /api/board`` carries
     no quota of its own.
 
-    Both heavy agents are always returned, in a fixed order (#860); the row
-    set no longer depends on the caller's selected model. Grok's row is
+    Both heavy agents are always returned, in a fixed order; the row
+    set does not depend on the caller's selected model. Grok's row is
     added only while the meter shows Grok, since reading its ledger spawns
     the Grok CLI.
     """
@@ -598,7 +597,7 @@ async def session_exchange(sid: str, request: Request) -> Dict[str, Any]:
 
     Structured Claude/Codex history wins when it correlates safely. A Claude
     session whose state row names no transcript — the rowless window a
-    ``/resume`` or ``/clear`` opens (#1023/#1027) — has its conversation
+    ``/resume`` or ``/clear`` opens — has its conversation
     correlated from the filesystem instead, reported as ``native_scan``
     because that match is inferred rather than exact. An unsupported agent,
     or a scan that refuses, falls back to the launcher's exact-id PTY
@@ -606,14 +605,14 @@ async def session_exchange(sid: str, request: Request) -> Dict[str, Any]:
     Distinct unavailable reasons let the client separate true-empty from
     source error.
 
-    A consulted scan also reports ``title_check`` (#1034): the PTY window
+    A consulted scan also reports ``title_check``: the PTY window
     title can *disprove* a scanned conversation — refusing it in favour of
     the capture when the two name different conversations — and says
     ``unknown`` when it cannot settle the question rather than passing for
     agreement. See ``transcript_locate._disprove_by_live_title``.
 
-    Built through a per-session :class:`app.webapp.hot_poll.HotPoll`
-    (#1605): past its deadline the answer is the last good one, with
+    Built through a per-session :class:`app.webapp.hot_poll.HotPoll`:
+    past its deadline the answer is the last good one, with
     ``stale: true`` and ``age_seconds``.
     """
     cfg: WebappConfig = request.app.state.webapp_config
@@ -670,7 +669,7 @@ async def _build_exchange(cfg: WebappConfig, sid: str, steps: BuildSteps) -> Dic
 
 
 def _opens_pc_window(chief_dispatch: bool, body: Dict[str, Any]) -> bool:
-    """Whether a Board launch may open the PC mirror window (#1283).
+    """Whether a Board launch may open the PC mirror window.
 
     The fleet chief dispatches over loopback with no browser flag, and its
     workers run unwatched: a window per dispatch put its whole queue on
@@ -683,7 +682,7 @@ def _opens_pc_window(chief_dispatch: bool, body: Dict[str, Any]) -> bool:
 
 
 def _dispatch_session_name(repo: str, number: int, title: str) -> str:
-    """``<repo>#<N> <issue title>`` for a chief-dispatched session (#1579).
+    """``<repo>#<N> <issue title>`` for a chief-dispatched session.
 
     ``title`` is the request's own when it carries one, else the Board's
     cached GitHub issue (a pure memory read). Neither known -> ``<repo>#<N>``
@@ -705,7 +704,7 @@ def _dispatch_session_name(repo: str, number: int, title: str) -> str:
 
 @router.post("/api/board/issues/start")
 async def start_issue(request: Request) -> Dict[str, Any]:
-    """One-tap ▶ Start / ⚡ YOLO on a backlog card (Tailscale + passkey, #301).
+    """One-tap ▶ Start / ⚡ YOLO on a backlog card (Tailscale + passkey).
 
     Body: ``{"repo": str, "number": int, "mode": "start"|"yolo",
     "model": str, "rows": int, "cols": int, "title": str}``. The repo must
@@ -716,16 +715,16 @@ async def start_issue(request: Request) -> Dict[str, Any]:
     mirror rules included); the `/issue-*` skills themselves handle branch +
     worktree claiming inside the session.
 
-    ``model`` (#505/#845) is the dispatch bar's provider-qualified selector
+    ``model`` is the dispatch bar's provider-qualified selector
     applied to one-tap starts. Absent (stale-cache
-    client) → the legacy persisted Coding model, exactly as before.
+    client) → the persisted Coding model.
 
     The optional ``title`` (the Board card's issue title) auto-names the
-    session after the issue (#467) via the #458 manual-override path, so it is
+    session after the issue via the manual-override path, so it is
     recognizable in the Coding tab without waiting for the agent to self-name.
     The title is display data — it never reaches the command line.
 
-    The optional ``brief`` (#1114, fleet-config#944) is a dispatcher's scope,
+    The optional ``brief`` is a dispatcher's scope,
     queue and constraints for the lane, carried on the one channel the lane
     trusts — its launch command. The text is written to a launcher-owned file
     (:mod:`src.chief.dispatch_brief`) and only that uuid-named path is appended as
@@ -813,7 +812,7 @@ def _launch_flags(
 
     ``effort`` is the body's per-launch override of the saved per-model
     effort: one the requested model does not offer is a 400 naming the
-    allowed ones, and ``None`` (absent) builds the command exactly as before.
+    allowed ones, and ``None`` (absent) builds the command from the saved effort.
     """
     effort = dispatch_effort(
         _requested_effort(body), model or cfg.claude_model, switch.model or cfg.claude_model)

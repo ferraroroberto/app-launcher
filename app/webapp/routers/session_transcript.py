@@ -1,26 +1,26 @@
-"""Coding tab: a live session's full transcript, paginated (#953), plus
-one entry's uncapped text (#985).
+"""Coding tab: a live session's full transcript, paginated, plus
+one entry's uncapped text.
 
 ``GET /api/claude-code/sessions/{sid}/transcript`` returns one page of typed
 entries (``user`` / ``assistant`` / ``tool_call`` / ``tool_result`` /
 ``thinking`` / ``system``) from the session's *native* history, newest-last,
 plus a byte-offset cursor for the next older page. Source resolution is the
-same as the Board drawer's ``/exchange`` (#301): the history file the
+same as the Board drawer's ``/exchange``: the history file the
 Board's claim walk assigns to this session-host id — Claude Code's hook
-JSONL, or Grok Build's ``updates.jsonl`` (#1012), both carried on the state
-row; a Pi session JSONL, named by the claimed row's own *key* (#1013);
+JSONL, or Grok Build's ``updates.jsonl``, both carried on the state
+row; a Pi session JSONL, named by the claimed row's own *key*;
 else, for a session whose harness writes the launcher nothing at all, a
 file correlated from the filesystem — a Codex rollout by cwd + launch
-time, an Antigravity conversation by its newest-per-folder cache (#1014),
+time, an Antigravity conversation by its newest-per-folder cache,
 a Copilot event log by cwd + launch time against its own per-session
-``workspace.yaml`` (#1015).
-Claude has a filesystem fallback too (#1023): the hook deletes its row on
+``workspace.yaml``.
+Claude has a filesystem fallback too: the hook deletes its row on
 ``/resume`` and ``/clear`` and only the next prompt writes it back, so a
 live session can be rowless for as long as the user is reading rather than
 typing — the newest conversation in that cwd's own project folder covers
 it, refused when a second live Claude session shares the folder or when
 nothing was written there since this session started. Where it refuses, a
-``--resume <id>`` launch (#1155) or a Remote Control link (#1393: its bridge
+``--resume <id>`` launch or a Remote Control link (its bridge
 id names the session's own Claude process in Claude Code's per-pid registry,
 which is how a Telegram channel session with no hook row reads its chat in a
 folder shared by its siblings) still names the file exactly.
@@ -28,14 +28,14 @@ A session no source can name answers ``no_transcript`` rather than
 guessing a neighbour's file, so a harness that keeps one session folder per
 working directory (Grok does, including for directories that no longer
 exist) can never show another session's text. None of them read the
-launcher's PTY capture, so detached rows are served the same way (#966).
+launcher's PTY capture, so detached rows are served the same way.
 Terminal-grade content, so it sits behind the Tailscale + passkey gate like
 ``/exchange`` — and so does its sibling below (``middleware``'s
 ``_TERMINAL_GUARD_RULES`` needs its own row per path shape; ``/transcript``'s
 rule matches on a ``.../transcript`` suffix, which a ``/transcript/entry``
 request does not, so it is a separate row, not covered for free).
 
-The same path also reads *forwards* (#1050): ``?after=<offset>&size=<n>``
+The same path also reads *forwards*: ``?after=<offset>&size=<n>``
 returns only what the file has grown by since that offset, which is what the
 Chat pane's live refresh ticks on, and answers from one ``stat`` when
 ``size`` says the file has not grown at all. One path rather than a second
@@ -45,7 +45,7 @@ from the other end of the file.
 
 ``GET /api/claude-code/sessions/{sid}/transcript/entry?offset=<n>`` re-reads
 one ``user``/``assistant`` turn from the same source, uncapped — the Chat
-pane's copy button (#985) calls it only when the page's own copy of that
+pane's copy button calls it only when the page's own copy of that
 entry came back ``truncated: true``. Same source resolution, same gate.
 
 The terminal-screen routes (answering a pending question, the plan picker,
@@ -164,27 +164,27 @@ def _resolve_path(
     """The history file for this session (None when none is known), and how.
 
     The second element is ``""`` for every flavour but Claude, whose
-    filesystem fallback says which source answered or which guard refused
-    (#1155), for the ``no_transcript`` log line.
+    filesystem fallback says which source answered or which guard refused,
+    for the ``no_transcript`` log line.
 
     Six shapes, in decreasing directness: the row carries the path
     (Claude, Grok); the row's own *key* is the harness's session id and
-    names the file (Pi, #1013); or nothing on the row helps at all and the
+    names the file (Pi); or nothing on the row helps at all and the
     file has to be correlated from the filesystem — by cwd + launch time
     (Codex), by the harness's own newest-conversation-per-folder cache,
     which needs ``live`` to refuse a folder hosting two sessions at once
-    (Antigravity, #1014), by cwd + launch time against the harness's own
-    per-session ``workspace.yaml`` sidecar (Copilot, #1015), or by newest
-    conversation in the cwd's own project folder (Claude, #1023).
+    (Antigravity), by cwd + launch time against the harness's own
+    per-session ``workspace.yaml`` sidecar (Copilot), or by newest
+    conversation in the cwd's own project folder (Claude).
 
     Claude is the one flavour with two: the row is exact and stays first,
     and the filesystem fallback covers the window where the hook has
     deleted the row out from under a still-live session — ``SessionEnd``
     fires on ``/resume`` and ``/clear``, not just on exit, and only the
     next prompt writes the row back. A ``--resume <id>`` launch adds a third,
-    for when the fallback's guards refuse: the id names the file (#1155). A
+    for when the fallback's guards refuse: the id names the file. A
     Remote Control link adds a fourth: its bridge id names the file through
-    Claude Code's per-pid registry (#1393).
+    Claude Code's per-pid registry.
     """
     if flavor == "codex":
         return find_codex_transcript(session), ""
@@ -225,10 +225,10 @@ async def _resolve_source(
     ``why`` is how the path was resolved or, for ``no_transcript``, which
     guard refused (``""`` where a flavour has nothing to add). ``session``
     is the session-host's row, ``None`` only for ``session_not_found`` and
-    ``session_host_unreachable`` (the list could not be read, #1308: not the
+    ``session_host_unreachable`` (the list could not be read: not the
     same fact as "the session is not in it").
 
-    ``steps`` is the polled ``/transcript`` route's build (#1605): its reads
+    ``steps`` is the polled ``/transcript`` route's build: its reads
     then run on the per-session pool, off the default executor. Without it
     (an on-demand route) they run on the default executor.
     """
@@ -283,7 +283,7 @@ async def session_transcript(
     ``before`` is the previous page's ``next_cursor`` (a byte offset; omit
     for the newest page); ``limit`` caps the conversation turns per page.
 
-    ``after`` switches the cursor's direction (#1050): it asks for only what
+    ``after`` switches the cursor's direction: it asks for only what
     has been appended since that offset, which is what the Chat pane's live
     refresh ticks on. ``size`` is the file size the caller last saw, so an
     unchanged file answers from a single ``stat``. The two directions are
@@ -291,18 +291,18 @@ async def session_transcript(
 
     Deliberately the **same path** as the backwards page rather than a new
     route. A new path would need its own ``_TERMINAL_GUARD_RULES`` row
-    (#985's ``/transcript/entry`` is the precedent, and #1035 now fails any
+    (``/transcript/entry`` is the precedent, and the guard-level test fails any
     session-scoped route with no explicit level) — real work for no gain,
     since this serves the same resource to the same caller under the same
     gate, only from the other end of the file.
 
-    ``ob`` is the outbox rev the caller already holds (#1530). Every answer
+    ``ob`` is the outbox rev the caller already holds. Every answer
     with a transcript carries ``outbox_rev``, and the session's sent files
     (``outbox``) only when that rev moved, so the chat sees a new file on
     its next tick without a poll of its own.
 
     Built through a per-session :class:`app.webapp.hot_poll.HotPoll` keyed
-    on every query parameter (#1605), so only identical requests share a
+    on every query parameter, so only identical requests share a
     build: past its deadline the answer is that request's last good one,
     with ``stale: true`` and ``age_seconds``.
     """
@@ -380,7 +380,7 @@ async def _tail_response(
     session: Optional[Dict[str, Any]],
     steps: BuildSteps,
 ) -> Dict[str, Any]:
-    """The forward-cursor half of the route above (#1050).
+    """The forward-cursor half of the route above.
 
     Logs nothing on an ordinary tick, on purpose: this runs every few
     seconds for as long as someone is reading a chat, and an info line per
@@ -424,7 +424,7 @@ def _pending_input(session: Optional[Dict[str, Any]]) -> Optional[List[Dict[str,
 async def _activity(
     session: Optional[Dict[str, Any]], flavor: str, path: Path, steps: BuildSteps
 ) -> Optional[Dict[str, Any]]:
-    """The chat strip's one-line summary of the turn in progress (#1387):
+    """The chat strip's one-line summary of the turn in progress:
     ``since`` / ``actions`` / ``last`` / ``working``, or ``None`` when the
     transcript cannot say. Rides the page and tail responses — no route or
     poll of its own — and costs a ``stat`` while the file is unchanged.
@@ -486,7 +486,7 @@ async def session_transcript_diff(
     offset: int = Query(ge=0),
     n: int = Query(default=0, ge=0, le=999),
 ) -> Dict[str, Any]:
-    """One edit step's whole diff (Tailscale + passkey, #1349).
+    """One edit step's whole diff (Tailscale + passkey).
 
     ``offset`` and ``n`` are the ``diff.n`` ref a page's tool call carried
     when its inline diff came ``truncated``: the line the call was built
@@ -522,7 +522,7 @@ async def session_background_tasks(
     sid: str, request: Request, task: Optional[str] = Query(default=None, max_length=40),
 ) -> Dict[str, Any]:
     """The session's background tasks, or with ``task=<id>`` one task's
-    output tail (Tailscale + passkey, #1955).
+    output tail (Tailscale + passkey).
 
     Folded from the transcript like Changed files, so Claude only:
     ``reason: "unsupported_agent"`` for any other agent, whose ⋮ menu hides
@@ -596,11 +596,11 @@ async def session_links_list(
 
 @router.get("/api/claude-code/sessions/{sid}/changed-files")
 async def session_changed_files(sid: str, request: Request) -> Dict[str, Any]:
-    """Every file this session's edits touched (Tailscale + passkey, #1349).
+    """Every file this session's edits touched (Tailscale + passkey).
 
     Folded from the transcript, never ``git diff`` — see
-    :mod:`src.session_view.changes` for why. Every agent with a transcript reader
-    (#1356); ``reason: "unsupported_agent"`` for one without, whose ⋮ menu
+    :mod:`src.session_view.changes` for why. Every agent with a transcript reader;
+    ``reason: "unsupported_agent"`` for one without, whose ⋮ menu
     hides the item anyway. On demand only, like Show changes: nothing polls
     this.
     """
@@ -631,7 +631,7 @@ async def session_changed_file_diff(
     sid: str, request: Request, path: str = Query(min_length=1),
 ) -> Dict[str, Any]:
     """One changed file's diff: each of this session's edits to it, in
-    order (Tailscale + passkey, #1349). ``path`` is a ``key`` the list
+    order (Tailscale + passkey). ``path`` is a ``key`` the list
     handed out; a file the session never edited is ``file_not_found`` —
     nothing here reads the file system, only the transcript."""
     cfg: WebappConfig = request.app.state.webapp_config
@@ -660,7 +660,7 @@ async def _changed_file_target(
 ) -> Tuple[Optional[str], Optional[Dict[str, Any]], str]:
     """``(target, refusal, agent)`` for a file the panel names: the absolute
     path when this session's edits touched it, else the unavailable body to
-    answer with. The file-system jail of #1689's two routes below."""
+    answer with. The file-system jail of the two routes below."""
     cfg: WebappConfig = request.app.state.webapp_config
     reason, flavor, source, agent, _why, session = await _resolve_source(sid, cfg)
     if reason is not None:
@@ -684,7 +684,7 @@ async def session_changed_file_content(
     sid: str, request: Request, path: str = Query(min_length=1),
 ) -> Dict[str, Any]:
     """One changed file as it is on disk now, for the panel's File view
-    (Tailscale + passkey, #1689).
+    (Tailscale + passkey).
 
     Only a file this session's edits touched is read: ``path`` is looked up
     in the transcript's fold, never joined and opened, so any other path is
@@ -716,13 +716,13 @@ async def session_changed_file_content(
 
 @router.post("/api/claude-code/sessions/{sid}/changed-files/open")
 async def session_changed_file_open(sid: str, request: Request) -> Dict[str, Any]:
-    """Open one changed file on the PC (#1689): in VS Code, else selected in
+    """Open one changed file on the PC: in VS Code, else selected in
     Explorer — never the OS default handler, which would run a script.
 
     Only the PC itself may ask, like ``/api/open-url``: from the phone the
     editor would open in front of nobody. Same jail as the content route; a
     file gone from disk is ``deleted``. A disposable e2e / verify instance
-    launches nothing and answers ``opened: false`` (#278, #938).
+    launches nothing and answers ``opened: false``.
     """
     host = request.client.host if request.client else ""
     if not is_pc_itself(host, request.headers):
@@ -765,7 +765,7 @@ async def session_transcript_image(
     offset: int = Query(ge=0, le=MAX_OFFSET),
     n: int = Query(ge=0, le=999),
 ) -> Response:
-    """One transcript image's bytes, decoded on demand (Tailscale + passkey, #1265).
+    """One transcript image's bytes, decoded on demand (Tailscale + passkey).
 
     ``offset`` and ``n`` are an entry's ``images``/``result_images`` ref:
     the line the image lives on and its index among that line's images. The
@@ -804,7 +804,7 @@ async def session_transcript_file(
     offset: int = Query(ge=0, le=MAX_OFFSET),
     n: int = Query(ge=0, le=999),
 ) -> Response:
-    """One file a Claude ``SendUserFile`` call sent (Tailscale + passkey, #1530).
+    """One file a Claude ``SendUserFile`` call sent (Tailscale + passkey).
 
     ``offset`` and ``n`` are a ``sent_files`` ref off a page's tool call. The
     path comes from the transcript line, never from the request, and goes

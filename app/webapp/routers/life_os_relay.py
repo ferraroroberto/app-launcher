@@ -1,4 +1,4 @@
-"""Life OS Telegram relay — a skill's bot steers its own conversations (#1639).
+"""Life OS Telegram relay — a skill's bot steers its own conversations.
 
 Mounted from ``life_os.py`` via ``include_router``, like
 ``life_os_channels.py``.

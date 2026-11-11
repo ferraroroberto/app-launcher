@@ -72,7 +72,7 @@ def _session_board_columns(
     sessions: List[Dict[str, Any]],
     state_rows: Dict[str, Dict[str, Any]],
 ) -> Optional[Dict[str, Dict[str, Any]]]:
-    """Each session's Board column + status + age, or ``None`` when unknowable (#1434)."""
+    """Each session's Board column + status + age, or ``None`` when unknowable."""
     global _board_columns_failing
     active_issues_file = Path(cfg.sessions_state_file).with_name("active-issues.json")
     try:
@@ -93,7 +93,7 @@ def _session_board_columns(
 
 
 def _chief_questions(cfg: WebappConfig) -> Optional[int]:
-    """The chief's unanswered questions, fleet-wide (#1502), or ``None`` when
+    """The chief's unanswered questions, fleet-wide, or ``None`` when
     the plan can't be read: unknown, never zero."""
     try:
         plan = chief_answers.read_plan_with_answers(
@@ -119,8 +119,7 @@ def _owner_checks() -> Optional[int]:
 async def claude_sessions(request: Request) -> Dict[str, Any]:
     """List launcher-owned PTY sessions (public, token-gated).
 
-    Each session is joined with the shared cross-tab title (fleet-config#302,
-    via app-launcher#396) as ``shared_name``/``shared_name_source`` — the same
+    Each session is joined with the shared cross-tab title as ``shared_name``/``shared_name_source`` — the same
     agent-aware claim walk the Board tab's ``merge_sessions()`` uses
     (``board.attach_shared_names``), so a live session resolves to the same
     state row — and therefore shows the same title — on both tabs.
@@ -128,21 +127,21 @@ async def claude_sessions(request: Request) -> Dict[str, Any]:
     Each also carries ``board_column`` (``claude_turn`` / ``your_turn``) and
     ``board_status`` (the Board card's status, e.g. ``stalled``), so the
     Coding tab's rows show the Board's "needs you" / "stalled" chips from
-    this poll alone (#1434). ``board_age_seconds`` (#1580) is the card's
+    this poll alone. ``board_age_seconds`` is the card's
     last-activity age, the number the Board's own row prints. All three are
     ``None`` when the Board placement could not be worked out: unknown, never
     "normal".
 
-    ``last_turn_at`` (#1647) is the epoch second of the session's newest
+    ``last_turn_at`` is the epoch second of the session's newest
     real conversation line, read from its transcript, or ``None`` when that
     can't be read. The Telegram sheet's "Last activity" shows it;
     ``last_output_at`` is the PTY's last paint and stays the host's own.
 
-    ``composer_dirty`` / ``composer_dirty_since`` (#1643) are the
+    ``composer_dirty`` / ``composer_dirty_since`` are the
     session-host's own, passed through; a session-host too old to send them
     reads as ``None`` (unknown).
 
-    ``chief_questions`` (#1502) is how many of the chief's questions no
+    ``chief_questions`` is how many of the chief's questions no
     device has answered yet, fleet-wide, so the Board tab's badge counts them
     from every tab; ``None`` when the plan can't be read. It is computed from
     the same plan reader and answered marks as ``/api/board/chief-plan``.
@@ -152,7 +151,7 @@ async def claude_sessions(request: Request) -> Dict[str, Any]:
     Later or Problem, so the badge counts them from every tab; ``None`` until
     a list has landed.
 
-    Built through :class:`app.webapp.hot_poll.HotPoll` (#1597): ``stale``
+    Built through :class:`app.webapp.hot_poll.HotPoll`: ``stale``
     is ``true`` when the build ran past its deadline and this is the last
     good list, ``age_seconds`` old.
     """
@@ -246,7 +245,7 @@ async def stop_claude_session(sid: str, request: Request) -> Dict[str, Any]:
 
 @router.post("/api/claude-code/sessions/{sid}/rename")
 async def rename_claude_session(sid: str, request: Request) -> Dict[str, Any]:
-    """Set or clear a manual title override for a session (issue #458).
+    """Set or clear a manual title override for a session.
 
     Wins over every auto-derived title (``live_title``/``prompt_title``/
     ``shared_name``) in the client's precedence (``sessions.js::sessionTitle``)
@@ -286,7 +285,7 @@ async def rename_claude_session(sid: str, request: Request) -> Dict[str, Any]:
 
 @router.post("/api/claude-code/sessions/{sid}/mirror")
 async def mirror_claude_session(sid: str, request: Request) -> Dict[str, Any]:
-    """Open (or focus) the PC mirror window for an existing session (issue #282).
+    """Open (or focus) the PC mirror window for an existing session.
 
     Desktop parity with the launch flow: clicking a session row on a desktop
     browser should get the same dedicated Edge ``--app`` window a *new*-session
@@ -295,7 +294,7 @@ async def mirror_claude_session(sid: str, request: Request) -> Dict[str, Any]:
     A second click focuses the live window rather than spawning a duplicate
     (the HWND registry is keyed by sid; a duplicate would orphan the first).
     Stop still closes it — the open path registers the HWND exactly as the
-    launch path does (issue #20).
+    launch path does.
 
     The phone never calls this (it streams in-page). When local-window
     mirroring is disabled (``claude_show_local_window`` false) the launch flow
@@ -332,7 +331,7 @@ async def session_image(
 
     ``?inline=1`` (compose bar open) tells the session-host to skip the
     paste-into-PTY step and just return the stored path so the browser
-    can drop it into the compose textarea for review (issue #41).
+    can drop it into the compose textarea for review.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     inline = request.query_params.get("inline") in ("1", "true")
@@ -367,7 +366,7 @@ def _mb(n: int) -> str:
 
 @router.post("/api/claude-code/sessions/{sid}/large-file")
 async def session_large_file(sid: str, request: Request) -> Dict[str, Any]:
-    """Stream a large file onto the machine for a session (#1430).
+    """Stream a large file onto the machine for a session.
     Tailscale-only + passkey, like ``/image``.
 
     The body is the raw file (``?name=`` carries its filename) and is relayed
@@ -435,7 +434,7 @@ _DETACHED_INPUT_COMMIT = "1cf17209c86885ff3a488bd2501e26e8a69c4580"
 
 
 def _classify_input_500(port: int, sid: str, detail: str) -> Tuple[int, str]:
-    """Name a session-host 500 on ``/input`` when the facts allow (#967 reopen).
+    """Name a session-host 500 on ``/input`` when the facts allow.
 
     The first real-device Send hit a session-host still running a build from
     before detached input existed; the phone saw only "session-host HTTP 500".

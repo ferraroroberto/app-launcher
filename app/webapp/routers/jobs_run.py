@@ -5,10 +5,10 @@ candidate flagged by ``/codebase-audit``). This module owns the parts of
 the run path that are reused across triggers:
 
 * :func:`_dry_run_check` / :func:`_dry_run_execute` — the two dry-run
-  modes (issue #69), used only by the manual ``POST /run`` route.
+  modes, used only by the manual ``POST /run`` route.
 * :func:`_admit_and_spawn` — the cooldown gate plus the HTTP framing of
   :func:`src.jobs.queue.admit_and_spawn` (the mutex admission itself,
-  shared with the chain dispatcher and the executor since issue #794).
+  shared with the chain dispatcher and the executor).
   The shared tail of every *real* fire, used by both the manual
   ``POST /run`` route (in ``jobs.py``) and the webhook ``POST /hook``
   route (in ``jobs_webhook_routes.py``) so cooldown and the
@@ -151,8 +151,8 @@ async def _admit_and_spawn(
     explicit consequence, not user mashing) and the translation of the
     admission outcome into a response body or an ``HTTPException``. The
     admission itself is :func:`src.jobs.queue.admit_and_spawn`, shared with
-    the chain dispatcher and the executor's scheduled-fire gate (issue
-    #794). ``on_run_dir`` fires right after the run directory is created
+    the chain dispatcher and the executor's scheduled-fire gate.
+    ``on_run_dir`` fires right after the run directory is created
     (before the queued-vs-spawn branch) so a caller can persist extra files
     (e.g. ``_webhook.json``) alongside ``run.json`` regardless of which
     branch this fire takes.

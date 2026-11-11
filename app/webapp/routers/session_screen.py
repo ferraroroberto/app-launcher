@@ -1,5 +1,5 @@
 """Coding tab: a live session's terminal screen — read it, and type into it
-(split out of ``session_transcript.py``, #1424).
+(split out of ``session_transcript.py``).
 
 None of these routes read the transcript's content. They read the PTY's screen
 (``src.session_view.plan_picker``) and/or type keystrokes into the PTY, so they share
@@ -7,7 +7,7 @@ nothing with the transcript pager but the session lookup
 (``session_transcript._resolve_source``, used by ``/answer``).
 
 ``POST /api/claude-code/sessions/{sid}/answer`` answers the session's
-pending ``AskUserQuestion`` from the Chat pane's question card (#1149):
+pending ``AskUserQuestion`` from the Chat pane's question card:
 re-checks at send time that the call is still the one waiting, turns the
 pick into the picker's own keystrokes (``src.ask_user_question``) and types
 them — raw, one key per write — over the PTY socket, or one console-input
@@ -15,14 +15,14 @@ call per key for a detached session. Same gate as ``/input``; its own
 ``_TERMINAL_GUARD_RULES`` row.
 
 ``GET .../plan-picker`` and ``POST .../plan-answer`` answer Claude Code's
-plan picker (#1151). They read the terminal's screen, not the transcript:
+plan picker. They read the terminal's screen, not the transcript:
 the session's PTY capture rendered at the PTY's size (``src.session_view.plan_picker``).
 The POST reads it again at send time and types only while the tapped digit
 still carries the tapped label. Full-control sessions only, and each route
 has its own ``_TERMINAL_GUARD_RULES`` row.
 
 ``GET .../context`` reads the same screen for the session's context-window
-use (#1223): the ``NN%c`` the fleet statusline paints under Claude Code's
+use: the ``NN%c`` the fleet statusline paints under Claude Code's
 prompt (``src.session_view.statusline_context``), which the overlay bar draws as a ring.
 Same screen read as the plan picker, same reasons, its own guard row.
 """
@@ -68,7 +68,7 @@ _NOT_WAITING = "This question is no longer waiting for an answer"
 
 def _refuse_if_host_unreachable(reason: Optional[str]) -> None:
     """503 for a POST whose session lookup could not reach the session-host
-    (#1308) — not the 409 "no longer running" a session that is gone gets,
+    — not the 409 "no longer running" a session that is gone gets,
     since this one may well be alive and the caller should retry."""
     if reason == SESSION_HOST_UNREACHABLE:
         raise HTTPException(
@@ -126,7 +126,7 @@ async def _type_into_console(port: int, sid: str, keys: List[Tuple[str, bool]]) 
 
 @router.post("/api/claude-code/sessions/{sid}/answer")
 async def session_answer(sid: str, request: Request) -> Dict[str, Any]:
-    """Answer the session's pending ``AskUserQuestion`` (#1149).
+    """Answer the session's pending ``AskUserQuestion``.
 
     Body: ``{"tool_use_id": str, "answers": [...]}`` — one answer per
     question, shapes in :func:`src.ask_user_question.answer_keystrokes`.
@@ -219,11 +219,11 @@ async def _read_screen(
     cfg: WebappConfig, sid: str, steps: Optional[BuildSteps] = None
 ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[List[str]]]:
     """``(reason, session, lines)``: ``reason`` says why there is no screen
-    to read (``session_not_found`` / ``session_host_unreachable`` (#1308) /
+    to read (``session_not_found`` / ``session_host_unreachable`` /
     ``unsupported_agent`` / ``detached`` / ``no_screen``); otherwise ``lines``
     is the screen as the PTY shows it.
 
-    ``steps`` is a polled route's build (#1605): its reads then run on the
+    ``steps`` is a polled route's build: its reads then run on the
     per-session pool, off the default executor. Without it they run on the
     default executor, as the send-time re-reads always have."""
     run = steps.run if steps is not None else run_on_default_executor
@@ -278,11 +278,11 @@ async def session_plan_picker(sid: str, request: Request) -> Dict[str, Any]:
     ``reason`` tells apart a session that is gone, a detached one (no screen
     to read), a capture that can't be read, and a screen with no picker.
     The same screen read also says whether the ``/resume`` picker is up
-    (``resume_picker``, #1300), so the Chat pane needs no second poll to
+    (``resume_picker``), so the Chat pane needs no second poll to
     offer its resume card.
 
     Built through a per-session :class:`app.webapp.hot_poll.HotPoll`
-    (#1605): past its deadline the answer is the last good one, with
+   : past its deadline the answer is the last good one, with
     ``stale: true`` and ``age_seconds``.
     """
     cfg: WebappConfig = request.app.state.webapp_config
@@ -320,7 +320,7 @@ async def _build_plan_picker(cfg: WebappConfig, sid: str, steps: BuildSteps) -> 
 
 @router.post("/api/claude-code/sessions/{sid}/plan-answer")
 async def session_plan_answer(sid: str, request: Request) -> Dict[str, Any]:
-    """Answer the plan picker on a full-control session's terminal (#1151).
+    """Answer the plan picker on a full-control session's terminal.
 
     Body: ``{"option": n, "label": str, "feedback"?: str}`` — the digit and
     the label the card showed for it. The screen is read again here, at
@@ -622,7 +622,7 @@ def _resume_picker_showing(via: str, lines: List[str]) -> bool:
 @router.get("/api/claude-code/sessions/{sid}/context")
 async def session_context(sid: str, request: Request) -> Dict[str, Any]:
     """How full the session's context window is, as its terminal's
-    statusline shows it now (Tailscale + passkey, #1223).
+    statusline shows it now (Tailscale + passkey).
 
     ``{"available", "percent", "reason"}``. ``percent`` is an int only when
     the bottom-most statusline on screen shows ``NN%c``; ``reason`` tells
@@ -634,7 +634,7 @@ async def session_context(sid: str, request: Request) -> Dict[str, Any]:
     number, so an unknown value is never shown as 0%.
 
     Built through a per-session :class:`app.webapp.hot_poll.HotPoll`
-    (#1605): past its deadline the answer is the last good one, with
+   : past its deadline the answer is the last good one, with
     ``stale: true`` and ``age_seconds``.
     """
     cfg: WebappConfig = request.app.state.webapp_config
