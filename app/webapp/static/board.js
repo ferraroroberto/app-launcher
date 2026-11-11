@@ -47,6 +47,7 @@ import { apiFailToast, escapeHtml, jsonApi, opensInPcWindow, toast } from './api
 import { setTab } from './tabs.js';
 import { sessionTitle } from './sessions.js';
 import { applyLaunchSizePayload } from './shared/launch-size.js';
+import { SensitiveOutcome, runSensitiveAction } from './shared/sensitive-action.js';
 import { openTerminal } from './terminal.js';
 import { emptyStateEl } from './_vendored/empty-state/empty-state.js';
 import { icon } from './_vendored/icons/icons.js';
@@ -248,6 +249,7 @@ function repoInProjects(repo) {
 
 async function startIssue(card, mode, btn) {
   btn.disabled = true;
+  const cmd = mode === 'yolo' ? '/issue-yolo' : '/issue-start';
   try {
     // Carry the issue title so the server can auto-name the spawned session
     // after it — display data, never reaches the command line.
@@ -262,18 +264,25 @@ async function startIssue(card, mode, btn) {
     // Phone launches carry the real terminal size so the PTY's early
     // output is authored at the width the overlay will fit() to; the route already accepts rows/cols.
     applyLaunchSizePayload(payload);
-    const body = await terminalJsonApi('/api/board/issues/start', { method: 'POST', body: payload });
-    toast(
-      (mode === 'yolo' ? '/issue-yolo ' : '/issue-start ') + '#' +
-        card.number + ' in ' + (body.repo || card.repo),
-      'good',
-      { icon: mode === 'yolo' ? 'zap' : 'play' }
-    );
-    if (body.session && body.session.kind !== 'remote' && !opensInPcWindow()) {
+    const target = card.repo + ' #' + card.number;
+    const verdict = await runSensitiveAction({
+      key: 'issue-start:' + target,
+      pending: 'Starting ' + cmd + ' ' + target + '…',
+      icon: mode === 'yolo' ? 'zap' : 'play',
+      run: function () {
+        return terminalJsonApi('/api/board/issues/start', { method: 'POST', body: payload });
+      },
+      done: function (body) {
+        return cmd + ' #' + card.number + ' in ' + (body.repo || card.repo);
+      },
+      failPrefix: 'Issue start failed',
+      unconfirmed: 'Start of ' + target + ' not confirmed — check the session list before trying again.',
+    });
+    const body = verdict.result;
+    if (verdict.outcome === SensitiveOutcome.DONE &&
+        body.session && body.session.kind !== 'remote' && !opensInPcWindow()) {
       openTerminal(body.session);
     }
-  } catch (exc) {
-    apiFailToast('Issue start failed', exc);
   } finally {
     btn.disabled = false;
   }

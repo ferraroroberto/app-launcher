@@ -36,6 +36,7 @@ import { closeSessionOverlay, openSessionOverlay, resolveSessionMode } from './s
 import { revealInCard } from './dom-utils.js';
 import { CHIEF_KILL_CONFIRM, CHIEF_RESTART_CONFIRM, channelKillConfirm, channelSessionName, isChannelSession, isChiefSession } from './shared/session-kinds.js';
 import { fmtDuration } from './shared/format.js';
+import { SensitiveOutcome, runSensitiveAction } from './shared/sensitive-action.js';
 import { confirmDialog } from './confirm-dialog.js';
 import { attentionChip, chip, sessionRowBody, sessionStatusBits } from './glance.js';
 import { renderUsage } from './usage-meter.js';
@@ -521,26 +522,32 @@ export async function stopSession(s) {
     return;
   }
   if (isChannelSession(s) && !(await confirmDialog(channelKillConfirm(s)))) return;
-  try {
-    await jsonApi(
-      sessionRoute(s.session_id, '/stop'),
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'quit' }),
-      }
-    );
-    toast('Stopping ' + s.name + '…', 'good', { icon: 'octagon-x' });
-    // The overlay showing this session closes whichever pane is up —
-    // a detached session viewed in Chat has no state.terminal to key on.
-    if (state.sessionView &&
-        state.sessionView.session.session_id === s.session_id) {
-      closeSessionOverlay();
-    }
-    setTimeout(fetchSessions, 1500);
-  } catch (exc) {
-    apiFailToast('Stop failed', exc);
+  const verdict = await runSensitiveAction({
+    key: 'stop:' + s.session_id,
+    pending: 'Stopping ' + s.name + '…',
+    icon: 'octagon-x',
+    run: function () {
+      return jsonApi(
+        sessionRoute(s.session_id, '/stop'),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'quit' }),
+        }
+      );
+    },
+    done: function () { return 'Stop sent to ' + s.name; },
+    failPrefix: 'Stop failed',
+    unconfirmed: 'Stop of ' + s.name + ' not confirmed — check the session list before trying again.',
+  });
+  if (verdict.outcome !== SensitiveOutcome.DONE) return;
+  // The overlay showing this session closes whichever pane is up —
+  // a detached session viewed in Chat has no state.terminal to key on.
+  if (state.sessionView &&
+      state.sessionView.session.session_id === s.session_id) {
+    closeSessionOverlay();
   }
+  setTimeout(fetchSessions, 1500);
 }
 
 export async function fetchSessions() {

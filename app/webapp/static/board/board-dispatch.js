@@ -28,8 +28,8 @@
  */
 
 import { els, state } from '../state.js';
-import { apiFailToast, toast } from '../api.js';
 import { applyLaunchSizePayload } from '../shared/launch-size.js';
+import { SensitiveOutcome, runSensitiveAction } from '../shared/sensitive-action.js';
 import { startWorkTimer } from '../voice.js';
 import { terminalJsonApi } from '../webauthn.js';
 import { sendSessionMessage } from '../sessions.js';
@@ -129,16 +129,23 @@ export async function runChiefAction({
   button.disabled = true;
   const stopTimer = useTimer ? startWorkTimer(button, label) : null;
   try {
-    const body = await ensureChief(fresh, resume, restart);
-    const text = resume
-      ? (body.resumed ? 'Chief resumed' : 'No resumable conversation — started fresh')
-      : (body.spawned ? 'Chief started' : 'Chief already running');
-    // Resume/Restart's icon is unconditional (a chat is reachable either
-    // way); Start's is gated on an actual spawn — matches the toasts of the paths it replaced.
-    toast(text, 'good', resume || body.spawned ? { icon: 'crown' } : undefined);
-    if (onDone) await onDone(body);
-  } catch (exc) {
-    apiFailToast('Chief ' + label.toLowerCase() + ' failed', exc);
+    const verdict = await runSensitiveAction({
+      key: 'chief',
+      pending: 'Chief ' + label.toLowerCase() + '…',
+      icon: 'crown',
+      run: function () { return ensureChief(fresh, resume, restart); },
+      done: function (body) {
+        const text = resume
+          ? (body.resumed ? 'Chief resumed' : 'No resumable conversation — started fresh')
+          : (body.spawned ? 'Chief started' : 'Chief already running');
+        // Resume/Restart's icon is unconditional (a chat is reachable either
+        // way); Start's is gated on an actual spawn.
+        return { text: text, icon: resume || body.spawned ? 'crown' : undefined };
+      },
+      failPrefix: 'Chief ' + label.toLowerCase() + ' failed',
+      unconfirmed: 'Chief ' + label.toLowerCase() + ' not confirmed — check the session list before trying again.',
+    });
+    if (verdict.outcome === SensitiveOutcome.DONE && onDone) await onDone(verdict.result);
   } finally {
     if (stopTimer) stopTimer();
     button.disabled = false;
