@@ -1,7 +1,6 @@
 {
   "version": 1,
   "entries": [
-    {"key": "app/webapp/static/chat/chat-pending.js", "counts": {"state-literal": 1}},
     {"key": "app/webapp/static/sessions.js", "counts": {"state-literal": 1}}
   ]
 }
