@@ -307,7 +307,7 @@ def _reset_login() -> None:
     inspiration_login._stderr = None
     inspiration_login._started_at = 0.0
     inspiration_login._ended_at = 0.0
-    inspiration_login._result = {"state": inspiration_login.IDLE, "detail": ""}
+    inspiration_login._result = {"state": inspiration_login.LoginState.IDLE, "detail": ""}
 
 
 class _FakeProc:
