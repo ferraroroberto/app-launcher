@@ -43,6 +43,7 @@ from src.board.dispatch_ids import (
     _notified_bash_dispatch_ids,
 )
 from src.board.state import parse_iso, utc_now
+from src.session_view.model_switch import set_model_id
 
 logger = logging.getLogger(__name__)
 
@@ -359,30 +360,40 @@ def _last_activity(transcript_path: Any) -> Optional[datetime]:
     return None
 
 
-def _last_assistant_model(transcript_path: Any) -> Optional[str]:
-    """The ``model`` of the newest assistant record in the transcript tail.
+def _last_transcript_model(transcript_path: Any) -> Optional[str]:
+    """The Claude model the transcript tail says the session is on now.
 
-    That record names the model that actually answered, so it follows a
-    resume and an in-session ``/model`` switch, which the spawn flags never
-    do. Claude Code's own local replies carry ``<synthetic>`` there; only a
-    ``claude-*`` id counts. Torn or unparseable lines are skipped; no
-    assistant record in the window, or an unreadable file, is ``None``.
+    Two records name it, and the newer wins: an assistant record's
+    ``model`` (the model that actually answered, so it follows a resume) and
+    the ``Set model to <name>`` line an in-session ``/model`` writes the
+    moment it applies (:func:`src.session_view.model_switch.set_model_id`), so
+    a switch shows before anything answers on the new model. Claude Code's
+    own local replies carry ``<synthetic>`` as their model; only a
+    ``claude-*`` id counts. Torn or unparseable lines are skipped; neither
+    record in the window, or an unreadable file, is ``None``.
     """
     lines, truncated = _tail_lines(transcript_path, _EXCHANGE_TAIL_BYTES)
     if truncated and lines:
         lines = lines[1:]
     for raw in reversed(lines):
         # Cheap pre-filter: most tail lines are tool results and user turns.
-        if '"assistant"' not in raw:
+        if '"assistant"' not in raw and "Set model to" not in raw:
             continue
         try:
             obj = json.loads(raw)
         except ValueError:
             continue
-        if not isinstance(obj, dict) or obj.get("type") != "assistant":
+        if not isinstance(obj, dict):
             continue
         message = obj.get("message")
-        model = message.get("model") if isinstance(message, dict) else None
+        if not isinstance(message, dict):
+            continue
+        if obj.get("type") == "user":
+            switched = set_model_id(message.get("content"))
+            if switched:
+                return switched
+            continue
+        model = message.get("model") if obj.get("type") == "assistant" else None
         if isinstance(model, str) and model.startswith("claude-"):
             return model
     return None

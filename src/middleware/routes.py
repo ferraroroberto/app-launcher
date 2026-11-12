@@ -98,6 +98,12 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "same write power as /input.",
     ),
     (
+        lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/model"),
+        "passkey",
+        "Chat model chip: types `/model <id>` into a live PTY and answers the "
+        "agent's switch dialog, the same write power as /input.",
+    ),
+    (
         lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/context"),
         "passkey",
         "Overlay context ring (#1223): reads a live terminal screen (the same read "

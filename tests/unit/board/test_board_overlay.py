@@ -562,6 +562,26 @@ def test_transcript_model_unknown_without_a_readable_answer(tmp_path: Path):
         assert sess["transcript_model"] is None, sess["session_id"]
 
 
+def _set_model_line(name: str) -> str:
+    content = (f"<local-command-stdout>Set model to `{name}` and saved as your default "
+               "for new sessions</local-command-stdout>")
+    return json.dumps({"type": "user", "message": {"role": "user", "content": content}}) + "\n"
+
+
+def test_an_in_session_switch_is_the_model_before_anything_answers(tmp_path: Path):
+    """The chip's switch is confirmed by the line /model writes, not by the
+    next answer, which may be hours away."""
+    assert _transcript_model_of(
+        tmp_path, _assistant_line("claude-sonnet-5-5"), _set_model_line("Opus 5.5"),
+    ) == "claude-opus-5-5"
+
+
+def test_an_answer_after_a_switch_is_still_the_newest_truth(tmp_path: Path):
+    assert _transcript_model_of(
+        tmp_path, _set_model_line("Opus 5.5"), _assistant_line("claude-sonnet-5-5"),
+    ) == "claude-sonnet-5-5"
+
+
 def test_transcript_model_reads_claude_only(tmp_path: Path):
     assert _transcript_model_of(tmp_path, _assistant_line("claude-opus-5-5"), agent="codex") is None
 

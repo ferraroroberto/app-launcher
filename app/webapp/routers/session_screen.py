@@ -46,9 +46,10 @@ from app.webapp.routers.session_transcript import _resolve_source
 from src import audit
 from src.ask_user_question import TOOL_NAME as ASK_TOOL_NAME
 from src.ask_user_question import answer_keystrokes
-from src.board.transcript import pending_decision_call
+from src.board.transcript import _last_transcript_model, _live_title_is_busy, pending_decision_call
 from src.clients import session as session_client
-from src.session_view import plan_picker, resume_picker
+from src.session_model import session_model_label
+from src.session_view import model_switch, plan_picker, resume_picker
 from src.session_view.statusline_context import context_percent
 from src.webapp_config import WebappConfig
 
@@ -617,6 +618,177 @@ def _resume_picker_showing(via: str, lines: List[str]) -> bool:
         )
     return showing
 
+
+
+# --- Switching the session's model from the Chat view's model chip --------
+#
+# The agent's own `/model <id>` does the switch (src.session_view.model_switch).
+# Claude Code asks "Switch model?" once a conversation has history; the dialog
+# is read off the screen and its Yes pressed only while it names the model
+# asked for. The switch counts only once the agent reports it: Claude's
+# transcript line, Codex's window title, the sources the chip already reads.
+
+# How long a switch waits for the agent to report the new model, and how often
+# it looks. Claude re-reading a long conversation takes a few seconds.
+_MODEL_CONFIRM_S = 10.0
+_MODEL_POLL_S = 0.5
+
+
+def _claude_label(transcript: Any) -> Optional[str]:
+    return session_model_label(
+        {"agent": "claude", "transcript_model": _last_transcript_model(transcript)}
+    )
+
+
+async def _live_session(cfg: WebappConfig, sid: str) -> Dict[str, Any]:
+    """The session-host's row for ``sid``: 503 unreachable, 409 gone."""
+    live, host_error = await asyncio.to_thread(_read_live_sessions, cfg.session_host_port)
+    session = next((s for s in live if str(s.get("session_id")) == str(sid)), None)
+    if session is None:
+        _refuse_if_host_unreachable(SESSION_HOST_UNREACHABLE if host_error else None)
+        raise HTTPException(status_code=409, detail="This session is no longer running")
+    return session
+
+
+async def _type_switch(cfg: WebappConfig, sid: str, keys: List[Tuple[str, bool]], agent: str) -> None:
+    """Type one step of a switch; a socket failure is a 502 saying how far it got."""
+    try:
+        await _type_into_pty(cfg.session_host_port, sid, keys)
+    except _PartialAnswer as exc:
+        await audit_off_loop(
+            audit.session_log, sid, "model_switch", agent=agent, reason="error",
+            sent=exc.sent, detail=exc.detail[:200],
+        )
+        logger.info("⚠️ model switch %s failed after %d writes: %s", sid[:8], exc.sent, exc.detail[:200])
+        raise HTTPException(
+            status_code=502,
+            detail=("Switch not sent: nothing reached the terminal" if exc.sent == 0
+                    else "Switch only partly sent: check the terminal"),
+        ) from exc
+
+
+def _refuse_busy_claude_screen(reason: Optional[str], lines: Optional[List[str]]) -> None:
+    """409 when the screen can't be read, or something on it waits for an answer."""
+    if reason is not None or lines is None:
+        raise HTTPException(
+            status_code=409, detail="Chat can't see the terminal's screen, so nothing was sent"
+        )
+    if plan_picker.parse_picker(lines) is not None:
+        raise HTTPException(status_code=409, detail="The terminal is waiting on a plan: answer it first")
+    if resume_picker.parse_resume_picker(lines):
+        raise HTTPException(
+            status_code=409, detail="The terminal is showing the resume picker: close it first"
+        )
+    if model_switch.dialog_showing(lines):
+        raise HTTPException(
+            status_code=409, detail="The terminal is already asking about a model switch: answer it there"
+        )
+
+
+async def _switch_claude(
+    cfg: WebappConfig, sid: str, keys: List[Tuple[str, bool]], label: str
+) -> Tuple[str, bool, Optional[str]]:
+    """``(outcome, confirmed_dialog, detail)`` for a Claude Code switch."""
+    _reason, _flavor, transcript, _agent, _why, _session = await _resolve_source(sid, cfg)
+    if transcript is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Chat can't read this session's transcript, so a switch couldn't be confirmed: "
+                   "nothing was sent",
+        )
+    if await asyncio.to_thread(_claude_label, transcript) == label:
+        return "switched", False, None
+    reason, _session, lines = await _read_screen(cfg, sid)
+    _refuse_busy_claude_screen(reason, lines)
+    await _type_switch(cfg, sid, keys, "claude")
+    answered = False
+    loop = asyncio.get_running_loop()
+    end = loop.time() + _MODEL_CONFIRM_S
+    while loop.time() < end:
+        if await asyncio.to_thread(_claude_label, transcript) == label:
+            return "switched", answered, None
+        if not answered:
+            _r, _s, lines = await _read_screen(cfg, sid)
+            try:
+                confirm = model_switch.confirm_keys(lines or [], label)
+            except model_switch.SwitchRefused as exc:
+                return "unconfirmed", False, str(exc)
+            if confirm:
+                await _type_switch(cfg, sid, confirm, "claude")
+                answered = True
+        await asyncio.sleep(_MODEL_POLL_S)
+    return "unconfirmed", answered, f"Claude didn't report the switch to {label}: check the terminal"
+
+
+async def _switch_codex(
+    cfg: WebappConfig, sid: str, keys: List[Tuple[str, bool]], label: str, session: Dict[str, Any]
+) -> Tuple[str, bool, Optional[str]]:
+    """``(outcome, False, detail)`` for a Codex switch: it never asks, and its
+    window title names the model it runs."""
+    if session_model_label(session) == label:
+        return "switched", False, None
+    await _type_switch(cfg, sid, keys, "codex")
+    loop = asyncio.get_running_loop()
+    end = loop.time() + _MODEL_CONFIRM_S
+    while loop.time() < end:
+        live, _error = await asyncio.to_thread(_read_live_sessions, cfg.session_host_port)
+        now = next((s for s in live if str(s.get("session_id")) == str(sid)), None)
+        if now is not None and session_model_label(now) == label:
+            return "switched", False, None
+        await asyncio.sleep(_MODEL_POLL_S)
+    return "unconfirmed", False, f"Codex didn't report the switch to {label}: check the terminal"
+
+
+@router.post("/api/claude-code/sessions/{sid}/model")
+async def session_switch_model(sid: str, request: Request) -> Dict[str, Any]:
+    """Switch a live session to another model (Tailscale + passkey).
+
+    Body: ``{"model": str}``, a catalog value the session's agent offers
+    (``opus``, ``gpt-6-luna``). Refused before anything is typed: an agent
+    with no in-session switch or a detached session (409), a model the agent
+    does not offer (400), and for Claude a screen that can't be read or that
+    waits on something else (409).
+
+    ``outcome`` is ``switched`` only once the agent reports the new model
+    (Claude's transcript, Codex's window title), including when it already
+    ran it and nothing was typed; otherwise ``unconfirmed`` with ``detail``
+    saying why. ``confirmed_dialog`` says whether Claude's "Switch model?"
+    dialog was answered on the way.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    body = await maybe_json(request)
+    session = await _live_session(cfg, sid)
+    agent = str(session.get("agent") or "claude").lower()
+    value = body.get("model")
+    try:
+        keys, label = model_switch.switch_keys(agent, value)
+    except model_switch.SwitchRefused as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if str(session.get("kind") or "pty") == "remote":
+        raise HTTPException(
+            status_code=409,
+            detail="Chat can't switch a detached session's model: use /model in the PC console",
+        )
+    if agent == "claude":
+        if _live_title_is_busy(session.get("live_title")):
+            # Typed now, /model would queue behind the turn and its dialog
+            # would wait on the terminal after this request has given up.
+            raise HTTPException(
+                status_code=409,
+                detail="Claude is working: switch the model once it is back at the prompt",
+            )
+        outcome, answered, detail = await _switch_claude(cfg, sid, keys, label)
+    else:
+        outcome, answered, detail = await _switch_codex(cfg, sid, keys, label, session)
+    await audit_off_loop(
+        audit.session_log, sid, "model_switch", agent=agent, model=value,
+        confirmed_dialog=answered, reason=outcome,
+    )
+    logger.info("⌨️ model switch %s to %s (%s): %s", sid[:8], value, agent, outcome)
+    return {"ok": True, "outcome": outcome, "model": label,
+            "confirmed_dialog": answered, "detail": detail}
 
 
 @router.get("/api/claude-code/sessions/{sid}/context")

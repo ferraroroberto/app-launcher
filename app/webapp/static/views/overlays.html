@@ -9,10 +9,11 @@
       <button data-track="session.back" id="terminalBack" type="button" class="icon-button term-btn" title="Back to sessions" aria-label="Back to sessions"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
       <span id="terminalTitle" class="terminal-title">session</span>
       <div class="terminal-bar-actions">
-        <!-- Model pill (#1383): the session's model, left of the context ring.
-             Not a control (no tap target); hidden whenever the model isn't
-             known — never a guess. Set by terminal-mirror.js with the title. -->
-        <span id="terminalModel" class="terminal-model" hidden></span>
+        <!-- Model chip: the session's model, left of the context ring;
+             hidden whenever the model isn't known, never a guess. A tap opens
+             the model picker, or toasts why this session can't switch.
+             Driven by terminal/model-chip.js. -->
+        <button data-track="session.model" id="terminalModel" type="button" class="terminal-model" hidden><span id="terminalModelLabel" class="terminal-model-label"></span></button>
         <!-- Context ring (#1223): how full the session's context window is,
              read off the terminal's statusline by the server. Hidden, not
              drawn at 0%, whenever the number isn't known; a tap toasts it.
@@ -140,6 +141,26 @@
     <button data-track="lightbox.close" id="imageLightboxClose" type="button" class="image-lightbox-close" title="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></button>
     <img id="imageLightboxImage" class="image-lightbox-img" alt="">
   </div>
+
+  <!-- Model picker: the models the session's agent offers, the current one
+       checked. A tap switches the live session through the agent's own
+       /model; the chip changes only once the agent reports it. Header ✕ plus
+       one full-width Close (modal contract). terminal/model-chip.js fills it. -->
+  <dialog id="modelSwitchSheet" class="detail-dialog model-switch-sheet" data-track-view="sheet.model-switch" aria-labelledby="modelSwitchSheetTitle">
+    <div class="detail-card">
+      <div class="detail-header">
+        <h2 id="modelSwitchSheetTitle" tabindex="-1" autofocus>Switch model</h2>
+        <button data-track="model-switch.close" type="button" id="modelSwitchSheetClose" class="icon-button detail-close" aria-label="Close">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+        </button>
+      </div>
+      <p id="modelSwitchSheetNote" class="model-switch-note"></p>
+      <div id="modelSwitchList" class="settings-group settings-group--nested" role="list"></div>
+      <div class="detail-actions">
+        <button data-track="model-switch.done" type="button" id="modelSwitchSheetDone" class="button-primary detail-save-btn">Close</button>
+      </div>
+    </div>
+  </dialog>
 
   <!-- HTML viewer: a sent HTML document at full size, a sheet on the phone and
        a large dialog on desktop. Header ✕ plus one full-width Download (modal

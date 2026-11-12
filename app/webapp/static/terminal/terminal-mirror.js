@@ -18,6 +18,7 @@ import { els, state } from '../state.js';
 import { sessionTitle } from '../sessions.js';
 import { isChiefSession } from '../shared/session-kinds.js';
 import { icon } from '../_vendored/icons/icons.js';
+import { renderModelChip } from './model-chip.js';
 
 // The PC mirror window's OS title: the human session title first (so it shows
 // in the Windows/PTI title bar) followed by the hidden marker the launcher's
@@ -76,18 +77,6 @@ export function dropEarlyMirrorMarker() {
   _preMarkerTitle = null;
 }
 
-// The model pill: the session's model display name ("Opus", "Sol"),
-// derived server-side. Hidden, never a placeholder, when it isn't known.
-function setTerminalModelPill(session) {
-  const pill = els.terminalModel;
-  if (!pill) return;
-  const model = String((session && session.model) || '').trim();
-  pill.textContent = model;
-  pill.hidden = !model;
-  if (model) pill.title = 'Model: ' + model;
-  else pill.removeAttribute('title');
-}
-
 // Set the overlay header's title text, prepending the fleet chief's crown
 // marker when this session is the chief — same crown as the Board
 // and Coding-tab rows. Built from DOM nodes, not string concat, since
@@ -96,7 +85,7 @@ function setTerminalModelPill(session) {
 // for the OS title bar, which carries no icon.
 export function setTerminalTitleText(session) {
   const title = sessionTitle(session);
-  setTerminalModelPill(session);
+  renderModelChip(session);
   if (!els.terminalTitle) return title;
   els.terminalTitle.textContent = '';
   if (isChiefSession(session)) {

@@ -86,19 +86,36 @@
   box-shadow: none;
   cursor: default;
 }
-/* Model pill: the session's model, left of the context ring. A
-   neutral chip (design.md: neutral-soft fill, text in fg, pill radius,
-   caption type) at the compact control height so it sits level with the
-   header's buttons. Not a control, so no tap target to size. The title gives
-   way first (flex: 1, min-width: 0, ellipsis); only once the title is gone
-   does the pill itself shrink, ellipsising its text, so at 360px with every
-   control showing the bar still never overflows. display: block, not flex,
-   because text-overflow does not apply to a flex container's own text. */
+/* Model chip: the session's model, left of the context ring, and the
+   button that opens the model picker. The button is real 44px geometry (the
+   bar is a cluster, so no expanded hit area) with no paint of its own; the
+   visible chip is its label (design.md chip: neutral-soft fill, text in fg,
+   pill radius, caption type) at the compact control height so it sits level
+   with the header's buttons. The title gives way first (flex: 1,
+   min-width: 0, ellipsis); only once the title is gone does the chip itself
+   shrink, ellipsising its text, never below the 44px target, so at 360px with
+   every control showing the bar still never overflows. The label is
+   display: block, not flex, because text-overflow does not apply to a flex
+   container's own text. A switch in flight dims the chip; one the agent never
+   confirmed keeps the old model inside an attention hairline. */
 .terminal-model {
-  display: block;
+  display: flex;
+  align-items: center;
   flex: 0 1 auto;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.terminal-model[aria-disabled="true"] { cursor: default; }
+.terminal-model[hidden] { display: none; }
+.terminal-model-label {
+  display: block;
   min-width: 0;
-  align-self: center;
   height: var(--control-h);
   padding: 0 8px;
   border-radius: var(--radius-pill);
@@ -111,7 +128,24 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.terminal-model[hidden] { display: none; }
+.terminal-model[data-state="switching"] { cursor: progress; }
+.terminal-model[data-state="switching"] .terminal-model-label { opacity: 0.6; }
+.terminal-model[data-state="unconfirmed"] .terminal-model-label {
+  box-shadow: inset 0 0 0 1px var(--attention);
+}
+/* Model picker sheet: the agent's note under the header, then the list. The
+   current model's row carries a check in accent-text. */
+.model-switch-note {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: var(--font-body-sm);
+}
+.model-switch-current {
+  flex: none;
+  display: inline-flex;
+  color: var(--accent-text);
+}
+.model-switch-current .icon { width: var(--icon-title); height: var(--icon-title); }
 /* Context ring: the session's context-window use, just before the
    toggle. A real 44×44 term-btn (the bar is a cluster, so no expanded hit
    area), holding an 18px SVG ring — the toggle's own glyph size. The track
