@@ -10,6 +10,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e import _fake_clock
+from tests.e2e.board._repo_typeahead import check_repo_typeahead
 from tests.e2e.board._support import (
     _FAKE_BOARD,
     _board_payload,
@@ -17,7 +18,6 @@ from tests.e2e.board._support import (
     _open_board,
     _unfold,
 )
-from tests.e2e.board._repo_typeahead import check_repo_typeahead
 from tests.e2e.fixtures.ui import open_row_menu
 from tests.e2e.fixtures.waits import (
     assert_unpainted_at_rest,
