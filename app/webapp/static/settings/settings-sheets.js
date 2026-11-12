@@ -33,6 +33,7 @@ import { fetchApps } from '../apps.js';
 import { fetchSkills } from '../life-os.js';
 import { profileNeedsSetup } from './telegram-setup.js';
 import { formatMinutes } from '../screen/screen-time.js';
+import { plural } from '../shared/format.js';
 
 // ------------------------------------------------------------ navigation
 // The open sheets, the shown one last.
@@ -134,10 +135,6 @@ function modelLabel(models, value) {
 
 function joined(parts) {
   return parts.filter(Boolean).join(' · ');
-}
-
-function plural(n, one, many) {
-  return n + ' ' + (n === 1 ? one : many);
 }
 
 // One line per agent row ("Sonnet · high · auto"), the model first so

@@ -22,10 +22,7 @@ import { ownerNeedsCount } from './board/owner-needs.js';
 import { sessionAttention } from './glance.js';
 import { setTabBadge } from './tabs.js';
 import { profileNeedsSetup } from './settings/telegram-setup.js';
-
-function plural(n, one, many) {
-  return n + ' ' + (n === 1 ? one : many);
-}
+import { plural } from './shared/format.js';
 
 // The CPU reading never hides, so a line that no longer fits beside it gets
 // shorter instead: each part may carry a `short` form that still reads whole

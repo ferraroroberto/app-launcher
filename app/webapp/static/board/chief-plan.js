@@ -9,10 +9,10 @@ import { icon } from '../_vendored/icons/icons.js';
 import { chip } from '../glance.js';
 import { actionRow } from '../action-rows.js';
 import { openChiefAnswers, openOwnerAnswers, syncChiefAnswers } from './board-answers.js';
-import { newestDateFirst, shortDate } from '../shared/format.js';
+import { agoText, newestDateFirst, plural, shortDate } from '../shared/format.js';
 import { answeredKeys, itemKey } from './chief-keys.js';
 import { boardRepoFilter, isChiefCard, matchesRepoFilter } from './board-dispatch.js';
-import { DESKTOP_BOARD, plural, renderBoard, setLaneException } from '../board.js';
+import { DESKTOP_BOARD, renderBoard, setLaneException } from '../board.js';
 import { clearMergedButton, mergedCount } from './plan-prune.js';
 import { CLOSED, bucketIndex, bucketName, groupPlanRows } from './plan-buckets.js';
 
@@ -34,19 +34,6 @@ const PLAN_TONES = {
   waiting: 'attention', 'waiting-roberto': 'attention',
   merged: 'neutral',
 };
-
-// "just now" / "12 min ago" / "3 h ago" / "2 d ago", or '' for a time that
-// can't be read: the plan's age and the Backlog footer's.
-export function agoText(iso) {
-  const t = Date.parse(iso || '');
-  if (isNaN(t)) return '';
-  const min = Math.floor((Date.now() - t) / 60000);
-  if (min < 1) return 'just now';
-  if (min < 60) return min + ' min ago';
-  const h = Math.floor(min / 60);
-  if (h < 48) return h + ' h ago';
-  return Math.floor(h / 24) + ' d ago';
-}
 
 function planAge(updatedAt) {
   const ago = agoText(updatedAt);

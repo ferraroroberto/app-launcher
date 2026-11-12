@@ -42,6 +42,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tupl
 from src import runtime_files
 from src._json_io import atomic_write_json
 from src.board import owner_try
+from src.board.state import parse_utc_iso
 from src.clients import github as github_client
 from src.subprocess_flags import NO_WINDOW
 
@@ -124,13 +125,6 @@ class OwnerCheckError(RuntimeError):
 def _now_iso(now: Optional[datetime] = None) -> str:
     moment = now or datetime.now(timezone.utc)
     return moment.isoformat(timespec="seconds").replace("+00:00", "Z")
-
-
-def _parse_iso(text: Any) -> Optional[datetime]:
-    try:
-        return datetime.fromisoformat(str(text).replace("Z", "+00:00"))
-    except ValueError:
-        return None
 
 
 # ------------------------------------------------------------------ the CLI
@@ -430,11 +424,11 @@ def live_marks(marks: Dict[str, Dict[str, Any]], now: datetime) -> Dict[str, Dic
     kept = {}
     for ref, mark in marks.items():
         if mark["mark"] == LATER:
-            until = _parse_iso(mark.get("until"))
+            until = parse_utc_iso(mark.get("until"))
             if until is None or until <= now:
                 continue
         else:
-            at = _parse_iso(mark.get("at"))
+            at = parse_utc_iso(mark.get("at"))
             if at is None or now - at > timedelta(days=PROBLEM_MARK_DAYS):
                 continue
         kept[ref] = mark

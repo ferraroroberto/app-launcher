@@ -55,7 +55,7 @@ import { terminalJsonApi } from './webauthn.js';
 import { isOffBoard } from './channel-sessions.js';
 import { brandIconEl } from './dom-utils.js';
 import { channelSessionName, isChannelSession, isRelaySession } from './shared/session-kinds.js';
-import { fmtCardStamp, fmtDuration } from './shared/format.js';
+import { agoText, fmtCardStamp, fmtDuration, plural } from './shared/format.js';
 import { avatar, chip, sessionStatusBits, sessionStatusMeta } from './glance.js';
 import { ACTION_ROW_MENU, actionRow } from './action-rows.js';
 import { failedFetchState, setAsyncState } from './async-state.js';
@@ -70,7 +70,7 @@ import { openQuestionCount } from './board/chief-keys.js';
 import {
   buildDrawer, drawerId, drawerShape, endDrawerRender, openDrawerItem, syncDrawerLifecycle,
 } from './board/drawer.js';
-import { agoText, openOwnerAnswersAt, renderChiefPlan } from './board/chief-plan.js';
+import { openOwnerAnswersAt, renderChiefPlan } from './board/chief-plan.js';
 import { ownerNeedsCount, renderOwnerChecks } from './board/owner-checks.js';
 import { doneEarlierLoaded, renderDoneEarlier } from './board/done-earlier.js';
 import { doneActions, proofGapChips } from './board/proof-chip.js';
@@ -591,10 +591,6 @@ function renderBacklogFoot(body, ghLoaded) {
   const ago = ghLoaded ? agoText(body.github.fetched_at) : '';
   foot.hidden = !ago;
   foot.innerHTML = ago ? icon('globe') + '<span>GitHub · updated ' + ago + '</span>' : '';
-}
-
-export function plural(n, one, many) {
-  return n + ' ' + (n === 1 ? one : many);
 }
 
 // The page header (the header rule): only the exceptions — "N

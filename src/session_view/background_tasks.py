@@ -44,6 +44,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterator, Optional, Tuple
 
+from src.board.state import parse_utc_iso
 from src.session_view.task_state import TaskPhase, next_status, task_phase
 
 SCAN_CEILING = 64 * 1024 * 1024
@@ -117,20 +118,10 @@ def _label(inputs: Dict[str, Any]) -> Tuple[str, str]:
 
 
 def _seconds_between(start: Optional[str], end: Optional[str]) -> Optional[int]:
-    a, b = _parse_ts(start), _parse_ts(end)
+    a, b = parse_utc_iso(start), parse_utc_iso(end)
     if a is None or b is None:
         return None
     return max(0, int((b - a).total_seconds()))
-
-
-def _parse_ts(value: Optional[str]) -> Optional[datetime]:
-    if not value:
-        return None
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
 def fold_tasks(path: Path) -> Dict[str, Dict[str, Any]]:

@@ -14,7 +14,7 @@ from threading import Lock
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.jobs.config import Job
-from src.jobs.history import latest_run, list_runs
+from src.jobs.history import latest_run, list_runs, parse_stamp
 from src.jobs.outcome import OUTCOME_DEFERRED, OUTCOME_UNCONFIRMED
 from src.jobs.run_status import FINISHED, NOT_A_FIRE, RunStatus, run_status
 
@@ -23,15 +23,6 @@ from src.jobs.run_status import FINISHED, NOT_A_FIRE, RunStatus, run_status
 _STATS_TTL_SECONDS = 30.0
 _stats_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 _stats_lock = Lock()
-
-
-def _parse_iso(value: Any) -> Optional[datetime]:
-    if not isinstance(value, str) or not value:
-        return None
-    try:
-        return datetime.fromisoformat(value)
-    except ValueError:
-        return None
 
 
 def cooldown_check(
@@ -70,7 +61,7 @@ def cooldown_check(
         break
     if anchor is None:
         return None
-    started = _parse_iso(anchor.get("started_at"))
+    started = parse_stamp(anchor.get("started_at"))
     if started is None:
         return None
     reference = now or datetime.now()
@@ -86,8 +77,8 @@ def _duration_for(record: Dict[str, Any]) -> Optional[float]:
     persisted = record.get("duration_seconds")
     if isinstance(persisted, (int, float)) and persisted >= 0:
         return float(persisted)
-    started = _parse_iso(record.get("started_at"))
-    finished = _parse_iso(record.get("finished_at"))
+    started = parse_stamp(record.get("started_at"))
+    finished = parse_stamp(record.get("finished_at"))
     if started and finished and finished >= started:
         return (finished - started).total_seconds()
     return None
@@ -116,7 +107,7 @@ def _compute_stats(job_id: str, *, now: Optional[datetime] = None) -> Dict[str, 
     for r in runs:
         status = r.get("status")
         outcome = r.get("outcome") or status
-        started = _parse_iso(r.get("started_at"))
+        started = parse_stamp(r.get("started_at"))
         if outcome == OUTCOME_DEFERRED:
             # A deferred run declined the work on purpose. It is
             # neither side of the success ratio, and its seconds-long
@@ -307,7 +298,7 @@ def is_stuck(
         latest = latest_run(job_id)
     if run_status(latest) is not RunStatus.RUNNING:
         return False
-    started = _parse_iso(latest.get("started_at"))
+    started = parse_stamp(latest.get("started_at"))
     if not started:
         return False
     threshold = stuck_threshold_seconds(

@@ -18,7 +18,7 @@ import { actionRow } from '../action-rows.js';
 import { chip } from '../glance.js';
 import { el } from '../dom-utils.js';
 import { chevron, chiefRunState } from './chief-plan.js';
-import { openIdeaSheet, scoreText, shortDate, sourceText, syncIdeaSheet, wireIdeaSheet } from './idea-sheet.js';
+import { ideaDate, openIdeaSheet, scoreText, sourceText, syncIdeaSheet, wireIdeaSheet } from './idea-sheet.js';
 
 const IDEAS_POLL_MS = 30 * 1000;
 const SHOWN_ROWS = 3;
@@ -38,11 +38,11 @@ let chiefRun = '';
 function card() { return document.getElementById('boardIdeas'); }
 
 function rowMeta(entry) {
-  if (entry.state === 'applied') return ['Filed ' + shortDate(entry.at), sourceText(entry)].join(' · ');
+  if (entry.state === 'applied') return ['Filed ' + ideaDate(entry.at), sourceText(entry)].join(' · ');
   if (entry.state === 'filtered') {
-    return ['Dropped ' + shortDate(entry.at), entry.note || sourceText(entry)].join(' · ');
+    return ['Dropped ' + ideaDate(entry.at), entry.note || sourceText(entry)].join(' · ');
   }
-  return [scoreText(entry.score), sourceText(entry), shortDate(entry.published)].filter(Boolean).join(' · ');
+  return [scoreText(entry.score), sourceText(entry), ideaDate(entry.published)].filter(Boolean).join(' · ');
 }
 
 function ideaRow(entry) {

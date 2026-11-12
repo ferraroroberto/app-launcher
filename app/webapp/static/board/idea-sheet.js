@@ -52,7 +52,7 @@ export function kindLabel(kind) {
 }
 
 // "8 Nov" from an ISO date or time; '' when there is none to read.
-export function shortDate(iso) {
+export function ideaDate(iso) {
   const t = Date.parse(iso || '');
   if (isNaN(t)) return '';
   return new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
@@ -104,7 +104,7 @@ function attribution(entry) {
     dl.appendChild(dd);
   };
   add('Author', sourceText(entry));
-  add('Posted', shortDate(entry.published));
+  add('Posted', ideaDate(entry.published));
   if (entry.link) {
     const a = el('a', 'idea-sheet-link', entry.link.replace(/^https?:\/\//, ''));
     a.href = entry.link;
@@ -136,7 +136,7 @@ function headBlock(entry) {
 function outcomeBlock(entry, sentAction) {
   const box = el('div', 'idea-sheet-outcome');
   if (entry.state === 'applied') {
-    box.appendChild(el('p', 'idea-sheet-text', 'Filed as an issue on ' + (shortDate(entry.at) || 'an earlier day') + '.'));
+    box.appendChild(el('p', 'idea-sheet-text', 'Filed as an issue on ' + (ideaDate(entry.at) || 'an earlier day') + '.'));
     if (entry.issue_url) {
       const a = el('a', 'chip idea-sheet-issue', entry.issue);
       a.href = entry.issue_url;
@@ -148,7 +148,7 @@ function outcomeBlock(entry, sentAction) {
       box.appendChild(chip(entry.issue, 'neutral', 'idea-sheet-issue'));
     }
   } else if (entry.state === 'filtered') {
-    box.appendChild(el('p', 'idea-sheet-text', 'Dropped on ' + (shortDate(entry.at) || 'an earlier day') + '.'));
+    box.appendChild(el('p', 'idea-sheet-text', 'Dropped on ' + (ideaDate(entry.at) || 'an earlier day') + '.'));
     if (entry.note) box.appendChild(el('blockquote', 'idea-sheet-quote', entry.note));
   } else {
     box.appendChild(el('p', 'idea-sheet-text', (sentAction === 'file' ? 'Sent to the chief to file.'

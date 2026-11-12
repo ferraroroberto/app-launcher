@@ -50,6 +50,53 @@ export function fmtDuration(value, opts) {
   return Math.floor(secs / 86400) + 'd';
 }
 
+// The one "how long ago" phrase: "just now" / "12 min ago" / "3 h ago" /
+// "2 d ago" for an age in whole minutes (a negative age, a stamp slightly in
+// the future, reads "just now"). Hours run to 48 before the count flips to
+// days, so "26 h ago" stays readable instead of "1 d ago".
+export function agoFromMinutes(min) {
+  if (min < 1) return 'just now';
+  if (min < 60) return min + ' min ago';
+  const h = Math.floor(min / 60);
+  if (h < 48) return h + ' h ago';
+  return Math.floor(h / 24) + ' d ago';
+}
+
+// agoFromMinutes for an ISO timestamp, or '' for a time that can't be read.
+// `now` (epoch ms) is injectable for the unit pin.
+export function agoText(iso, now) {
+  const t = Date.parse(iso || '');
+  if (isNaN(t)) return '';
+  return agoFromMinutes(Math.floor(((now === undefined ? Date.now() : now) - t) / 60000));
+}
+
+// agoFromMinutes for an age in seconds; null or NaN is unknown ('').
+export function agoFromSeconds(seconds) {
+  if (seconds == null || isNaN(seconds)) return '';
+  return agoFromMinutes(Math.floor(Math.max(0, Math.round(seconds)) / 60));
+}
+
+// A byte count as "512 B" / "1.5 MB" / "12 KB": one decimal below 10 of a
+// unit, none above. null for a count that is missing, negative or not finite,
+// so the caller drops the part instead of printing an invented size.
+export function formatBytes(bytes) {
+  if (bytes == null || !Number.isFinite(bytes) || bytes < 0) return null;
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = bytes;
+  let index = 0;
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024;
+    index += 1;
+  }
+  const fixed = value >= 10 || index === 0 ? value.toFixed(0) : value.toFixed(1);
+  return fixed + ' ' + units[index];
+}
+
+// "3 questions" / "1 question": the count with its noun agreed.
+export function plural(n, one, many) {
+  return n + ' ' + (n === 1 ? one : many);
+}
+
 // A share as a whole-percent string — shared by the usage sheet and the
 // CPU/system-load sheet.
 export function pctText(pct) {

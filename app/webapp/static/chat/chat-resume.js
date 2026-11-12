@@ -24,7 +24,7 @@
 
 import { els } from '../state.js';
 import { apiFailToast, jsonApi, sessionRoute, toast } from '../api.js';
-import { fmtAgo } from '../sessions.js';
+import { agoText } from '../shared/format.js';
 import { terminalJsonApi } from '../webauthn.js';
 import { icon } from '../_vendored/icons/icons.js';
 import { askOption } from './ask-option.js';
@@ -98,13 +98,6 @@ export async function openResumeCard(via) {
   render();
 }
 
-function ago(iso) {
-  const t = Date.parse(iso || '');
-  if (!Number.isFinite(t)) return '';
-  const text = fmtAgo(Math.floor(t / 1000));
-  return text ? text + ' ago' : '';
-}
-
 // Every search word must appear in the title, in any order and case.
 function matches(title, query) {
   const hay = String(title || '').toLowerCase();
@@ -164,7 +157,7 @@ function render() {
   list.setAttribute('aria-label', 'Sessions, newest first');
   const buttons = card.sessions.map(function (s) {
     const b = askOption({
-      label: s.title, description: ago(s.updated_at), extraClass: 'tr-resume-opt', track: 'chat.resume-option',
+      label: s.title, description: agoText(s.updated_at), extraClass: 'tr-resume-opt', track: 'chat.resume-option',
       onTap: function () { pick(s); },
     });
     b.dataset.id = s.id;

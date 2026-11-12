@@ -35,6 +35,21 @@ JOBS_RUNS_DIR = PROJECT_ROOT / "webapp" / "jobs"
 MAX_RUNS_PER_JOB = 20
 
 
+def parse_stamp(value: Any) -> Optional[datetime]:
+    """A run record's or job's ISO stamp as a datetime, or ``None`` when absent or unreadable.
+
+    The stamps are written by ``datetime.now().isoformat()``, so they are naive
+    local time and compare against ``datetime.now()``; the value is returned as
+    parsed, with no zone applied.
+    """
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
 def runs_dir(job_id: str) -> Path:
     """Where this job's run history lives."""
     return JOBS_RUNS_DIR / job_id
