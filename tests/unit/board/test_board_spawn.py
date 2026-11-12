@@ -6,8 +6,8 @@ The free-text dispatch endpoint (#302) that first exercised these is gone
 ``tests/api/chief/`` (timeout kill, boot-never-quiescent cap) and
 ``tests/api/board/test_drawer_issue_start.py`` (chief-managed marking, #1283). What those go
 through the HTTP routes for, this file reaches directly: the model allowlist
-and the two readiness edges (a dead session, a session-host old enough to not
-report ``output_chars``).
+and the readiness edges (a dead session, a session-host that reports no
+``output_chars``).
 """
 
 from __future__ import annotations
@@ -26,7 +26,6 @@ def _fast_probe(monkeypatch):
     monkeypatch.setattr(board_spawn, "DISPATCH_READY_CAP_S", 0.3)
     monkeypatch.setattr(board_spawn, "DISPATCH_SETTLE_S", 0.0)
     monkeypatch.setattr(board_spawn, "DISPATCH_POLL_S", 0.01)
-    monkeypatch.setattr(board_spawn, "DISPATCH_LEGACY_GRACE_S", 0.0)
 
 
 class TestBoardModelResolution:
@@ -112,13 +111,17 @@ class TestAwaitDispatchReady:
         assert excinfo.value.status_code == 504
         assert "died" in excinfo.value.detail
 
-    def test_legacy_host_without_output_chars_degrades_to_the_grace(
+    def test_missing_output_chars_fails_fast_with_502(
         self, _fast_probe, monkeypatch
     ):
-        """A live :8446 running pre-#302 code omits ``output_chars`` — the
-        wait degrades to the fixed grace instead of refusing."""
-        self._host(monkeypatch, {"alive": True})
-        asyncio.run(board_spawn._await_dispatch_ready(8446, "s-1"))
+        """No ``output_chars`` is unknown, not ready: refuse at once rather
+        than type after a guessed grace."""
+        calls = self._host(monkeypatch, {"alive": True})
+        with pytest.raises(HTTPException) as excinfo:
+            asyncio.run(board_spawn._await_dispatch_ready(8446, "s-1"))
+        assert excinfo.value.status_code == 502
+        assert "output_chars" in excinfo.value.detail
+        assert len(calls) == 1
 
     def test_no_output_within_the_cap_504s(self, _fast_probe, monkeypatch):
         self._host(monkeypatch, {"alive": True, "output_chars": 0})

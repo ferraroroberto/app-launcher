@@ -107,12 +107,10 @@ def _resolve_repo_entry(cfg: WebappConfig, repo: str) -> AppEntry:
 
 # Dispatch readiness: how long to wait for the freshly spawned agent
 # to paint its first output before typing into it, the settle after that
-# first paint, and the fixed grace for a session-host old enough to not
-# report ``output_chars`` yet. Module-level so tests can patch them tiny.
+# first paint. Module-level so tests can patch them tiny.
 DISPATCH_READY_CAP_S = 15.0
 DISPATCH_SETTLE_S = 2.0
 DISPATCH_POLL_S = 0.25
-DISPATCH_LEGACY_GRACE_S = 5.0
 
 # PTY input-quiescence: first-paint + a fixed
 # settle is NOT always "input ready" for a fresh --remote-control agent — a
@@ -239,13 +237,11 @@ async def _await_dispatch_ready(port: int, sid: str) -> None:
 
     Ready = alive **and** first output seen (``output_chars > 0``), then a
     short settle so the TUI has its input box up. A session dict without
-    ``output_chars`` means the live session-host predates the ``output_chars`` probe — degrade to
-    a fixed grace (⚠️ logged) rather than refusing, so dispatch works until
-    the host's next restart picks up the real probe. Never returns for a
-    dead session: typing into a dead PTY is the one forbidden outcome.
+    ``output_chars`` is unknown, not ready: the request fails with 502
+    rather than guessing a grace. Never returns for a dead session: typing
+    into a dead PTY is the one forbidden outcome.
     """
     deadline = time.monotonic() + DISPATCH_READY_CAP_S
-    legacy = False
     while True:
         info = await asyncio.to_thread(session_client.get_session, port, sid)
         if not info.get("alive"):
@@ -254,8 +250,10 @@ async def _await_dispatch_ready(port: int, sid: str) -> None:
             )
         chars = info.get("output_chars")
         if chars is None:
-            legacy = True
-            break
+            raise HTTPException(
+                status_code=502,
+                detail="session-host did not report output_chars",
+            )
         if chars > 0:
             break
         if time.monotonic() >= deadline:
@@ -267,14 +265,7 @@ async def _await_dispatch_ready(port: int, sid: str) -> None:
                 ),
             )
         await asyncio.sleep(DISPATCH_POLL_S)
-    if legacy:
-        logger.warning(
-            "⚠️ session-host predates output_chars — dispatching after a "
-            f"fixed {DISPATCH_LEGACY_GRACE_S:.0f}s grace"
-        )
-        await asyncio.sleep(DISPATCH_LEGACY_GRACE_S)
-    else:
-        await asyncio.sleep(DISPATCH_SETTLE_S)
+    await asyncio.sleep(DISPATCH_SETTLE_S)
     info = await asyncio.to_thread(session_client.get_session, port, sid)
     if not info.get("alive"):
         raise HTTPException(status_code=504, detail="session died during startup")
