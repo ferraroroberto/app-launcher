@@ -46,7 +46,11 @@ from app.webapp.routers.session_transcript import _resolve_source
 from src import audit
 from src.ask_user_question import TOOL_NAME as ASK_TOOL_NAME
 from src.ask_user_question import answer_keystrokes
-from src.board.transcript import _last_transcript_model, _live_title_is_busy, pending_decision_call
+from src.board.transcript import (
+    _last_transcript_model,
+    _live_title_is_busy,
+    pending_decision_call,
+)
 from src.clients import session as session_client
 from src.session_model import session_model_label
 from src.session_view import model_switch, plan_picker, resume_picker
