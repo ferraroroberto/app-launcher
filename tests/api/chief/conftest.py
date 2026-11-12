@@ -26,7 +26,6 @@ def _fast_probe(monkeypatch):
     monkeypatch.setattr(board_spawn, "DISPATCH_READY_CAP_S", 0.3)
     monkeypatch.setattr(board_spawn, "DISPATCH_SETTLE_S", 0.0)
     monkeypatch.setattr(board_spawn, "DISPATCH_POLL_S", 0.01)
-    monkeypatch.setattr(board_spawn, "DISPATCH_LEGACY_GRACE_S", 0.0)
     monkeypatch.setattr(chief_router, "CHIEF_STOP_WAIT_S", 0.1)
     monkeypatch.setattr(chief_router, "CHIEF_STOP_POLL_S", 0.01)
     monkeypatch.setattr(board_spawn, "PTY_QUIESCENT_STABLE_S", 0.02)
