@@ -44,8 +44,8 @@
  *     onDictationStart:  optional — fires when a recording starts (the
  *                        terminal silences an in-flight read-aloud).
  *     sendOnModEnter:    optional — bind Ctrl+Enter / Cmd+Enter in the
- *                        textarea to Send. Off by default; only
- *                        Chat mode asks for it.
+ *                        textarea to Send. Off by default; the
+ *                        Chat and Code (terminal) composers ask for it.
  *     field:             optional — mount as a form field (the chief
  *                        answer sheet's Anything else). No ➤ Send and no ⌨
  *                        keys: the host's own primary action reads the
@@ -135,7 +135,7 @@ const _TITLE_KEYS = 'Keyboard keys';
 const _TITLE_KEYS_OFF = 'No terminal keys — this session has no PTY';
 const _TITLE_ATTACH = 'Attach';
 // The button's own title. The plain one is the honest default: on a phone,
-// and on the surfaces that don't opt into `sendOnModEnter`, ➤ is the only way
+// and on a surface that doesn't opt into `sendOnModEnter`, ➤ is the only way
 // to deliver. The shortcut variant names the binding that actually exists,
 // never a label like 'Send (with Enter)' that promises a shortcut no code
 // implements or describes the opposite of what the return key does.
@@ -667,9 +667,9 @@ function wireSend(c) {
   c.el.send.addEventListener('click', function () { submit(c); });
   ta.addEventListener('input', function () { composerGrow(c); });
 
-  // Ctrl+Enter / Cmd+Enter sends — opt-in per surface, because only
-  // Chat asked for it: the terminal overlay has its own input path and the
-  // Board drawer keeps today's shape. Three things this deliberately is:
+  // Ctrl+Enter / Cmd+Enter sends — opt-in per surface: Chat and the Code
+  // (terminal) composer take it; the Board drawer keeps today's shape. Three
+  // things this deliberately is:
   //
   //  - Plain Enter is untouched and still inserts a newline. Multi-line
   //    prompts are the normal case here, so Enter-sends was never wanted.
