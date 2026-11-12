@@ -208,6 +208,7 @@ export const els = {
   lifeOsEmpty: document.getElementById('lifeOsEmpty'),
   lifeOsState: document.getElementById('lifeOsState'),
   lifeOsFilterInput: document.getElementById('lifeOsFilterInput'),
+  lifeOsFilterClear: document.getElementById('lifeOsFilterClear'),
   lifeOsFilterEmpty: document.getElementById('lifeOsFilterEmpty'),
   lifeOsSkillsHead: document.getElementById('lifeOsSkillsHead'),
   lifeOsSkillsCount: document.getElementById('lifeOsSkillsCount'),

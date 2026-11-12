@@ -45,6 +45,7 @@ def test_life_os_field_searches_conversations_across_every_skill(
     _open_life(authed_page, base_url)
     field = authed_page.locator("#lifeOsFilterInput")
     expect(field).to_have_attribute("placeholder", "Skills and conversations")
+    expect(authed_page.locator("#lifeOsFilterClear")).to_be_hidden()
     group = authed_page.locator("#lifeOsConvoGroup")
 
     field.fill("s")
@@ -73,10 +74,26 @@ def test_life_os_field_searches_conversations_across_every_skill(
         " && String(localStorage.getItem(k)).includes('spar'))")
     assert stored == [], stored
 
-    # Clearing the field ends the search and the group steps aside.
-    field.fill("")
+    # The ✕ shows only while the field holds text; a tap empties it, ends
+    # the search exactly as deleting the text does, and keeps focus in the
+    # field so typing carries on (#2352).
+    clear = authed_page.locator("#lifeOsFilterClear")
+    expect(clear).to_be_visible()
+    assert_min_target(clear)
+    clear.click()
+    expect(field).to_have_value("")
+    expect(field).to_be_focused()
+    expect(clear).to_be_hidden()
     expect(group).to_be_hidden(timeout=5_000)
     expect(authed_page.locator("#lifeOsSkillsHead")).to_be_hidden()
+    expect(authed_page.locator("#lifeOsList li.lifeos-item:visible")).not_to_have_count(0)
+
+    # Deleting the text by hand hides it again, the same unsearched state.
+    field.fill("spar")
+    expect(clear).to_be_visible()
+    field.fill("")
+    expect(clear).to_be_hidden()
+    expect(group).to_be_hidden(timeout=5_000)
 
 
 def test_life_os_restored_field_never_searches_conversations(
