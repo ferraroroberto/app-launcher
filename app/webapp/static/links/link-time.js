@@ -6,13 +6,13 @@
  * transcript did not carry.
  */
 
+import { agoFromMinutes } from '../shared/format.js';
+
 export function timeLabel(iso, now) {
   const t = Date.parse(iso || '');
   if (Number.isNaN(t)) return '';
   const min = Math.floor(((now === undefined ? Date.now() : now) - t) / 60000);
-  if (min < 1) return 'just now';
-  if (min < 60) return min + ' min ago';
-  if (min < 24 * 60) return Math.floor(min / 60) + ' h ago';
+  if (min < 24 * 60) return agoFromMinutes(min);
   return new Date(t).toLocaleString([], {
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
   });

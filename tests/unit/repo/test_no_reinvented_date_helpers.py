@@ -33,6 +33,16 @@ _DAY_MS_RE = re.compile(r"86400000")
 # fmtResetDay trio happening again.
 _FMT_RESET_RE = re.compile(r"\bfunction\s+fmtReset\w*\s*\(")
 
+# The small formatters format.js owns (the "N min ago" ladder, the byte
+# rendering, the count-with-noun phrase). Each was once written out by hand in
+# three to six views that then drifted apart, and each is below the duplicate
+# block detector's token floor, so a definition of one of these names outside
+# format.js is the tell.
+_SHARED_FORMATTER_RE = re.compile(
+    r"\bfunction\s+"
+    r"(agoText|ageText|agoFromMinutes|agoFromSeconds|formatBytes|fmtBytes|plural)\s*\("
+)
+
 
 def test_calendar_day_math_and_reset_formatters_stay_in_format_js() -> None:
     offenders = []
@@ -49,6 +59,10 @@ def test_calendar_day_math_and_reset_formatters_stay_in_format_js() -> None:
             offenders.append(
                 f"{path.name}: defines {match.group(0).split('(')[0].strip()}(...) "
                 f"— a second reset-stamp formatter beside fmtResetFull() in {_OWNER}"
+            )
+        for match in _SHARED_FORMATTER_RE.finditer(code):
+            offenders.append(
+                f"{path.name}: defines {match.group(1)} — it lives in {_OWNER}, import it"
             )
     assert not offenders, (
         "a shared date helper was reimplemented outside " + _OWNER + ":\n  "

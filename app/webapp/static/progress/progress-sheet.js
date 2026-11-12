@@ -19,7 +19,7 @@ import { icon } from '../_vendored/icons/icons.js';
 import { chip } from '../glance.js';
 import { drawChart } from './progress-charts.js';
 import {
-  DEFAULT_RANGE, agentShares, ageText, fmtN, githubSeries, githubTotal, halfStatus, progressUrl,
+  DEFAULT_RANGE, agentShares, fmtN, githubSeries, githubTotal, halfStatus, progressUrl,
   rangeDays, rangeText, repoRows, reposCaption, summary, tiles, tokenSeries,
 } from './progress-model.js';
 

@@ -34,7 +34,6 @@ import { openJobDialog, openRunDialog, removeJob, wireJobDialogs } from './jobs/
 import { fetchAgenda, wireJobsAgenda } from './jobs/jobs-agenda.js';
 import {
   endJobRowRender,
-  formatBytes,
   formatDuration,
   renderJobDetails,
   renderJobRow,
@@ -43,6 +42,7 @@ import {
   statusIcon,
 } from './jobs/jobs-row.js';
 import { renderRunRow } from './jobs/run-row.js';
+import { formatBytes } from './shared/format.js';
 import { RunStatus, isActive } from './jobs/run-status.js';
 import { renderRunSentFiles } from './jobs/run-sent-files.js';
 import { icon } from './_vendored/icons/icons.js';

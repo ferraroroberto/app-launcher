@@ -7,6 +7,7 @@
 import { api, authHeaders, sessionRoute } from '../api.js';
 import { fillHtmlCard, openImageLightbox } from '../lightbox.js';
 import { ensureTerminalToken } from '../webauthn.js';
+import { formatBytes } from '../shared/format.js';
 
 // --- image thumbnails ---------------------------------------------
 //
@@ -200,13 +201,6 @@ async function fetchFileBlob(sid, url, kind) {
   return entry;
 }
 
-function fmtBytes(n) {
-  if (typeof n !== 'number') return '';
-  if (n < 1024) return n + ' B';
-  if (n < 1024 * 1024) return Math.round(n / 1024) + ' KB';
-  return (Math.round(n / (1024 * 102.4)) / 10) + ' MB';
-}
-
 function fileNote(card, text) {
   const note = document.createElement('div');
   note.className = 'tr-file-note';
@@ -284,7 +278,7 @@ function fileCard(name, kind, size, url, sid) {
   nameEl.textContent = name;
   nameEl.title = name;
   head.appendChild(nameEl);
-  const sizeText = fmtBytes(size);
+  const sizeText = formatBytes(size);
   if (sizeText) {
     const sizeEl = document.createElement('span');
     sizeEl.className = 'tr-file-size';

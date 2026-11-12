@@ -11,7 +11,7 @@
 
 import { els, state } from '../state.js';
 import { apiFailToast, jsonApi, logPollFailure, toast } from '../api.js';
-import { fmtDuration } from '../shared/format.js';
+import { agoFromMinutes } from '../shared/format.js';
 import { chip } from '../glance.js';
 import { mountLaunchToolbar } from '../launch-toolbar.js';
 import { createRowMenu } from '../_vendored/row-menu/row-menu.js';
@@ -482,11 +482,8 @@ function renderGitSummary(items) {
   }
 }
 
-// "just now" under a minute, then "N min ago" / "Nh ago".
 function checkedAgo(ms) {
-  const age = fmtDuration(ms / 1000, { fromEpoch: true });
-  if (!age || age === 'now') return 'just now';
-  return age.replace(/m$/, ' min') + ' ago';
+  return agoFromMinutes(Math.floor((Date.now() - ms) / 60000));
 }
 
 // Always-on git-status refresh (deliberately not on-demand).

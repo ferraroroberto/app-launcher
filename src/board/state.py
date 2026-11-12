@@ -60,6 +60,22 @@ def parse_iso(raw: Any) -> Optional[datetime]:
     return parsed
 
 
+def parse_utc_iso(raw: Any) -> Optional[datetime]:
+    """Tolerant ISO-8601 parse that always returns an aware value, or ``None``.
+
+    A naive stamp is read as UTC, so a comparison against an aware ``now`` can
+    never raise. :func:`parse_iso` is the variant for the stamps that are
+    local time on purpose (job records).
+    """
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
 def iso_z(moment: datetime) -> str:
     return moment.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 

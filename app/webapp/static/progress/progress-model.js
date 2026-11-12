@@ -11,7 +11,7 @@
  * measured".
  */
 
-import { nameLabel } from '../shared/format.js';
+import { agoFromSeconds, nameLabel } from '../shared/format.js';
 
 export const BUCKETS = ['day', 'week', 'month'];
 
@@ -65,18 +65,6 @@ export function fmtN(n) {
   if (a >= 1e6) return (n / 1e6).toFixed(a >= 1e7 ? 0 : 1) + 'M';
   if (a >= 1e4) return (n / 1e3).toFixed(a >= 1e5 ? 0 : 1) + 'k';
   return n.toLocaleString('en-US');
-}
-
-// "4 min ago" for an age in seconds; null is unknown.
-export function ageText(seconds) {
-  if (seconds == null || isNaN(seconds)) return '';
-  const s = Math.max(0, Math.round(seconds));
-  if (s < 60) return 'just now';
-  const m = Math.floor(s / 60);
-  if (m < 60) return m + ' min ago';
-  const h = Math.floor(m / 60);
-  if (h < 48) return h + ' h ago';
-  return Math.floor(h / 24) + ' d ago';
 }
 
 // ---------------------------------------------------------------- dates
@@ -167,7 +155,7 @@ export function halfStatus(half) {
     word: HALF_WORDS[state],
     readable: state === 'ok' || state === 'stale',
     reason: h.reason || '',
-    age: ageText(h.age_seconds),
+    age: agoFromSeconds(h.age_seconds),
     refreshing: !!h.refreshing,
   };
 }

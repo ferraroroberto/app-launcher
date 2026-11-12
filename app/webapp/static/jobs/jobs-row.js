@@ -93,19 +93,6 @@ export function formatDuration(seconds) {
   return hours + 'h' + (minutes ? ' ' + minutes + 'm' : '');
 }
 
-export function formatBytes(bytes) {
-  if (bytes == null || !Number.isFinite(bytes) || bytes < 0) return null;
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let value = bytes;
-  let index = 0;
-  while (value >= 1024 && index < units.length - 1) {
-    value /= 1024;
-    index += 1;
-  }
-  const fixed = value >= 10 || index === 0 ? value.toFixed(0) : value.toFixed(1);
-  return fixed + ' ' + units[index];
-}
-
 export function toEpoch(isoString) {
   if (!isoString) return 0;
   const value = Date.parse(isoString);

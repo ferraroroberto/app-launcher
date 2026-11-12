@@ -27,9 +27,9 @@ import { el } from '../dom-utils.js';
 import { icon } from '../_vendored/icons/icons.js';
 import { terminalJsonApi } from '../webauthn.js';
 import { boardRepoFilter, matchesRepoFilter } from './board-dispatch.js';
-import { agoText, foldGroup } from './chief-plan.js';
-import { calendarDaysFromToday, newestDateFirst, shortDate } from '../shared/format.js';
-import { plural, renderBoard } from '../board.js';
+import { foldGroup } from './chief-plan.js';
+import { agoText, calendarDaysFromToday, newestDateFirst, plural, shortDate } from '../shared/format.js';
+import { renderBoard } from '../board.js';
 import {
   BEFORE_START_GROUP, TRY_SHIPPED, VALIDATE_TO_CLOSE, ownerGroup, ownerItemWaiting, ownerNeedsCount,
   ownerSection,

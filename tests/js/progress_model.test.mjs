@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import {
-  ageText, agentInfo, agentShares, bucketLabel, fmtN, githubSeries, githubTotal, halfStatus,
+  agentInfo, agentShares, bucketLabel, fmtN, githubSeries, githubTotal, halfStatus,
   progressUrl, rangeDays, repoRows, summary, tiles, tokenAgents, tokenSeries, tokenTotals,
 } from '../../app/webapp/static/progress/progress-model.js';
 
@@ -108,10 +108,6 @@ assert.equal(fmtN(0), '0');
 assert.equal(fmtN(999), '999');
 assert.equal(fmtN(12345), '12.3k');
 assert.equal(fmtN(2_500_000), '2.5M');
-assert.equal(ageText(null), '');
-assert.equal(ageText(10), 'just now');
-assert.equal(ageText(3600), '1 h ago');
-assert.equal(ageText(3 * 86400), '3 d ago');
 
 // Ranges: the last N days including today; a custom pair must be usable.
 const today = new Date(2026, 10, 4);

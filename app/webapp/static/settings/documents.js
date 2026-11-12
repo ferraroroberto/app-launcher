@@ -20,7 +20,7 @@ import { apiFailToast, jsonApi, toast } from '../api.js';
 import { terminalJsonApi } from '../webauthn.js';
 import { renderMarkdown } from '../markdown.js';
 import { renderMermaidIn } from '../shared/mermaid-render.js';
-import { agoText } from '../board/chief-plan.js';
+import { agoText } from '../shared/format.js';
 import { showPath } from './settings-sheets.js';
 
 let documents = [];

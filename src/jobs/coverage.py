@@ -248,15 +248,6 @@ def coverage_alerts_path() -> Path:
     return jobs_history.JOBS_RUNS_DIR / COVERAGE_ALERTS_FILENAME
 
 
-def _parse_iso(value: Any) -> Optional[datetime]:
-    if not isinstance(value, str) or not value:
-        return None
-    try:
-        return datetime.fromisoformat(value)
-    except ValueError:
-        return None
-
-
 def _result(
     state: str,
     *,
@@ -343,14 +334,14 @@ def behavioural_coverage(
     deadline = now - timedelta(seconds=grace_seconds)
     window_start = now - timedelta(days=window_days)
 
-    added = _parse_iso(job.added_at)
+    added = jobs_history.parse_stamp(job.added_at)
     if added is not None and added > window_start:
         window_start = added
 
     runs = jobs_history.list_runs(job.id)  # newest first
     starts: List[datetime] = []
     for record in runs:
-        started = _parse_iso(record.get("started_at"))
+        started = jobs_history.parse_stamp(record.get("started_at"))
         if started is not None:
             starts.append(started)
     # History is capped, so an absent record older than the oldest retained
