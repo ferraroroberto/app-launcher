@@ -34,7 +34,8 @@
   pointer-events: none;
 }
 .board-repo-combo .icon { flex: none; }
-.board-repo-input { text-overflow: ellipsis; }
+/* 44px tall over the field's 1px borders, so the typing target meets the floor. */
+.board-repo-combo .board-repo-input { height: var(--hit-min); margin: -1px 0; text-overflow: ellipsis; }
 .board-repo-input::placeholder { color: var(--ink); opacity: 1; }
 /* The ✕ is a 44px target inside a 44px field: the negative margin lets it
    cover the border's 1px so the field keeps its height. */
