@@ -19,15 +19,19 @@
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
         </button>
       </div>
-      <!-- The lane toolbar (#1436): the project filter that narrows every
-           lane (#337, #1332) and the GitHub refresh, next to the lanes they
-           act on. The Board has no chief card: the chief lives in its row
+      <!-- The lane toolbar: the project filter (a type-to-filter combobox)
+           that narrows every lane and the GitHub refresh, next to the lanes
+           they act on. The Board has no chief card: the chief lives in its row
            under Code › Sessions (#1436 decision log). -->
       <div class="board-toolbar board-filter-row">
-        <div class="board-repo-combo">
-          <button type="button" id="boardDispatchRepoBtn" data-track="board-dispatch-repo" class="board-repo-input"
-                  aria-haspopup="listbox" aria-expanded="false"
-                  aria-controls="boardDispatchRepoList" aria-label="Project filter"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"></use></svg><span class="board-repo-label">All projects</span></button>
+        <div class="board-repo-combo action-row-filter">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"></use></svg>
+          <input type="text" id="boardDispatchRepoInput" data-track="board-dispatch-repo" class="board-repo-input"
+                 role="combobox" aria-autocomplete="list" aria-expanded="false"
+                 aria-controls="boardDispatchRepoList" aria-label="Project filter"
+                 placeholder="All projects" autocomplete="off" autocapitalize="none" spellcheck="false">
+          <button type="button" id="boardDispatchRepoClear" data-track="board.dispatch-repo-clear"
+                  class="icon-button board-repo-clear" title="Clear" aria-label="Clear project filter" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></button>
           <input type="hidden" id="boardDispatchRepo">
           <ul id="boardDispatchRepoList" class="board-repo-list" role="listbox" hidden></ul>
         </div>

@@ -154,18 +154,22 @@ export async function runChiefAction({
 
 // ------------------------------------------------------- repo filter
 
-// Repo/project dropdown ← the same live claude-code listing the
-// Coding tab renders (state.apps). It is a plain tap-to-open/tap-to-select
-// dropdown, not a typable field — a button trigger, not an <input>. The
-// current selection (or "All projects", the default) lives in the hidden
-// #boardDispatchRepo input and filters which cards renderBoard() shows
-// in every column via boardRepoFilter()/cardRepoOf() below.
+// Repo/project filter ← the same live claude-code listing the Coding tab
+// renders (state.apps). It is a type-to-filter combobox: typing narrows the
+// options by name (case-insensitive substring), Enter or a tap commits one,
+// Escape drops the typed text. "All projects" is always the first option and
+// the default. The committed selection lives in the hidden #boardDispatchRepo
+// input (the visible text field only mirrors it, or holds uncommitted typing)
+// and filters which cards renderBoard() shows in every column via
+// boardRepoFilter()/cardRepoOf() below.
 // Re-synced on tab activation and on every board render (so a boot /api/apps
 // fetch that lands late still populates it), but the underlying name list is
 // only rebuilt when it actually changed — a rebuild mid-browse would
-// otherwise reset a dropdown the user has open.
+// otherwise reset a list the user has open.
 let _repoSig = null;
 let _repoNames = [];
+let _repoQuery = '';
+let _repoActive = -1;
 
 const ALL_PROJECTS_LABEL = 'All projects';
 
@@ -174,15 +178,43 @@ function repoListOpen() {
   return !!list && !list.hidden;
 }
 
-function repoDisplayLabel(name) {
-  return name || ALL_PROJECTS_LABEL;
+// The options the list shows for the typed query: "All projects" first, then
+// the names that contain the query.
+function repoOptions() {
+  const q = _repoQuery.toLowerCase();
+  const names = q
+    ? _repoNames.filter(function (name) { return name.toLowerCase().indexOf(q) >= 0; })
+    : _repoNames;
+  return [''].concat(names);
 }
 
-// The trigger holds a folder glyph before its label, so only the label's
-// text changes.
-function setRepoLabel(name) {
-  const label = els.boardDispatchRepoBtn.querySelector('.board-repo-label');
-  label.textContent = repoDisplayLabel(name);
+// The text field mirrors the committed pick ("" for All projects, shown as the
+// placeholder); the ✕ shows only while the field holds text.
+function syncRepoField() {
+  els.boardDispatchRepoInput.value = els.boardDispatchRepo.value;
+  syncRepoClear();
+}
+
+function syncRepoClear() {
+  els.boardDispatchRepoClear.hidden = els.boardDispatchRepoInput.value === '';
+}
+
+function setRepoActive(index) {
+  const list = els.boardDispatchRepoList;
+  const input = els.boardDispatchRepoInput;
+  _repoActive = index;
+  let activeId = '';
+  Array.prototype.forEach.call(list.querySelectorAll('li[data-repo]'), function (li, i) {
+    if (i === index) {
+      li.dataset.active = 'true';
+      activeId = li.id;
+      li.scrollIntoView({ block: 'nearest' });
+    } else {
+      delete li.dataset.active;
+    }
+  });
+  if (activeId) input.setAttribute('aria-activedescendant', activeId);
+  else input.removeAttribute('aria-activedescendant');
 }
 
 function renderRepoList() {
@@ -190,44 +222,55 @@ function renderRepoList() {
   const hidden = els.boardDispatchRepo;
   if (!list) return;
   list.replaceChildren();
-  const allLi = document.createElement('li');
-  allLi.dataset.track = 'board.dispatch-repo-option';
-  allLi.textContent = ALL_PROJECTS_LABEL;
-  allLi.dataset.repo = '';
-  allLi.setAttribute('role', 'option');
-  allLi.setAttribute('aria-selected', hidden.value === '' ? 'true' : 'false');
-  list.appendChild(allLi);
-  _repoNames.forEach(function (name) {
+  const options = repoOptions();
+  options.forEach(function (name, i) {
     const li = document.createElement('li');
+    li.id = 'boardDispatchRepoOpt' + i;
     li.dataset.track = 'board.dispatch-repo-option';
-    li.textContent = name;
+    li.textContent = name || ALL_PROJECTS_LABEL;
     li.dataset.repo = name;
     li.setAttribute('role', 'option');
     li.setAttribute('aria-selected', name === hidden.value ? 'true' : 'false');
     list.appendChild(li);
   });
+  if (_repoQuery && options.length === 1) {
+    const li = document.createElement('li');
+    li.className = 'board-repo-empty';
+    li.setAttribute('role', 'presentation');
+    li.textContent = 'No project matches';
+    list.appendChild(li);
+  }
+  setRepoActive(_repoActive < options.length ? _repoActive : -1);
+}
+
+function showRepoList() {
+  const list = els.boardDispatchRepoList;
+  if (!list) return;
+  renderRepoList();
+  list.hidden = false;
+  els.boardDispatchRepoInput.setAttribute('aria-expanded', 'true');
 }
 
 function openRepoList() {
-  const list = els.boardDispatchRepoList;
-  const btn = els.boardDispatchRepoBtn;
-  if (!list || !btn) return;
-  renderRepoList();
-  list.hidden = false;
-  btn.setAttribute('aria-expanded', 'true');
+  _repoQuery = '';
+  _repoActive = -1;
+  showRepoList();
 }
 
+// Closing drops any uncommitted typing: the field goes back to the committed pick.
 function closeRepoList() {
   const list = els.boardDispatchRepoList;
-  const btn = els.boardDispatchRepoBtn;
-  if (!list || !btn) return;
+  if (!list) return;
   list.hidden = true;
-  btn.setAttribute('aria-expanded', 'false');
+  els.boardDispatchRepoInput.setAttribute('aria-expanded', 'false');
+  els.boardDispatchRepoInput.removeAttribute('aria-activedescendant');
+  _repoQuery = '';
+  _repoActive = -1;
+  syncRepoField();
 }
 
 function selectRepo(name) {
   els.boardDispatchRepo.value = name;
-  setRepoLabel(name);
   closeRepoList();
   // The same selection scopes the visible kanban cards — apply it
   // immediately rather than waiting for the next 5 s poll.
@@ -236,8 +279,7 @@ function selectRepo(name) {
 
 function syncDispatchRepos() {
   const hidden = els.boardDispatchRepo;
-  const btn = els.boardDispatchRepoBtn;
-  if (!hidden || !btn) return;
+  if (!hidden || !els.boardDispatchRepoInput) return;
   const repos = (state.apps || [])
     .filter(function (a) { return a.kind === 'claude-code'; })
     .map(function (a) { return String(a.name); });
@@ -248,10 +290,9 @@ function syncDispatchRepos() {
   // '' ("All projects") is always a valid selection — only reset a specific
   // repo pick back to "All" if that repo dropped out of the live list.
   const current = hidden.value;
-  const next = (!current || repos.indexOf(current) >= 0) ? current : '';
-  hidden.value = next;
-  setRepoLabel(next);
+  hidden.value = (!current || repos.indexOf(current) >= 0) ? current : '';
   if (repoListOpen()) renderRepoList();
+  else syncRepoField();
 }
 
 // The repo/project identity of a card, whatever kind it is — issue/PR/done
@@ -295,24 +336,75 @@ export function syncDispatchBar() {
 }
 
 function wireRepoCombo() {
-  const btn = els.boardDispatchRepoBtn;
+  const input = els.boardDispatchRepoInput;
+  const clear = els.boardDispatchRepoClear;
   const list = els.boardDispatchRepoList;
-  const combo = btn && btn.closest('.board-repo-combo');
-  if (!btn || !list || !combo) return;
-  btn.addEventListener('click', function () {
-    if (repoListOpen()) closeRepoList(); else openRepoList();
+  const combo = input && input.closest('.board-repo-combo');
+  if (!input || !clear || !list || !combo) return;
+  // A tap on the list or ✕ must not pull focus off the field: that would fire
+  // the focus-out below before the click lands.
+  [list, clear].forEach(function (el) {
+    el.addEventListener('mousedown', function (e) { e.preventDefault(); });
   });
-  btn.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') closeRepoList();
+  // Focusing selects the pick, so typing replaces it; the mouseup that ends
+  // the focusing click would otherwise collapse that selection.
+  let justFocused = false;
+  input.addEventListener('focus', function () {
+    justFocused = true;
+    input.select();
+    if (!repoListOpen()) openRepoList();
+  });
+  input.addEventListener('mouseup', function (e) {
+    if (justFocused) e.preventDefault();
+    justFocused = false;
+  });
+  input.addEventListener('click', function () {
+    if (!repoListOpen()) openRepoList();
+  });
+  input.addEventListener('input', function () {
+    _repoQuery = input.value.trim();
+    // Enter alone takes the first match.
+    _repoActive = _repoQuery && repoOptions().length > 1 ? 1 : -1;
+    syncRepoClear();
+    showRepoList();
+  });
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!repoListOpen()) openRepoList();
+      const count = repoOptions().length;
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      setRepoActive(_repoActive < 0 && step < 0 ? count - 1 : (_repoActive + step + count) % count);
+    } else if (e.key === 'Enter') {
+      if (!repoListOpen() || _repoActive < 0) return;
+      e.preventDefault();
+      selectRepo(repoOptions()[_repoActive]);
+    } else if (e.key === 'Escape') {
+      if (!repoListOpen()) return;
+      e.preventDefault();
+      closeRepoList();
+    } else if (e.key === 'Tab') {
+      closeRepoList();
+    }
+  });
+  clear.addEventListener('click', function () {
+    if (els.boardDispatchRepo.value !== '') selectRepo('');
+    input.value = '';
+    syncRepoClear();
+    input.focus();
+    openRepoList();
   });
   list.addEventListener('click', function (e) {
     const li = e.target.closest('li[data-repo]');
     if (!li) return;
     selectRepo(li.dataset.repo);
+    // Drop the on-screen keyboard once a project is chosen.
+    input.blur();
   });
-  // Tapping anywhere outside the trigger/list closes it — there's no text
-  // focus to lose (it's a button, not an input), so a plain outside-click
-  // check is enough; no blur-race handling needed.
+  // Leaving the field by keyboard or by tapping elsewhere closes the list.
+  combo.addEventListener('focusout', function (e) {
+    if (!combo.contains(e.relatedTarget)) closeRepoList();
+  });
   document.addEventListener('click', function (e) {
     if (repoListOpen() && !combo.contains(e.target)) closeRepoList();
   });

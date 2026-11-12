@@ -388,11 +388,11 @@ def _mock_apps_with_app_launcher(page: Page) -> None:
     )
 
 
-def test_dispatch_repo_dropdown_is_tap_only_and_filters_board_columns(
+def test_dispatch_repo_dropdown_is_tap_to_select_and_filters_board_columns(
     authed_page: Page, base_url: str
 ) -> None:
-    """#337: the project selector is a tap-to-select dropdown (no typing —
-    a <button> trigger, not a text field), defaults to "All projects" (every
+    """#337: the project selector is a tap-to-select dropdown (typing to
+    narrow it is test_board_repo_typeahead), defaults to "All projects" (every
     card visible), and picking a specific project filters every kanban
     column down to that project's cards (job cards, which carry no
     repo/project, drop out of any specific-project filter). #399: Your turn
@@ -421,15 +421,12 @@ def test_dispatch_repo_dropdown_is_tap_only_and_filters_board_columns(
     _mock_board(authed_page)
     _open_board(authed_page, base_url)
 
-    repo_btn = authed_page.locator("#boardDispatchRepoBtn")
+    repo_input = authed_page.locator("#boardDispatchRepoInput")
     combo_list = authed_page.locator("#boardDispatchRepoList")
 
-    # No editable text field exists at all — it's a real <button>.
-    expect(authed_page.locator("#boardDispatchRepoInput")).to_have_count(0)
-    assert repo_btn.evaluate("el => el.tagName") == "BUTTON"
-
     # Default: "All projects" — every _FAKE_BOARD card visible, unfiltered.
-    expect(repo_btn).to_have_text("All projects", timeout=15_000)
+    expect(repo_input).to_have_attribute("placeholder", "All projects", timeout=15_000)
+    expect(repo_input).to_have_value("")
     expect(authed_page.locator("#boardDispatchRepo")).to_have_value("")
     expect(authed_page.locator("#boardColBacklog .board-count")).to_have_text("1")
     expect(authed_page.locator("#boardColClaude .board-count")).to_have_text("1")
@@ -437,7 +434,7 @@ def test_dispatch_repo_dropdown_is_tap_only_and_filters_board_columns(
     expect(authed_page.locator("#boardColOther .board-count")).to_have_text("2")
     expect(authed_page.locator("#boardColDone .board-count")).to_have_text("1")
 
-    repo_btn.click()
+    repo_input.click()
     expect(combo_list).to_be_visible()
     # Same /api/apps-population race noted elsewhere in this file: the list
     # is rendered fresh on open from whatever _repoNames holds at that
@@ -447,7 +444,7 @@ def test_dispatch_repo_dropdown_is_tap_only_and_filters_board_columns(
 
     combo_list.locator('li[data-repo="app-launcher"]').click()
     expect(combo_list).to_be_hidden()
-    expect(repo_btn).to_have_text("app-launcher")
+    expect(repo_input).to_have_value("app-launcher")
     expect(authed_page.locator("#boardDispatchRepo")).to_have_value("app-launcher")
 
     # Filtered to app-launcher: backlog issue (repo=app-launcher) stays;
@@ -466,9 +463,9 @@ def test_dispatch_repo_dropdown_is_tap_only_and_filters_board_columns(
     expect(authed_page.locator("#boardHeadStatus")).to_have_text("1 failing · 1 needs you")
 
     # Picking "All projects" again restores every column.
-    repo_btn.click()
+    repo_input.click()
     combo_list.locator('li[data-repo=""]').click()
-    expect(repo_btn).to_have_text("All projects")
+    expect(repo_input).to_have_value("")
     expect(authed_page.locator("#boardColYours .board-count")).to_have_text("1")
     expect(authed_page.locator("#boardColOther .board-count")).to_have_text("2")
 
