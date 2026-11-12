@@ -291,10 +291,9 @@ class _ExchangeTail:
     :func:`_transcript_overlay`'s pending-dispatch scan and
     :func:`_refine_waiting_status`'s pending-tool scan both walk this same
     window of the same transcript, back to back, for every waiting card on
-    every 5s Board poll. Each used to read and ``json.loads`` the whole
-    256 KB on its own; :func:`src.board.sessions.merge_sessions` now hands
-    both one of these, so
-    the pair costs a single read. Lazy, because either scan can be skipped
+    every 5s Board poll. Reading and ``json.loads``-ing the whole 256 KB per
+    scan would double the cost, so :func:`src.board.sessions.merge_sessions`
+    hands both one of these and the pair costs a single read. Lazy, because either scan can be skipped
     (a busy live title short-circuits the overlay, a non-``needs-you``
     status skips the refine) and a card that needs neither must not pay for
     the read at all.
