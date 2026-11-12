@@ -17,6 +17,7 @@ from tests.e2e.board._support import (
     _open_board,
     _unfold,
 )
+from tests.e2e.board._repo_typeahead import check_repo_typeahead
 from tests.e2e.fixtures.ui import open_row_menu
 from tests.e2e.fixtures.waits import (
     assert_unpainted_at_rest,
@@ -391,8 +392,8 @@ def _mock_apps_with_app_launcher(page: Page) -> None:
 def test_dispatch_repo_dropdown_is_tap_to_select_and_filters_board_columns(
     authed_page: Page, base_url: str
 ) -> None:
-    """#337: the project selector is a tap-to-select dropdown (typing to
-    narrow it is test_board_repo_typeahead), defaults to "All projects" (every
+    """#337: the project selector is a tap-to-select dropdown that also
+    narrows as you type (_repo_typeahead), defaults to "All projects" (every
     card visible), and picking a specific project filters every kanban
     column down to that project's cards (job cards, which carry no
     repo/project, drop out of any specific-project filter). #399: Your turn
@@ -468,6 +469,9 @@ def test_dispatch_repo_dropdown_is_tap_to_select_and_filters_board_columns(
     expect(repo_input).to_have_value("")
     expect(authed_page.locator("#boardColYours .board-count")).to_have_text("1")
     expect(authed_page.locator("#boardColOther .board-count")).to_have_text("2")
+
+    # Typing narrows the list, the ✕ clears, the keyboard drives it.
+    check_repo_typeahead(authed_page)
 
     # -- was test_dispatch_bar_posts_repo_mode_goal_and_keeps_text --
     # #1382: the free-text Add / Build / Yolo dispatch is gone, and #1436

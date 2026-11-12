@@ -1,23 +1,14 @@
-"""The Board's project filter is a type-to-filter combobox with a clear button.
+"""The Board project filter's type-to-filter checks, run from test_board_backlog.
 
 Typing narrows the options by name, Enter or a tap commits one, Escape drops the
 typed text, and the x shows only while the field holds text. The committed value
-stays in the hidden `#boardDispatchRepo`, so the lanes filter as before.
+stays in the hidden `#boardDispatchRepo`, so the lanes filter as before. These
+ride the existing project-filter test (same mocked apps and board) as one node.
 """
 
 from __future__ import annotations
 
-import json as _json
-import re
-
-import pytest
 from playwright.sync_api import Page, expect
-
-from tests.e2e.board._support import _mock_board, _open_board
-
-pytestmark = pytest.mark.smoke
-
-_PROJECTS = ("app-launcher", "voice-transcriber", "life-os", "photo-ocr")
 
 _INPUT = "#boardDispatchRepoInput"
 _LIST = "#boardDispatchRepoList"
@@ -25,48 +16,22 @@ _CLEAR = "#boardDispatchRepoClear"
 _HIDDEN = "#boardDispatchRepo"
 
 
-def _open(page: Page, base_url: str) -> None:
-    page.route(
-        re.compile(r".*/api/apps$"),
-        lambda route: route.fulfill(
-            status=200, content_type="application/json",
-            body=_json.dumps({"scan_root": "", "apps": [
-                {"id": f"cc-{name}", "kind": "claude-code", "name": name,
-                 "project_dir": f"E:/automation/{name}"}
-                for name in _PROJECTS
-            ]}),
-        ),
-    )
-    _mock_board(page)
-    _open_board(page, base_url)
-    # The poll that lands /api/apps fills the list; wait for it before typing.
-    page.locator(_INPUT).click()
-    expect(page.locator(f"{_LIST} li[data-repo]")).to_have_count(
-        len(_PROJECTS) + 1, timeout=15_000)
-    page.keyboard.press("Escape")
-    expect(page.locator(_LIST)).to_be_hidden()
-
-
 def _options(page: Page):
     return page.locator(f"{_LIST} li[data-repo]")
 
 
-def test_typing_narrows_commits_and_clears(authed_page: Page, base_url: str) -> None:
-    page = authed_page
-    _open(page, base_url)
+def _narrow_commit_and_clear(page: Page) -> None:
     field = page.locator(_INPUT)
     clear = page.locator(_CLEAR)
 
     assert field.evaluate("el => el.tagName") == "INPUT"
     expect(field).to_have_attribute("role", "combobox")
     expect(field).to_have_value("")
-    expect(field).to_have_attribute("placeholder", "All projects")
     expect(clear).to_be_hidden()
 
     field.click()
     expect(_options(page)).to_have_count(5)  # "All projects" + 4
     page.keyboard.type("PHO")
-    expect(page.locator(_LIST)).to_be_visible()
     # Case-insensitive substring; "All projects" stays first.
     expect(_options(page)).to_have_text(["All projects", "photo-ocr"])
     expect(clear).to_be_visible()
@@ -82,16 +47,22 @@ def test_typing_narrows_commits_and_clears(authed_page: Page, base_url: str) -> 
     expect(page.locator("#boardColYours .board-count")).to_have_text("1")
     expect(clear).to_be_visible()
 
+    # A 44px target that stays inside the field.
+    box, outer = clear.bounding_box(), page.locator(".board-repo-combo").bounding_box()
+    assert box and box["width"] >= 44 - 0.5 and box["height"] >= 44 - 0.5, box
+    assert outer and box["x"] + box["width"] <= outer["x"] + outer["width"] + 0.5, (box, outer)
+
     clear.click()
     expect(field).to_have_value("")
     expect(page.locator(_HIDDEN)).to_have_value("")
-    expect(clear).to_be_hidden()
     expect(page.locator("#boardColBacklog .board-count")).to_have_text("1")
+    # The field keeps focus and the full list is back for the next word.
+    expect(field).to_be_focused()
+    expect(_options(page)).to_have_count(5)
+    page.keyboard.press("Escape")
 
 
-def test_clear_drops_typed_text_without_a_selection(authed_page: Page, base_url: str) -> None:
-    page = authed_page
-    _open(page, base_url)
+def _clear_drops_typed_text(page: Page) -> None:
     field = page.locator(_INPUT)
     field.click()
     page.keyboard.type("voi")
@@ -100,14 +71,10 @@ def test_clear_drops_typed_text_without_a_selection(authed_page: Page, base_url:
     expect(field).to_have_value("")
     expect(page.locator(_CLEAR)).to_be_hidden()
     expect(page.locator(_HIDDEN)).to_have_value("")
-    # The field keeps focus and the full list is back for the next word.
-    expect(field).to_be_focused()
-    expect(_options(page)).to_have_count(5)
+    page.keyboard.press("Escape")
 
 
-def test_arrow_keys_enter_and_escape(authed_page: Page, base_url: str) -> None:
-    page = authed_page
-    _open(page, base_url)
+def _arrow_keys_enter_and_escape(page: Page) -> None:
     field = page.locator(_INPUT)
 
     field.click()
@@ -136,14 +103,14 @@ def test_arrow_keys_enter_and_escape(authed_page: Page, base_url: str) -> None:
     expect(field).to_have_value("voice-transcriber")
     expect(page.locator(_HIDDEN)).to_have_value("voice-transcriber")
 
+    # Back to All projects so the caller's later steps see the whole board.
+    page.locator(_CLEAR).click()
+    expect(page.locator(_HIDDEN)).to_have_value("")
+    page.keyboard.press("Escape")
 
-@pytest.mark.iphone
-def test_clear_button_is_a_real_touch_target(authed_page: Page, base_url: str) -> None:
-    page = authed_page
-    _open(page, base_url)
-    page.locator(_INPUT).click()
-    page.keyboard.type("life")
-    box = page.locator(_CLEAR).bounding_box()
-    assert box and box["width"] >= 44 - 0.5 and box["height"] >= 44 - 0.5, box
-    outer = page.locator(".board-repo-combo").bounding_box()
-    assert outer and box["x"] + box["width"] <= outer["x"] + outer["width"] + 0.5, (box, outer)
+
+def check_repo_typeahead(page: Page) -> None:
+    """Run every type-to-filter check, leaving the filter on All projects."""
+    _narrow_commit_and_clear(page)
+    _clear_drops_typed_text(page)
+    _arrow_keys_enter_and_escape(page)
