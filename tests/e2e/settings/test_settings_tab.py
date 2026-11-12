@@ -203,7 +203,8 @@ def test_settings_pane_controls_and_theme_toggle(
     expect(authed_page.locator("#paneClaude")).to_be_hidden()
     # No tab is selected while Settings shows (#1131: it has no tab).
     expect(authed_page.locator("nav.tabs .tab[aria-selected='true']")).to_have_count(0)
-    expect(authed_page.locator("nav.tabs")).to_have_attribute("data-active-tab", "settings")
+    expect(authed_page.locator("nav.tabs .tab.active")).to_have_count(0)
+    expect(authed_page.locator("nav.tabs")).not_to_have_attribute("data-active-tab", re.compile(".*"))
 
     # -- was test_theme_toggle_lives_on_coding_tab_and_flips_theme (part 2) --
     # Not duplicated into the Settings pane.

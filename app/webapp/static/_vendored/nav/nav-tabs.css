@@ -67,6 +67,9 @@
 /* The capsule behind the active tab exists only in the phone pill; the other
    layouts tint the tab itself. nav-tabs.js inserts it, never the markup. */
 .tabs .tab-pill { display: none; }
+/* The installed app's top-edge strip: nav-tabs.js inserts it only in the
+   standalone display mode, and only the installed phone layout shows it. */
+.nav-top-edge { display: none; }
 
 /* Optional count badge, added by setBadge(): a nav that never calls it carries
    none of these elements. It sits on the corner of the icon's wrapper in every
@@ -327,11 +330,11 @@
      its own compositing layer. Its opacity is --nav-fade-on, which
      nav-tabs.js raises from 0 at scroll-top to 1 over the first band of
      scroll. At scroll-top the layer is not generated at all (no
-     data-nav-top-glass on <html>): an installed iOS app still paints a
-     promoted backdrop-filter layer at opacity 0, frosting the header under
-     it, so at rest the first row sits right under the status bar, crisp.
-     The page head (black-translucent, viewport-fit=auto, theme-color in the
-     page colour) is part of the same recipe. */
+     data-nav-top-glass on <html>), so at rest the first row sits right under
+     the status bar, undimmed. The installed app draws this glass on the
+     .nav-top-edge strip instead (the standalone block below). The page head
+     (black-translucent, viewport-fit=auto, theme-color in the page colour)
+     is part of the same recipe. */
   body::after {
     content: none;
     position: fixed;
@@ -381,6 +384,51 @@
       top: calc(100lvh - var(--nav-fade-tail, 24px) - var(--bottom-tabs-height, 61px) - var(--bottom-tabs-margin, 21px));
       bottom: auto;
     }
+
+    /* iOS blurs an installed web app's top edge (the system scroll-edge
+       effect, with no opt-out) unless that edge resolves to a real, fixed,
+       full-width element that paints a background. A pseudo-element resolves
+       to <body> and a transparent element is skipped, so the top glass moves
+       onto a real <div> here. At rest it is an opaque strip in the page
+       colour; 12px, because the system ignores a strip of 10px or less. The
+       content starts below it, so nothing is hidden at rest. Keyed on the nav
+       (.tabs ~ .app) so it outranks an app's own .app padding. */
+    .tabs ~ .app { padding-top: calc(env(safe-area-inset-top, 0px) + 12px); }
+    .nav-top-edge {
+      display: block;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: calc(env(safe-area-inset-top, 0px) + 12px);
+      z-index: 110;
+      pointer-events: none;
+      background: var(--bg);
+    }
+    /* Scrolled: the top glass's look, at full opacity, since a strip that
+       fades towards transparent would let the system blur back in. */
+    html[data-nav-top-glass] .nav-top-edge {
+      height: calc(env(safe-area-inset-top, 0px) + var(--nav-fade-band, 16px));
+      background: color-mix(in srgb, var(--bg) 50%, transparent);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      backdrop-filter: blur(20px) saturate(180%);
+      -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - var(--nav-fade-band, 16px)), transparent 100%);
+      mask-image: linear-gradient(to bottom, #000 calc(100% - var(--nav-fade-band, 16px)), transparent 100%);
+      transform: translateZ(0);
+      will-change: transform;
+    }
+    html[data-nav-top-glass] body:has(> .nav-top-edge)::after { content: none; }
+    /* Reduce Transparency keeps the strip, which is what stops the system
+       blur, but solid in the page colour while scrolled too. */
+    @media (prefers-reduced-transparency: reduce) {
+      html[data-nav-top-glass] .nav-top-edge {
+        background: var(--bg);
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+        -webkit-mask-image: none;
+        mask-image: none;
+      }
+    }
   }
 
   /* One capsule behind the tabs. nav-tabs.js parks it on the active tab at
@@ -408,6 +456,8 @@
   @media (prefers-reduced-motion: reduce) {
     .tabs .tab-pill { transition: none; }
   }
+  /* setTab(null): a screen that is not a tab shows no capsule. */
+  .tabs .tab-pill.off { visibility: hidden; }
 
   .tab {
     /* Above the capsule. */

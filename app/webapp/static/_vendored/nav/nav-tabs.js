@@ -52,8 +52,8 @@ const GLASS_QUIET_MS = 250;
  * @param {string|null} [opts.defaultTab=null]  tab to select when nothing is
  *   stored; defaults to the first tab in DOM order.
  * @returns {{
- *   setTab: (tab: string) => void,
- *   getTab: () => string,
+ *   setTab: (tab: string|null) => void,
+ *   getTab: () => string|null,
  *   setBadge: (tab: string, count: number|null|undefined, noun?: string, tone?: string) => void,
  * }} setBadge shows a count badge on the tab named by data-tab: 1–9 render the
  *   digit, 10 and up render "9+", and 0 / null / undefined / a non-number remove
@@ -62,6 +62,12 @@ const GLASS_QUIET_MS = 250;
  *   waiting". The optional `tone` is 'attention' (the default) or 'danger', set
  *   as `data-tone` on the badge; any other value renders as attention. An unknown
  *   tab is ignored, so a poll loop can call it freely.
+ *
+ *   setTab(null) is "no tab active", for a screen that is not a tab (Settings,
+ *   an archive): no tab carries the accent, aria-selected or the capsule, and
+ *   getTab() returns null until the next real selection. It changes nothing
+ *   else: the panes, the stored tab, the scroll and onChange are left to the
+ *   app that opened the screen. Any other unknown name selects the fallback.
  */
 export function initNavTabs({ navSelector = '.tabs', storageKey = null, onChange = () => {}, defaultTab = null } = {}) {
   const nav = document.querySelector(navSelector);
@@ -74,7 +80,20 @@ export function initNavTabs({ navSelector = '.tabs', storageKey = null, onChange
   const capsule = createCapsule(buttons);
   let current = fallback;
 
+  function clearTab() {
+    current = null;
+    // The bar stays reachable with Tab: its first laid-out tab holds the stop.
+    const stop = capsule.cells()[0] || buttons[0];
+    buttons.forEach((button) => {
+      button.setAttribute('aria-selected', 'false');
+      button.tabIndex = button === stop ? 0 : -1;
+    });
+    delete nav.dataset.activeTab;
+    capsule.show(null);
+  }
+
   function setTab(tab) {
+    if (tab === null) return clearTab();
     current = names.includes(tab) ? tab : fallback;
     buttons.forEach((button) => {
       const on = button.dataset.tab === current;
@@ -105,22 +124,7 @@ export function initNavTabs({ navSelector = '.tabs', storageKey = null, onChange
     });
   });
 
-  // WAI-ARIA tabs, automatic activation: an arrow moves focus to the next tab
-  // laid out (wrapping at the ends) and opens it; Home and End jump to the
-  // first and last. Tab itself reaches only the open tab (roving tabindex).
-  nav.addEventListener('keydown', (event) => {
-    const step = ARROW_STEP[event.key];
-    const edge = event.key === 'Home' ? 0 : event.key === 'End' ? -1 : null;
-    const from = event.target.closest?.('.tab[data-tab]');
-    if ((step === undefined && edge === null) || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || !from) return;
-    const row = capsule.cells();
-    const at = row.indexOf(from);
-    if (at < 0) return;
-    const to = edge === null ? row[(at + step + row.length) % row.length] : row.at(edge);
-    event.preventDefault();
-    setTab(to.dataset.tab);
-    to.focus({ preventScroll: true });
-  });
+  watchKeys(nav, capsule, setTab);
 
   let saved = null;
   if (storageKey) {
@@ -137,6 +141,7 @@ export function initNavTabs({ navSelector = '.tabs', storageKey = null, onChange
   buttons.forEach((button) => observer.observe(button));
 
   if (window.matchMedia('(display-mode: standalone)').matches) {
+    mountTopEdge(nav);
     expandStandaloneViewport();
     watchGlassSettle(nav);
   }
@@ -177,9 +182,16 @@ function createCapsule(buttons) {
 
   // The accent on `tab` and the capsule under it, or at the fractional cell
   // index `at` while a finger drags it. At rest the capsule takes the tab's
-  // own offsetLeft and offsetWidth, whole pixels.
+  // own offsetLeft and offsetWidth, whole pixels. No tab and no finger hides
+  // the capsule; it keeps its size, so the slide still finds the phone pill.
   function show(tab, at, jump) {
     buttons.forEach((button) => button.classList.toggle('active', button.dataset.tab === tab));
+    const wasOff = pill.classList.contains('off');
+    const off = tab === null && at === undefined;
+    pill.classList.toggle('off', off);
+    if (off) return;
+    // Back from no tab, the capsule appears in place instead of springing.
+    jump = jump || wasOff;
     const row = cells();
     if (!row.length) return;
     const i = at ?? Math.max(0, row.findIndex((button) => button.dataset.tab === tab));
@@ -194,6 +206,25 @@ function createCapsule(buttons) {
   }
 
   return { pill, cells, show };
+}
+
+// WAI-ARIA tabs, automatic activation: an arrow moves focus to the next tab
+// laid out (wrapping at the ends) and opens it; Home and End jump to the
+// first and last. Tab itself reaches only the open tab (roving tabindex).
+function watchKeys(nav, capsule, setTab) {
+  nav.addEventListener('keydown', (event) => {
+    const step = ARROW_STEP[event.key];
+    const edge = event.key === 'Home' ? 0 : event.key === 'End' ? -1 : null;
+    const from = event.target.closest?.('.tab[data-tab]');
+    if ((step === undefined && edge === null) || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || !from) return;
+    const row = capsule.cells();
+    const at = row.indexOf(from);
+    if (at < 0) return;
+    const to = edge === null ? row[(at + step + row.length) % row.length] : row.at(edge);
+    event.preventDefault();
+    setTab(to.dataset.tab);
+    to.focus({ preventScroll: true });
+  });
 }
 
 // Press-and-slide: past the slop the capsule follows the finger, the tab
@@ -238,6 +269,19 @@ function watchSlide(nav, capsule, getTab, setTab) {
     active: () => slide !== null,
     strayClick: (event) => event.timeStamp - slidAt <= SLIDE_CLICK_MS,
   };
+}
+
+// iOS blurs an installed web app's top edge unless a real fixed element with a
+// painted background sits there; a pseudo-element does not count. The strip
+// (styled in nav-tabs.css) is inserted by the script, like the capsule, so
+// every app's markup stays as it is: a direct <body> child just before the
+// nav, never inside a scroller. Once, however often the nav is initialised.
+function mountTopEdge(nav) {
+  if (nav.parentElement.querySelector(':scope > .nav-top-edge')) return;
+  const edge = document.createElement('div');
+  edge.className = 'nav-top-edge';
+  edge.setAttribute('aria-hidden', 'true');
+  nav.before(edge);
 }
 
 // An installed iOS app opens with its viewport 59px short of the screen and,
