@@ -165,7 +165,7 @@ def _note_unrecognized_title_glyph(title: str) -> None:
     )
 
 
-def _live_title_is_busy(live_title: Optional[str]) -> bool:
+def live_title_is_busy(live_title: Optional[str]) -> bool:
     """Whether ``live_title`` opens with Claude Code's animated spinner glyph.
 
     See the module-level comment above :data:`_BUSY_LIVE_TITLE_RE` for what
@@ -194,7 +194,7 @@ def strip_status_glyph(live_title: Optional[str]) -> str:
     conversation named ``Wooden floor repair investigation`` and act on a
     difference that is pure chrome.
 
-    Deliberately *not* :func:`_live_title_is_busy`, which is a verdict
+    Deliberately *not* :func:`live_title_is_busy`, which is a verdict
     carrying a drift breadcrumb as a side effect: this is a pure
     string normalisation used on the 5s-polled drawer path, and it reuses
     that function's own two patterns rather than spelling the glyphs a
@@ -360,7 +360,7 @@ def _last_activity(transcript_path: Any) -> Optional[datetime]:
     return None
 
 
-def _last_transcript_model(transcript_path: Any) -> Optional[str]:
+def last_transcript_model(transcript_path: Any) -> Optional[str]:
     """The Claude model the transcript tail says the session is on now.
 
     Two records name it, and the newer wins: an assistant record's
@@ -455,7 +455,7 @@ def _transcript_overlay(
     long-outstanding dispatch reads :data:`~src.board.card_status.WAITING_ON_TASK` instead.
 
     Checked first: a busy ``live_title`` (see
-    :func:`_live_title_is_busy`) short-circuits straight to ``working``,
+    :func:`live_title_is_busy`) short-circuits straight to ``working``,
     before any of the transcript-file reads below run — but only while
     ``last_output_at`` is also fresh (:func:`_pty_output_is_fresh`): a
     busy glyph frozen on a genuinely wedged PTY (no more raw output at all)
@@ -505,7 +505,7 @@ def _transcript_overlay(
     if row is None or status not in (cs.NEEDS_YOU_STAMP, cs.IDLE):
         return status, anchor
     now = now or utc_now()
-    if _live_title_is_busy(live_title) and _pty_output_is_fresh(last_output_at, now):
+    if live_title_is_busy(live_title) and _pty_output_is_fresh(last_output_at, now):
         # Re-anchor to "now", not the stale hook stamp `anchor` carries in —
         # this override only proves busy as of this instant, not since when.
         return cs.WORKING, now

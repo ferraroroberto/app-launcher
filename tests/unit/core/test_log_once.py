@@ -37,7 +37,7 @@ def test_emit_receives_the_callers_own_logger(caplog):
 
 
 def _glyph_site(_tmp_path, i):
-    board_transcript._live_title_is_busy(f"{chr(0x4E00 + i)} chief")
+    board_transcript.live_title_is_busy(f"{chr(0x4E00 + i)} chief")
 
 
 def _suppressed_row_site(_tmp_path, i):

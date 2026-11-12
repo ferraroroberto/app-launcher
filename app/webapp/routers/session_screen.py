@@ -47,8 +47,8 @@ from src import audit
 from src.ask_user_question import TOOL_NAME as ASK_TOOL_NAME
 from src.ask_user_question import answer_keystrokes
 from src.board.transcript import (
-    _last_transcript_model,
-    _live_title_is_busy,
+    last_transcript_model,
+    live_title_is_busy,
     pending_decision_call,
 )
 from src.clients import session as session_client
@@ -640,7 +640,7 @@ _MODEL_POLL_S = 0.5
 
 def _claude_label(transcript: Any) -> Optional[str]:
     return session_model_label(
-        {"agent": "claude", "transcript_model": _last_transcript_model(transcript)}
+        {"agent": "claude", "transcript_model": last_transcript_model(transcript)}
     )
 
 
@@ -776,7 +776,7 @@ async def session_switch_model(sid: str, request: Request) -> Dict[str, Any]:
             detail="Chat can't switch a detached session's model: use /model in the PC console",
         )
     if agent == "claude":
-        if _live_title_is_busy(session.get("live_title")):
+        if live_title_is_busy(session.get("live_title")):
             # Typed now, /model would queue behind the turn and its dialog
             # would wait on the terminal after this request has given up.
             raise HTTPException(

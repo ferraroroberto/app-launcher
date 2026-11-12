@@ -103,16 +103,16 @@ def test_unrecognized_title_glyph_logs_one_breadcrumb_per_glyph(caplog):
     and the known idle marker stay quiet, and the verdict is unchanged."""
     from src.board.transcript import (
         _LOGGED_UNKNOWN_TITLE_GLYPHS,
-        _live_title_is_busy,
+        live_title_is_busy,
     )
 
     _LOGGED_UNKNOWN_TITLE_GLYPHS.clear()
     with caplog.at_level(logging.INFO, logger="src.board.transcript"):
         for _ in range(3):
-            assert _live_title_is_busy("\u2699 future spinner") is False
-        assert _live_title_is_busy("\u2733 chief") is False
-        assert _live_title_is_busy("app-launcher | gpt-5.5") is False
-        assert _live_title_is_busy("") is False
+            assert live_title_is_busy("\u2699 future spinner") is False
+        assert live_title_is_busy("\u2733 chief") is False
+        assert live_title_is_busy("app-launcher | gpt-5.5") is False
+        assert live_title_is_busy("") is False
     breadcrumbs = [r for r in caplog.records if "unrecognized glyph" in r.getMessage()]
     assert len(breadcrumbs) == 1
     assert "U+2699" in breadcrumbs[0].getMessage()
