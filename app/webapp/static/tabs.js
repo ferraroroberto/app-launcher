@@ -44,16 +44,11 @@ export function setTabBadge(tab, count, noun) {
 // again, and onChange below hides this one.
 export function openSettings() {
   const settings = document.getElementById('paneSettings');
-  const tabs = document.querySelector('nav.tabs');
-  if (!settings || !tabs) return;
+  if (!settings) return;
   document.querySelectorAll('main.app > section.pane').forEach(function (pane) {
     pane.hidden = pane !== settings;
   });
-  tabs.querySelectorAll('.tab[data-tab]').forEach(function (btn) {
-    btn.classList.remove('active');
-    btn.setAttribute('aria-selected', 'false');
-  });
-  tabs.dataset.activeTab = 'settings';
+  if (nav) nav.setTab(null);
   state.tab = 'settings';
   announceTab('settings');
   refreshRemoteVoiceNote();
