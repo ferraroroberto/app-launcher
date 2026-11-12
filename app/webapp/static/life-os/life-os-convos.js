@@ -84,8 +84,15 @@ export function refreshConvosIfShowing() {
 }
 
 function onFieldInput() {
+  syncFieldClear();
   window.clearTimeout(convoQueryTimer);
   convoQueryTimer = window.setTimeout(refreshConvos, 250);
+}
+
+// The ✕ shows only while the field holds text (the text a reload restores
+// included, so wireConvoSearch syncs it once up front).
+function syncFieldClear() {
+  els.lifeOsFilterClear.hidden = els.lifeOsFilterInput.value === '';
 }
 
 function setConvoMode(mode) {
@@ -956,6 +963,17 @@ function renderSystem(rows, scoped) {
 export function wireConvoSearch() {
   if (els.lifeOsFilterInput && els.lifeOsConvoGroup) {
     els.lifeOsFilterInput.addEventListener('input', onFieldInput);
+    syncFieldClear();
+    els.lifeOsFilterClear.addEventListener('click', function () {
+      // Inside the field's <label>: the tap would also focus the box, so it
+      // does that once here. set('') goes through the input event, the same
+      // path as deleting the text by hand: the skills filter, the stored
+      // text and the debounced search all follow; refreshConvos() runs the
+      // search's end now instead of after the debounce.
+      skillsFilter.set('');
+      refreshConvos();
+      els.lifeOsFilterInput.focus();
+    });
     els.lifeOsConvoScope.addEventListener('click', function (ev) {
       // Inside the field's <label>: the tap would also focus the box, which
       // is where it should land anyway, so it does that once, here.

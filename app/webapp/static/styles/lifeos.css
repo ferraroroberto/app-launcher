@@ -122,6 +122,12 @@
 /* The placeholder ellipsizes rather than clipping mid-word when the scope
    chip takes its share of a 390px field. */
 .lifeos-search input { text-overflow: ellipsis; }
+/* The ✕ is the field's own: the browser's native one would be a second. It
+   is a 44px target inside a 44px field, so the negative margin lets it cover
+   the border's 1px. */
+.lifeos-search input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+.lifeos-filter-clear { flex: none; margin: -1px 0; }
+.lifeos-filter-clear[hidden] { display: none; }
 /* The skill a skill's ⋮ Conversations narrows the group to: a chip inside the
    field (design.md "Long lists"), its ✕ widening to every skill. The button
    is the field's full 44px height, so its target is real geometry; the chip
