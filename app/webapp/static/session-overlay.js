@@ -44,6 +44,7 @@ import { pinChatToKeyboard } from './chat/chat-send.js';
 import { applyTermTheme } from './terminal/terminal-theme.js';
 import { closeTerminalMenu, updateLatestPill } from './terminal/terminal-bar.js';
 import { syncContextRing, wireContextRing } from './context-ring.js';
+import { wireModelChip } from './terminal/model-chip.js';
 import { refreshReadAloudAvailability } from './terminal/terminal-readaloud.js';
 import { terminalComposer } from './terminal/terminal-compose.js';
 import { isWideLayout } from './layout.js';
@@ -262,6 +263,7 @@ export function wireSessionModeToggle() {
     if (tab !== 'claude' && state.sessionView && isWideLayout()) closeSessionOverlay();
   });
   wireContextRing();
+  wireModelChip();
   if (!els.sessionMode) return;
   bindLongPressHint(els.sessionModeTerminal);
   bindLongPressHint(els.sessionModeChat);

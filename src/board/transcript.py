@@ -43,6 +43,7 @@ from src.board.dispatch_ids import (
     _notified_bash_dispatch_ids,
 )
 from src.board.state import parse_iso, utc_now
+from src.session_view.model_switch import set_model_id
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +165,7 @@ def _note_unrecognized_title_glyph(title: str) -> None:
     )
 
 
-def _live_title_is_busy(live_title: Optional[str]) -> bool:
+def live_title_is_busy(live_title: Optional[str]) -> bool:
     """Whether ``live_title`` opens with Claude Code's animated spinner glyph.
 
     See the module-level comment above :data:`_BUSY_LIVE_TITLE_RE` for what
@@ -193,7 +194,7 @@ def strip_status_glyph(live_title: Optional[str]) -> str:
     conversation named ``Wooden floor repair investigation`` and act on a
     difference that is pure chrome.
 
-    Deliberately *not* :func:`_live_title_is_busy`, which is a verdict
+    Deliberately *not* :func:`live_title_is_busy`, which is a verdict
     carrying a drift breadcrumb as a side effect: this is a pure
     string normalisation used on the 5s-polled drawer path, and it reuses
     that function's own two patterns rather than spelling the glyphs a
@@ -359,30 +360,40 @@ def _last_activity(transcript_path: Any) -> Optional[datetime]:
     return None
 
 
-def _last_assistant_model(transcript_path: Any) -> Optional[str]:
-    """The ``model`` of the newest assistant record in the transcript tail.
+def last_transcript_model(transcript_path: Any) -> Optional[str]:
+    """The Claude model the transcript tail says the session is on now.
 
-    That record names the model that actually answered, so it follows a
-    resume and an in-session ``/model`` switch, which the spawn flags never
-    do. Claude Code's own local replies carry ``<synthetic>`` there; only a
-    ``claude-*`` id counts. Torn or unparseable lines are skipped; no
-    assistant record in the window, or an unreadable file, is ``None``.
+    Two records name it, and the newer wins: an assistant record's
+    ``model`` (the model that actually answered, so it follows a resume) and
+    the ``Set model to <name>`` line an in-session ``/model`` writes the
+    moment it applies (:func:`src.session_view.model_switch.set_model_id`), so
+    a switch shows before anything answers on the new model. Claude Code's
+    own local replies carry ``<synthetic>`` as their model; only a
+    ``claude-*`` id counts. Torn or unparseable lines are skipped; neither
+    record in the window, or an unreadable file, is ``None``.
     """
     lines, truncated = _tail_lines(transcript_path, _EXCHANGE_TAIL_BYTES)
     if truncated and lines:
         lines = lines[1:]
     for raw in reversed(lines):
         # Cheap pre-filter: most tail lines are tool results and user turns.
-        if '"assistant"' not in raw:
+        if '"assistant"' not in raw and "Set model to" not in raw:
             continue
         try:
             obj = json.loads(raw)
         except ValueError:
             continue
-        if not isinstance(obj, dict) or obj.get("type") != "assistant":
+        if not isinstance(obj, dict):
             continue
         message = obj.get("message")
-        model = message.get("model") if isinstance(message, dict) else None
+        if not isinstance(message, dict):
+            continue
+        if obj.get("type") == "user":
+            switched = set_model_id(message.get("content"))
+            if switched:
+                return switched
+            continue
+        model = message.get("model") if obj.get("type") == "assistant" else None
         if isinstance(model, str) and model.startswith("claude-"):
             return model
     return None
@@ -444,7 +455,7 @@ def _transcript_overlay(
     long-outstanding dispatch reads :data:`~src.board.card_status.WAITING_ON_TASK` instead.
 
     Checked first: a busy ``live_title`` (see
-    :func:`_live_title_is_busy`) short-circuits straight to ``working``,
+    :func:`live_title_is_busy`) short-circuits straight to ``working``,
     before any of the transcript-file reads below run — but only while
     ``last_output_at`` is also fresh (:func:`_pty_output_is_fresh`): a
     busy glyph frozen on a genuinely wedged PTY (no more raw output at all)
@@ -494,7 +505,7 @@ def _transcript_overlay(
     if row is None or status not in (cs.NEEDS_YOU_STAMP, cs.IDLE):
         return status, anchor
     now = now or utc_now()
-    if _live_title_is_busy(live_title) and _pty_output_is_fresh(last_output_at, now):
+    if live_title_is_busy(live_title) and _pty_output_is_fresh(last_output_at, now):
         # Re-anchor to "now", not the stale hook stamp `anchor` carries in —
         # this override only proves busy as of this instant, not since when.
         return cs.WORKING, now

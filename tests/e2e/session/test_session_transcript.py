@@ -442,7 +442,7 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
     # The row's own menu exists (#1025) but stays closed behind the overlay:
     # opening a session is not what opens it.
     expect(authed_page.locator(".session-menu")).to_be_hidden()
-    # The shared bar: the context ring's slot (#1223), then the Terminal /
+    # The shared bar: the model chip's slot, the context ring's (#1223), then the Terminal /
     # Chat segments, ⋮ after them, ⋮ last (#981/#982); no chat-only
     # bar buttons. The ring stays hidden here: this session's context use is
     # unknown (the host has no such session), and unknown is never drawn.
@@ -450,7 +450,7 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
         "els => els.map(e => e.id)"
     )
     assert bar_ids == [
-        "contextRing", "sessionModeTerminal", "sessionModeChat", "terminalMenu",
+        "terminalModel", "contextRing", "sessionModeTerminal", "sessionModeChat", "terminalMenu",
     ], bar_ids
     # Read aloud lives in the ⋮ menu, not as a bar button (and not in the
     # composer, which is for editing). The bar is one shared element in both

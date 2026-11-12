@@ -20,6 +20,8 @@ same page and PTY, each leg a former test kept as a named helper:
 * the model pill (#1383), formerly ``test_terminal_model_pill.py``: left of the
   context ring and level with it, absent (not blank) with no model, and at
   360px the title takes the squeeze while the bar does not overflow;
+* the model chip's picker: a pick switches only on the server's confirmation,
+  and an agent with no in-session switch keeps a chip that says why;
 * the bar's row fit (#514, #981), formerly ``test_terminal_bar_overflow.py``:
   every control inside the viewport with no scroller, at 320px and at the
   projection's default width. iPhone only, where that width reproduces.
@@ -84,6 +86,7 @@ class _BarStubs:
     def __init__(self, page: Page) -> None:
         self.percent = 42
         self.model: Optional[str] = None
+        self.agent: Optional[str] = None
         page.route(re.compile(r".*/api/claude-code/sessions/[^/]+/context$"), self._context)
         page.route(re.compile(r".*/api/claude-code/sessions$"), self._sessions)
 
@@ -98,6 +101,8 @@ class _BarStubs:
         body = resp.json()
         for sess in body.get("sessions", []):
             sess["model"] = self.model
+            if self.agent:
+                sess["agent"] = self.agent
         route.fulfill(response=resp, json=body)
 
 
@@ -199,7 +204,7 @@ def _leg_model_pill_sits_left_of_the_ring_and_the_header_still_fits(
     # Every control showing, at a current iPhone's width: the pill reads in full.
     page.set_viewport_size({"width": 390, "height": 740})
     wide = page.evaluate(
-        "() => { const p = document.querySelector('#terminalModel');"
+        "() => { const p = document.querySelector('#terminalModelLabel');"
         " return p.scrollWidth > p.clientWidth; }"
     )
     assert not wide, "the model pill clips its own text at 390px"
@@ -254,6 +259,57 @@ def _leg_no_pill_when_the_model_is_unknown(
     pill = page.locator("#terminalModel")
     expect(pill).to_be_hidden()
     expect(pill).to_have_text("")
+
+
+def _leg_model_chip_switches_through_the_picker(
+    page: Page, base_url: str, sid: str, stubs: _BarStubs
+) -> None:
+    """A tap on the chip opens the picker with the current model checked; a
+    pick changes the chip only on the server's confirmation, and an
+    unconfirmed one keeps the old model and says so. The switch itself (the
+    agent's /model and its dialog) is pinned by
+    ``tests/unit/board/test_model_switch_route.py``."""
+    page.set_viewport_size({"width": 390, "height": 844})
+    stubs.model, stubs.agent = "Opus", None
+    _open_by_row(page, base_url, sid)
+    posted = []
+    answer = {"outcome": "switched", "model": "Sonnet", "confirmed_dialog": True, "detail": None}
+
+    def switch(route) -> None:
+        posted.append(route.request.post_data_json)
+        if answer["outcome"] == "switched":
+            stubs.model = answer["model"]  # the agent now reports it in the list too
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps({"ok": True, **answer}))
+
+    page.route(re.compile(r".*/api/claude-code/sessions/[^/]+/model$"), switch)
+    chip = page.locator("#terminalModel")
+    sheet = page.locator("#modelSwitchSheet")
+    rows = sheet.locator(".model-switch-pick")
+
+    chip.click()
+    expect(sheet).to_be_visible()
+    expect(rows).to_have_text(["Sonnet", "Opus", "Fable"])
+    expect(rows.filter(has_text="Opus")).to_have_attribute("aria-current", "true")
+    rows.filter(has_text="Sonnet").click()
+    expect(sheet).to_be_hidden()
+    expect(chip).to_have_text("Sonnet")
+    assert posted == [{"model": "sonnet"}]
+
+    answer.update(outcome="unconfirmed", model="Fable", detail="Claude didn't report the switch to Fable")
+    chip.click()
+    rows.filter(has_text="Fable").click()
+    expect(chip).to_have_attribute("data-state", "unconfirmed")
+    expect(chip).to_have_text("Sonnet")
+    expect(page.locator("#toast")).to_contain_text("not confirmed")
+
+    stubs.model, stubs.agent = "Opus", "pi"
+    _open_by_row(page, base_url, sid)
+    expect(chip).to_have_attribute("aria-disabled", "true")
+    chip.dispatch_event("click")  # a tap still lands; Playwright refuses aria-disabled
+    expect(page.locator("#toast")).to_contain_text("can't switch model")
+    expect(sheet).to_be_hidden()
+    stubs.agent = None
 
 
 def _leg_terminal_bar_buttons_stay_within_viewport(
@@ -412,6 +468,7 @@ def test_overlay_keeps_composer_reachable_on_a_phone(
 
     _leg_model_pill_sits_left_of_the_ring_and_the_header_still_fits(page, base_url, sid, stubs)
     _leg_no_pill_when_the_model_is_unknown(page, base_url, sid, stubs)
+    _leg_model_chip_switches_through_the_picker(page, base_url, sid, stubs)
     if browser_name == "webkit":
         # Phone-width row fit only reproduces under the iPhone projection.
         _leg_terminal_bar_buttons_stay_within_viewport(page, base_url, sid, stubs)

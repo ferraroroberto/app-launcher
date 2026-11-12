@@ -74,7 +74,7 @@ from app.webapp.routers import session_outbox_routes
 from app.webapp.routers._helpers import attach_provider_web_urls, maybe_json
 from app.webapp.routers.board_spawn import SESSION_HOST_UNREACHABLE, _read_live_sessions
 from src import board, instance_role
-from src.board.transcript import _live_title_is_busy, _pty_output_is_fresh
+from src.board.transcript import _pty_output_is_fresh, live_title_is_busy
 from src.launching.vscode_workspace import is_vscode_installed, open_file
 from src.middleware import is_pc_itself
 from src.session_view import background_tasks as session_tasks
@@ -436,7 +436,7 @@ async def _activity(
     busy = (
         flavor == "claude"
         and session is not None
-        and _live_title_is_busy(session.get("live_title"))
+        and live_title_is_busy(session.get("live_title"))
         and _pty_output_is_fresh(session.get("last_output_at"), datetime.now(timezone.utc))
     )
     return await steps.run("transcript_activity", transcript_activity, path, flavor=flavor, busy=busy)

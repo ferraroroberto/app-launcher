@@ -34,9 +34,9 @@ from src.board.transcript import (
     _ExchangeTail,
     _external_row_liveness,
     _last_activity,
-    _last_assistant_model,
     _refine_waiting_status,
     _transcript_overlay,
+    last_transcript_model,
 )
 from src.session_model import session_model_label
 from src.session_view import plan_picker
@@ -406,7 +406,8 @@ def attach_transcript_model(
 ) -> List[Dict[str, Any]]:
     """Each live session plus ``transcript_model`` (the live source of the
     chat header's model pill, which :func:`src.session_model.attach_models`
-    reads): the model its Claude transcript last answered on.
+    reads): the model its Claude transcript last answered on or was last
+    switched to in-session, whichever is newer.
 
     Same agent-aware claim walk as :func:`attach_shared_names`, so a session
     resolves to the same state row on every tab. ``None`` when there is no
@@ -421,7 +422,7 @@ def attach_transcript_model(
     for sess, row, _sid in pairs:
         transcript = (row or {}).get("transcript_path")
         is_claude = str(sess.get("agent") or "claude").lower() == "claude"
-        model = _last_assistant_model(transcript) if is_claude and transcript else None
+        model = last_transcript_model(transcript) if is_claude and transcript else None
         out.append({**sess, "transcript_model": model})
     return out
 
