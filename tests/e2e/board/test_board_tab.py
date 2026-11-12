@@ -68,7 +68,7 @@ def _assert_board_structure(authed_page: Page) -> None:
     # never a section's open state (that half is the last step below).
     first = authed_page.locator("#paneBoard > .page-head + *")
     expect(first).to_have_class(re.compile(r"\bboard-toolbar\b"))
-    expect(first.locator("#boardDispatchRepoBtn")).to_have_count(1)
+    expect(first.locator("#boardDispatchRepoInput")).to_have_count(1)
     expect(first.locator("#boardRefresh")).to_have_count(1)
     expect(authed_page.locator(
         "#boardDispatchCard, #boardChiefCard, #boardDispatchGoal, #boardChiefStatus, "

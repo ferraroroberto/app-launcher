@@ -141,7 +141,7 @@ def _assert_helper_is_wired_to_a_real_locator(page: Page) -> None:
     assert_min_target(launch)
 
 
-def _assert_cluster_does_not_overlap(page: Page, cluster: str) -> None:
+def _assert_cluster_does_not_overlap(page: Page, cluster: str, controls: str = "button") -> None:
     """Invisible expansion is only legitimate where it cannot collide: two
     controls whose grown rectangles intersect share tappable pixels.
 
@@ -155,7 +155,7 @@ def _assert_cluster_does_not_overlap(page: Page, cluster: str) -> None:
     # something opens them (a row menu, a mode-specific tool), and a hidden
     # element measures as a zero box at the origin — every one of which
     # "overlaps" every other.
-    buttons = page.locator(f"{cluster} button:visible")
+    buttons = page.locator(f"{cluster} :is({controls}):visible")
     assert buttons.count() >= 2, f"{cluster} renders fewer than two controls here"
     assert_no_overlap(buttons)
 
@@ -311,7 +311,7 @@ def test_every_control_meets_the_44px_floor(authed_page: Page, base_url: str) ->
         elif tab == "#tabBoard":
             # The lane toolbar's filter and ↻ (#1436): no two expanded targets
             # may share pixels (#1174).
-            _assert_cluster_does_not_overlap(page, ".board-toolbar")
+            _assert_cluster_does_not_overlap(page, ".board-toolbar", "button, input")
 
     # Last, because it reloads the page at another size and text step: Large
     # text on a 320px phone is where the Board's toolbar runs out of room
@@ -321,4 +321,4 @@ def test_every_control_meets_the_44px_floor(authed_page: Page, base_url: str) ->
     page.reload(wait_until="domcontentloaded")
     page.locator("#tabBoard").click()
     settled(page)
-    assert_no_overlap(page.locator(".board-toolbar button:visible"))
+    assert_no_overlap(page.locator(".board-toolbar :is(button, input):visible"))

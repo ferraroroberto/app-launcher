@@ -91,7 +91,7 @@ def _mock_apps(page: Page) -> None:
 
 
 def _pick(page: Page, repo: str) -> None:
-    page.locator("#boardDispatchRepoBtn").click()
+    page.locator("#boardDispatchRepoInput").click()
     item = page.locator(f'#boardDispatchRepoList li[data-repo="{repo}"]')
     expect(item).to_be_visible(timeout=15_000)
     item.click()

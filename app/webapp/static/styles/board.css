@@ -10,13 +10,15 @@
   --icon-btn-box: var(--hit-min);
 }
 .board-toolbar .board-repo-combo { flex: 1; min-width: 0; }
-/* Repo/project dropdown: tap-to-open/tap-to-select, not a typable
-   field — a <button> trigger, not a native <select> (which paints its own
-   OS chrome) or a text input (which would invite typing). The live filter
-   over the board's lanes; "All projects" (the default) shows everything.
-   The filter height of the action-row contract (44px), so the target is
-   real geometry. */
-.board-repo-combo { position: relative; }
+/* Project filter: a type-to-filter combobox, the vendored filter field
+   (.action-row-filter: 44px, control-border on card) with the chevron kept as
+   the cue that it opens a list. The live filter over the board's lanes; the
+   empty field (placeholder "All projects", the default) shows everything. */
+.board-repo-combo {
+  position: relative;
+  margin: 0;
+  padding-right: 34px;
+}
 .board-repo-combo::after {
   content: '';
   width: var(--icon-inline);
@@ -31,31 +33,14 @@
   color: var(--muted);
   pointer-events: none;
 }
-.board-repo-input {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-height: var(--hit-min);
-  background: var(--card-2);
-  color: var(--fg);
-  border: 1px solid var(--control-border);
-  border-radius: var(--radius-md);
-  padding: 0 34px 0 12px;
-  font: inherit;
-  font-size: var(--font-body-sm);
-  text-align: left;
-  appearance: none;
-  -webkit-appearance: none;
-  cursor: pointer;
-}
-.board-repo-input .icon { flex: none; color: var(--muted); }
-.board-repo-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+.board-repo-combo .icon { flex: none; }
+/* 44px tall over the field's 1px borders, so the typing target meets the floor. */
+.board-repo-combo .board-repo-input { height: var(--hit-min); margin: -1px 0; text-overflow: ellipsis; }
+.board-repo-input::placeholder { color: var(--ink); opacity: 1; }
+/* The ✕ is a 44px target inside a 44px field: the negative margin lets it
+   cover the border's 1px so the field keeps its height. */
+.board-repo-clear { margin: -1px 0; }
+.board-repo-clear[hidden] { display: none; }
 .board-repo-list {
   position: absolute;
   z-index: 20;
@@ -83,6 +68,9 @@
 }
 .board-repo-list li[data-repo]:hover,
 .board-repo-list li[aria-selected="true"] { background: var(--card); color: var(--accent); }
+/* The keyboard's row reads apart from the committed pick. */
+.board-repo-list li[data-active="true"] { background: var(--accent-soft); color: var(--accent-text); }
+.board-repo-list li.board-repo-empty { color: var(--muted); cursor: default; }
 
 /* One attention banner above the lanes, only while a source is down
    or stale: the status text on its own 16% tint, behind one glyph. */

@@ -54,7 +54,7 @@ def test_lane_toolbar_and_start_with_geometry(
           };
           return {
             head: box('.page-head'), toolbar: box('.board-toolbar'),
-            filter: box('#boardDispatchRepoBtn'), refresh: box('#boardRefresh'),
+            filter: box('.board-repo-combo'), refresh: box('#boardRefresh'),
             first: box('#boardColumns > details'),
             firstId: pane.querySelector('#boardColumns > details').id,
           };
@@ -108,7 +108,7 @@ def test_desktop_project_filter_is_as_wide_as_the_backlog_column(
                 const r = pane.querySelector(sel).getBoundingClientRect();
                 return {x: r.x, w: r.width};
               };
-              return {filter: box('#boardDispatchRepoBtn'),
+              return {filter: box('.board-repo-combo'),
                       refresh: box('#boardRefresh'),
                       backlog: box('#boardColBacklog')};
             }""",
@@ -323,7 +323,7 @@ def test_desktop_empty_lane_is_a_one_line_strip(
             title: box(q('#boardColYours .collapse-title')),
             message: box(q('#boardColYours .empty-state-message')),
             action: box(q('#boardColYours .empty-state-action')),
-            filter: box(q('#boardDispatchRepoBtn')),
+            filter: box(q('.board-repo-combo')),
           };
         }""",
     )

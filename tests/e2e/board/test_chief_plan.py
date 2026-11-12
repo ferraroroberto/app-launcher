@@ -161,7 +161,7 @@ def test_repo_filter_narrows_the_plan_and_its_questions(
     expect(hidden_note).to_have_count(0)
 
     def pick(repo: str) -> None:
-        authed_page.locator("#boardDispatchRepoBtn").click()
+        authed_page.locator("#boardDispatchRepoInput").click()
         item = authed_page.locator(f'#boardDispatchRepoList li[data-repo="{repo}"]')
         expect(item).to_be_visible(timeout=15_000)
         item.click()
