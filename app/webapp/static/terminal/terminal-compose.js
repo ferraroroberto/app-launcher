@@ -232,6 +232,8 @@ export function mountTerminalComposer() {
     // Starting to talk silences any in-flight read-aloud:
     // you're answering, not still listening.
     onDictationStart: stopReading,
+    // Ctrl/Cmd+Enter sends here as it does in Chat; plain Enter stays a newline.
+    sendOnModEnter: true,
   });
   return terminalComposer;
 }

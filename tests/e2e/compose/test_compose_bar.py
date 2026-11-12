@@ -151,6 +151,21 @@ def _spy_on_ws_input_frames(authed_page: Page) -> None:
     )
 
 
+def _assert_mod_enter_sends(page: Page) -> None:
+    """#2350: Ctrl/Cmd+Enter sends like ➤ (box cleared, no stray newline); plain Enter is a newline."""
+    field = page.locator(INPUT)
+    expect(page.locator(SEND)).to_have_attribute("title", "Send (Ctrl/Cmd+Enter)")
+    field.fill("line one")
+    field.press("Enter")
+    expect(field).to_have_value("line one\n")
+    for chord, text in (("Control+Enter", "mod-ctrl-{regress}"), ("Meta+Enter", "mod-meta-{regress}")):
+        field.fill(text)
+        field.press(chord)
+        expect(field).to_have_value("")
+        sent = page.evaluate("() => window.__sentInput")
+        assert any(text in f for f in sent), f"{chord} did not deliver {text!r}: {sent!r}"
+
+
 def test_compose_send_forwards_text_to_pty(
     authed_page: Page,
     base_url: str,
@@ -164,13 +179,9 @@ def test_compose_send_forwards_text_to_pty(
     * #980: today's shape on every surface — textarea + 2×2 grid, in the order
       mic · keys / image · send, with no Compose toggle, no OCR button of its
       own, and none of the folded controls left in the bar.
-    * #1072: Ctrl/Cmd+Enter sends in Chat mode only. The binding is opt-in per
-      mount (``sendOnModEnter``) precisely so the terminal, which has its own
-      input path, keeps today's behaviour. What this pins is that the opt-in
-      stayed opt-in: the shortcut does not deliver here (a terminal send is
-      synchronous and clears the box, so an unchanged draft is the tell), and
-      the Send title does not advertise a shortcut this mount hasn't got — the
-      exact class of lie the old 'Send (with Enter)' title was.
+    * #2350: Ctrl/Cmd+Enter sends here too, through the same ``sendComposed``
+      as a tap on ➤ (the box clears, nothing is left behind), plain Enter
+      still inserts a newline, and the Send title names the shortcut.
     * ➤ Send forwards the textarea contents + Enter to the PTY, the bar clears
       and stays docked.
     * #166: the submitting CR is delivered immediately after the text, as its
@@ -205,12 +216,7 @@ def test_compose_send_forwards_text_to_pty(
         assert authed_page.locator(gone).count() == 0, f"{gone} should be gone (#980)"
 
     field = authed_page.locator(INPUT)
-    field.fill("not a send here")
-    field.press("Control+Enter")
-    # Tolerate a browser-default newline from the unhandled chord; the point
-    # is that the draft was not delivered and cleared.
-    expect(field).to_have_value(re.compile(r"^not a send here\n?$"))
-    expect(authed_page.locator(SEND)).to_have_attribute("title", "Send")
+    _assert_mod_enter_sends(authed_page)
 
     payload = "compose-{regress}"
     field.fill(payload)
