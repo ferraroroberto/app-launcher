@@ -55,6 +55,7 @@ AFTER = [
     # Claude's bare /model opens the picker; /model <id> would save the default.
     ("claude", "opus", "/model", "Opus"),
     ("claude", "sonnet", "/model", "Sonnet"),
+    ("claude", "haiku", "/model", "Haiku"),
     ("codex", "gpt-5.6-terra", "/model gpt-5.6-terra", "Terra"),
     ("codex", "gpt-6-luna", "/model gpt-6-luna", "Luna"),
 ])
@@ -72,7 +73,7 @@ def test_an_agent_with_no_in_session_switch_is_refused(agent):
 
 @pytest.mark.parametrize("agent,value", [
     ("claude", "gpt-5.6-terra"),   # another agent's model
-    ("claude", "haiku"),           # legacy, not offered
+    ("claude", "haiku-3"),         # a family the picker never lists
     ("claude", "opus; rm -rf"),    # never typed
     ("codex", "opus"),
     ("claude", ""),
@@ -117,6 +118,7 @@ DOWN, UP = "[B", "[A"
     ("Opus", [(UP, False), (UP, False), ("s", False)]),
     ("Fable", [(UP, False), ("s", False)]),
     ("Sonnet", [("s", False)]),
+    ("Haiku", [(DOWN, False), ("s", False)]),
 ])
 def test_the_picker_row_is_taken_with_its_session_only_key(label, keys):
     assert ms.picker_keys(PICKER, label) == keys

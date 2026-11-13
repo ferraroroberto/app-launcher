@@ -45,12 +45,12 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
-from src.launching.model_catalog import CLAUDE_MODEL_SPECS, CODEX_MODEL_SPECS
+from src.launching.model_catalog import CLAUDE_SESSION_MODEL_SPECS, CODEX_MODEL_SPECS
 
 Keystroke = Tuple[str, bool]
 
 SWITCHABLE: Dict[str, Mapping[str, Mapping[str, Any]]] = {
-    "claude": CLAUDE_MODEL_SPECS,
+    "claude": CLAUDE_SESSION_MODEL_SPECS,
     "codex": CODEX_MODEL_SPECS,
 }
 

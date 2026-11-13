@@ -289,12 +289,27 @@ def _leg_model_chip_switches_through_the_picker(
 
     chip.click()
     expect(sheet).to_be_visible()
-    expect(rows).to_have_text(["Sonnet", "Opus", "Fable"])
-    expect(rows.filter(has_text="Opus")).to_have_attribute("aria-current", "true")
+    # The same list and marks as the Life OS resume Model row: Haiku leads, and
+    # the running model carries "Its own" and the check.
+    expect(rows.locator(".settings-row-label")).to_have_text(["Haiku", "Sonnet", "Opus", "Fable"])
+    opus = rows.filter(has_text="Opus")
+    expect(opus).to_have_attribute("aria-current", "true")
+    expect(opus.locator(".settings-row-value")).to_have_text("Its own")
+    expect(rows.filter(has_text="Sonnet").locator(".settings-row-value")).to_have_count(0)
     rows.filter(has_text="Sonnet").click()
     expect(sheet).to_be_hidden()
     expect(chip).to_have_text("Sonnet")
     assert posted == [{"model": "sonnet"}]
+
+    answer.update(model="Haiku")
+    chip.click()
+    rows.filter(has_text="Haiku").click()
+    expect(chip).to_have_text("Haiku")
+    assert posted[-1] == {"model": "haiku"}
+    answer.update(model="Sonnet")
+    chip.click()
+    rows.filter(has_text="Sonnet").click()
+    expect(chip).to_have_text("Sonnet")
 
     answer.update(outcome="unconfirmed", model="Fable", detail="Claude didn't report the switch to Fable")
     chip.click()

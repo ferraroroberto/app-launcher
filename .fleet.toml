@@ -323,6 +323,7 @@ builders = [
   "app/webapp/static/board/proof-chip.js:actionButton",
   "app/webapp/static/changes/changes-overlay.js:toolButton",
   "app/webapp/static/chat/ask-option.js:askOption",
+  "app/webapp/static/shared/model-choices.js:modelPickRow",
 ]
 
 [test_weight]

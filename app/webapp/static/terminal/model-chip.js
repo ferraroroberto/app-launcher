@@ -12,7 +12,7 @@ import { els, state } from '../state.js';
 import { apiFailToast, sessionRoute, toast } from '../api.js';
 import { terminalJsonApi } from '../webauthn.js';
 import { bindLongPressHint } from '../long-press-hint.js';
-import { icon } from '../_vendored/icons/icons.js';
+import { modelChoices, modelPickRow, modelValueForLabel } from '../shared/model-choices.js';
 
 // Agents with an in-session /model the server can drive, and what the switch
 // does there, shown on the sheet (each agent's own wording, probed live).
@@ -46,18 +46,6 @@ export function modelSwitchReason(s) {
     return 'Detached session: switch the model with /model in the PC console';
   }
   return null;
-}
-
-// The catalog models the picker offers for an agent: available ones the
-// owner has not hidden in Settings, plus the one running even if hidden.
-function pickerModels(agent, current) {
-  const config = state.config || {};
-  const catalog = (config.model_catalog || {})[agent] || [];
-  const hidden = new Set((config.hidden_models || []).map(String));
-  return catalog.filter(function (m) {
-    if (m.available === false) return false;
-    return m.label === current || !hidden.has(agent + ':' + m.value);
-  });
 }
 
 function chipTitle(model, mine, reason) {
@@ -94,41 +82,26 @@ export function renderModelChip(session) {
   chip.setAttribute('aria-label', chip.title);
 }
 
-function pickRow(s, m, current) {
-  const row = document.createElement('button');
-  row.dataset.track = 'session.model-pick';
-  row.type = 'button';
-  row.className = 'settings-row model-switch-pick';
-  row.setAttribute('role', 'listitem');
-  row.dataset.value = m.value;
-  const label = document.createElement('span');
-  label.className = 'settings-row-label';
-  label.textContent = m.label;
-  row.appendChild(label);
-  if (m.label === current) {
-    row.setAttribute('aria-current', 'true');
-    row.setAttribute('aria-label', m.label + ', current model');
-    const mark = document.createElement('span');
-    mark.className = 'model-switch-current';
-    mark.innerHTML = icon('circle-check');
-    row.appendChild(mark);
-  }
-  row.addEventListener('click', function () {
-    els.modelSwitchSheet.close();
-    if (m.label !== current) switchModel(s, m);
-  });
-  return row;
-}
-
 function openModelPicker(s) {
   const sheet = els.modelSwitchSheet;
   if (!sheet) return;
   const agent = agentOf(s);
-  const current = String(s.model || '');
+  // The session reports its model by label; its own model is the running one.
+  const own = modelValueForLabel(agent, state.config, String(s.model || ''));
   els.modelSwitchSheetNote.textContent = SWITCH_NOTES[agent];
   els.modelSwitchList.replaceChildren.apply(
     els.modelSwitchList,
-    pickerModels(agent, current).map(function (m) { return pickRow(s, m, current); }),
+    modelChoices(agent, state.config, own).map(function (m) {
+      return modelPickRow(m, {
+        own: own,
+        current: own,
+        track: 'session.model-pick',
+        onPick: function (choice) {
+          els.modelSwitchSheet.close();
+          if (choice.value !== own) switchModel(s, choice);
+        },
+      });
+    }),
   );
   if (!sheet.open) sheet.showModal();
 }
@@ -147,7 +120,7 @@ async function switchModel(s, m) {
   try {
     res = await terminalJsonApi(sessionRoute(sid, '/model'), {
       method: 'POST',
-      body: { model: m.value },
+      body: { model: m.id },
     });
   } catch (exc) {
     pending = { sid: sid, phase: 'unconfirmed', target: m.label,

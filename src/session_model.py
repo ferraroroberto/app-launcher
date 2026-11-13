@@ -18,7 +18,7 @@ import shlex
 from typing import Any, Dict, List, Mapping, Optional
 
 from src.launching.model_catalog import (
-    CLAUDE_MODEL_SPECS,
+    CLAUDE_SESSION_MODEL_SPECS,
     CODEX_MODEL_SPECS,
     PI_MODEL_SPECS,
 )
@@ -54,7 +54,7 @@ def _claude_id_label(model_id: str) -> Optional[str]:
     """Display name for a full Claude model id (``claude-opus-5-5``): the
     catalog family named as a whole hyphen-delimited segment, else ``None``."""
     segments = model_id.strip().lower().split("-")
-    for family, spec in CLAUDE_MODEL_SPECS.items():
+    for family, spec in CLAUDE_SESSION_MODEL_SPECS.items():
         if family in segments:
             return str(spec["label"])
     return None
@@ -71,7 +71,7 @@ def session_model_label(session: Mapping[str, Any]) -> Optional[str]:
             # The model that last answered is the truth, so an id the catalog
             # lacks is not covered for by the spawn flag, which may be stale.
             return _claude_id_label(answered)
-        return _catalog_label(CLAUDE_MODEL_SPECS, value) if value else None
+        return _catalog_label(CLAUDE_SESSION_MODEL_SPECS, value) if value else None
     if agent == "codex":
         from_title = _codex_title_label(str(session.get("live_title") or ""))
         if from_title:

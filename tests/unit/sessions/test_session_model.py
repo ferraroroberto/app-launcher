@@ -27,8 +27,11 @@ from src.session_model import attach_models, session_model_label
     # Not answered yet: the spawn flag, then nothing.
     ({"agent": "claude", "flags": "--model opus", "transcript_model": None}, "Opus"),
     ({"agent": "claude", "flags": "", "transcript_model": None}, None),
+    # The legacy Haiku is named too: a session can be switched onto it.
+    ({"agent": "claude", "flags": "--model opus", "transcript_model": "claude-haiku-5-5"}, "Haiku"),
+    ({"agent": "claude", "flags": "--model haiku"}, "Haiku"),
     # A model the catalog lacks is not shown, and the stale flag does not stand in.
-    ({"agent": "claude", "flags": "--model opus", "transcript_model": "claude-haiku-4-5"}, None),
+    ({"agent": "claude", "flags": "--model opus", "transcript_model": "claude-mystery-1"}, None),
     # A family name must be a whole id segment.
     ({"agent": "claude", "flags": "", "transcript_model": "claude-opusx-5"}, None),
     # Codex and Pi ignore the Claude transcript field.
