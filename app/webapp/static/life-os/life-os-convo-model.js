@@ -52,6 +52,12 @@ function offered(row) {
   return !!(row && row.resumable && row.skill && AGENTS.includes(row.agent));
 }
 
+// What the row says when the transcript names no model: a Claude resume still
+// keeps its own natively, a Codex one runs on the Codex default.
+function unknownText(row) {
+  return (row.agent === 'codex' ? 'Codex default' : 'Its own') + ' · not recorded';
+}
+
 function paintRow() {
   const row = els.lifeOsConvoModelRow;
   if (!row) return;
@@ -60,7 +66,7 @@ function paintRow() {
   if (!open) return;
   const own = ownValue(shown.row.agent, shown.own);
   const text = shown.pick ? shown.pick.label + ' · this resume'
-    : (ownLabel(shown.row, own) || (shown.own === null ? '…' : 'Its own'));
+    : (ownLabel(shown.row, own) || (shown.own === null ? '…' : unknownText(shown.row)));
   els.lifeOsConvoModelValue.textContent = text;
 }
 

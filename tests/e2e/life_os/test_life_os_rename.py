@@ -278,6 +278,7 @@ def test_life_os_rename_refusal_says_why_and_resume_posts_the_session_id(
     expect(authed_page.locator("#toast")).to_contain_text("Resumed booking the ferry (Opus)")
     # The same sheet's Model row (one-resume model pick), over the same mocks.
     _pick_a_model_for_one_resume(authed_page)
+    _unknown_model_says_so(authed_page)
 
 
 def _pick_a_model_for_one_resume(page: Page) -> None:
@@ -328,3 +329,17 @@ def _pick_a_model_for_one_resume(page: Page) -> None:
     expect(page.locator("#toast")).to_contain_text("Resumed booking the ferry (Haiku)")
     flush_requests(page)
     assert writes == [], writes
+
+
+def _unknown_model_says_so(page: Page) -> None:
+    """A conversation whose transcript names no model still shows the Model row
+    above Resume, and says the model is not recorded rather than a bare word."""
+    page.route(
+        re.compile(r".*/api/life-os/skills/journal-daily/conversations/model\?.*"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"agent": "claude", "model": ""})))
+    sheet = _open_sheet(page, 0)
+    expect(sheet.locator("#lifeOsConvoModelRow")).to_be_visible()
+    expect(sheet.locator("#lifeOsConvoModelValue")).to_have_text("Its own · not recorded")
+    _close_sheet(page)
