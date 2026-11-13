@@ -65,7 +65,7 @@ def switch_client(picker_client, monkeypatch, tmp_path):
         typed.append((sid, keys))
         if keys == [("/model", True)]:
             paint(state["picker"])
-        elif keys == PICK_OPUS:
+        elif keys == state.get("pick_keys", PICK_OPUS):
             paint(state["dialog"]) if state["history"] else apply("Opus 5.5")
         elif keys == [("\x1b", False)]:
             paint(AFTER[:1] + ["  ⎿  Kept model as Sonnet 5.5"])
@@ -126,6 +126,27 @@ def test_a_picker_that_never_opens_says_so(switch_client):
     body = _post(client).json()
     assert body["outcome"] == "unconfirmed" and "never opened" in body["detail"]
     assert [keys for _sid, keys in typed] == [[("/model", True)]]
+
+
+def test_a_picker_that_never_opens_leaves_no_command_typed_in_the_prompt(switch_client):
+    client, _, _, typed, state = switch_client
+    state["picker"] = ["❯ /model"]
+    body = _post(client).json()
+    assert body["outcome"] == "unconfirmed" and "never opened" in body["detail"]
+    assert [keys for _sid, keys in typed] == [[("/model", True)], [("\x1b", False), ("\x15", False)]]
+
+
+def test_a_phone_width_picker_is_switched_session_only(switch_client):
+    """The footer wraps on a phone terminal; the switch still takes ``s``."""
+    from tests.unit.sessions.test_model_switch import PICKER_NARROW
+    client, _, _, typed, state = switch_client
+    state["picker"] = PICKER_NARROW
+    state["history"] = False
+    # Cursor on Default (row 1): one down to Opus, then the session-only key.
+    state["pick_keys"] = [("\x1b[B", False), ("s", False)]
+    body = _post(client).json()
+    assert body["outcome"] == "switched"
+    assert [keys for _sid, keys in typed][1] == [("\x1b[B", False), ("s", False)]
 
 
 def test_a_switch_the_transcript_never_reports_is_not_confirmed(switch_client):

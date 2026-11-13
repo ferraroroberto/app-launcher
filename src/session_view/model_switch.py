@@ -2,8 +2,8 @@
 
 Each agent's own in-session command does the switch, typed into the PTY like
 any other prompt. Every switch here applies to that session only: new sessions
-keep the default the owner set. Probed live (Claude Code 2.1.323, Codex
-0.164.0):
+keep the default the owner set. Probed live (Claude Code 2.1.323 and 2.1.325,
+Codex 0.164.0):
 
 * Claude Code's ``/model <id>`` saves the pick as the default for new sessions
   (the ``model`` key of the user settings file every session shares). Its
@@ -21,7 +21,8 @@ keep the default the owner set. Probed live (Claude Code 2.1.323, Codex
 
   so the switch types ``/model``, reads the picker off the screen, moves its
   cursor to the picked row and presses ``s`` (:func:`picker_keys`); Enter is
-  never pressed there. In a conversation with history Claude then asks,
+  never pressed there. On a phone-width terminal the footer wraps (``s to use
+  this session`` / ``only · Esc to cancel``), so it is read across its lines. In a conversation with history Claude then asks,
   because the whole conversation is re-read::
 
       Switch model?
@@ -65,6 +66,10 @@ PICKER_HEADING = "Select model"
 # offers only Enter, which saves the default, so nothing is pressed there.
 SESSION_ONLY_HINT = "s to use this session only"
 SESSION_ONLY_KEY = "s"
+# The footer's closing words: a footer without them is still painting.
+FOOTER_END = "Esc to "
+# Ctrl+U: Claude Code's prompt clears its whole line.
+CLEAR_LINE = chr(21)
 ESCAPE = "\x1b"
 _DOWN, _UP = "\x1b[B", "\x1b[A"
 _PICK_ROW_RE = re.compile(r"^\s*(❯)?\s*(\d+)\.\s+(.+?)(?:\s{2,}.*)?$")
@@ -120,13 +125,21 @@ def _picker_rows(lines: List[str]) -> Optional[Tuple[List[Tuple[bool, str]], boo
     if not heads:
         return None
     rows: List[Tuple[bool, str]] = []
+    footer: List[str] = []
     for line in lines[heads[-1] + 1:]:
-        if line.strip().startswith("Enter to "):
-            return rows, SESSION_ONLY_HINT in line
+        if footer or line.strip().startswith("Enter to "):
+            # A phone-width terminal wraps the footer over several lines.
+            if not line.strip():
+                break
+            footer.append(line.strip())
+            continue
         match = _PICK_ROW_RE.match(line)
         if match:
             rows.append((bool(match.group(1)), match.group(3).replace("✔", "").strip()))
-    return None
+    text = " ".join(footer)
+    if FOOTER_END not in text:
+        return None
+    return rows, SESSION_ONLY_HINT in text
 
 
 def picker_keys(lines: List[str], label: str) -> Optional[List[Keystroke]]:
@@ -153,6 +166,16 @@ def picker_keys(lines: List[str], label: str) -> Optional[List[Keystroke]]:
         raise SwitchRefused(f"Claude's model picker shows no {label} row: nothing was switched")
     step = families.index(label.lower()) - cursor
     return [(_DOWN if step > 0 else _UP, False)] * abs(step) + [(SESSION_ONLY_KEY, False)]
+
+
+def stray_input_keys(lines: List[str]) -> Optional[List[Keystroke]]:
+    """The keys that clear a ``/model`` left typed in the prompt, or ``None``
+    when the prompt holds anything else: only that exact command is cleared,
+    so text the owner typed is never wiped."""
+    prompt = next((line for line in reversed(lines or []) if line.startswith("❯")), None)
+    if prompt is None or prompt[1:].strip() != "/model":
+        return None
+    return [(ESCAPE, False), (CLEAR_LINE, False)]
 
 
 def dialog_showing(lines: List[str]) -> bool:
