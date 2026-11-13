@@ -32,11 +32,6 @@ const ARROW_STEP = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
 const SLIDE_SLOP_PX = 8;
 // iOS may still send a click after a short slide; one inside this window is dropped.
 const SLIDE_CLICK_MS = 300;
-// How long the installed app's viewport may keep changing after a launch or a
-// return to the foreground: iOS grows a cold launch's viewport for ~3s.
-const GLASS_WATCH_MS = 4000;
-// No viewport resize for this long means the size has settled.
-const GLASS_QUIET_MS = 250;
 
 /**
  * Wire up a .tabs nav: restore the last-active tab, switch panes on a tap or
@@ -143,7 +138,6 @@ export function initNavTabs({ navSelector = '.tabs', storageKey = null, onChange
   if (window.matchMedia('(display-mode: standalone)').matches) {
     mountTopEdge(nav);
     expandStandaloneViewport();
-    watchGlassSettle(nav);
   }
   gateTopFade();
 
@@ -295,48 +289,13 @@ function expandStandaloneViewport() {
   requestAnimationFrame(() => { if (window.scrollY === 1) window.scrollTo(0, 0); });
 }
 
-// iOS composites the bar's backdrop-filter layer while the installed app's
-// viewport is still changing and can keep that texture at stale bounds,
-// leaving a frosted smear over the top of the page until something repaints.
-// The glass is rebuilt once the viewport has stopped resizing, not at a fixed
-// frame, and again on every return to the foreground: iOS resumes a kept-alive
-// home-screen app without reloading the page, so init does not run again.
-// Resizes outside the watch window (a keyboard later on) rebuild nothing.
-function watchGlassSettle(nav) {
-  let timer = 0;
-  let until = 0;
-  const arm = () => {
-    clearTimeout(timer);
-    timer = setTimeout(() => recompositeGlass(nav), GLASS_QUIET_MS);
-  };
-  const open = () => { until = performance.now() + GLASS_WATCH_MS; arm(); };
-  const onResize = () => { if (performance.now() < until) arm(); };
-  window.addEventListener('resize', onResize, { passive: true });
-  window.visualViewport?.addEventListener('resize', onResize, { passive: true });
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') open(); });
-  window.addEventListener('pageshow', (event) => { if (event.persisted) open(); });
-  open();
-}
-
-// Dropping the filter for one frame makes WebKit discard the bar's backdrop
-// layer and build a new one at its current bounds; the glass is back on the
-// next frame. The top glass is a backdrop layer too, so it is dropped and
-// regenerated with the bar.
-function recompositeGlass(nav) {
-  nav.classList.add('glass-rebuild');
-  document.documentElement.removeAttribute('data-nav-top-glass');
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      nav.classList.remove('glass-rebuild');
-      syncTopGlass();
-    });
-  });
-}
-
-// The top glass (body::after in nav-tabs.css) does not exist at scroll-top,
-// so the first row sits crisp right under the status bar; it is generated on
-// the first scrolled pixel and reaches full opacity over the first
-// --nav-fade-band of scroll.
+// The top glass (body::after in a browser tab, the .nav-top-edge strip in the
+// installed app) follows the scroll position and nothing else: it does not
+// exist at scroll-top, is generated on the first scrolled pixel and reaches
+// full opacity over the first --nav-fade-band of scroll. A resize or a return
+// to the foreground writes nothing to it or to the bar: the installed app's
+// top-edge blur is a system effect the strip turns off, not a stale texture
+// a repaint would clear (README, "Top-edge blur in the installed app").
 let topGlassBand = 16;
 
 function syncTopGlass() {
