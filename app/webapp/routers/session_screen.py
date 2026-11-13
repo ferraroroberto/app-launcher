@@ -626,10 +626,11 @@ def _resume_picker_showing(via: str, lines: List[str]) -> bool:
 
 # --- Switching the session's model from the Chat view's model chip --------
 #
-# The agent's own `/model <id>` does the switch (src.session_view.model_switch).
-# Claude Code asks "Switch model?" once a conversation has history; the dialog
-# is read off the screen and its Yes pressed only while it names the model
-# asked for. The switch counts only once the agent reports it: Claude's
+# The agent's own `/model` does the switch, for that session only
+# (src.session_view.model_switch). For Claude Code the picker is read off the
+# screen and the picked row taken with its session-only key; Claude then asks
+# "Switch model?" once a conversation has history, and that Yes is pressed
+# only while it names the model asked for. The switch counts only once the agent reports it: Claude's
 # transcript line, Codex's window title, the sources the chip already reads.
 
 # How long a switch waits for the agent to report the new model, and how often
@@ -705,7 +706,7 @@ async def _switch_claude(
     reason, _session, lines = await _read_screen(cfg, sid)
     _refuse_busy_claude_screen(reason, lines)
     await _type_switch(cfg, sid, keys, "claude")
-    answered = False
+    picked = answered = False
     loop = asyncio.get_running_loop()
     end = loop.time() + _MODEL_CONFIRM_S
     while loop.time() < end:
@@ -713,15 +714,28 @@ async def _switch_claude(
             return "switched", answered, None
         if not answered:
             _r, _s, lines = await _read_screen(cfg, sid)
-            try:
-                confirm = model_switch.confirm_keys(lines or [], label)
-            except model_switch.SwitchRefused as exc:
-                return "unconfirmed", False, str(exc)
-            if confirm:
-                await _type_switch(cfg, sid, confirm, "claude")
-                answered = True
+            if not picked:
+                try:
+                    step = model_switch.picker_keys(lines or [], label)
+                except model_switch.SwitchRefused as exc:
+                    # Close the picker unpicked rather than leave it waiting.
+                    await _type_switch(cfg, sid, [(model_switch.ESCAPE, False)], "claude")
+                    return "unconfirmed", False, str(exc)
+                if step:
+                    await _type_switch(cfg, sid, step, "claude")
+                    picked = True
+            else:
+                try:
+                    confirm = model_switch.confirm_keys(lines or [], label)
+                except model_switch.SwitchRefused as exc:
+                    return "unconfirmed", False, str(exc)
+                if confirm:
+                    await _type_switch(cfg, sid, confirm, "claude")
+                    answered = True
         await asyncio.sleep(_MODEL_POLL_S)
-    return "unconfirmed", answered, f"Claude didn't report the switch to {label}: check the terminal"
+    detail = (f"Claude didn't report the switch to {label}: check the terminal" if picked
+              else "Claude's model picker never opened: check the terminal")
+    return "unconfirmed", answered, detail
 
 
 async def _switch_codex(
