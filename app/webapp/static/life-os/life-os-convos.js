@@ -31,6 +31,7 @@ import {
   compareSkills, launchDetached, launchSkill, lifeOsModel,
   modelTag, resumedModelTag, refreshAfterLogChange, skillAvatar, skillsFilter, wireSheet,
 } from '../life-os.js';
+import { resetConvoModel, resumeModelFields, showConvoModel, wireConvoModel } from './life-os-convo-model.js';
 import { askName, closeDoc, loadFile, RENAME_TITLE_SHEET } from './life-os-content.js';
 import { syncFailed } from './title-sync.js';
 
@@ -506,10 +507,9 @@ function convoSummary(r) {
 // The conversation the sheet shows, or null while it is closed.
 let sheetRow = null;
 
-// Resume reattaches the stored session on the conversation's own model,
-// so the toolbar's provider does not have to match it: there is no
-// "select a Claude model" lockout. The index carries no model, so the
-// button cannot name one ahead of time; the toast after it does.
+// Resume reattaches the stored session on the conversation's own model unless
+// the Model row picked another, so the toolbar's provider does not have to
+// match it: there is no "select a Claude model" lockout.
 function canResume(r) {
   return !!(r.resumable && r.skill);
 }
@@ -555,6 +555,7 @@ function fillConvoSheet() {
   els.lifeOsConvoSheetNote.textContent = resumable ? ''
     : (r.resume_reason || 'No stored session; readable only.');
   els.lifeOsConvoSheetNote.hidden = resumable;
+  showConvoModel(r);
   const handoff = handoffTarget(r);
   const handoffRow = sheetLink('lifeos-convo-handoff');
   handoffRow.hidden = !handoff;
@@ -739,9 +740,9 @@ async function resumeConversation(r, action) {
     mode: mode, model: model, action: action,
     capture: { path: r.path, revision: r.revision, agent: r.agent, sid: r.sid },
   };
-  // A resume comes back on the conversation's own model; the
-  // toolbar's model applies only to the new conversation a handoff starts.
-  if (action === 'resume') payload.keep_model = true;
+  // A resume keeps the conversation's own model or takes the sheet's one-off pick;
+  // the toolbar's model applies only to the new conversation a handoff starts.
+  if (action === 'resume') Object.assign(payload, resumeModelFields(r));
   if (action === 'handoff') {
     const scope = r.handoff_truncated ?
       'Only the first ' + (r.handoff_limit || 24000).toLocaleString() + ' characters will be included.' :
@@ -797,7 +798,8 @@ async function resumeConversation(r, action) {
 function wireConvoSheet() {
   const d = els.lifeOsConvoSheet;
   if (!d) return;
-  wireSheet(d, [els.lifeOsConvoSheetClose], function () { sheetRow = null; });
+  wireSheet(d, [els.lifeOsConvoSheetClose], function () { sheetRow = null; resetConvoModel(); });
+  wireConvoModel();
   const on = function (cls, act) {
     sheetLink(cls).addEventListener('click', function () {
       if (sheetRow) act(sheetRow);

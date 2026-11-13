@@ -435,6 +435,70 @@ class TestKeepModel:
         assert "--model" not in captured["flags"]
 
 
+class TestResumeModelOverride:
+    """A one-resume model pick: sent as `model` with no `keep_model`, never saved."""
+
+    ENDPOINT = "/api/life-os/skills/journal-daily/conversations/launch"
+
+    @pytest.fixture
+    def resume(self, life_os_client, monkeypatch, tmp_path):
+        from src import middleware
+        monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", frozenset({"testclient"}))
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
+        client, app, _ = life_os_client
+        captured = _TargetedResume()._spawn_capture(monkeypatch)
+        row = next(r for r in client.get(
+            "/api/life-os/skills/journal-daily/conversations").json()["conversations"] if r["resumable"])
+        capture = {k: row[k] for k in ("path", "revision", "agent", "sid")}
+        settings = tmp_path / "webapp_config.json"
+
+        def post(model: str):
+            return client.post(self.ENDPOINT, json={"action": "resume", "model": model, "capture": capture})
+
+        return post, captured, app.state.webapp_config, settings
+
+    @pytest.mark.parametrize("pick,flag", [
+        ("claude:haiku", "haiku"), ("claude:sonnet", "sonnet"),
+        ("claude:opus", "opus"), ("claude:fable", "fable"),
+    ])
+    def test_the_pick_is_the_resume_model_and_settings_are_untouched(self, resume, pick, flag):
+        post, captured, cfg, settings = resume
+        before, default = settings.read_bytes(), cfg.claude_model
+        resp = post(pick)
+        assert resp.status_code == 200, resp.text
+        assert f"--resume {RESUMABLE_SID}" in captured["flags"]
+        assert f"--model {flag}" in captured["flags"]
+        body = resp.json()
+        assert body["model"] == flag
+        assert body["model_kept"] is None
+        assert settings.read_bytes() == before
+        assert cfg.claude_model == default
+
+    def test_haiku_is_offered_for_a_resume_only(self, resume, life_os_client):
+        """Haiku is a legacy id: a conversation resume takes it, a new launch does not."""
+        client, _, _ = life_os_client
+        resp = client.post("/api/life-os/skills/journal-daily/launch",
+                           json={"mode": "pty", "model": "claude:haiku"})
+        assert resp.status_code == 400
+
+    def test_the_conversations_own_model_is_readable_before_a_resume(self, resume, life_os_client, tmp_path):
+        client, _, _ = life_os_client
+        _claude_transcript(tmp_path / "home", RESUMABLE_SID, "claude-haiku-5-5")
+        url = "/api/life-os/skills/journal-daily/conversations/model"
+        got = client.get(url, params={"agent": "claude", "sid": RESUMABLE_SID})
+        assert got.status_code == 200, got.text
+        assert got.json() == {"agent": "claude", "model": "claude-haiku-5-5"}
+        # Not a canonical id, or nothing on disk: "not known", never an error or a guess.
+        assert client.get(url, params={"agent": "claude", "sid": "../x"}).json()["model"] == ""
+        assert client.get(url, params={"agent": "claude", "sid": OTHER_SID}).json()["model"] == ""
+
+    def test_the_model_read_is_passkey_gated(self):
+        from src import middleware
+        path = "/api/life-os/skills/journal-daily/conversations/model"
+        assert middleware._terminal_guard_level(path) == "passkey"
+
+
 class TestRecordedModel:
     """src.session_view.conversation_model against synthetic files in a temporary home."""
 

@@ -83,7 +83,7 @@ from src.life_os.title_sync import TitleSync, title_sync
 from src.middleware import is_pc_itself, terminal_http_gate
 from src.scanner import Skill, scan_skills, skills_dir_for
 from src.session_view.conversation_model import recorded_model
-from src.webapp_config import VALID_CODEX_MODELS, WebappConfig
+from src.webapp_config import LEGACY_CLAUDE_MODELS, VALID_CODEX_MODELS, WebappConfig
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -271,7 +271,9 @@ async def _launch_conversation(
     # `keep_model: true` asks for it. An absent `model` keeps meaning Sonnet,
     # which a cached older client still relies on.
     keep_model = body.get("keep_model") is True and action == "resume"
-    agent, model = ("", "") if keep_model else _resolve_launch_choice(body)
+    # A resume's own pick may also be the legacy Haiku, which the catalog does not list.
+    agent, model = ("", "") if keep_model else _resolve_launch_choice(
+        body, extra_claude=LEGACY_CLAUDE_MODELS if action == "resume" else ())
     selection = body.get("capture")
     if not isinstance(selection, dict):
         selection = await _legacy_selection(cfg, root, skill, body, agent, action, legacy)

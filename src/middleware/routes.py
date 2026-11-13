@@ -298,13 +298,15 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         lambda p: (
             p.startswith("/api/life-os/skills/") and
             (p.endswith("/conversations") or p.endswith("/conversations/launch")
-             or p.endswith("/conversations/resume-latest"))
+             or p.endswith("/conversations/resume-latest")
+             or p.endswith("/conversations/model"))
         ),
         "passkey",
         "Life OS conversation index (#727): the digest — topic and summary "
         "— is a distillation of terminal content, so it is gated exactly "
         "like the captures it summarises. Resume-latest (#1503) reattaches "
-        "to one, so it carries the same gate.",
+        "to one, so it carries the same gate; so does the sheet's read of the"
+        "model one ran on (the transcript's own record).",
     ),
     (
         lambda p: p == "/api/life-os/archived" or p.startswith("/api/life-os/archived/"),

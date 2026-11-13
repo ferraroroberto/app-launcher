@@ -276,3 +276,55 @@ def test_life_os_rename_refusal_says_why_and_resume_posts_the_session_id(
     }, launches
     expect(authed_page.locator("#lifeOsConvoSheet")).to_be_hidden()
     expect(authed_page.locator("#toast")).to_contain_text("Resumed booking the ferry (Opus)")
+    # The same sheet's Model row (one-resume model pick), over the same mocks.
+    _pick_a_model_for_one_resume(authed_page)
+
+
+def _pick_a_model_for_one_resume(page: Page) -> None:
+    """The sheet's Model row names the conversation's own model directly above
+    Resume; a pick sends that `model` with no `keep_model` for this resume only,
+    closing the sheet puts the own model back, and no settings request is made."""
+    page.route(
+        re.compile(r".*/api/life-os/skills/journal-daily/conversations/model\?.*"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"agent": "claude", "model": "claude-opus-5-5"})))
+    writes: list = []
+    page.on("request", lambda req: writes.append(req.url) if (
+        req.method != "GET" and "/api/" in req.url and "/conversations" not in req.url) else None)
+    launches: list = []
+
+    def _fulfill_launch(route):
+        launches.append(_json.loads(route.request.post_data or ""))
+        route.fulfill(status=200, content_type="application/json", body=_json.dumps({
+            "launched": "journal-daily", "name": "journal-daily", "agent": "claude",
+            "mode": "remote", "model": "haiku", "model_kept": None, "resume": True,
+            "resume_sid": _RESUMABLE_SID, "session": {"session_id": "x", "kind": "remote"}}))
+
+    page.route(
+        re.compile(r".*/api/life-os/skills/journal-daily/conversations/launch$"), _fulfill_launch)
+    sheet = _open_sheet(page, 0)
+    row, value = sheet.locator("#lifeOsConvoModelRow"), sheet.locator("#lifeOsConvoModelValue")
+    expect(value).to_have_text("Opus")
+    assert row.evaluate(
+        "el => el.closest('.settings-group').nextElementSibling.classList.contains('detail-actions')")
+
+    row.click()
+    picks = page.locator("#lifeOsConvoModelList .model-switch-pick")
+    expect(picks.locator(".settings-row-label")).to_have_text(["Haiku", "Sonnet", "Opus", "Fable"])
+    picks.filter(has_text="Haiku").click()
+    expect(page.locator("#lifeOsConvoModelSheet")).to_be_hidden()
+    expect(value).to_have_text("Haiku · this resume")
+
+    _close_sheet(page)
+    _open_sheet(page, 0)
+    expect(value).to_have_text("Opus")
+
+    row.click()
+    picks.filter(has_text="Haiku").click()
+    page.locator("#lifeOsConvoSheetResume").click()
+    wait_until(page, lambda: len(launches) == 1, "the resume POST")
+    assert launches[0]["model"] == "claude:haiku" and "keep_model" not in launches[0], launches
+    expect(page.locator("#toast")).to_contain_text("Resumed booking the ferry (Haiku)")
+    flush_requests(page)
+    assert writes == [], writes

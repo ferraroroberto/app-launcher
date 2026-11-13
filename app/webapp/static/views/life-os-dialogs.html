@@ -49,9 +49,37 @@
             <span class="settings-row-label">Delete</span>
           </button>
         </div>
+        <div class="settings-group settings-group--nested lifeos-sheet-links" hidden>
+          <button data-track="life-os-convo.model" type="button" id="lifeOsConvoModelRow" class="settings-row" aria-haspopup="dialog">
+            <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-sliders-horizontal"></use></svg>
+            <span class="settings-row-label">Model</span>
+            <span id="lifeOsConvoModelValue" class="settings-row-value"></span>
+            <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
+          </button>
+        </div>
         <div class="detail-actions">
           <div id="lifeOsConvoToast" class="sheet-toast" role="status" aria-live="polite" hidden></div>
           <button data-track="life-os-convo.resume" type="button" id="lifeOsConvoSheetResume" class="button-primary detail-save-btn">Resume</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- The model for one resume: opened from the conversation sheet's Model
+         row, over it. A pick lives only while that sheet is open. Vendored
+         modal: header ✕, one full-width primary. life-os-convo-model.js
+         fills the list. -->
+    <dialog id="lifeOsConvoModelSheet" class="detail-dialog model-switch-sheet" data-track-view="sheet.life-os-convo-model" aria-labelledby="lifeOsConvoModelTitle">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2 id="lifeOsConvoModelTitle" class="lifeos-sheet-title" tabindex="-1" autofocus>Model for this resume</h2>
+          <button data-track="life-os-convo-model.close" type="button" id="lifeOsConvoModelClose" class="icon-button detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <p class="model-switch-note">Applies to this resume only; nothing is saved as a default. The whole conversation is read again on the model you pick.</p>
+        <div id="lifeOsConvoModelList" class="settings-group settings-group--nested" role="list"></div>
+        <div class="detail-actions">
+          <button data-track="life-os-convo-model.done" type="button" id="lifeOsConvoModelDone" class="button-primary detail-save-btn">Close</button>
         </div>
       </div>
     </dialog>

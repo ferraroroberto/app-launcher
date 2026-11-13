@@ -42,8 +42,13 @@ _LAUNCH_MODELS = {
 }
 
 
-def _resolve_launch_choice(body: Dict[str, Any]) -> tuple[str, str]:
+def _resolve_launch_choice(
+    body: Dict[str, Any], *, extra_claude: tuple[str, ...] = (),
+) -> tuple[str, str]:
     """Resolve the per-launch provider and model from the request body.
+
+    ``extra_claude`` names Claude ids a caller accepts beyond the catalog
+    (a conversation resume takes the legacy Haiku; a new launch does not).
 
     The tab sends an explicit ``model``, as the Board does. Older callers
     sent an ``opus`` bool (on → opus, off → sonnet); accept it as a
@@ -56,7 +61,8 @@ def _resolve_launch_choice(body: Dict[str, Any]) -> tuple[str, str]:
             agent, model = choice.split(":", 1)
         else:
             agent, model = "claude", choice
-        if agent not in _LAUNCH_MODELS or model not in _LAUNCH_MODELS[agent]:
+        offered = _LAUNCH_MODELS.get(agent, ()) + (extra_claude if agent == "claude" else ())
+        if model not in offered:
             raise HTTPException(
                 status_code=400,
                 detail=f"unsupported Life OS model choice: {choice!r}",
