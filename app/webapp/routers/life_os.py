@@ -53,6 +53,7 @@ from fastapi import APIRouter, HTTPException, Request
 from app.webapp.routers import (
     life_os_archived,
     life_os_channels,
+    life_os_conversation_model,
     life_os_conversations,
     life_os_files,
     life_os_relay,
@@ -82,6 +83,7 @@ from src.webapp_config import WebappConfig, update_webapp_config
 router = APIRouter()
 router.include_router(life_os_archived.router)
 router.include_router(life_os_channels.router)
+router.include_router(life_os_conversation_model.router)
 router.include_router(life_os_conversations.router)
 router.include_router(life_os_files.router)
 router.include_router(life_os_relay.router)

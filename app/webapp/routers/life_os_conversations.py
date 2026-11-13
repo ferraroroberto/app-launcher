@@ -469,20 +469,6 @@ def _read_conversation_index(path: Path) -> Optional[List[Dict[str, Any]]]:
     return [row for row in data if isinstance(row, dict) and row.get("file")]
 
 
-@router.get("/api/life-os/skills/{skill_id}/conversations/model")
-async def conversation_model(skill_id: str, request: Request, agent: str = "", sid: str = "") -> Dict[str, Any]:
-    """The model a stored conversation last ran on, for the sheet's Model row.
-
-    The index carries none, so the sheet asks before a resume names it. ``""``
-    is "not known" (no transcript, or an id that is not a canonical UUID):
-    the reader only builds a file name from a validated id.
-    """
-    _resolve_skill(request.app.state.webapp_config, skill_id)
-    known = agent if agent in ("claude", "codex") else ""
-    model = await asyncio.to_thread(recorded_model, known, sid) if known else ""
-    return {"agent": known, "model": model}
-
-
 @router.get("/api/life-os/skills/{skill_id}/conversations")
 async def list_skill_conversations(skill_id: str, request: Request) -> Dict[str, Any]:
     """One skill's digested conversation index (Tailscale + passkey, gated upstream).

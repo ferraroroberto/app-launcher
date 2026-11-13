@@ -276,25 +276,21 @@ def test_life_os_rename_refusal_says_why_and_resume_posts_the_session_id(
     }, launches
     expect(authed_page.locator("#lifeOsConvoSheet")).to_be_hidden()
     expect(authed_page.locator("#toast")).to_contain_text("Resumed booking the ferry (Opus)")
+    # The same sheet's Model row (one-resume model pick), over the same mocks.
+    _pick_a_model_for_one_resume(authed_page)
 
 
-@pytest.mark.iphone
-def test_life_os_sheet_model_row_overrides_one_resume_and_saves_nothing(
-    authed_page: Page, base_url: str
-) -> None:
-    """The sheet's Model row names the conversation's own model above Resume,
-    a pick sends that `model` with no `keep_model` for this resume only, and
-    closing the sheet puts the conversation's own model back: no settings
-    request is ever made."""
-    _mock_skills(authed_page)
-    _mock_conversations(authed_page)
-    authed_page.route(
+def _pick_a_model_for_one_resume(page: Page) -> None:
+    """The sheet's Model row names the conversation's own model directly above
+    Resume; a pick sends that `model` with no `keep_model` for this resume only,
+    closing the sheet puts the own model back, and no settings request is made."""
+    page.route(
         re.compile(r".*/api/life-os/skills/journal-daily/conversations/model\?.*"),
         lambda route: route.fulfill(
             status=200, content_type="application/json",
             body=_json.dumps({"agent": "claude", "model": "claude-opus-5-5"})))
     writes: list = []
-    authed_page.on("request", lambda req: writes.append(req.url) if (
+    page.on("request", lambda req: writes.append(req.url) if (
         req.method != "GET" and "/api/" in req.url and "/conversations" not in req.url) else None)
     launches: list = []
 
@@ -305,35 +301,30 @@ def test_life_os_sheet_model_row_overrides_one_resume_and_saves_nothing(
             "mode": "remote", "model": "haiku", "model_kept": None, "resume": True,
             "resume_sid": _RESUMABLE_SID, "session": {"session_id": "x", "kind": "remote"}}))
 
-    authed_page.route(
+    page.route(
         re.compile(r".*/api/life-os/skills/journal-daily/conversations/launch$"), _fulfill_launch)
-    _open_conversations(authed_page, base_url)
-    life_launch_switch(authed_page, "#lifeOsDetached")
-
-    sheet = _open_sheet(authed_page, 0)
+    sheet = _open_sheet(page, 0)
     row, value = sheet.locator("#lifeOsConvoModelRow"), sheet.locator("#lifeOsConvoModelValue")
     expect(value).to_have_text("Opus")
-    # Directly above Resume: the Model row's group is the one before the actions.
-    assert sheet.locator("#lifeOsConvoModelRow").evaluate(
+    assert row.evaluate(
         "el => el.closest('.settings-group').nextElementSibling.classList.contains('detail-actions')")
 
     row.click()
-    picks = authed_page.locator("#lifeOsConvoModelList .model-switch-pick")
+    picks = page.locator("#lifeOsConvoModelList .model-switch-pick")
     expect(picks.locator(".settings-row-label")).to_have_text(["Haiku", "Sonnet", "Opus", "Fable"])
     picks.filter(has_text="Haiku").click()
-    expect(authed_page.locator("#lifeOsConvoModelSheet")).to_be_hidden()
+    expect(page.locator("#lifeOsConvoModelSheet")).to_be_hidden()
     expect(value).to_have_text("Haiku · this resume")
 
-    # Closed and reopened: the conversation's own model again.
-    _close_sheet(authed_page)
-    _open_sheet(authed_page, 0)
+    _close_sheet(page)
+    _open_sheet(page, 0)
     expect(value).to_have_text("Opus")
 
     row.click()
     picks.filter(has_text="Haiku").click()
-    authed_page.locator("#lifeOsConvoSheetResume").click()
-    wait_until(authed_page, lambda: len(launches) == 1, "the resume POST")
+    page.locator("#lifeOsConvoSheetResume").click()
+    wait_until(page, lambda: len(launches) == 1, "the resume POST")
     assert launches[0]["model"] == "claude:haiku" and "keep_model" not in launches[0], launches
-    expect(authed_page.locator("#toast")).to_contain_text("Resumed booking the ferry (Haiku)")
-    flush_requests(authed_page)
+    expect(page.locator("#toast")).to_contain_text("Resumed booking the ferry (Haiku)")
+    flush_requests(page)
     assert writes == [], writes
