@@ -266,11 +266,11 @@ def _sheet_has_resume_primary_and_link_rows(page: Page, base_url: str) -> None:
     expect(resume).to_have_class(re.compile(r"\bbutton-primary\b"))
     expect(sheet.locator(".detail-actions button")).to_have_count(1)
     expect(sheet.locator(".settings-row:visible .settings-row-label")).to_have_text(
-        ["Read the conversation", "Rename", "Copy link", "Open raw", "Delete"])
+        ["Read the conversation", "Rename", "Copy link", "Open raw", "Delete", "Model"])
     expect(sheet.locator(".lifeos-convo-handoff")).to_be_hidden()
     delete = sheet.locator(".lifeos-convo-delete")
     expect(delete).to_have_class(re.compile(r"\blifeos-sheet-danger\b"))
-    # Delete is alone in the last box, after every other row.
+    # Delete is alone in the last link box; the Model row's own box then sits above Resume.
     expect(delete.locator("xpath=..")).to_have_class(re.compile(r"\blifeos-sheet-links\b"))
     expect(delete.locator("xpath=../button")).to_have_count(1)
 
