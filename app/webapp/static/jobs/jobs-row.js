@@ -145,6 +145,12 @@ export function jobChips(job) {
     c.title = job.coverage.detail || 'This schedule is not firing';
     out.push(c);
   }
+  // Its own state, not a failure: the job has not run, its script is gone.
+  if (job.script_missing) {
+    const c = chip('script missing', 'danger', 'job-script-missing-chip');
+    c.title = 'The script this job runs no longer exists at ' + (job.script_path || 'its saved path');
+    out.push(c);
+  }
   if (job.paused) out.push(chip('paused', 'neutral', 'job-paused-chip'));
   return out;
 }

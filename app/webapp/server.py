@@ -309,6 +309,14 @@ def _coverage_interval_minutes(cfg: object) -> float:
         return 0.0
 
 
+def _publish_script_missing(cfg: object) -> None:
+    """Tell the chief about any job whose script moved (once per job per day)."""
+    from src.chief import script_missing
+    from src.jobs.config import load_jobs
+
+    script_missing.observe(cfg, load_jobs().jobs)
+
+
 async def _coverage_cycle(cfg: object) -> None:
     """One sweep: stranded-run reap then missed-fire coverage.
 
@@ -334,6 +342,7 @@ async def _coverage_cycle(cfg: object) -> None:
             len(reaped),
             ", ".join(reaped),
         )
+    await asyncio.to_thread(_publish_script_missing, cfg)
     alerted = await asyncio.to_thread(jobs_coverage.check_and_alert, cfg)
     if alerted:
         _log.warning(
