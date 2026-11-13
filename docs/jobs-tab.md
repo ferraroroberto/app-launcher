@@ -333,6 +333,7 @@ A job can declare typed inputs collected at run-time. With no `params`, **Run no
 
 Submitting the dialog with `since = 2026-06-01`, `tier = mid`, `verbose = true` runs:
 
+<!-- bare-command-exempt: the argv the executor composes for another project's job script, which that project's own interpreter runs -->
 ```
 python scrape_comments.py --since 2026-06-01 --tier mid --verbose
 ```

@@ -13,7 +13,7 @@ app-launcher/
 │   └── webapp/
 │       ├── server.py          # FastAPI routes + Tailscale gating + WS proxy
 │       ├── manager.py         # adopt-or-spawn webapp lifecycle
-│       ├── serve.py           # the one launch entry: hypercorn, HTTP/2 over TLS, selector loop; uvicorn fallback
+│       ├── serve.py           # the one launch entry: hypercorn, HTTP/2 over TLS, selector loop, uvicorn as the fallback
 │       ├── shell_html.py      # splices static/views/*.html into index.html where its include markers sit
 │       ├── static_trim.py     # strips comments from the JS modules the static mount serves
 │       ├── demand_cache.py    # a slow read kept in memory and rebuilt in the background while it is polled (/api/version, the channel list)
