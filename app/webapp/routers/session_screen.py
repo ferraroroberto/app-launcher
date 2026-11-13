@@ -733,6 +733,12 @@ async def _switch_claude(
                     await _type_switch(cfg, sid, confirm, "claude")
                     answered = True
         await asyncio.sleep(_MODEL_POLL_S)
+    if not picked:
+        # The picker never opened: don't leave the typed command in the prompt.
+        _r, _s, lines = await _read_screen(cfg, sid)
+        clear = model_switch.stray_input_keys(lines or [])
+        if clear:
+            await _type_switch(cfg, sid, clear, "claude")
     detail = (f"Claude didn't report the switch to {label}: check the terminal" if picked
               else "Claude's model picker never opened: check the terminal")
     return "unconfirmed", answered, detail

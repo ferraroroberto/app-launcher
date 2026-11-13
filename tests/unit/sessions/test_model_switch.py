@@ -42,6 +42,49 @@ PICKER = [
     "  Enter to set as default · s to use this session only · Esc to cancel",
 ]
 
+# The picker as Claude Code 2.1.325 paints it on a 56-column phone terminal,
+# captured from a throwaway session: the footer wraps, so "s to use this
+# session only" is split across two lines.
+PICKER_NARROW = [
+    "❯ /model",
+    "▔" * 56,
+    "   Select model",
+    "   Switch between Claude models. Your pick becomes",
+    "   the default for new sessions. For other/previous",
+    "   model names, specify with --model.",
+    "   ❯ 1.  Default (recommended) ✔  Opus 5.5 · Best for",
+    "                                  everyday, complex",
+    "                                  tasks",
+    "     2.  Opus 5.5                 For complex work",
+    "                                  and everyday tasks",
+    "     3.  Fable 5.2                For your toughest",
+    "                                  challenges",
+    "     4.  Sonnet 5.5               Most efficient for",
+    "                                  simpler tasks",
+    "     5.  Haiku 5.5                Fastest for quick",
+    "                                  answers",
+    "     ▸   More models",
+    "   ◐ Medium effort (default) ←/→ to adjust",
+    "   Enter to set as default · s to use this session",
+    "   only · Esc to cancel",
+]
+
+# The same picker at full width in 2.1.325: rows carry the short family name.
+PICKER_WIDE = [
+    "❯ /model",
+    "─" * 60,
+    "  Select model",
+    "  Switch between Claude models. Your pick becomes the default for new sessions. For other/previous model names,",
+    "  specify with --model.",
+    "  ❯ 1. Default (recommended) ✔  Opus 5.5 · Best for everyday, complex tasks",
+    "    2. Opus                     Opus 5.5 · Best for everyday, complex tasks",
+    "    3. Fable                    Fable 5.2 · Most capable for your hardest and longest-running tasks",
+    "    4. Sonnet                   Sonnet 5.5 · Efficient for routine tasks",
+    "    5. Haiku                    Haiku 5.5 · Fastest for quick answers",
+    "  ◐ Medium effort (default) ←/→ to adjust",
+    "  Enter to set as default · s to use this session only · Esc to cancel",
+]
+
 # The same terminal once the switch went in: the dialog is gone.
 AFTER = [
     "❯ /model",
@@ -161,3 +204,34 @@ def test_a_model_the_picker_does_not_list_is_refused():
 ])
 def test_the_transcript_line_a_switch_writes_names_the_model(content, model_id):
     assert ms.set_model_id(content) == model_id
+
+
+def test_a_picker_footer_wrapped_on_a_phone_terminal_still_offers_the_session_only_key():
+    assert ms.picker_keys(PICKER_NARROW, "Haiku") == [(DOWN, False)] * 4 + [("s", False)]
+    assert ms.picker_keys(PICKER_NARROW, "Opus") == [(DOWN, False), ("s", False)]
+
+
+def test_the_wide_picker_with_short_row_names_is_read():
+    assert ms.picker_keys(PICKER_WIDE, "Sonnet") == [(DOWN, False)] * 3 + [("s", False)]
+    assert ms.picker_keys(PICKER_WIDE, "Fable") == [(DOWN, False)] * 2 + [("s", False)]
+
+
+def test_a_footer_wrapped_but_not_fully_painted_is_not_yet_decided():
+    assert ms.picker_keys(PICKER_NARROW[:-1], "Opus") is None
+
+
+def test_a_wrapped_footer_without_the_session_only_key_is_still_refused():
+    old = PICKER_NARROW[:-2] + ["   Enter to set as default ·", "   Esc to cancel"]
+    with pytest.raises(ms.SwitchRefused, match="default is unchanged"):
+        ms.picker_keys(old, "Opus")
+
+
+def test_a_command_left_typed_in_the_prompt_is_cleared():
+    slash_menu = ["❯ /model", "─" * 30, "  ❯ /model        Set the AI model for Claude Code"]
+    assert ms.stray_input_keys(slash_menu) == [(ms.ESCAPE, False), (ms.CLEAR_LINE, False)]
+
+
+def test_an_empty_prompt_or_the_owners_own_text_is_left_alone():
+    assert ms.stray_input_keys(AFTER) is None
+    assert ms.stray_input_keys(["❯ fix the failing test"]) is None
+    assert ms.stray_input_keys([]) is None
