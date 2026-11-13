@@ -35,6 +35,16 @@ CLAUDE_MODEL_SPECS: Dict[str, Dict[str, Any]] = {
 # the legacy tuple it belongs to (``webapp_config.LEGACY_CLAUDE_MODELS``).
 LEGACY_CLAUDE_DEFAULT_EFFORTS: Dict[str, str] = {"haiku": "medium"}
 
+# The legacy Haiku's display name. It is not in ``CLAUDE_MODEL_SPECS`` (the
+# Settings dropdowns never offer it) but a resume and an in-session switch
+# both can run on it, so those two read ``CLAUDE_SESSION_MODEL_SPECS``.
+LEGACY_CLAUDE_MODEL_SPECS: Dict[str, Dict[str, Any]] = {
+    "haiku": {"label": "Haiku", "available": True},
+}
+CLAUDE_SESSION_MODEL_SPECS: Dict[str, Dict[str, Any]] = {
+    **LEGACY_CLAUDE_MODEL_SPECS, **CLAUDE_MODEL_SPECS,
+}
+
 # Ids from ``codex debug models`` (CLI 0.164.0). Luna 6.0 replaced Luna 5.6;
 # ``RENAMED_CODEX_MODELS`` below carries a saved id over.
 CODEX_MODEL_SPECS: Dict[str, Dict[str, Any]] = {

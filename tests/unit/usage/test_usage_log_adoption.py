@@ -138,6 +138,7 @@ class TestMarkup:
         forwarded = {"opts.track", "track"}
         builders = {
             "apps.js", "chief-plan.js", "drawer.js", "proof-chip.js", "changes-overlay.js", "ask-option.js",
+            "model-choices.js",
         }
         setter = re.compile(
             r"""(?:dataset\.track\s*=\s*|setAttribute\(\s*['"]data-track['"]\s*,\s*)([^;)]+)"""

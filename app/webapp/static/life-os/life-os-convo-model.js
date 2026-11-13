@@ -11,10 +11,8 @@
 
 import { els, state } from '../state.js';
 import { jsonApi } from '../api.js';
-import { icon } from '../_vendored/icons/icons.js';
+import { modelChoices, modelPickRow } from '../shared/model-choices.js';
 
-// The legacy Haiku has no catalog row; a conversation resume still offers it.
-const HAIKU = { value: 'haiku', label: 'Haiku', available: true };
 const AGENTS = ['claude', 'codex'];
 
 // What the sheet last showed: { row, own, pick } while a conversation is
@@ -28,19 +26,6 @@ function ownValue(agent, raw) {
   if (agent !== 'claude') return agent + ':' + raw;
   const family = /^claude-([a-z]+)/.exec(raw);
   return family ? 'claude:' + family[1] : '';
-}
-
-// The models a resume can run on for this conversation's harness, in the
-// order they read: available ones the owner has not hidden in Settings, plus
-// the conversation's own even if hidden.
-export function modelChoices(agent, config, own) {
-  const catalog = ((config || {}).model_catalog || {})[agent] || [];
-  const hidden = new Set(((config || {}).hidden_models || []).map(String));
-  const items = (agent === 'claude' ? [HAIKU] : []).concat(catalog);
-  return items.filter(function (m) {
-    const value = agent + ':' + m.value;
-    return m.available !== false && (value === own || !hidden.has(value));
-  }).map(function (m) { return { value: agent + ':' + m.value, label: m.label }; });
 }
 
 function ownLabel(row, own) {
@@ -105,39 +90,6 @@ export function resumeModelFields(row) {
   return mine && mine.pick ? { model: mine.pick.value } : { keep_model: true };
 }
 
-function pickRow(choice, own, current) {
-  const btn = document.createElement('button');
-  btn.dataset.track = 'life-os-convo.model-pick';
-  btn.type = 'button';
-  btn.className = 'settings-row model-switch-pick';
-  btn.setAttribute('role', 'listitem');
-  const label = document.createElement('span');
-  label.className = 'settings-row-label';
-  label.textContent = choice.label;
-  btn.appendChild(label);
-  if (choice.value === own) {
-    const note = document.createElement('span');
-    note.className = 'settings-row-value';
-    note.textContent = 'Its own';
-    btn.appendChild(note);
-  }
-  if (choice.value === current) {
-    btn.setAttribute('aria-current', 'true');
-    const mark = document.createElement('span');
-    mark.className = 'model-switch-current';
-    mark.innerHTML = icon('circle-check');
-    btn.appendChild(mark);
-  }
-  btn.addEventListener('click', function () {
-    if (shown) {
-      shown.pick = choice.value === own ? null : choice;
-      paintRow();
-    }
-    els.lifeOsConvoModelSheet.close();
-  });
-  return btn;
-}
-
 function openPicker() {
   const sheet = els.lifeOsConvoModelSheet;
   if (!sheet || !shown || !offered(shown.row)) return;
@@ -146,7 +98,18 @@ function openPicker() {
   els.lifeOsConvoModelList.replaceChildren.apply(
     els.lifeOsConvoModelList,
     modelChoices(shown.row.agent, state.config, own).map(function (c) {
-      return pickRow(c, own, current);
+      return modelPickRow(c, {
+        own: own,
+        current: current,
+        track: 'life-os-convo.model-pick',
+        onPick: function (choice) {
+          if (shown) {
+            shown.pick = choice.value === own ? null : choice;
+            paintRow();
+          }
+          sheet.close();
+        },
+      });
     }),
   );
   if (!sheet.open) sheet.showModal();

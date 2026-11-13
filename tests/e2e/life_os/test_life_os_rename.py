@@ -313,6 +313,10 @@ def _pick_a_model_for_one_resume(page: Page) -> None:
     row.click()
     picks = page.locator("#lifeOsConvoModelList .model-switch-pick")
     expect(picks.locator(".settings-row-label")).to_have_text(["Haiku", "Sonnet", "Opus", "Fable"])
+    # Marked like the chat's Switch model sheet: "Its own" and the check.
+    own = picks.filter(has_text="Opus")
+    expect(own.locator(".settings-row-value")).to_have_text("Its own")
+    expect(own).to_have_attribute("aria-current", "true")
     picks.filter(has_text="Haiku").click()
     expect(page.locator("#lifeOsConvoModelSheet")).to_be_hidden()
     expect(value).to_have_text("Haiku · this resume")
