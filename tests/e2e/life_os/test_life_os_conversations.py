@@ -224,8 +224,8 @@ def _conversation_controls_are_full_targets(page: Page) -> None:
     sheet = _open_sheet(page, 0)
     assert_min_target(page.locator("#lifeOsConvoSheetClose"))
     links = sheet.locator(".settings-row:visible")
-    expect(links).to_have_count(5)   # Read, Rename, Copy link, Open raw, Delete
-    for i in range(5):
+    expect(links).to_have_count(6)   # Read, Rename, Copy link, Open raw, Delete, Model
+    for i in range(6):
         assert_min_target(links.nth(i))
     assert_min_target(page.locator("#lifeOsConvoSheetResume"))
     _close_sheet(page)
