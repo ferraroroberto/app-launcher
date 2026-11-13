@@ -534,9 +534,12 @@ async def refresh_github(request: Request) -> Dict[str, Any]:
     The owner-check list (two ``gh`` calls per repo) and the CI sweep (one
     per repo with a workflow, then the chief's ci-failed events) refresh
     beside it in background threads, so the ↻ never waits on them; the poll
-    shows them landing.
+    shows them landing. a body of ``{"auto": true}`` is the open Board's timer: the cache comes back
+    untouched if it was just filled, so aging tabs cost one set of searches.
     """
     cfg: WebappConfig = request.app.state.webapp_config
+    if (await maybe_json(request)).get("auto") and github_client.recently_filled():
+        return _github_section(github_client.snapshot())
     owner_checks.start_refresh(cfg.fleet_config_dir, cfg.github_owner)
     ci_runs.start_refresh(
         cfg.github_owner, cfg.fleet_config_dir, cfg.projects_dir,
