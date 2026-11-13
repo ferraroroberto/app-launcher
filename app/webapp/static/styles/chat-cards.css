@@ -90,8 +90,8 @@
 }
 .tr-step-chevron {
   flex: none;
-  width: 16px;
-  height: 16px;
+  width: var(--icon-inline);
+  height: var(--icon-inline);
   transition: transform 0.15s ease;
 }
 .tr-step[open] > .tr-step-line .tr-step-chevron { transform: rotate(90deg); }

@@ -78,8 +78,8 @@ export function renderModelChip(session) {
   const mine = pending && pending.sid === sid ? pending : null;
   (els.terminalModelLabel || chip).textContent = model;
   chip.hidden = !model;
-  if (mine) chip.dataset.state = mine.phase;
-  else delete chip.dataset.state;
+  if (mine) chip.dataset.switch = mine.phase;
+  else delete chip.dataset.switch;
   chip.setAttribute('aria-busy', String(!!mine && mine.phase === 'switching'));
   if (!model) {
     chip.removeAttribute('title');

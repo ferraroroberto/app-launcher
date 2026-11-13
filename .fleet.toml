@@ -49,7 +49,7 @@ nav = { src = "app/webapp/static/_vendored/nav", sha = "520a1575732c52f2b6ea4025
 select-native = { src = "app/webapp/static/_vendored/select-native", sha = "8d8a5e05c9dcc552431104deb5acaa72b3089adc", dest = "app/webapp/static/_vendored/select-native" }
 empty-state = { src = "app/webapp/static/_vendored/empty-state", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/empty-state" }
 modal = { src = "app/webapp/static/_vendored/modal", sha = "9d0fd2777fbae78aaffa7a0e53f62a201db5af79", dest = "app/webapp/static/_vendored/modal" }
-sign-in = { src = "app/webapp/static/_vendored/sign-in", sha = "8d8a5e05c9dcc552431104deb5acaa72b3089adc", dest = "app/webapp/static/_vendored/sign-in" }
+sign-in = { src = "app/webapp/static/_vendored/sign-in", sha = "2564e67904b9dc6e397f19cb0cc3634f33cc7d59", dest = "app/webapp/static/_vendored/sign-in" }
 text-size = { src = "app/webapp/static/_vendored/text-size", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/text-size" }
 segmented = { src = "app/webapp/static/_vendored/segmented", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/segmented" }
 base = { src = "app/webapp/static/_vendored/base", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "app/webapp/static/_vendored/base" }
@@ -1123,6 +1123,16 @@ target = "app/webapp/static/views/coding-dialogs.html"
 detail = "editor-modal(s) with no max-height + internal scroll — a tall form jumps as conditional rows toggle (design.md modal: top-anchored on mobile): app/webapp/static/views/coding-dialogs.html:4"
 reason = "#screenView is the full-viewport Screen viewer (inset 0, 100dvh), not an editor modal: its one field is the hidden key-capture input, so no conditional rows can make it jump"
 record = "https://github.com/ferraroroberto/app-launcher/issues/1634"
+
+# design-lint contract finding (/design-sync, #2349) examined and accepted: the Inspiration
+# sheet is a Settings sub-sheet whose header already carries the back chevron and the
+# square x close; its three Cancel buttons belong to the inline add-source forms in the body.
+[[design.accepted]]
+check  = "modal-header"
+target = "app/webapp/static/views/inspiration-sheet.html"
+detail = "editor-modal header contract violated (design.md modal wants a heading-lg title + square x close, never a footer Cancel): app/webapp/static/views/inspiration-sheet.html:4 footer Cancel button in its place"
+reason = "the sheet's header carries the square x close; the Cancel buttons are inline add-source form controls in the body, not a footer standing in for the close"
+record = "https://github.com/ferraroroberto/app-launcher/issues/2349"
 
 # Declared state machines: the state rules never report a module listed here.
 [[state_machines]]

@@ -159,7 +159,7 @@
 .perf-nums { gap: 0 12px; }
 .perf-num.is-over { color: var(--danger-text); font-weight: 600; }
 .perf-spark { width: 60px; height: 16px; flex: none; color: var(--accent-text); }
-.perf-row[data-state="over"] .perf-spark { color: var(--danger-text); }
+.perf-row[data-over] .perf-spark { color: var(--danger-text); }
 /* The reference pill: a link to something openable, on the chip geometry. */
 .perf-issues {
   display: inline-flex;

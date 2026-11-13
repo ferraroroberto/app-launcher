@@ -128,9 +128,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.terminal-model[data-state="switching"] { cursor: progress; }
-.terminal-model[data-state="switching"] .terminal-model-label { opacity: 0.6; }
-.terminal-model[data-state="unconfirmed"] .terminal-model-label {
+.terminal-model[data-switch="switching"] { cursor: progress; }
+.terminal-model[data-switch="switching"] .terminal-model-label { opacity: 0.6; }
+.terminal-model[data-switch="unconfirmed"] .terminal-model-label {
   box-shadow: inset 0 0 0 1px var(--attention);
 }
 /* Model picker sheet: the agent's note under the header, then the list. The

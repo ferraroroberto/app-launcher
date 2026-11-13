@@ -152,7 +152,7 @@ def test_the_card_lists_measured_apps_against_budget_and_the_rest_with_reasons(
     expect(authed_page.locator("#perfMeasured li.perf-row")).to_have_count(3)
 
     good = _row(authed_page, "good-tray")
-    expect(good).to_have_attribute("data-state", "pass")
+    expect(good).not_to_have_attribute("data-over", "true")
     expect(good).to_contain_text("Within budget")
     expect(good).to_contain_text("cold 1.8 s / 2.5 s")
     expect(good).to_contain_text("warm 600 ms / 1.5 s")
@@ -162,7 +162,7 @@ def test_the_card_lists_measured_apps_against_budget_and_the_rest_with_reasons(
     expect(good.locator("a.perf-issues")).to_have_count(0)
 
     slow = _row(authed_page, "slow-web")
-    expect(slow).to_have_attribute("data-state", "over")
+    expect(slow).to_have_attribute("data-over", "true")
     expect(slow.locator(".chip")).to_have_text("Over budget")
     expect(slow).to_contain_text("cold ready")
     expect(slow.locator(".perf-num.is-over")).to_have_text("cold 3.1 s / 2.5 s")

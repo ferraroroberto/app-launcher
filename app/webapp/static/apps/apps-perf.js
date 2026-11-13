@@ -143,7 +143,7 @@ function measuredRow(item) {
   const failedIds = entry.fails || [];
   const li = node('li', 'perf-row');
   li.dataset.id = item.id;
-  li.dataset.state = over ? 'over' : 'pass';
+  if (over) li.dataset.over = 'true';
   const text = node('div', 'perf-row-text');
   text.appendChild(node('span', 'perf-name', item.name));
 
