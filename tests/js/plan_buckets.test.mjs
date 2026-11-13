@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 
-const { bucketIndex, bucketCounts, groupPlanRows, issueKey, bucketName, CLOSED, NOT_AN_ISSUE } =
+const { bucketIndex, bucketCounts, groupPlanRows, issueKey, bucketName, CLOSED, NOT_AN_ISSUE, NOT_LOADED } =
   await import('../../app/webapp/static/board/plan-buckets.js');
 
 const card = (repo, number, bucket) => ({ repo, number, bucket });
@@ -58,5 +58,18 @@ assert.equal(n(CLOSED), 1);
 assert.equal(n(NOT_AN_ISSUE), 1);
 assert.equal(bucketName('blocked'), 'Blocked');
 assert.equal(bucketName(CLOSED), 'Closed');
+
+// An issue the Backlog does not hold is closed only when the plan says so:
+// a queued row for an issue the cache has not seen yet is not loaded, never closed.
+const missing = groupPlanRows([
+  { repo: 'app-launcher', ref: '#500', status: 'queued' },
+  { repo: 'app-launcher', ref: '#501', status: 'building' },
+  { repo: 'app-launcher', ref: '#502', status: 'merged' },
+  { repo: 'app-launcher', ref: '#503', status: 'closed' },
+  { repo: 'app-launcher', ref: '#504', status: 'Merged ' },
+], index);
+assert.deepEqual((missing[NOT_LOADED] || []).map((r) => r.ref), ['#500', '#501']);
+assert.deepEqual((missing[CLOSED] || []).map((r) => r.ref), ['#502', '#503', '#504']);
+assert.equal(bucketName(NOT_LOADED), 'Not loaded yet');
 
 console.log('OK');
