@@ -275,19 +275,6 @@
     user-select: none;
     -webkit-touch-callout: none;
   }
-  /* One frame, set by nav-tabs.js each time the installed app's viewport
-     settles (launch, return to the foreground). Dropping the filter makes iOS
-     rebuild the glass layer at its final bounds. Dropping the promotions (bar,
-     labels, badges) makes WebKit paint those layers' contents again: a
-     promoted layer keeps its bitmap across a filter toggle, so a raster taken
-     while the viewport was still growing would otherwise stay soft. */
-  .tabs.glass-rebuild {
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-    transform: none;
-    will-change: auto;
-  }
-  .tabs.glass-rebuild :is(.tab-label, .tab-badge) { transform: none; }
   /* Hit area only, never painted: the rounded corners would otherwise let a
      row scrolled under the bar take taps in the outer tabs' corner slivers. */
   .tabs::before {
@@ -331,7 +318,8 @@
      nav-tabs.js raises from 0 at scroll-top to 1 over the first band of
      scroll. At scroll-top the layer is not generated at all (no
      data-nav-top-glass on <html>), so at rest the first row sits right under
-     the status bar, undimmed. The installed app draws this glass on the
+     the status bar, undimmed. A browser tab has no system top-edge blur, so
+     no strip is needed there. The installed app draws this glass on the
      .nav-top-edge strip instead (the standalone block below). The page head
      (black-translucent, viewport-fit=auto, theme-color in the page colour)
      is part of the same recipe. */
