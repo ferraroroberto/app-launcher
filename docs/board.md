@@ -445,9 +445,9 @@ The cache is refreshed **only** by:
 
 - the manual **↻** button,
 - **tab activation** when the cache is stale — never fetched, or `fetched_at` older than `GH_STALE_MS` (2 minutes), or
-- a **poll that finds it never fetched** — a Board left open while the webapp restarts heals itself on the next 5 s poll instead of waiting for ↻. At most once per `GH_STALE_MS`, so a refresh that fails before recording its error can't loop.
+- the Board's **own timer**: from a visible, foreground page on the Board tab, a poll refreshes a cache that was never filled or whose `fetched_at` is older than 5 minutes (`GH_AUTO_REFRESH_AGE_MS`, gate in `board/github-refresh.js`), and a page coming back to the foreground checks at once. A hidden or backgrounded page never refreshes. At most one attempt per age, so a failing `gh` can't loop: the failure stays quiet (the Backlog footer keeps showing the cache's age, no toast), and the next try waits out the age. The call carries `{"auto": true}` in its body, so the server returns the cache untouched when it was filled in the last 60 seconds and two tabs aging out together cost one set of searches.
 
-A poll of an already-fetched cache never runs `gh` (it only reads the snapshot), and an **errored** cache is never auto-retried — that would hammer a broken `gh`, so ↻ stays manual. This mirrors the Coding tab's ⎇ git-status on-demand contract.
+A poll of a fresh cache never runs `gh` (it only reads the snapshot). This mirrors the Coding tab's ⎇ git-status on-demand contract.
 
 ## Security boundary
 
