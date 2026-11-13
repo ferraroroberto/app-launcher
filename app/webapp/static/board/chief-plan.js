@@ -14,7 +14,7 @@ import { answeredKeys, itemKey } from './chief-keys.js';
 import { boardRepoFilter, isChiefCard, matchesRepoFilter } from './board-dispatch.js';
 import { DESKTOP_BOARD, renderBoard, setLaneException } from '../board.js';
 import { clearMergedButton, mergedCount } from './plan-prune.js';
-import { CLOSED, bucketIndex, bucketName, groupPlanRows } from './plan-buckets.js';
+import { CLOSED, NOT_LOADED, bucketIndex, bucketName, groupPlanRows } from './plan-buckets.js';
 
 // The fleet chief records its lanes, its queue and what waits on Roberto in a
 // plan file (format v1, fleet-config's `chief_ops.py plan`); the server reads
@@ -133,7 +133,7 @@ function bucketedQueue(planned, index, filter) {
       note: 'Only what the chief has scheduled; the Backlog counts every open issue.',
     }));
   }
-  const known = ['queued', 'in_progress', 'waiting', 'blocked', 'umbrella', CLOSED];
+  const known = ['queued', 'in_progress', 'waiting', 'blocked', 'umbrella', NOT_LOADED, CLOSED];
   const other = [];
   Object.keys(groups).forEach(function (key) {
     if (known.indexOf(key) === -1) other.push.apply(other, groups[key]);
@@ -145,6 +145,7 @@ function bucketedQueue(planned, index, filter) {
       cls: 'board-plan-parked', setAside: true }),
     planBucketGroup({ bucket: 'umbrella', track: 'board.plan-umbrella-fold', rows: rows('umbrella'),
       cls: 'board-plan-parked', setAside: true }),
+    planBucketGroup({ bucket: NOT_LOADED, track: 'board.plan-not-loaded-fold', rows: rows(NOT_LOADED) }),
     planBucketGroup({ bucket: 'other', track: 'board.plan-other-fold', rows: other, setAside: true }),
     planBucketGroup({ bucket: CLOSED, track: 'board.plan-closed-fold', rows: rows(CLOSED), setAside: true }),
   ].forEach(function (node) { if (node) nodes.push(node); });

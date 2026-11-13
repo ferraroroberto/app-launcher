@@ -23,14 +23,18 @@ export const BUCKETS = [
   { key: 'dormant', heading: 'Dormant', folded: true },
 ];
 
-// A plan row whose issue is not open on the Backlog (merged, closed), and one
-// that names no issue at all.
+// A plan row whose issue is not open on the Backlog and whose own status says
+// merged or closed; a row the Backlog does not hold with any other status is
+// NOT_LOADED (a new issue, a stale or truncated cache: not known to be closed);
+// and a row that names no issue at all.
 export const CLOSED = 'closed';
+export const NOT_LOADED = 'not_loaded';
 export const NOT_AN_ISSUE = 'not_an_issue';
 
 const NAMES = {};
 BUCKETS.forEach(function (b) { NAMES[b.key] = b.heading; });
 NAMES[CLOSED] = 'Closed';
+NAMES[NOT_LOADED] = 'Not loaded yet';
 NAMES[NOT_AN_ISSUE] = 'Not an issue';
 // The plan card's catch-all for a row no named group takes.
 NAMES.other = 'Other';
@@ -76,10 +80,18 @@ export function bucketCounts(cards) {
   return { counts: counts, total: total };
 }
 
+const CLOSED_STATUSES = ['merged', 'closed'];
+
+function missingBucket(row) {
+  const status = String(row.status || '').trim().toLowerCase();
+  return CLOSED_STATUSES.indexOf(status) !== -1 ? CLOSED : NOT_LOADED;
+}
+
 // The plan's queue rows grouped by their issue's bucket, one row per issue
 // (the server places an issue by its first row, so a repeat row is dropped):
-// `{bucket: [row, ...]}`, with CLOSED for an issue the Backlog does not hold
-// and NOT_AN_ISSUE for a row that names none.
+// `{bucket: [row, ...]}`. An issue the Backlog does not hold is CLOSED only
+// when the row's status is merged/closed, else NOT_LOADED; NOT_AN_ISSUE is a
+// row that names none.
 export function groupPlanRows(rows, index) {
   const groups = {};
   const seen = {};
@@ -87,7 +99,7 @@ export function groupPlanRows(rows, index) {
     const key = issueKey(row.repo, row.ref);
     if (key && seen[key]) return;
     if (key) seen[key] = true;
-    const bucket = !key ? NOT_AN_ISSUE : (index[key] || CLOSED);
+    const bucket = !key ? NOT_AN_ISSUE : (index[key] || missingBucket(row));
     (groups[bucket] = groups[bucket] || []).push(row);
   });
   return groups;
