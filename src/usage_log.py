@@ -94,6 +94,9 @@ resolves in any tree. Stdlib-only at import; FastAPI is imported only inside
 # the handlers' annotations at runtime, and ``Request`` is imported inside
 # ``usage_router`` (FastAPI stays optional at import), so a stringified
 # ``request: Request`` would not resolve and the route would answer 422.
+# Python 3.9 stays supported (adopters promise it): ``Optional[X]`` not ``X | None``,
+# ``timezone.utc`` not ``datetime.UTC``, no ``zip(strict=)``;
+# ``tests/usage_log/test_usage_log_py39.py`` enforces it.
 import json
 import logging
 import re
@@ -101,11 +104,11 @@ import sqlite3
 from collections import defaultdict
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, time, timedelta, tzinfo
+from datetime import date, datetime, time, timedelta, timezone, tzinfo
 from itertools import groupby
 from operator import itemgetter
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, Optional
 
 if TYPE_CHECKING:
     from fastapi import APIRouter
@@ -180,8 +183,8 @@ class Event:
     """One validated row, ready to insert."""
 
     kind: str
-    view_id: str | None
-    control_id: str | None
+    view_id: Optional[str]
+    control_id: Optional[str]
 
 
 @dataclass
@@ -197,14 +200,14 @@ class Batch:
 
 def format_ts(moment: datetime) -> str:
     """UTC timestamp in the one stored format (lexically sortable)."""
-    return moment.astimezone(UTC).strftime(_TS_FORMAT)
+    return moment.astimezone(timezone.utc).strftime(_TS_FORMAT)
 
 
 def _valid_id(value: object) -> bool:
     return isinstance(value, str) and ID_PATTERN.fullmatch(value) is not None
 
 
-def validate_event(raw: object) -> Event | None:
+def validate_event(raw: object) -> Optional[Event]:
     """One client event → a storable :class:`Event`, or ``None`` to drop it.
 
     Dropped: a ``kind`` outside :data:`EVENT_KINDS`; a ``view``, ``tap`` or
@@ -300,7 +303,7 @@ class UsageLog:
                 conn.execute(f"ALTER TABLE events ADD COLUMN {name} {kind}")
         return conn
 
-    def record(self, batch: Batch, *, now: datetime | None = None) -> int:
+    def record(self, batch: Batch, *, now: Optional[datetime] = None) -> int:
         """Insert a validated batch, then prune; returns rows inserted.
 
         Raises ``sqlite3.Error`` (locked, full, unwritable) — the router turns
@@ -309,7 +312,7 @@ class UsageLog:
         return self.insert_rows(
             (
                 (
-                    format_ts(now or datetime.now(UTC)),
+                    format_ts(now or datetime.now(timezone.utc)),
                     batch.session_id,
                     e.kind,
                     e.view_id,
@@ -324,9 +327,9 @@ class UsageLog:
 
     def insert_rows(
         self,
-        rows: Iterable[tuple[str, str, str, str | None, str | None, str, str]],
+        rows: Iterable[tuple[str, str, str, Optional[str], Optional[str], str, str]],
         *,
-        now: datetime | None = None,
+        now: Optional[datetime] = None,
     ) -> int:
         """Insert raw ``(ts, session_id, kind, view_id, control_id, device,
         os)`` rows and apply retention. Callers outside :meth:`record` are
@@ -340,7 +343,7 @@ class UsageLog:
                     list(rows),
                 )
                 inserted = cur.rowcount
-                self._prune(conn, now or datetime.now(UTC))
+                self._prune(conn, now or datetime.now(timezone.utc))
             return inserted
         finally:
             conn.close()
@@ -353,14 +356,6 @@ class UsageLog:
             " SELECT id FROM events ORDER BY id DESC LIMIT 1 OFFSET ?)",
             (self.max_rows,),
         )
-
-    def summary(self, days: int, *, now: datetime | None = None) -> dict[str, Any]:
-        """Aggregate the last ``days`` days (see :func:`summarize`)."""
-        conn = self._connect()
-        try:
-            return summarize(conn, days, now=now)
-        finally:
-            conn.close()
 
 
 def open_read_only(db_path: Path) -> sqlite3.Connection:
@@ -380,14 +375,14 @@ def _counts(conn: sqlite3.Connection, sql: str, params: Sequence[object]) -> dic
 
 
 def summarize(
-    conn: sqlite3.Connection, days: int, *, now: datetime | None = None
+    conn: sqlite3.Connection, days: int, *, now: Optional[datetime] = None
 ) -> dict[str, Any]:
     """Per-view visits, per-control taps, device/OS split by session, totals,
     and for a public site its referrers, countries and visitors.
 
     Session ids are counted, never returned.
     """
-    end = now or datetime.now(UTC)
+    end = now or datetime.now(timezone.utc)
     since = format_ts(end - timedelta(days=days))
     where = "FROM events WHERE ts >= ?"
     params = (since,)
@@ -487,21 +482,21 @@ class _Slice:
 
 
 def _parse_ts(value: str) -> datetime:
-    return datetime.strptime(value, _TS_FORMAT).replace(tzinfo=UTC)
+    return datetime.strptime(value, _TS_FORMAT).replace(tzinfo=timezone.utc)
 
 
-def _local_date(moment: datetime, tz: tzinfo | None) -> date:
+def _local_date(moment: datetime, tz: Optional[tzinfo]) -> date:
     return moment.astimezone(tz).date()
 
 
-def _local_midnight(day: date, tz: tzinfo | None) -> datetime:
+def _local_midnight(day: date, tz: Optional[tzinfo]) -> datetime:
     # tz=None builds a naive local time, which astimezone() reads with the
     # host's own DST rules for that date.
-    return datetime.combine(day, time(), tzinfo=tz).astimezone(UTC)
+    return datetime.combine(day, time(), tzinfo=tz).astimezone(timezone.utc)
 
 
 def local_window(
-    days: int, tz: tzinfo | None = None, *, now: datetime | None = None
+    days: int, tz: Optional[tzinfo] = None, *, now: Optional[datetime] = None
 ) -> tuple[datetime, datetime]:
     """``(since, until)`` for the last ``days`` local days, today included.
 
@@ -510,17 +505,17 @@ def local_window(
     """
     if days < 1:
         raise ValueError("days must be at least 1")
-    end = (now or datetime.now(UTC)).astimezone(UTC)
+    end = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     first = _local_date(end, tz) - timedelta(days=days - 1)
     return _local_midnight(first, tz), end
 
 
-def _visit_intervals(rows: Iterable[tuple[int, str, str, str | None, str]]) -> list[_Interval]:
+def _visit_intervals(rows: Iterable[tuple[int, str, str, Optional[str], str]]) -> list[_Interval]:
     """One visit's ``(id, ts, kind, view_id, device_class)`` rows, in ``id``
     order, → its intervals (rules 1–3). An interval ends at its last point, so
     "close at the last event seen" is simply not appending to it any more."""
     intervals: list[_Interval] = []
-    current: _Interval | None = None
+    current: Optional[_Interval] = None
     view = NO_VIEW  # the visit's latest view, carried across its intervals
     for row_id, ts, kind, view_id, device_class in rows:
         moment = _parse_ts(ts)
@@ -546,7 +541,7 @@ def _active_spans(
         end = min(interval.points[-1], interval.start + max_interval)
         return [(interval.start, end)]
     pts = interval.points
-    return [(a, min(b, a + idle_gap_desktop)) for a, b in zip(pts, pts[1:], strict=False)]
+    return [(a, min(b, a + idle_gap_desktop)) for a, b in zip(pts, pts[1:])]
 
 
 def _view_slices(
@@ -574,7 +569,7 @@ def _sweep(
     ordered = sorted(slices, key=lambda s: s.start)
     active: list[_Slice] = []
     nxt = 0
-    for lo, hi in zip(points, points[1:], strict=False):
+    for lo, hi in zip(points, points[1:]):
         while nxt < len(ordered) and ordered[nxt].start <= lo:
             active.append(ordered[nxt])
             nxt += 1
@@ -596,7 +591,7 @@ def foreground_time(
     conn: sqlite3.Connection,
     since: datetime,
     until: datetime,
-    tz: tzinfo | None,
+    tz: Optional[tzinfo],
     *,
     idle_gap_desktop: timedelta = IDLE_GAP_DESKTOP,
     max_interval: timedelta = MAX_INTERVAL,
@@ -606,7 +601,7 @@ def foreground_time(
     included). ``tz`` is the day boundary's zone; ``None`` = host-local.
     The rules are in the module docstring. Session ids are never returned.
     """
-    since, until = since.astimezone(UTC), until.astimezone(UTC)
+    since, until = since.astimezone(timezone.utc), until.astimezone(timezone.utc)
     if until <= since:
         raise ValueError("until must be after since")
     # A visit counts only if it has an event this close to the window: neither
