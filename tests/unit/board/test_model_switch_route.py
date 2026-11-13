@@ -13,7 +13,11 @@ from typing import Any, Dict, List
 import pytest
 
 from tests.unit.board.test_plan_picker import PLAN_MODE, _live, _screen, picker_client  # noqa: F401
-from tests.unit.sessions.test_model_switch import AFTER, DIALOG
+from tests.unit.sessions.test_model_switch import AFTER, DIALOG, PICKER
+
+UP = "\x1b[A"
+# The picker's cursor sits on Sonnet: two rows up to Opus, then its session-only key.
+PICK_OPUS = [(UP, False), (UP, False), ("s", False)]
 
 
 def _answer(model: str) -> str:
@@ -21,16 +25,16 @@ def _answer(model: str) -> str:
 
 
 def _set_model(name: str) -> str:
-    content = (f"<local-command-stdout>Set model to `{name}` and saved as your default "
-               "for new sessions</local-command-stdout>")
+    content = f"<local-command-stdout>Set model to `{name}` for this session only</local-command-stdout>"
     return json.dumps({"type": "user", "message": {"role": "user", "content": content}}) + "\n"
 
 
 @pytest.fixture
 def switch_client(picker_client, monkeypatch, tmp_path):
     """picker_client with short waits, a Claude transcript on Sonnet, and a
-    terminal that shows the "Switch model?" dialog when ``state["history"]``
-    (a conversation the switch must re-read) and applies at once otherwise."""
+    terminal that answers ``/model`` with ``state["picker"]``. A pick there
+    shows the "Switch model?" dialog when ``state["history"]`` (a
+    conversation the switch must re-read) and applies at once otherwise."""
     from app.webapp.routers import session_screen as router
 
     client, session, _show, typed = picker_client
@@ -39,7 +43,7 @@ def switch_client(picker_client, monkeypatch, tmp_path):
     capture = tmp_path / "s1.transcript"
     transcript = tmp_path / "convo.jsonl"
     transcript.write_text(_answer("claude-sonnet-5-5"), encoding="utf-8")
-    state: Dict[str, Any] = {"history": True, "applies": True, "dialog": DIALOG}
+    state: Dict[str, Any] = {"history": True, "applies": True, "dialog": DIALOG, "picker": PICKER}
 
     def paint(lines: List[str]) -> None:
         capture.write_text("\r\n".join(lines), encoding="utf-8")
@@ -59,8 +63,12 @@ def switch_client(picker_client, monkeypatch, tmp_path):
 
     async def fake_pty(port, sid, keys):
         typed.append((sid, keys))
-        if keys == [("/model opus", True)]:
+        if keys == [("/model", True)]:
+            paint(state["picker"])
+        elif keys == PICK_OPUS:
             paint(state["dialog"]) if state["history"] else apply("Opus 5.5")
+        elif keys == [("\x1b", False)]:
+            paint(AFTER[:1] + ["  ⎿  Kept model as Sonnet 5.5"])
         elif keys == [("1", False)]:
             apply("Opus 5.5")
         elif keys == [("/model gpt-6-luna", True)] and state["applies"]:
@@ -83,13 +91,15 @@ def test_the_switch_route_is_passkey_gated():
     assert _terminal_guard_level("/api/claude-code/sessions/abc/model") == "passkey"
 
 
-def test_a_claude_switch_types_the_command_then_confirms_the_dialog(switch_client):
+def test_a_claude_switch_picks_for_this_session_only_then_confirms_the_dialog(switch_client):
+    """Claude's own ``/model <id>`` would save the pick as the default for
+    every new session: the switch takes the picker's session-only key."""
     client, _, _, typed, _ = switch_client
     r = _post(client)
     assert r.status_code == 200, r.text
     assert r.json() == {"ok": True, "outcome": "switched", "model": "Opus",
                         "confirmed_dialog": True, "detail": None}
-    assert [keys for _sid, keys in typed] == [[("/model opus", True)], [("1", False)]]
+    assert [keys for _sid, keys in typed] == [[("/model", True)], PICK_OPUS, [("1", False)]]
 
 
 def test_a_claude_switch_with_no_history_is_switched_with_no_dialog(switch_client):
@@ -97,7 +107,25 @@ def test_a_claude_switch_with_no_history_is_switched_with_no_dialog(switch_clien
     state["history"] = False
     body = _post(client).json()
     assert body["outcome"] == "switched" and body["confirmed_dialog"] is False
-    assert [keys for _sid, keys in typed] == [[("/model opus", True)]]
+    assert [keys for _sid, keys in typed] == [[("/model", True)], PICK_OPUS]
+
+
+def test_a_picker_with_no_session_only_key_is_closed_unpicked(switch_client):
+    """A build whose picker only offers Enter would save the default: the
+    picker is closed with Esc and the reason reaches the sheet."""
+    client, _, _, typed, state = switch_client
+    state["picker"] = PICKER[:-1] + ["  Enter to confirm · Esc to exit"]
+    body = _post(client).json()
+    assert body["outcome"] == "unconfirmed" and "default is unchanged" in body["detail"]
+    assert [keys for _sid, keys in typed] == [[("/model", True)], [("\x1b", False)]]
+
+
+def test_a_picker_that_never_opens_says_so(switch_client):
+    client, _, _, typed, state = switch_client
+    state["picker"] = ["❯"]
+    body = _post(client).json()
+    assert body["outcome"] == "unconfirmed" and "never opened" in body["detail"]
+    assert [keys for _sid, keys in typed] == [[("/model", True)]]
 
 
 def test_a_switch_the_transcript_never_reports_is_not_confirmed(switch_client):
@@ -113,7 +141,7 @@ def test_a_dialog_for_another_model_is_left_for_the_terminal(switch_client):
     state["dialog"] = [line.replace("Opus 5.5", "Fable 5.2") for line in DIALOG]
     body = _post(client).json()
     assert body["outcome"] == "unconfirmed" and "Fable 5.2" in body["detail"]
-    assert [keys for _sid, keys in typed] == [[("/model opus", True)]]
+    assert [keys for _sid, keys in typed] == [[("/model", True)], PICK_OPUS]
 
 
 def test_the_model_already_running_types_nothing(switch_client):
@@ -126,6 +154,7 @@ def test_the_model_already_running_types_nothing(switch_client):
 @pytest.mark.parametrize("screen,why", [
     (lambda: _screen(PLAN_MODE), "plan"),
     (lambda: DIALOG, "model"),
+    (lambda: PICKER, "model"),
 ])
 def test_nothing_is_typed_while_the_terminal_waits_on_something_else(switch_client, screen, why):
     client, _, paint, typed, _ = switch_client

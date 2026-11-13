@@ -1,8 +1,9 @@
 /* The session overlay bar's model chip: names the session's model and, for an
  * agent with an in-session switch, opens the model picker. A pick goes to
  * POST /api/claude-code/sessions/<sid>/model, which types the agent's own
- * /model, answers Claude Code's "Switch model?" dialog, and waits for the
- * agent to report the new model. The chip changes model only on that report,
+ * /model for that session only (new sessions keep the owner's default),
+ * answers Claude Code's "Switch model?" dialog, and waits for the agent to
+ * report the new model. The chip changes model only on that report,
  * never optimistically: a switch the server could not confirm leaves the old
  * model showing and says why.
  */
@@ -16,7 +17,7 @@ import { icon } from '../_vendored/icons/icons.js';
 // Agents with an in-session /model the server can drive, and what the switch
 // does there, shown on the sheet (each agent's own wording, probed live).
 const SWITCH_NOTES = {
-  claude: 'Claude re-reads the whole conversation on the new model and keeps it as your default for new sessions.',
+  claude: 'Claude switches for this session only and re-reads the whole conversation on the new model.',
   codex: 'Codex switches for this session only.',
 };
 const AGENT_NAMES = {
