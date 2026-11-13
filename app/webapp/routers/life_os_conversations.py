@@ -83,7 +83,7 @@ from src.life_os.title_sync import TitleSync, title_sync
 from src.middleware import is_pc_itself, terminal_http_gate
 from src.scanner import Skill, scan_skills, skills_dir_for
 from src.session_view.conversation_model import recorded_model
-from src.webapp_config import VALID_CODEX_MODELS, WebappConfig
+from src.webapp_config import LEGACY_CLAUDE_MODELS, VALID_CODEX_MODELS, WebappConfig
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -271,7 +271,9 @@ async def _launch_conversation(
     # `keep_model: true` asks for it. An absent `model` keeps meaning Sonnet,
     # which a cached older client still relies on.
     keep_model = body.get("keep_model") is True and action == "resume"
-    agent, model = ("", "") if keep_model else _resolve_launch_choice(body)
+    # A resume's own pick may also be the legacy Haiku, which the catalog does not list.
+    agent, model = ("", "") if keep_model else _resolve_launch_choice(
+        body, extra_claude=LEGACY_CLAUDE_MODELS if action == "resume" else ())
     selection = body.get("capture")
     if not isinstance(selection, dict):
         selection = await _legacy_selection(cfg, root, skill, body, agent, action, legacy)
@@ -465,6 +467,20 @@ def _read_conversation_index(path: Path) -> Optional[List[Dict[str, Any]]]:
         logger.warning("⚠️ conversation index is not a list: %s", path)
         return None
     return [row for row in data if isinstance(row, dict) and row.get("file")]
+
+
+@router.get("/api/life-os/skills/{skill_id}/conversations/model")
+async def conversation_model(skill_id: str, request: Request, agent: str = "", sid: str = "") -> Dict[str, Any]:
+    """The model a stored conversation last ran on, for the sheet's Model row.
+
+    The index carries none, so the sheet asks before a resume names it. ``""``
+    is "not known" (no transcript, or an id that is not a canonical UUID):
+    the reader only builds a file name from a validated id.
+    """
+    _resolve_skill(request.app.state.webapp_config, skill_id)
+    known = agent if agent in ("claude", "codex") else ""
+    model = await asyncio.to_thread(recorded_model, known, sid) if known else ""
+    return {"agent": known, "model": model}
 
 
 @router.get("/api/life-os/skills/{skill_id}/conversations")

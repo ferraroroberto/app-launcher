@@ -907,6 +907,7 @@ paths    = [
     "app/webapp/static/life-os.js",
     "app/webapp/static/life-os/life-os-content.js",
     "app/webapp/static/life-os/life-os-convos.js",
+    "app/webapp/static/life-os/life-os-convo-model.js",
     "app/webapp/static/settings/telegram-setup.js",
     "app/webapp/static/settings/telegram-bots.js",
     "app/webapp/routers/life_os.py",
