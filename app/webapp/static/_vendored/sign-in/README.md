@@ -107,7 +107,7 @@ async def login(request: Request) -> dict[str, str]:
 - **The key** is the client address the app already resolves and writes to its auth log. The module never reads addresses or headers.
 - **The exemption** is the app's call, with the check it already uses to skip the token for the PC itself (app-launcher: `trust.is_pc_itself`). Do not exempt a raw `127.0.0.1` or `::1`: a local tunnel delivers every public request over loopback.
 - **The log**: the module writes one info line per lock (`🔒 login locked for N s after K failures`) that names no client or password. The app's own auth-log lines stay as they are.
-- **The test**: each app adds one route test. Six wrong passwords get five `401`s and then a `429` with a `Retry-After` header; a correct password after the wait gets the token.
+- **The test**: each app adds one route test. Six wrong passwords get six `401`s, then the next attempt gets a `429` with a `Retry-After` header; a correct password after the wait gets the token.
 
 ### The alert — three wrong passwords in a row
 

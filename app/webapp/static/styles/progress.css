@@ -290,7 +290,6 @@
 }
 .progress-agent-mark .agent-icon { width: 16px; height: 16px; }
 .progress-legend-mark { width: 16px; height: 16px; border-radius: 5px; }
-.progress-legend-mark .agent-icon { width: 10px; height: 10px; }
 .progress-note { margin: 8px 0 0; font-size: var(--font-body-sm); color: var(--muted); }
 
 /* ---------------------------------------------------- data sources */

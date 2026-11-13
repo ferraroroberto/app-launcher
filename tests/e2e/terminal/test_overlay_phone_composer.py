@@ -299,7 +299,7 @@ def _leg_model_chip_switches_through_the_picker(
     answer.update(outcome="unconfirmed", model="Fable", detail="Claude didn't report the switch to Fable")
     chip.click()
     rows.filter(has_text="Fable").click()
-    expect(chip).to_have_attribute("data-state", "unconfirmed")
+    expect(chip).to_have_attribute("data-switch", "unconfirmed")
     expect(chip).to_have_text("Sonnet")
     expect(page.locator("#toast")).to_contain_text("not confirmed")
 
