@@ -370,7 +370,11 @@ function sessionOpenButton(s, isChief, remote) {
     agentLabel: known ? known.label : 'Claude Code',
     badge: isChief ? 'crown' : (s.alive === false ? 'down' : 'alive'),
     title: sessionTitle(s),
-    meta: [projectFolder(s)].concat(statusBits).filter(Boolean).join(' · '),
+    // The model follows the folder; `model` is the transcript's live answer
+    // over the launch flag (src/session_model.py), absent when unknown.
+    metaHead: projectFolder(s),
+    metaModel: s.model || '',
+    meta: statusBits.join(' · '),
     metaTail: ago ? 'up ' + ago : '',
     chips: chips,
     // `.name`: the hook every row test reads the title through.

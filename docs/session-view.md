@@ -6,7 +6,7 @@ Contents: [Opening a session](#opening-a-session) · [The shared bar and menu](#
 
 ## Opening a session
 
-The Code tab's Sessions card lists running sessions, the chief's row first, on the shared two-line session row: an avatar holding the agent's icon with its alive badge (a crown for the chief), the title, and `folder · status · age · up uptime` (the Board's status word and last-activity age through `glance.js::sessionStatusBits`, the word dropped where the chip says it, `up uptime` the first part dropped on a narrow row). Chips only for exceptions: the Board's `needs you` or `stalled`, and a neutral `detached` on a detached session. Each row has one **⋮ kebab** pinned to its right edge and centred against the full row height. It opens a floating menu of icon + label rows:
+The Code tab's Sessions card lists running sessions, the chief's row first, on the shared two-line session row: an avatar holding the agent's icon with its alive badge (a crown for the chief), the title, and `folder · model · status · age · up uptime` (the model is the short name the session runs now, or absent when unknown; the Board's status word and last-activity age through `glance.js::sessionStatusBits`, the word dropped where the chip says it, `up uptime` the first part dropped on a narrow row, then the folder ellipsizes, then the model). Chips only for exceptions: the Board's `needs you` or `stalled`, and a neutral `detached` on a detached session. Each row has one **⋮ kebab** pinned to its right edge and centred against the full row height. It opens a floating menu of icon + label rows:
 
 - **⌨ Terminal** — full-control rows only.
 - **💬 Chat** — every row whose agent has a transcript reader.

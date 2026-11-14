@@ -61,8 +61,8 @@ _BOARD = {
 }
 
 _SESSIONS = [
-    _session("s-work", "demo-garden", "working", 540),
-    _session("s-done", "demo-garden", "idle-finished", 68400),
+    _session("s-work", "demo-garden", "working", 540, model="Opus"),
+    _session("s-done", "demo-garden", "idle-finished", 68400, model="Sonnet"),
     _session("s-unknown", "demo-garden", None, None),
 ]
 
@@ -94,9 +94,10 @@ def test_code_row_reads_the_boards_status_and_age(
 
     meta = {sid: _code_row(authed_page, sid).locator(".srow-meta-text")
             for sid in ("s-work", "s-done", "s-unknown")}
-    expect(meta["s-work"]).to_have_text("demo-garden · working · 9m · up 1d 3h")
-    expect(meta["s-done"]).to_have_text("demo-garden · finished · 19h · up 1d 3h")
+    expect(meta["s-work"]).to_have_text("demo-garden · Opus · working · 9m · up 1d 3h")
+    expect(meta["s-done"]).to_have_text("demo-garden · Sonnet · finished · 19h · up 1d 3h")
     # No Board placement: no status and no age to guess at, just the uptime.
+    # No model either: the segment is omitted, never a placeholder.
     expect(meta["s-unknown"]).to_have_text("demo-garden · up 1d 3h")
 
     # The same session's Board row says the same thing after the folder.
@@ -112,8 +113,9 @@ def test_code_row_meta_stays_one_line_and_drops_up_first_at_390px(
 ) -> None:
     authed_page.set_viewport_size({"width": 390, "height": 844})
     _mock(authed_page, [
-        _session("s-short", "demo", "idle", 540),
-        _session("s-long", "demo-garden", "working", 540),
+        _session("s-short", "demo", "idle", 540, model="Opus"),
+        _session("s-long", "demo-garden", "working", 540, model="Sonnet"),
+        _session("s-tight", "demo-garden-planner", "working", 540, model="Sonnet"),
     ])
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
@@ -130,7 +132,7 @@ def test_code_row_meta_stays_one_line_and_drops_up_first_at_390px(
     }"""
     # Room to spare: the whole line, "up" included.
     expect(_code_row(authed_page, "s-short").locator(".srow-meta-text")).to_have_text(
-        "demo · idle · 9m · up 1d 3h")
+        "demo · Opus · idle · 9m · up 1d 3h")
     short = stable_eval(_code_row(authed_page, "s-short"), read)
     assert short == {"oneLine": True, "cut": False, "tailShown": True}, short
 
@@ -138,6 +140,20 @@ def test_code_row_meta_stays_one_line_and_drops_up_first_at_390px(
     long_row = _code_row(authed_page, "s-long")
     expect(long_row.locator(".srow-meta-tail")).to_be_hidden()
     expect(long_row.locator(".srow-meta-text")).to_contain_text(
-        "demo-garden · working · 9m")
+        "demo-garden · Sonnet · working · 9m")
     long = stable_eval(long_row, read)
     assert long == {"oneLine": True, "cut": False, "tailShown": False}, long
+
+    # Still no room: only the folder is cut (ellipsized); the model, status and
+    # age stay whole.
+    tight = _code_row(authed_page, "s-tight")
+    expect(tight.locator(".srow-meta-model")).to_be_visible()
+    expect(tight.locator(".srow-meta-text")).to_have_text(
+        "demo-garden-planner · Sonnet · working · 9m", use_inner_text=True)
+    tight_read = stable_eval(tight, read)
+    assert tight_read == {"oneLine": True, "cut": False, "tailShown": False}, tight_read
+    head = stable_eval(tight, """el => {
+      const h = el.querySelector('.srow-meta-head');
+      return h.clientWidth ? h.scrollWidth > h.clientWidth : null;
+    }""")
+    assert head is True, "the folder, not the status or age, is what a phone cuts"

@@ -608,6 +608,16 @@ textarea.input-native { height: auto; }
   white-space: nowrap;
 }
 .srow-meta-text:empty { display: none; }
+/* With a model: the folder ellipsizes and the rest stays whole. pre keeps the
+   " · " spaces a flex item would otherwise collapse. */
+.srow-meta-text--split { display: flex; }
+.srow-meta-head {
+  flex: 0 1 auto;
+  min-width: 7ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.srow-meta-rest { flex: none; white-space: pre; }
 .session-item .session-open {
   flex-direction: row;
   align-items: center;
