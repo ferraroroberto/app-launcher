@@ -113,31 +113,50 @@ async def login(request: Request) -> dict[str, str]:
 
 `on_alert` is called once per failure streak, when a client reaches 3 consecutive wrong passwords (`alert_after`). The streak ends on a correct password or after the hour of quiet; until then the client raises no second alert, however many more times it fails. A global `alert_cooldown` (300 s) limits alerts across all clients. Alerts it holds back are counted and reported in the next one, so an attacker who rotates addresses sends one message, not hundreds. The callback receives a `LockoutAlert(key, failures, suppressed)`, which never holds a password or a token. It runs inside the login request, so it must return at once: hand the send to a thread. If it raises, the module logs the exception type and the login carries on.
 
-The alert goes to the fleet's **`coding alerts`** Telegram chat: the act-now chat, which `fleet-config` routes as the `attention` category (`telegram_chat_attention`; chat table in `fleet-config`'s `docs/telegram-workflow.md`). Like the app's other machine alerts, the app sends it with its own vendored [`src/notify`](../../../../../src/notify/README.md) notifier, its bot token and the `coding alerts` chat id read from its own ignored config:
+The alert goes to the fleet's **`coding alerts`** Telegram chat: the act-now chat, which `fleet-config` routes as the `attention` category (`telegram_chat_attention`; chat table in `fleet-config`'s `docs/telegram-workflow.md`). Every app sends it through the vendored `src/login_alert.py` (manifest key `login_alert`; copy it byte-for-byte with `/propagate-vendored login_alert`), so the text is the same everywhere:
 
-```python
-import threading
-
-from src.notify import NotifierError, TelegramConfig, build_notifier
-
-notifier = build_notifier(cfg.notifier, TelegramConfig(cfg.telegram_bot_token, cfg.telegram_alert_chat_id))
-
-def alert_owner(alert: LockoutAlert) -> None:
-    if notifier is None:          # notifier = "none": no alert channel configured
-        return
-    held = f" (+{alert.suppressed} more held back)" if alert.suppressed else ""
-    text = f"🚨 {APP_NAME}: {alert.failures} wrong passwords in a row from {alert.key}{held}"
-
-    def send() -> None:
-        try:
-            notifier.send_text(text)
-        except NotifierError as exc:
-            logger.warning(f"⚠️ login alert not delivered: {type(exc).__name__}")
-
-    threading.Thread(target=send, daemon=True).start()
+```text
+🚨 <app>: 3 wrong passwords in a row from 203.0.113.7 (+2 more held back)
 ```
 
-The message carries the app, the client address and the failure count, and nothing else. An app that has no notifier config of its own can send the same text through `fleet-config`'s Telegram transport instead: `notify_send.py --category attention --text "..."` from its `hooks/` folder, spawned with `CREATE_NO_WINDOW`. That transport resolves the `coding alerts` chat itself.
+The app passes its name and one function that reads its existing config and returns a notifier, or `None` when no channel is configured. The function runs on the send thread, so a config read never delays the login:
+
+```python
+from src.login_alert import build_login_alert
+from src.notify import TelegramConfig, build_notifier
+
+def alert_notifier():
+    cfg = load_config()                                        # the app's own config, read per alert
+    if not (cfg.telegram_bot_token and cfg.telegram_alert_chat_id):
+        return None
+    return build_notifier("telegram", TelegramConfig(cfg.telegram_bot_token, cfg.telegram_alert_chat_id))
+
+lockout = LoginLockout(on_alert=build_login_alert(APP_NAME, alert_notifier))
+```
+
+Any object with `send_text(text)` that raises on failure works as the notifier. An app with no notifier config of its own can wrap `fleet-config`'s Telegram transport (`notify_send.py --category attention`, text on stdin, spawned with `CREATE_NO_WINDOW` and a timeout), which resolves the `coding alerts` chat itself.
+
+Each alert ends in one logged outcome: `sent`; `failed` (the notifier or the config read raised; the log names the error type only, since a transport error can carry its URL and token); or `unconfigured` (no channel, the alert text logged at warning level so the attempt stays on record). `deliver_alert(app_name, alert, get_notifier)` runs one send synchronously and returns that outcome, for tests: each app proves its wiring with a fake notifier, never a real send.
+
+## The password — `src/password.py`
+
+Every app stores, checks and sets its sign-in password through the vendored, stdlib-only `src/password.py` (manifest key `password`; copy it byte-for-byte with `/propagate-vendored password`). No app keeps its own setter script, plaintext config key or compare helper for it.
+
+- **Stored** as one salted PBKDF2-SHA256 hash (`pbkdf2_sha256$<iterations>$<salt>$<digest>`) in `config/app_password.json` beside `src/`, a file of its own so no config loader rewrites it. It is git-ignored in every adopter. `APP_PASSWORD_FILE` overrides the path; tests set it to a temp file, so a test run never reads or writes the live one.
+- **Any non-empty password** is accepted, a 4-digit PIN as much as a passphrase. There are no complexity rules: the lock-out above is what limits guessing.
+- **Set** from the repo root: `python -m src.password set` prompts twice and never takes the password as an argument, echoes it or logs it. `--stdin` reads one line instead, for the fleet script that sets the same password in every app. `python -m src.password status` says whether a hash is stored. A login reads the file each time, so no restart is needed.
+- **Checked** in the login route, in place of the plaintext compare. `legacy` is the app's old stored value (`""` when it has none):
+
+```python
+from src import password
+
+if not password.is_configured(legacy=cfg.auth_password):
+    raise HTTPException(503, "password auth not configured")
+if not password.check_password(presented, legacy=cfg.auth_password):
+    ...                                                        # record_failure, 401
+```
+
+**Migration without a lock-out.** Until the setter runs there is no stored hash, so the app's old value is checked instead, in constant time. Once a hash is stored, the old value is ignored. To finish an app's migration, run `python -m src.password set` in its repo; the old key in its config can then be deleted by hand.
 
 ## Usage log
 

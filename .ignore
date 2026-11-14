@@ -46,6 +46,7 @@
 /scripts/usage_track_scan.py
 /src/build_info.py
 /src/compression.py
+/src/login_alert.py
 /src/login_lockout.py
 /src/notify
 /src/password.py
