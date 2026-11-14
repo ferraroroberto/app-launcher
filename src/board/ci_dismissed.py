@@ -18,9 +18,9 @@ Shape: ``{"<repo>": {"<workflow>": [<run_id>, ...]}}``. Only a workflow's
 latest run ever has a card, so each keeps its newest :data:`MAX_PER_WORKFLOW`
 ids and the file is bounded by the fleet's workflows.
 
-Degradation contract: missing or corrupt reads as nothing dismissed, never an
-exception, so a bad file can only bring a card back, never hide a failure
-that was not dismissed. A failed write raises :class:`OSError` to the route.
+A missing or corrupt file reads as nothing dismissed and never raises, so
+damage can only bring a card back, not hide a red run the owner never
+dismissed. A failed write raises :class:`OSError` to the route.
 """
 
 from __future__ import annotations
