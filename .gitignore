@@ -68,6 +68,8 @@ webapp/owner-check-marks.json
 webapp/progress-totals.json
 # Skill-instruction fingerprints of resumed Life OS conversations — machine-written state
 webapp/life-os-skill-hashes.json
+# Record of the apps the launcher spawned, read back after a restart — machine-written state
+webapp/spawned-apps.json
 # Former e2e-gate config path (issue #441). No longer written — the gate's
 # config moved to pytest's temp dir, credential-free (issue #907) — but kept
 # ignored so a file left by an older run can never be committed.
