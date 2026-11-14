@@ -1,23 +1,14 @@
 /* The Board's "Since you last looked" card (board/chief-journal.js). Its rows
    are the shared action-row, as every Board row: the entry's text on line 1,
    `time · repo#N` and the kind chip on line 2, a chevron on a row that opens
-   its issue. An entry the owner already saw is quieter in the Show all view. */
+   its issue. The Clear button under them
+   stamps the look. */
 
 .board-journal[hidden] { display: none; }
 .board-journal-list { list-style: none; margin: 0; padding: 0; }
 .board-journal-row .action-row-meta .chip { margin-left: auto; }
-.board-journal-row.is-read .action-row-title { color: var(--muted); }
 .board-journal-line { margin: 0; }
-/* Nothing new: one line, the way to the older entries at its end. */
-.board-journal-quiet {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.board-journal-all { margin-top: 4px; }
-.board-journal-quiet .board-journal-all { margin-top: 0; flex: none; }
-.board-journal-body > .board-journal-all { width: 100%; }
+.board-journal-clear { margin-top: 4px; width: 100%; }
 
 /* A desktop column is narrow (about 200px of row): the entry is the content, so
    its text wraps to two lines instead of ellipsizing, and the chip drops under

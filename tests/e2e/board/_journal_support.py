@@ -3,8 +3,9 @@
 Hermetic: /api/board/chief-journal is mocked with made-up entries and the
 look stamp is captured, so nothing reads or writes the owner's real journal.
 Covered across the helpers: new entries newest first with a kind chip and a
-linked ref, the older one behind Show all, the one-line state once the look
-moves them out of sight, an unreadable journal as a quiet line, and no
+linked ref and a Clear button (the older one is never listed), the one-line
+state with no button once a look moves them out of sight, Clear stamping that
+look itself, an unreadable journal as a quiet line, and no
 journal as a hidden card.
 """
 
@@ -59,7 +60,7 @@ def serve_journal(page: Page) -> tuple:
     return served, stamps
 
 
-def assert_new_entries_then_show_all(page: Page) -> None:
+def assert_new_entries_then_clear_button(page: Page) -> None:
     card = page.locator("#boardJournal")
     expect(card).to_be_visible()
     expect(card.locator(".board-journal-count")).to_have_text("2")
@@ -72,12 +73,9 @@ def assert_new_entries_then_show_all(page: Page) -> None:
     # A ref opens its issue; an entry with no ref reports and does nothing.
     expect(rows.nth(0)).to_have_class(re.compile(r"\bis-link\b"))
     expect(rows.nth(1)).not_to_have_class(re.compile(r"\bis-link\b"))
-    # Show all reveals the older entry, quieter, and folds back.
-    card.get_by_role("button", name="Show all 3").click()
-    expect(rows).to_have_count(3)
-    expect(rows.nth(2)).to_have_class(re.compile(r"\bis-read\b"))
-    card.get_by_role("button", name="Show new only").click()
-    expect(rows).to_have_count(2)
+    # The older entry is never listed; Clear ends the card.
+    expect(card.get_by_role("button", name="Clear")).to_have_count(1)
+    expect(card.get_by_role("button", name=re.compile("Show"))).to_have_count(0)
 
 
 def assert_a_look_quiets_the_card(page: Page, stamps: list) -> None:
@@ -88,8 +86,23 @@ def assert_a_look_quiets_the_card(page: Page, stamps: list) -> None:
     expect(card.locator(".board-journal-line")).to_have_text("Nothing new since you last looked.")
     expect(card.locator(".board-journal-count")).to_have_text("")
     expect(card.locator(".board-journal-row")).to_have_count(0)
-    card.get_by_role("button", name="Show all 3").click()
-    expect(card.locator(".board-journal-row")).to_have_count(3)
+    expect(card.get_by_role("button")).to_have_count(0)
+
+
+def assert_clear_stamps_the_look(page: Page, base_url: str, served: dict, stamps: list) -> None:
+    """Tapping Clear sends one stamp; the card re-reads and collapses to the quiet line."""
+    card = page.locator("#boardJournal")
+    served["body"] = _journal(
+        _entry(3, "merged", "demo-repo#14", "merged: another made-up change", new=True),
+    )
+    before = len(stamps)
+    _open_board(page, base_url)
+    expect(card.locator(".board-journal-row")).to_have_count(1)
+    card.get_by_role("button", name="Clear").click()
+    expect(card).to_have_attribute("data-quiet", "true")
+    assert stamps[before:] == ["POST"], stamps
+    expect(card.locator(".board-journal-count")).to_have_text("")
+    expect(card.get_by_role("button")).to_have_count(0)
 
 
 def assert_unreadable_then_missing(page: Page, base_url: str, served: dict) -> None:
