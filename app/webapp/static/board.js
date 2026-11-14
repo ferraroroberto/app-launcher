@@ -81,6 +81,7 @@ import { isDismissible, isFailing } from './board/attention-state.js';
 import { ClaimState, claimState } from './board/claim-state.js';
 import { pollIdeas, renderIdeas, wireIdeas } from './board/ideas-card.js';
 import { pollJournal, wireJournal } from './board/chief-journal.js';
+import { syncFoldAll, wireFoldAll } from './board/fold-all.js';
 import {
   bucketChipEls, bucketNodes, hasBuckets, notPlannedCount,
 } from './board/backlog-buckets.js';
@@ -776,6 +777,7 @@ export function renderBoard() {
   renderStatusLine(body);
   renderBoardHead(body, ghLoaded, liveRead, visible);
   renderBoardBadge();
+  syncFoldAll(els.boardFoldAll, els.boardColumns);
   // Keep the lane toolbar's project list in step with a project list that
   // may land after the first render (/api/apps).
   syncDispatchBar();
@@ -959,6 +961,7 @@ export function wireBoard() {
   wireIdeas();
   wireJournal();
   openDesktopColumns();
+  wireFoldAll(els.boardFoldAll, els.boardColumns);
   // Back in the foreground: an aged cache refreshes now, not on the next poll.
   document.addEventListener('visibilitychange', function () {
     if (!document.hidden) fetchBoard().catch(function () {});

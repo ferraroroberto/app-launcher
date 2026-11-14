@@ -71,8 +71,8 @@ def test_lane_toolbar_and_start_with_geometry(
                - (boxes["filter"]["y"] + boxes["filter"]["h"] / 2)) <= 2, boxes
     viewport = authed_page.viewport_size or {"width": 0}
     if viewport["width"] < 700:
-        assert boxes["filter"]["w"] >= boxes["toolbar"]["w"] - 44 - 8 - 1, (
-            f"phone filter should fill the line beside ↻: {boxes['filter']} vs {boxes['toolbar']}")
+        assert boxes["filter"]["w"] >= boxes["toolbar"]["w"] - 2 * 44 - 2 * 8 - 1, (
+            f"phone filter should fill the line beside ↻ and fold-all: {boxes['filter']} vs {boxes['toolbar']}")
         # The count pill keeps AA on its --card-2 fill: --fg, not --muted
         # (4.08:1 in dark, #1175).
         fg = authed_page.evaluate("getComputedStyle(document.body).color")

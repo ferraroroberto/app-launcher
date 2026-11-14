@@ -22,7 +22,12 @@ from tests.e2e.board._chief_support import (
     _SharedPlanServer,
 )
 from tests.e2e.fixtures.pages import seed_token_init_script
-from tests.e2e.fixtures.waits import stable_eval, stable_read, wait_until
+from tests.e2e.fixtures.waits import (
+    flush_requests,
+    stable_eval,
+    stable_read,
+    wait_until,
+)
 
 pytestmark = pytest.mark.smoke
 
@@ -560,6 +565,41 @@ def test_lanes_queue_and_parked_each_fold_on_their_own(
     lanes.locator("summary").click()
     expect(lanes.locator("li.board-plan-row")).to_be_visible()
     expect(parked.locator("summary")).to_have_text("Parked (1)")
+
+    # Collapse all / Expand all drives the same open state: every lane card
+    # and nested group folds, a refresh keeps them folded, one chevron still
+    # works, and the label follows what is really open.
+    toggle = authed_page.locator("#boardFoldAll")
+    cards = authed_page.locator(
+        "#boardColBacklog, #boardChiefPlan, #boardColClaude, #boardColYours, #boardColOther, #boardColDone")
+    groups = body.locator("details.board-plan-fold")
+    box = stable_read(toggle.bounding_box)
+    assert box and box["width"] >= 43.5 and box["height"] >= 43.5, f"below a 44px target: {box}"
+    expect(toggle).to_have_attribute("aria-label", "Collapse all cards")
+    toggle.click()
+    expect(toggle).to_have_attribute("aria-label", "Expand all cards")
+    for i in range(cards.count()):
+        expect(cards.nth(i)).not_to_have_attribute("open", "")
+    for i in range(groups.count()):
+        expect(groups.nth(i)).not_to_have_attribute("open", "")
+    expect(authed_page.locator("#boardRefresh")).to_be_enabled()
+    authed_page.locator("#boardRefresh").click()
+    flush_requests(authed_page)
+    expect(authed_page.locator("#boardRefresh")).to_be_enabled()
+    expect(groups.first).not_to_have_attribute("open", "")
+    expect(toggle).to_have_attribute("aria-label", "Expand all cards")
+    authed_page.locator("#boardChiefPlan > summary").click()
+    expect(toggle).to_have_attribute("aria-label", "Collapse all cards")
+    toggle.click()
+    toggle.click()
+    expect(toggle).to_have_attribute("aria-label", "Collapse all cards")
+    for i in range(cards.count()):
+        expect(cards.nth(i)).to_have_attribute("open", "")
+    for i in range(groups.count()):
+        expect(groups.nth(i)).to_have_attribute("open", "")
+    groups.first.locator("summary").click()
+    expect(groups.first).not_to_have_attribute("open", "")
+    expect(groups.nth(1)).to_have_attribute("open", "")
 
 
 @pytest.mark.iphone

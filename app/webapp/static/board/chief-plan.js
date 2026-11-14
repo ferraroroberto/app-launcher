@@ -68,11 +68,20 @@ function planLine(cls, text) {
 // heading, `opts.after` nodes that follow the list inside the fold, `opts.cls` the
 // group's extra classes.
 const foldOpen = {};
+// The Board's collapse-all / expand-all choice (null until used): the open
+// state of every group the reader has not toggled since.
+let foldAll = null;
+
+export function setAllFolds(open) {
+  Object.keys(foldOpen).forEach(function (key) { delete foldOpen[key]; });
+  foldAll = open;
+}
 
 export function foldGroup(opts) {
-  const open = Object.prototype.hasOwnProperty.call(foldOpen, opts.key)
-    ? foldOpen[opts.key]
-    : (typeof opts.defaultOpen === 'function' ? opts.defaultOpen() : opts.defaultOpen !== false);
+  let open;
+  if (Object.prototype.hasOwnProperty.call(foldOpen, opts.key)) open = foldOpen[opts.key];
+  else if (foldAll !== null) open = foldAll;
+  else open = typeof opts.defaultOpen === 'function' ? opts.defaultOpen() : opts.defaultOpen !== false;
   const wrap = document.createElement('details');
   wrap.className = 'board-plan-group board-plan-fold' + (opts.cls ? ' ' + opts.cls : '');
   wrap.open = open;
