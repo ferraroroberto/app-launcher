@@ -172,7 +172,13 @@ def _web_comment_line(text: str) -> bool:
     return text.endswith(("-->", "*/")) and "<!--" not in text and "/*" not in text
 
 
-def web_findings(source: bytes | str, rules: frozenset[str]) -> list[tuple[int, str]]:
+def web_findings(source: bytes | str, rules: frozenset[str]) -> list[tuple[int, str, str]]:
+    """(line, rule, message) of every web-rule hit in one HTML or JS file."""
+    return sorted([*((n, "password-input-vendored", m) for n, m in password_findings(source, rules)),
+                   *((n, NAV_HEAD_RULE, m) for n, m in nav_head_findings(source, rules))])
+
+
+def password_findings(source: bytes | str, rules: frozenset[str]) -> list[tuple[int, str]]:
     """(line, message) of every password input in one HTML or JS file, read line by line."""
     if "password-input-vendored" not in rules:
         return []
@@ -180,15 +186,63 @@ def web_findings(source: bytes | str, rules: frozenset[str]) -> list[tuple[int, 
     lines = text.splitlines()
     hits = []
     for number, line in enumerate(lines, start=1):
-        if not _PASSWORD_INPUT.search(line):
-            continue
-        above = number - 1
-        while above > 0 and _web_comment_line(lines[above - 1]):
-            above -= 1
-        # A web marker sits in `<!-- ... -->` or `/* ... */`: the closing punctuation is not a reason.
-        if not _exempt("password-input-vendored", lines[above:number], " :#/*-<>!\t"):
+        if _PASSWORD_INPUT.search(line) and not _web_marked("password-input-vendored", lines, number):
             hits.append((number, f"password input outside the vendored sign-in component ({SIGN_IN_DIR}/)"))
     return hits
+
+
+NAV_HEAD_RULE = "nav-standalone-head"
+#: A page that links the vendored nav's stylesheet: only such a page owes the nav its page head.
+_NAV_STYLESHEET = re.compile(r"""<link\b[^>]*\bhref\s*=\s*["'][^"']*nav-tabs\.css""", re.IGNORECASE)
+_HEAD_META = re.compile(
+    r"""<meta\b[^>]*\bname\s*=\s*["'](viewport|apple-mobile-web-app-status-bar-style)["'][^>]*>""", re.IGNORECASE
+)
+_META_CONTENT = re.compile(r"""\bcontent\s*=\s*["']([^"']*)["']""", re.IGNORECASE)
+
+
+def _web_marked(rule: str, lines: list[str], number: int) -> bool:
+    """A `<rule>-exempt: <reason>` marker on the line or in the comment block right above it.
+
+    A web marker sits in `<!-- ... -->` or `/* ... */`: the closing punctuation is not a reason.
+    """
+    above = number - 1
+    while above > 0 and _web_comment_line(lines[above - 1]):
+        above -= 1
+    return _exempt(rule, lines[above:number], " :#/*-<>!\t")
+
+
+def nav_head_findings(source: bytes | str, rules: frozenset[str]) -> list[tuple[int, str]]:
+    """(line, message) of every page-head miss in a page that links the vendored nav's stylesheet.
+
+    The nav's pill offset and top glass are written for `viewport-fit=auto` plus the
+    `black-translucent` status bar; under `viewport-fit=cover` the installed iPhone app's web view
+    runs under the home indicator and the pill lands on the screen's bottom edge.
+    """
+    if NAV_HEAD_RULE not in rules:
+        return []
+    text = source.decode("utf-8", "replace") if isinstance(source, bytes) else source
+    link = _NAV_STYLESHEET.search(text)
+    if not link:
+        return []
+    lines = text.splitlines()
+    link_line = text.count("\n", 0, link.start()) + 1
+    found: list[tuple[int, str]] = []
+    seen = {"viewport": False, "apple-mobile-web-app-status-bar-style": False}
+    for meta in _HEAD_META.finditer(text):
+        name = meta.group(1).lower()
+        seen[name] = True
+        content_match = _META_CONTENT.search(meta.group(0))
+        content = (content_match.group(1) if content_match else "").replace(" ", "").lower()
+        number = text.count("\n", 0, meta.start()) + 1
+        if name == "viewport" and "viewport-fit=auto" not in content.split(","):
+            found.append((number, "the vendored nav needs `viewport-fit=auto` in the viewport meta"))
+        elif name != "viewport" and content != "black-translucent":
+            found.append((number, "the vendored nav needs the `black-translucent` status-bar meta"))
+    if not seen["viewport"]:
+        found.append((link_line, "page links the vendored nav but has no viewport meta (`viewport-fit=auto`)"))
+    if not seen["apple-mobile-web-app-status-bar-style"]:
+        found.append((link_line, "page links the vendored nav but has no `black-translucent` status-bar meta"))
+    return sorted(hit for hit in found if not _web_marked(NAV_HEAD_RULE, lines, hit[0]))
 
 
 def text_findings(source: bytes | str, rules: frozenset[str]) -> list[tuple[int, str]]:
