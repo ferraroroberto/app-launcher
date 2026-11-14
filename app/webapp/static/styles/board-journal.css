@@ -8,7 +8,6 @@
 .board-journal-list { list-style: none; margin: 0; padding: 0; }
 .board-journal-row .action-row-meta .chip { margin-left: auto; }
 .board-journal-line { margin: 0; }
-.board-journal-clear { margin-top: 4px; width: 100%; }
 
 /* A desktop column is narrow (about 200px of row): the entry is the content, so
    its text wraps to two lines instead of ellipsizing, and the chip drops under

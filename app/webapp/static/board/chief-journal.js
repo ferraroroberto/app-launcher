@@ -21,6 +21,7 @@ import { el } from '../dom-utils.js';
 import { agoText } from '../shared/format.js';
 import { chevron } from './chief-plan.js';
 import { markLooked, onLooked } from './journal-look.js';
+import { boardClearButton } from './plan-prune.js';
 
 const JOURNAL_POLL_MS = 10 * 1000;
 
@@ -55,10 +56,8 @@ function journalRow(entry) {
 }
 
 // One tap marks everything seen; a failed stamp leaves the card as it was.
-function clearButton() {
-  const b = el('button', 'button-ghost board-journal-clear', 'Clear');
-  b.type = 'button';
-  b.dataset.track = 'board.journal-clear';
+function clearButton(n) {
+  const b = boardClearButton('Clear (' + n + ')', { track: 'board.journal-clear' });
   b.addEventListener('click', function () { markLooked(); });
   return b;
 }
@@ -95,7 +94,7 @@ function paint(force) {
   delete root.dataset.quiet;
   const list = el('ul', 'card-list board-journal-list');
   list.append.apply(list, shown.map(journalRow));
-  body.replaceChildren(list, clearButton());
+  body.replaceChildren(list, clearButton(shown.length));
 }
 
 // Rides the Board poll. A failed read keeps what was shown: the card is
