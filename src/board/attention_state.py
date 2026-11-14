@@ -7,8 +7,8 @@ CI sweep). Their ``state`` field is one closed set, and the two groupings the
 Board needs live here so the browser copy
 (``app/webapp/static/board/attention-state.js``) and the server agree:
 
-* ``failed``, ``unconfirmed``: a finished run, a past event; a job card in one
-  of them may be dismissed once dealt with.
+* ``failed``, ``unconfirmed``: a finished run, a past event; a job or CI card in one
+  of them may be dismissed once dealt with (a CI card is only ever ``failed``).
 * ``stuck``, ``unreadable``: a live problem, never dismissible; it leaves only
   when the run finishes or its history reads again.
 * ``unknown``: a CI repo whose runs could not be read, never drawn as green.
@@ -43,7 +43,7 @@ class AttentionState(StrEnum):
 
 #: Counts toward the Board's "N failing" (the browser copy groups the same way): a failure, or a run that will not finish.
 FAILING = frozenset({AttentionState.FAILED, AttentionState.STUCK})
-#: A past event the owner may dismiss from a job card; the rest describe a live problem.
+#: A past event the owner may dismiss from a job or CI card; the rest describe a live problem.
 DISMISSIBLE = frozenset({AttentionState.FAILED, AttentionState.UNCONFIRMED})
 
 

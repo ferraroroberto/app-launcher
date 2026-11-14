@@ -104,6 +104,11 @@ DELIBERATELY_TOKEN_ONLY: Dict[str, str] = {
         "GitHub metadata /api/board already serves token-gated, one more day "
         "of it. No session, transcript or terminal access."
     ),
+    "/api/board/ci/dismiss": (
+        "Records a red CI run the owner dealt with, in a machine-local mark "
+        "file. It reads nothing and injects nothing, and the Job dismiss it "
+        "mirrors (/api/jobs/{id}/runs/{rid}/dismiss) rides the same token."
+    ),
     "/api/board/github/refresh": (
         "Forces a refresh of the cached GitHub issue/PR metadata the board "
         "already serves token-gated — no session or transcript access."

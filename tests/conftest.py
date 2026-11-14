@@ -402,6 +402,8 @@ def _isolated_chief_pointer(request, tmp_path, monkeypatch):
     from src.board import ci_runs as ci_runs_mod
     from src.chief import ci_failed as ci_failed_mod
     monkeypatch.setattr(ci_failed_mod, "SEEN_FILE", tmp_path / "ci-failed-seen.json")
+    from src.board import ci_dismissed as ci_dismissed_mod
+    monkeypatch.setattr(ci_dismissed_mod, "CI_DISMISSED_FILE", tmp_path / "isolated-ci-dismissed.json")
     ci_runs_mod.reset_ci_cache()
     # A sweep thread would outlive the test and its patches, so a refresh in
     # a test never starts one: the cooldown reads as just used.

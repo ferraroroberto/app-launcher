@@ -32,7 +32,8 @@ export function isFailing(card) {
   return (card.kind === 'job' || card.kind === 'ci') && FAILING.has(attentionState(card.state));
 }
 
-// True for a job card whose finished run the owner may dismiss; a CI card never is.
+// True for a job or CI card whose finished run the owner may dismiss; an unread CI repo has no run.
 export function isDismissible(card) {
-  return card.kind === 'job' && !!card.run_id && DISMISSIBLE.has(attentionState(card.state));
+  return (card.kind === 'job' || card.kind === 'ci') && !!card.run_id &&
+    DISMISSIBLE.has(attentionState(card.state));
 }

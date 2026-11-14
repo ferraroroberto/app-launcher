@@ -1,6 +1,6 @@
 // Pin for the Board's attention-state module (static/board/attention-state.js):
 // only a failed or stuck job/CI card counts as failing, only a failed or
-// unconfirmed job card with a run id may be dismissed, and a value outside
+// unconfirmed job or CI card with a run id may be dismissed, and a value outside
 // the set does neither. Prints the declared values and groupings for the
 // Python side to compare with AttentionState.
 // Invoked by tests/unit/board/test_attention_state.py.
@@ -14,17 +14,21 @@ assert.ok(Object.isFrozen(AttentionState));
 
 const states = Object.values(AttentionState);
 const job = (state, runId = 'r1') => ({ kind: 'job', state, run_id: runId });
-const ci = (state) => ({ kind: 'ci', state });
+const ci = (state, runId = 7) => ({ kind: 'ci', state, run_id: runId });
 
-// A live problem is never dismissible, and a CI card never is.
+// A live problem is never dismissible, on a job or a CI card.
 for (const live of [AttentionState.STUCK, AttentionState.UNREADABLE, AttentionState.UNKNOWN]) {
   assert.equal(isDismissible(job(live)), false, live);
+  assert.equal(isDismissible(ci(live)), false, 'ci ' + live);
 }
+// A red CI run is a past event, like a failed job run: the same states are dismissible.
 for (const state of states) {
-  assert.equal(isDismissible(ci(state)), false, 'ci ' + state);
+  assert.equal(isDismissible(ci(state)), isDismissible(job(state)), 'ci ' + state);
 }
+assert.equal(isDismissible(ci(AttentionState.FAILED)), true);
 // A dismissible state still needs the run it dismisses.
 assert.equal(isDismissible(job(AttentionState.FAILED, null)), false);
+assert.equal(isDismissible(ci(AttentionState.FAILED, null)), false);
 // An unread CI repo is not a failure: it is never drawn as green, nor as red.
 assert.equal(isFailing(ci(AttentionState.UNKNOWN)), false);
 assert.equal(isFailing(ci(AttentionState.FAILED)), true);

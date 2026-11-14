@@ -1,11 +1,12 @@
-"""Board: dismiss a failed job alert once it has been dealt with (#1669).
+"""Board: dismiss a failed job alert or a red CI card once it has been dealt with.
 
-A failed or unconfirmed run's card carries a dismiss verb; tapping it POSTs
-the run's dismissal and drops the card, the lane count and the header's
-"failing" count. A stuck or unreadable card describes a live problem and has
-no such verb. Hermetic: the board and the dismiss route are mocked, and the
-server-side half (the store, ``jobs_attention``, the route) is covered by
-tests/unit/jobs/test_jobs_dismissed.py.
+A failed or unconfirmed run's card, and a red CI workflow's, carries a dismiss
+verb; tapping it POSTs the run's dismissal and drops the card, the lane count
+and the header's "failing" count. A stuck or unreadable job card and an
+unreadable CI repo's card describe a live problem and have no such verb.
+Hermetic: the board and the dismiss routes are mocked, and the server-side
+half is covered by tests/unit/jobs/test_jobs_dismissed.py and
+tests/unit/board/test_ci_dismissed.py.
 """
 
 from __future__ import annotations
@@ -36,7 +37,15 @@ def _job(job_id: str, state: str, run_id: str | None) -> dict:
     }
 
 
-def test_dismissing_a_failed_job_card_drops_it_and_the_failing_count(
+def _ci(repo: str, workflow: str, run_id: int) -> dict:
+    return {
+        "kind": "ci", "repo": repo, "state": "failed", "workflow": workflow,
+        "run_id": run_id, "run_url": f"https://github.com/example/{repo}/actions/runs/{run_id}",
+        "conclusion": "failure", "age_seconds": 3600, "error": None,
+    }
+
+
+def test_dismissing_a_failed_job_or_ci_card_drops_it_and_the_failing_count(
     authed_page: Page, base_url: str
 ) -> None:
     payload = _board_payload()
@@ -47,6 +56,9 @@ def test_dismissing_a_failed_job_card_drops_it_and_the_failing_count(
         {"kind": "job", "job_id": "locked", "job_name": "locked",
          "state": "unreadable", "run_id": None, "finished_at": None,
          "age_seconds": None, "error": "[WinError 5] Access is denied"},
+        _ci("alpha", "ci", 10),
+        {"kind": "ci", "repo": "gamma", "state": "unknown", "workflow": None,
+         "run_url": None, "age_seconds": None, "error": "HTTP 404"},
     ]
     _mock_board(authed_page)
     current = {"body": payload}
@@ -55,29 +67,22 @@ def test_dismissing_a_failed_job_card_drops_it_and_the_failing_count(
     dismissals: list[str] = []
 
     def _dismiss(route) -> None:
-        url = route.request.url
-        dismissals.append(f"{route.request.method} {url.split('/api/jobs/')[1]}")
         # What the server does: the dismissed run raises no card any more.
-        current["body"] = {
-            **current["body"],
-            "columns": {
-                **current["body"]["columns"],
-                "other": [
-                    c for c in current["body"]["columns"]["other"]
-                    if c.get("run_id") != "20260702T090200"
-                ],
-            },
-        }
+        sent = _json.loads(route.request.post_data or "{}")
+        run_id = sent.get("run_id") or route.request.url.split("/runs/")[1].split("/")[0]
+        dismissals.append(f"{route.request.method} {route.request.url.split('/api/')[1]} {sent}")
+        other = current["body"]["columns"]["other"]
+        current["body"]["columns"]["other"] = [c for c in other if c.get("run_id") != run_id]
         route.fulfill(
-            status=200, content_type="application/json",
-            body=_json.dumps({"dismissed": True}),
+            status=200, content_type="application/json", body=_json.dumps({"dismissed": True}),
         )
 
     authed_page.route(re.compile(r".*/api/jobs/[^/]+/runs/[^/]+/dismiss$"), _dismiss)
+    authed_page.route(re.compile(r".*/api/board/ci/dismiss$"), _dismiss)
     _open_board(authed_page, base_url)
 
     lane = authed_page.locator('.board-list[data-col="other"]')
-    failed = lane.locator("li.board-item.is-failed")
+    failed = lane.locator("li.board-item-job.is-failed")
     unconfirmed = lane.locator("li.board-item.is-unconfirmed")
     expect(failed).to_have_count(1)
     expect(failed.locator(".board-job-dismiss")).to_have_count(1)
@@ -85,15 +90,29 @@ def test_dismissing_a_failed_job_card_drops_it_and_the_failing_count(
     # Stuck and unreadable describe a live problem: no verb.
     expect(lane.locator("li.board-item.is-stuck .board-job-dismiss")).to_have_count(0)
     expect(lane.locator("li.board-item.is-unreadable .board-job-dismiss")).to_have_count(0)
-    expect(authed_page.locator("#boardColOther .board-count")).to_have_text("4")
-    expect(authed_page.locator("#boardHeadStatus")).to_contain_text("2 failing")
+    ci_failed = lane.locator("li.board-item-ci.is-failed")
+    expect(ci_failed.locator(".board-ci-dismiss")).to_have_count(1)
+    # An unreadable CI repo describes a live problem too: no verb.
+    expect(lane.locator("li.board-item-ci.is-unknown .board-ci-dismiss")).to_have_count(0)
+    expect(authed_page.locator("#boardColOther .board-count")).to_have_text("6")
+    expect(authed_page.locator("#boardHeadStatus")).to_contain_text("3 failing")
 
     failed.locator(".board-job-dismiss").click()
 
     wait_until(authed_page, lambda: len(dismissals) == 1, "the dismiss POST")
     flush_requests(authed_page)
-    assert dismissals == ["POST weekly-photos/runs/20260702T090200/dismiss"]
+    assert dismissals == ["POST jobs/weekly-photos/runs/20260702T090200/dismiss {}"]
     expect(failed).to_have_count(0)
     expect(unconfirmed).to_have_count(1)
-    expect(authed_page.locator("#boardColOther .board-count")).to_have_text("3")
+    expect(authed_page.locator("#boardColOther .board-count")).to_have_text("5")
+    expect(authed_page.locator("#boardHeadStatus")).to_contain_text("2 failing")
+
+    ci_failed.locator(".board-ci-dismiss").click()
+
+    wait_until(authed_page, lambda: len(dismissals) == 2, "the CI dismiss POST")
+    flush_requests(authed_page)
+    assert dismissals[1] == "POST board/ci/dismiss {'repo': 'alpha', 'workflow': 'ci', 'run_id': 10}"
+    expect(ci_failed).to_have_count(0)
+    expect(lane.locator("li.board-item-ci.is-unknown")).to_have_count(1)
+    expect(authed_page.locator("#boardColOther .board-count")).to_have_text("4")
     expect(authed_page.locator("#boardHeadStatus")).to_contain_text("1 failing")
