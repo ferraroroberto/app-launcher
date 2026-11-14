@@ -44,10 +44,10 @@ def _clone(origin: Path, dest: Path) -> Path:
 
 
 @pytest.fixture(autouse=True)
-def _fresh_ledgers():
-    git_upstream.reset_ledgers()
-    yield
-    git_upstream.reset_ledgers()
+def _fresh_ledgers(monkeypatch):
+    """Each test starts as a fresh process does: no fetch or pull recorded."""
+    monkeypatch.setattr(git_upstream, "_fetches", {})
+    monkeypatch.setattr(git_upstream, "_pulled", {})
 
 
 @pytest.fixture

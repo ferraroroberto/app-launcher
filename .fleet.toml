@@ -553,7 +553,9 @@ time_budget_s         = 1200
 # across two repos, which no existing Board test shares; its geometry half (Start work in the stacked Claude turn) rides the same node.
 # 2026-11-14: 653 -> 654, one node (one test, chromium only) for tests/e2e/shell/test_build_watch.py: a mocked /api/version answered per step on a jumped
 # clock, which no existing test shares; the current, empty-hash, unreadable and dismissed cases ride that one node.
-test_budget = 654
+# 2026-11-15: 654 -> 655, one node (one test, chromium only) for tests/e2e/code/test_git_upstream_flags.py: mocked upstream state with
+# the pull-first confirm, the Launch anyway payload and the Sync all sheet, which no existing Coding test shares; all three ride that one node.
+test_budget = 655
 
 # --- static assets under the webapp's static dir -> Chromium smoke ----------
 [[e2e.rule]]

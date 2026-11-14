@@ -76,13 +76,6 @@ def was_pulled(project_dir: Path) -> bool:
         return _key(project_dir) in _pulled
 
 
-def reset_ledgers() -> None:
-    """Forget every fetch and pull (tests; a fresh process starts empty)."""
-    with _ledger_lock:
-        _fetches.clear()
-        _pulled.clear()
-
-
 def _first_line(proc: Any) -> str:
     lines = ((proc.stderr or "") + (proc.stdout or "")).strip().splitlines()
     return lines[0] if lines else "?"

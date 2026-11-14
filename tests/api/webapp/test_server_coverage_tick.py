@@ -171,6 +171,8 @@ class TestLifespanGate:
                     "app.webapp.chief_doorbell", "app.webapp.relay_idle_close",
                     "src.process_auto_restart"):
                 self.doorbell_ticks.append(task)
+            elif coro.__qualname__ == "fetch_tick_forever":
+                self.fetch_ticks.append(task)
             else:
                 created.append(task)
             return task
@@ -179,6 +181,7 @@ class TestLifespanGate:
         self.load_ticks = []
         self.demand_ticks = []
         self.doorbell_ticks = []
+        self.fetch_ticks = []
         monkeypatch.setattr(server.asyncio, "create_task", _spy)
         # Never let the real tick body run — it would sleep two minutes and
         # then shell out to schtasks.
@@ -219,6 +222,23 @@ class TestLifespanGate:
         await self._run_lifespan(_app(), monkeypatch)
         assert len(self.demand_ticks) == 4
         assert all(task.cancelled() for task in self.demand_ticks)
+
+    async def test_git_fetch_cadence_never_starts_on_a_disposable_instance(self, monkeypatch):
+        """The Projects fetch cadence makes network calls, so a gate webapp never starts it."""
+        monkeypatch.setenv(SESSION_HOST_PORT_ENV, "54321")  # disposable
+        await self._run_lifespan(_app(), monkeypatch)
+        assert self.fetch_ticks == []
+
+    async def test_git_fetch_cadence_starts_and_cancels_on_the_canonical_instance(self, monkeypatch):
+        monkeypatch.delenv(SESSION_HOST_PORT_ENV, raising=False)
+        monkeypatch.setattr(
+            instance_role,
+            "canonical_instance",
+            lambda project_root=None: (True, instance_role.REASON_CANONICAL),
+        )
+        await self._run_lifespan(_app(), monkeypatch)
+        assert len(self.fetch_ticks) == 1
+        assert self.fetch_ticks[0].cancelled()
 
     async def test_disposable_instance_never_starts_the_tick(
         self, monkeypatch
