@@ -231,7 +231,7 @@
    its model row as the trailing control. */
 .projects-toolbar .launch-toolbar-slot { flex: 1; min-width: 0; }
 .projects-toolbar .git-refresh-btn { --icon-btn-box: var(--control-h); }
-.git-toolbar-actions { display: inline-flex; gap: 4px; }
+.git-toolbar-actions { display: inline-flex; gap: 8px; }
 
 /* Sync all's report: one line per repo, its outcome as a chip. */
 .git-sync-body { list-style: none; margin: 0 0 12px; padding: 0; max-height: 60vh; overflow-y: auto; }
