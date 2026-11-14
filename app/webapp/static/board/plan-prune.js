@@ -44,13 +44,21 @@ async function clearMerged() {
   } catch (_exc) { /* the poll picks it up */ }
 }
 
-export function clearMergedButton(n) {
+// The Board's one "clear" button: the journal card's Clear is built from it too,
+// so the two stay the same tinted, full-width, trash-icon control. The caller
+// passes its own constant `track` id in `opts` and sets the click handler.
+export function boardClearButton(label, opts) {
   const btn = document.createElement('button');
-  btn.dataset.track = 'board.plan-clear-merged';
+  btn.dataset.track = opts.track;
   btn.type = 'button';
-  btn.className = 'button-tint board-plan-clear-merged';
+  btn.className = 'button-tint board-clear';
   btn.innerHTML = icon('trash-2') + ' ';
-  btn.appendChild(document.createTextNode('Clear merged (' + n + ')'));
+  btn.appendChild(document.createTextNode(label));
+  return btn;
+}
+
+export function clearMergedButton(n) {
+  const btn = boardClearButton('Clear merged (' + n + ')', { track: 'board.plan-clear-merged' });
   btn.addEventListener('click', clearMerged);
   return btn;
 }

@@ -74,7 +74,12 @@ def assert_new_entries_then_clear_button(page: Page) -> None:
     expect(rows.nth(0)).to_have_class(re.compile(r"\bis-link\b"))
     expect(rows.nth(1)).not_to_have_class(re.compile(r"\bis-link\b"))
     # The older entry is never listed; Clear ends the card.
-    expect(card.get_by_role("button", name="Clear")).to_have_count(1)
+    clear = card.get_by_role("button", name="Clear (2)")
+    expect(clear).to_have_count(1)
+    expect(clear).to_have_text("Clear (2)")
+    # The same control as the plan card's Clear merged: tint tier, shared class, trash icon.
+    expect(clear).to_have_class(re.compile(r"\bbutton-tint\b.*\bboard-clear\b"))
+    expect(clear.locator("svg")).to_have_count(1)
     expect(card.get_by_role("button", name=re.compile("Show"))).to_have_count(0)
 
 
@@ -98,7 +103,7 @@ def assert_clear_stamps_the_look(page: Page, base_url: str, served: dict, stamps
     before = len(stamps)
     _open_board(page, base_url)
     expect(card.locator(".board-journal-row")).to_have_count(1)
-    card.get_by_role("button", name="Clear").click()
+    card.get_by_role("button", name="Clear (1)").click()
     expect(card).to_have_attribute("data-quiet", "true")
     assert stamps[before:] == ["POST"], stamps
     expect(card.locator(".board-journal-count")).to_have_text("")

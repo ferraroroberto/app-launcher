@@ -487,7 +487,7 @@ def test_clear_merged_button_clears_only_merged_rows(
     authed_page.route(re.compile(r".*/api/board/chief-plan/prune$"), _prune)
     _open_board(authed_page, base_url)
     plan_body = authed_page.locator("#boardChiefPlan .board-plan-body")
-    button = plan_body.locator(".board-plan-clear-merged")
+    button = plan_body.locator(".board-clear")
     expect(button).to_have_text("Clear merged (2)")
     box = stable_read(button.bounding_box)
     assert box and box["height"] >= 44, f"clear button under the 44px tap floor: {box}"
