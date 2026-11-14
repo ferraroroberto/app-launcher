@@ -42,12 +42,17 @@ body.terminal-open {
   overflow-anchor: none;
 }
 /* Installed phone app only: the overlay is fixed outside `.app`, so it takes
-   the same offset below the safe area that `.app` does (base.css), keeping the
-   session header level with the main tabs' header. After the base rule above
-   (equal specificity), plain padding so no layer is created. */
+   the offset below the safe area that the vendored nav gives the main tabs
+   (--standalone-head-offset), keeping the session's top bar level with their
+   header card. The band above the bar is painted in the page colour, as on the
+   tabs, not in the terminal screen's own (dark) colour. After the base rule
+   above (equal specificity); no transform or filter, so no layer is created. */
 @media (display-mode: standalone) and (pointer: coarse) and (max-width: 520px) {
   .terminal-overlay {
     padding-top: calc(env(safe-area-inset-top, 0px) + var(--standalone-head-offset));
+    background:
+      linear-gradient(var(--bg), var(--bg)) top / 100% calc(env(safe-area-inset-top, 0px) + var(--standalone-head-offset)) no-repeat,
+      var(--term-bg);
   }
 }
 .terminal-bar {
