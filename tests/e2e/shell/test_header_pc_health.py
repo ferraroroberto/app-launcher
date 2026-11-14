@@ -155,13 +155,18 @@ def _assert_a_restart_that_starts_the_app_again_says_whether_it_came_back(
     _refetch_health(page)
     expect(body.locator("[data-row='owner']")).to_contain_text("Elgato Wave Link")
     toast = page.locator("#cpuSheetToast")
-    for words, tone in (("Running again", "good"), ("did not come back", "error"),
-                        ("Running again", "good")):
+    # Only a failure tints; a success toast stays neutral (design.md `toast`).
+    error_class = re.compile(r"\berror\b")
+    for words, failed in (("Running again", False), ("did not come back", True),
+                          ("Running again", False)):
         body.get_by_role("button", name="Restart").click()
         page.locator("#confirmDialogOk").click()
         expect(toast).to_contain_text("Stopped WaveLink.exe")
         expect(toast).to_contain_text(words)
-        expect(toast).to_have_class(re.compile(r"\b" + tone + r"\b"))
+        if failed:
+            expect(toast).to_have_class(error_class)
+        else:
+            expect(toast).not_to_have_class(error_class)
     assert relaunches == [], f"not every restart was posted: {relaunches}"
 
 
