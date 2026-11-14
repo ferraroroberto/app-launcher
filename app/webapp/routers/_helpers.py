@@ -325,6 +325,20 @@ def client_ip(request: Request) -> str:
     return request.client.host if request.client else "?"
 
 
+def launch_mirror_enabled(cfg: WebappConfig) -> bool:
+    """Whether a *launch* may open a PC mirror window at all.
+
+    One source of truth for every launch path: window mirroring must be
+    available (``claude_show_local_window``) and the owner must have asked for
+    windows (Settings' "Open sessions in a new window",
+    ``open_sessions_in_window``). Off, a session renders in the page whoever
+    started it and from whatever surface. The row menu's explicit "Open in new
+    window" does not come through here: it posts to ``/mirror``, which needs
+    only ``claude_show_local_window``.
+    """
+    return bool(cfg.claude_show_local_window and cfg.open_sessions_in_window)
+
+
 def should_mirror_to_pc(
     show_local_window: bool, request: Request, body: Dict[str, Any]
 ) -> bool:
@@ -550,7 +564,7 @@ async def audit_session_start_and_maybe_mirror(
     # mirror_url picks loopback (auth-bypass) or the ts.net URL with explicit
     # credentials, keyed on the active cert.
     if mirror and request is not None and kind == "pty" and should_mirror_to_pc(
-        cfg.claude_show_local_window, request, body
+        launch_mirror_enabled(cfg), request, body
     ):
         # Pass sid so launcher tracks the mirror window's HWND for Stop &
         # Close to dismiss it later.

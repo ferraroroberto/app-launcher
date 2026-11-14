@@ -328,11 +328,11 @@ class WebappConfig:
     # interactive terminal window for it on the PC (over loopback, so it
     # bypasses the Tailscale + passkey gate). Input works from both sides.
     claude_show_local_window: bool = True
-    # Where the SPA opens a session on a desktop browser. Off (the default),
-    # a row tap and a new launch render in the page; on, a full-control
-    # session's terminal gets the dedicated PC Edge window as before. The
-    # session kebab's "Open in new window" reaches the window either way.
-    # Chief and API launches carry no page flag and keep mirroring.
+    # Whether sessions get the dedicated PC Edge window. Off (the default),
+    # a row tap and every launch (any surface, the chief and API callers
+    # included) render in the page and open no window; on, a full-control
+    # session's terminal gets the window. The session kebab's "Open in new
+    # window" reaches the window either way.
     open_sessions_in_window: bool = False
     # A session with no remembered view opens in Chat wherever Chat exists,
     # on the phone too; off restores Terminal on the phone. An explicit
