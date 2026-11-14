@@ -90,7 +90,7 @@ def _options(value: Any) -> List[Dict[str, Any]]:
     return options[:MAX_OPTIONS]
 
 
-def _ref_url(ref: str, repo: str, owner: str) -> str:
+def ref_url(ref: str, repo: str, owner: str) -> str:
     """The GitHub link for a ``repo#N`` ref, or ``""`` when it isn't one."""
     match = _REF.match(ref)
     repo = (match.group(1) or repo) if match else ""
@@ -119,7 +119,7 @@ def _waiting(value: Any, owner: str) -> List[Dict[str, Any]]:
         item["question"] = _text(entry.get("question")) or item["text"]
         item["options"] = _options(entry.get("options"))
         item["multi"] = entry.get("multi") is True
-        item["ref_url"] = _ref_url(item["ref"], item["repo"], owner)
+        item["ref_url"] = ref_url(item["ref"], item["repo"], owner)
         items.append(item)
     return items
 
@@ -164,10 +164,10 @@ def read_chief_plan(path: Path, github_owner: str = "") -> Dict[str, Any]:
     if not queue:
         return {"state": "empty"}
     for row in queue:
-        row["ref_url"] = _ref_url(row["ref"], row["repo"], github_owner)
+        row["ref_url"] = ref_url(row["ref"], row["repo"], github_owner)
     lanes = _rows(data.get("lanes"), _LANE_FIELDS)
     for lane in lanes:
-        lane["ref_url"] = _ref_url(lane["item"], lane["repo"], github_owner)
+        lane["ref_url"] = ref_url(lane["item"], lane["repo"], github_owner)
     return {
         "state": "ok",
         "updated_at": _text(data.get("updated_at")),

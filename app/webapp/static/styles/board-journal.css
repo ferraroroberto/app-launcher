@@ -1,0 +1,20 @@
+/* The Board's "Since you last looked" card (board/chief-journal.js). Its rows
+   are the shared action-row, as every Board row: the entry's text on line 1,
+   `time · repo#N` and the kind chip on line 2, a chevron on a row that opens
+   its issue. An entry the owner already saw is quieter in the Show all view. */
+
+.board-journal[hidden] { display: none; }
+.board-journal-list { list-style: none; margin: 0; padding: 0; }
+.board-journal-row .action-row-meta .chip { margin-left: auto; }
+.board-journal-row.is-read .action-row-title { color: var(--muted); }
+.board-journal-line { margin: 0; }
+/* Nothing new: one line, the way to the older entries at its end. */
+.board-journal-quiet {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.board-journal-all { margin-top: 4px; }
+.board-journal-quiet .board-journal-all { margin-top: 0; flex: none; }
+.board-journal-body > .board-journal-all { width: 100%; }

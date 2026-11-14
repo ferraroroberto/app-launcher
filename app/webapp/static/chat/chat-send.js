@@ -12,6 +12,8 @@ import { confirmDialog } from '../confirm-dialog.js';
 import { keyboardOverlayHeight } from '../terminal.js';
 import { uploadSessionFile } from '../terminal/terminal-compose.js';
 import { openResumeCard } from './chat-resume.js';
+import { isChiefSession } from '../shared/session-kinds.js';
+import { markLooked } from '../board/journal-look.js';
 import { pickerAllowed } from './transcript-decisions.js';
 import {
   SENT_REFRESH_MS, chatComposer, forwardRead, hasTranscriptReader, liveAllowed, scheduleLive, view,
@@ -82,6 +84,8 @@ export async function sendFromChat(text) {
   }
   const outcome = sendOutcome(verdict, { watch: hasTranscriptReader(target.session) });
   toast(outcome.text, outcome.kind, { icon: 'send-horizontal' });
+  // A message to the chief is a look at the Board's journal (not an error verdict).
+  if (outcome.kind !== 'error' && isChiefSession(target.session)) markLooked();
   if (view !== target) return false;
   if (outcome.watch) armSendWatch(target, watch);
   window.clearTimeout(target.refreshTimer);

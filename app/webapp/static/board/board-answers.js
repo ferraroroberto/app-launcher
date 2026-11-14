@@ -54,6 +54,7 @@ import { createDictation, startWorkTimer, voiceDictationAvailable } from '../voi
 import { growTextarea, mountComposer } from '../composer.js';
 import { uploadSessionFile } from '../terminal/terminal-compose.js';
 import { chiefSessionId, sendToChief } from './board-dispatch.js';
+import { markLooked } from './journal-look.js';
 import { optionList, otherRow, paintOptions } from './answer-item.js';
 import {
   attachedLines, disposeAnswerFiles, emptyFiles, filesUploading, mountAnswerFiles, syncAnswerFiles,
@@ -537,6 +538,8 @@ async function submitAnswers() {
       also.textarea.value = '';
       sheet.also = '';
     }
+    // Submitting answers is a look at the Board, with the chief running or not.
+    markLooked();
     renderBoard();
     if (owner.failed.length) {
       // The failed ones keep their drafts; the rebuilt sheet shows each one's reason.

@@ -93,6 +93,22 @@
              plan first (#1436), so Claude's turn sits directly under it on the
              desktop grid as it does in the phone's stack. -->
         <div class="board-col-stack">
+          <!-- Since you last looked (board/chief-journal.js): what the chief's
+               journal recorded after your last Board message or answer.
+               Hidden until the chief has written a journal. -->
+          <details id="boardJournal" class="card card--collapsible board-journal" open hidden>
+            <summary data-track="board.fold-journal" class="collapse-summary">
+              <span class="collapse-main">
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"></use></svg>
+                <h3 class="collapse-title">Since you last looked</h3>
+                <span class="collapse-count board-journal-count"></span>
+              </span>
+              <span class="collapse-chevron" aria-hidden="true">›</span>
+            </summary>
+            <div class="collapse-body">
+              <div class="board-journal-body"></div>
+            </div>
+          </details>
           <details id="boardChiefPlan" class="card card--collapsible board-chief-plan" open>
             <summary data-track="board.fold-chief-plan" class="collapse-summary">
               <span class="collapse-main">

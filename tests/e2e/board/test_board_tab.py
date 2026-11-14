@@ -89,11 +89,12 @@ def _assert_board_structure(authed_page: Page) -> None:
     expect(sections).to_have_count(5)
     # Lane order (#1436 decision log): Backlog, the chief's plan, Claude's
     # turn, Ideas (hidden while the scan has written none), Your turn, PRs and
-    # jobs (renamed from "Other"), Done today.
+    # jobs (renamed from "Other"), Done today. "Since you last looked" leads
+    # the plan's stack and is hidden while the chief has written no journal.
     expect(
         authed_page.locator("#boardColumns details > summary .collapse-title")
-    ).to_have_text(["Backlog", "Chief's plan", "Claude's turn", "Ideas", "Your turn",
-                    "PRs and jobs", "Done today"])
+    ).to_have_text(["Backlog", "Since you last looked", "Chief's plan", "Claude's turn",
+                    "Ideas", "Your turn", "PRs and jobs", "Done today"])
     expect(
         authed_page.locator("#boardColumns details.board-col > summary .board-count")
     ).to_have_count(5)
