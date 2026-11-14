@@ -10,7 +10,7 @@ import { AuthRequiredError, apiFailToast, authHeaders, consumeUrlParam, jsonApi,
 import { setTab, wireTabs } from './tabs.js';
 import { wireUsageLog } from './usage.js';
 import { initPerfTiming } from './perf-timing.js';
-import { initBuildWatch } from './build-watch.js';
+import { initBuildWatch } from './_vendored/build-watch/build-watch.js';
 import { bindTextSize } from './_vendored/text-size/text-size.js';
 import { buildReadoutText } from './_vendored/page-foot/page-foot.js';
 import { fetchConfig, wireClaudeOptions, wireConfigSwitch } from './settings/claude-options.js';

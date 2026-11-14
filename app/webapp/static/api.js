@@ -7,7 +7,7 @@
 
 import { els, state, TOKEN_KEY } from './state.js';
 import { requestSignIn } from './_vendored/sign-in/sign-in.js';
-import { icon } from './_vendored/icons/icons.js';
+import { showToast as toast } from './_vendored/toast/toast.js';
 import { escapeHtml } from './dom-utils.js';
 
 // --------------------------------------------------------------- tokens
@@ -203,31 +203,11 @@ export function setSignInHandler(onLoginSuccess) {
 // re-exported here so existing `from './api.js'` importers are unchanged.
 export { escapeHtml };
 
-const toastTimers = new WeakMap();
-// opts.icon (a Lucide glyph name) renders a leading icon before the escaped
-// message; without it the toast stays plain text as before. opts.duration
-// (ms) overrides how long a non-error toast stays up. opts.host is a toast
-// element inside an open modal <dialog>: the page's own toast sits under a
-// dialog's top layer, so a sheet that must confirm an action carries one.
-export function toast(msg, kind, opts) {
-  const el = (opts && opts.host) || els.toast;
-  const iconName = opts && opts.icon;
-  if (iconName) {
-    el.innerHTML = icon(iconName) + ' ' + escapeHtml(msg);
-  } else {
-    el.textContent = msg;
-  }
-  el.className = (opts && opts.host ? 'sheet-toast ' : 'toast ') + (kind || '');
-  // Errors interrupt (aria-live="assertive"); everything else stays polite so
-  // routine confirmations don't cut off other screen-reader speech — the
-  // design.md feedback contract, same as home-automation's toast.
-  el.setAttribute('aria-live', kind === 'error' ? 'assertive' : 'polite');
-  el.hidden = false;
-  clearTimeout(toastTimers.get(el));
-  toastTimers.set(el, setTimeout(function () {
-    el.hidden = true;
-  }, (opts && opts.duration) || (kind === 'error' ? 4500 : 2200)));
-}
+// The fleet's vendored toast: toast(msg, kind, { icon, host, ms, action }).
+// Only 'error' tints; every other kind renders neutral. opts.host is a
+// .sheet-toast inside an open modal <dialog>: the page's own toast sits under
+// a dialog's top layer, so a sheet that must confirm an action carries one.
+export { toast };
 
 // Toast a failed API call as "<prefix>: <message>" (error styling) — unless
 // exc is an AuthRequiredError, in which case the sign-in sheet already went

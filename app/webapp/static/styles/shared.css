@@ -1,4 +1,4 @@
-/* ---------- empty / toast ---------- */
+/* ---------- empty ---------- */
 .empty {
   padding: 24px;
   background: var(--card);
@@ -9,92 +9,6 @@
   font-size: var(--font-label);
 }
 
-/* Neutral frosted toast — the same glass treatment as the floating bottom nav
-   (not a solid block), ported from home-automation's reference recipe.
-   Sits above the nav so it's never hidden behind it. Only real errors tint.
-   .sheet-toast is the same toast raised inside a modal dialog (toast()'s
-   opts.host in api.js); it carries its own class so a `.toast` selector
-   still means the page's one toast. */
-.toast,
-.sheet-toast,
-.build-prompt {
-  position: fixed;
-  left: 50%;
-  /* --bottom-tabs-* are deliberately undefined in this app's token block
-, so the nav geometry has to come from nav-tabs.css's own canonical
-     var(..., fallback) defaults — same spelling nav-tabs.css uses itself. */
-  bottom: calc(
-    var(--bottom-tabs-height, 61px) + var(--bottom-tabs-margin, 21px) * 2 +
-    env(safe-area-inset-bottom, 0px) + 8px
-  );
-  transform: translateX(-50%);
-  background: var(--tabbar-bg);
-  -webkit-backdrop-filter: blur(20px) saturate(1.25);
-  backdrop-filter: blur(20px) saturate(1.25);
-  border: 1px solid var(--tabbar-border);
-  color: var(--ink);
-  /* `width: max-content` is load-bearing, not a tidy-up: with `left: 50%` and
-     no `right`, a shrink-to-fit box's available width is only the 50vw from
-     the anchor to the viewport edge, so the text wrapped at half the screen
-     and `max-width` never bound. Sizing to the content first makes the
-     max-width a real ceiling — one line whenever the message fits, and only
-     then a wrap. Centred, with real leading and `balance` so a message that
-     *does* wrap splits evenly across two comfortable lines instead of reading
-     as a crammed line plus an orphan word. */
-  width: max-content;
-  padding: 12px 18px;
-  border-radius: var(--radius-md);
-  font-size: var(--font-label);
-  font-weight: 700;
-  line-height: 1.5;
-  text-align: center;
-  text-wrap: balance;
-  max-width: min(calc(100vw - 24px), 560px);
-  box-shadow: var(--shadow);
-  /* Above the full-screen terminal overlay (z-index 300) — otherwise every
-     toast raised while the terminal is open (read-aloud feedback, the
-     🎤 dictation / 📷 OCR / paste results) renders behind it and is invisible
-     on the phone. A transient toast should sit above everything. (This is the
-     one deliberate divergence from home-automation's 130, which has no such
-     overlay.) */
-  z-index: 400;
-}
-/* Inside a sheet the toast is placed against the sheet, not the viewport: it
-   lives in the sticky .detail-actions footer (the positioned ancestor), so it
-   rides just above the Send row, inset by the card's 18px padding and
-   centred, and its max width is the sheet's content box. */
-.sheet-toast {
-  position: absolute;
-  inset-inline: 18px;
-  bottom: calc(100% + 8px);
-  transform: none;
-  width: fit-content;
-  max-width: none;
-  margin-inline: auto;
-}
-/* The new-build prompt wears the toast's glass but is its own element, so a
-   routine toast cannot overwrite it; it sits one toast-height above where a
-   toast lands. `hidden` must still win over the flex display. */
-.build-prompt {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  bottom: calc(
-    var(--bottom-tabs-height, 61px) + var(--bottom-tabs-margin, 21px) * 2 +
-    env(safe-area-inset-bottom, 0px) + 64px
-  );
-  padding: 6px 6px 6px 18px;
-  text-wrap: pretty;
-}
-.build-prompt[hidden] { display: none; }
-.build-prompt-reload { min-height: var(--hit-min); flex: none; }
-.build-prompt-dismiss { flex: none; }
-.toast.error,
-.sheet-toast.error {
-  background: color-mix(in srgb, var(--deficit) 75%, transparent);
-  border-color: var(--deficit);
-  color: var(--accent-fg);
-}
 
 /* ---------- settings ---------- */
 /* The fields inside Settings' sheets (disclosure cards before it). */
