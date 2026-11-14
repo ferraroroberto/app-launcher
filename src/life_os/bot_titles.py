@@ -34,6 +34,9 @@ BOT_TITLE_PREFIX = "Telegram bot - "
 RULE_LIVE_LABEL = "live-label"
 RULE_BOT_TITLE = "bot-title"
 
+# Capture files already logged as reclassified, so a list refresh does not repeat the line.
+_reclassified_files: Set[str] = set()
+
 
 def bot_title(skill_id: str) -> str:
     """The fixed owner title of a bot chat in ``skill_id``."""
@@ -49,13 +52,37 @@ def bot_conversation_ids(groups: Dict[str, List[Dict[str, Any]]]) -> Set[str]:
             if any(label_profile_id(owner.get("label")) for owner in owners)}
 
 
+def _log_owner_reclassified(row: Dict[str, Any], rule: str) -> None:
+    """Log once per capture file that an owner title overrode a capture marker.
+
+    Names the rule and the file only: the title is the owner's own text.
+    """
+    file = str(row.get("file") or "")
+    if file in _reclassified_files:
+        return
+    _reclassified_files.add(file)
+    logger.info("ℹ️ Life OS row listed as the owner's: owner title outranks rule=%s file=%s",
+                rule, file)
+
+
 def bot_rule(row: Dict[str, Any], bots: Set[str]) -> str:
     """The rule that makes ``row`` a Telegram bot's own conversation, or ``""``:
     a live ``telegram:*`` session holds it, its capture shows a bot chat
     (``bot_chat_rule``), or it carries the fixed bot title written while the
-    chat was live (which outlives the session)."""
+    chat was live (which outlives the session).
+
+    A title that is not the fixed bot title is the owner's own rename, so it
+    outranks the capture marker: the chat began with the bot but the owner took
+    it over. A live ``telegram:*`` label still wins, because the bot is talking
+    in that chat right now.
+    """
     if str(row.get("sid") or "").lower() in bots:
         return RULE_LIVE_LABEL
+    title = str(row.get("title") or "")
+    if title and not title.startswith(BOT_TITLE_PREFIX):
+        if row.get("bot_chat"):
+            _log_owner_reclassified(row, str(row.get("bot_chat_rule") or "bot-chat"))
+        return ""
     if row.get("bot_chat"):
         return str(row.get("bot_chat_rule") or "bot-chat")
     if str(row.get("title") or "").startswith(BOT_TITLE_PREFIX):

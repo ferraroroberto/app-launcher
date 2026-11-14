@@ -50,6 +50,26 @@ class TestDecision:
         assert bot_rule({"sid": "bbb", "title": bot_title("health")}, set()) == "bot-title"
         assert bot_rule({"sid": "bbb", "title": "Ferry plans"}, {"aaa"}) == ""
 
+    @pytest.mark.parametrize("rule", ["channel-opening", "channel-turn"])
+    def test_an_owner_title_outranks_a_capture_marker(self, rule, caplog):
+        row = {"sid": "bbb", "file": f"2026-07-03-{rule}.md", "title": "Ferry plans",
+               "bot_chat": True, "bot_chat_rule": rule}
+        with caplog.at_level("INFO", logger="src.life_os.bot_titles"):
+            assert bot_rule(row, set()) == ""
+            assert bot_rule(row, set()) == ""
+        logged = [r.getMessage() for r in caplog.records if r.name == "src.life_os.bot_titles"]
+        assert len(logged) == 1, "logged the first time only"
+        assert rule in logged[0] and row["file"] in logged[0]
+        assert "Ferry plans" not in logged[0], "never the owner's title text"
+
+    def test_the_fixed_bot_title_untitled_and_live_rows_stay_system(self):
+        marker = {"bot_chat": True, "bot_chat_rule": "channel-opening"}
+        assert bot_rule({"sid": "b", "title": bot_title("health"), **marker}, set()) == "channel-opening"
+        assert bot_rule({"sid": "b", "title": bot_title("health")}, set()) == "bot-title"
+        assert bot_rule({"sid": "b", "title": "", **marker}, set()) == "channel-opening"
+        assert bot_rule({"sid": "b", **marker}, set()) == "channel-opening"
+        assert bot_rule({"sid": "B", "title": "Ferry plans", **marker}, {"b"}) == "live-label"
+
     def test_the_split_keeps_every_row_and_its_order(self):
         rows = [{"sid": "a"}, {"sid": "b", "title": bot_title("x")}, {"sid": "c"},
                 {"sid": "d", "bot_chat": True}]
@@ -133,15 +153,25 @@ class TestBotChatRow:
         assert list(system) == [self.CAPTURE]
         assert self.CAPTURE not in normal
 
-    def test_a_renamed_bot_chat_with_channel_turns_stays_system_without_a_session(self):
+    def test_an_owner_renamed_row_with_channel_turns_lists_as_the_owners_own(self):
         channel = ('**You**: <channel source="plugin:telegram:telegram" chat_id="1">'
                    "an invented message</channel>\n\n**Claude**: an invented reply\n")
         self._add_capture("2026-07-03-0900-renamed.md", "5b8c2d4e-7f1a-4c3b-8d2e-6a9f0b1c3d5e",
                           channel, title="Ferry plans")
         self.sessions = []
         normal, system = self._lists()
-        assert "2026-07-03-0900-renamed.md" in system
-        assert "2026-07-03-0900-renamed.md" not in normal
+        assert "2026-07-03-0900-renamed.md" in normal
+        assert "2026-07-03-0900-renamed.md" not in system
+        assert normal["2026-07-03-0900-renamed.md"]["path"], "readable, so Resume and the reader work"
+
+    def test_an_untitled_row_with_channel_turns_stays_system_without_a_session(self):
+        channel = ('**You**: <channel source="plugin:telegram:telegram" chat_id="1">'
+                   "an invented message</channel>\n\n**Claude**: an invented reply\n")
+        self._add_capture("2026-07-03-0900-untitled.md", "5b8c2d4e-7f1a-4c3b-8d2e-6a9f0b1c3d5e", channel)
+        self.sessions = []
+        normal, system = self._lists()
+        assert "2026-07-03-0900-untitled.md" in system
+        assert "2026-07-03-0900-untitled.md" not in normal
 
     def test_an_untitled_unheld_row_with_no_bot_marker_stays_a_normal_conversation(self):
         self._add_capture("2026-07-03-0900-plain.md", "2f4a6c8e-0b1d-4e3f-9a5c-7d9b1e3f5a70",
