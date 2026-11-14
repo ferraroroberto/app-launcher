@@ -1,6 +1,6 @@
 """Red GitHub CI on the Board and the chief's ci-failed event (#2290).
 
-GitHub is faked at ``github_client.workflow_runs`` and the default branch at
+GitHub is faked at ``github_client.workflow_runs`` / ``workflow_states``, the default branch at
 ``ci_runs.default_branch``; the mailbox and seen-runs file are ``tmp_path``.
 """
 
@@ -18,6 +18,8 @@ from src.board import ci_runs
 from src.chief import ci_failed
 
 OWNER = "example-owner"
+# The suite-wide conftest swaps the client's reader for a stub; the parser test needs the real one.
+_REAL_WORKFLOW_STATES = ci_runs.github_client.workflow_states
 
 
 def _run(run_id, conclusion, *, workflow="CI", wid=1, created="2026-11-09T14:00:00Z", status="completed"):
@@ -43,6 +45,7 @@ def fleet(tmp_path, monkeypatch):
     })
     monkeypatch.setattr(ci_runs, "default_branch", lambda _p: "main")
     runs = {"alpha": [], "beta": []}
+    states = {"alpha": {}, "beta": {}}
     calls = []
 
     def fake_runs(owner, repo, branch):
@@ -52,8 +55,15 @@ def fleet(tmp_path, monkeypatch):
             raise value
         return list(value)
 
+    def fake_states(owner, repo):
+        value = states[repo]
+        if isinstance(value, Exception):
+            raise value
+        return dict(value)
+
     monkeypatch.setattr(ci_runs.github_client, "workflow_runs", fake_runs)
-    return SimpleNamespace(projects=str(projects), runs=runs, calls=calls)
+    monkeypatch.setattr(ci_runs.github_client, "workflow_states", fake_states)
+    return SimpleNamespace(projects=str(projects), runs=runs, states=states, calls=calls)
 
 
 def _cfg(tmp_path, **over):
@@ -123,6 +133,54 @@ def test_unreadable_repo_is_unknown_never_green(fleet, monkeypatch):
 
     monkeypatch.setattr(ci_runs, "default_branch", lambda _p: None)
     assert {c["state"] for c in ci_runs.board_cards(_sweep(fleet))} == {"unknown"}
+
+
+@pytest.mark.parametrize("state", ["disabled_manually", "deleted", "disabled_inactivity"])
+def test_red_run_of_an_inactive_workflow_makes_no_card_and_no_event(tmp_path, fleet, chief, state):
+    cfg = _cfg(tmp_path)
+    _sweep(fleet, cfg)
+    fleet.runs["alpha"] = [_run(10, "failure", workflow="ci", wid=7), _run(11, "failure", workflow="lint", wid=8)]
+    fleet.states["alpha"] = {7: state, 8: "active"}
+    snap = _sweep(fleet, cfg)
+    assert [(c["workflow"], c["run_id"]) for c in ci_runs.board_cards(snap)] == [("lint", 11)]
+    assert [e["run_id"] for e in _events(cfg)] == [11]
+
+
+def test_inactive_only_workflow_leaves_the_repo_green(fleet):
+    fleet.runs["alpha"] = [_run(10, "failure", wid=7)]
+    fleet.states["alpha"] = {7: "disabled_manually"}
+    snap = _sweep(fleet)
+    assert snap["repos"]["alpha"]["state"] == ci_runs.STATE_GREEN
+    assert ci_runs.board_cards(snap) == []
+
+
+def test_unreadable_or_missing_workflow_state_keeps_the_red_card(fleet):
+    fleet.runs["alpha"] = [_run(10, "failure", wid=7)]
+    fleet.states["alpha"] = ci_runs.github_client.GhError("HTTP 502")
+    assert [c["run_id"] for c in ci_runs.board_cards(_sweep(fleet))] == [10]
+
+    fleet.states["alpha"] = {99: "disabled_manually"}
+    assert [c["run_id"] for c in ci_runs.board_cards(_sweep(fleet))] == [10]
+
+
+def test_workflow_states_read_once_and_only_when_something_is_red(fleet, monkeypatch):
+    seen = []
+    monkeypatch.setattr(ci_runs.github_client, "workflow_states", lambda o, r: seen.append(r) or {})
+    fleet.runs["alpha"] = [_run(10, "failure")]
+    fleet.runs["beta"] = [_run(20, "success")]
+    _sweep(fleet)
+    assert seen == ["alpha"]
+
+
+def test_workflow_states_parses_the_workflows_list_and_rejects_a_bad_body(monkeypatch):
+    body = {"workflows": [{"id": 7, "state": "disabled_manually"}, {"id": 8, "state": "active"}]}
+    monkeypatch.setattr(ci_runs.github_client, "_run_gh", lambda args, **_k: json.dumps(body))
+    assert _REAL_WORKFLOW_STATES(OWNER, "app") == {7: "disabled_manually", 8: "active"}
+
+    for bad in ("not json", json.dumps({"total_count": 0})):
+        monkeypatch.setattr(ci_runs.github_client, "_run_gh", lambda args, _b=bad, **_k: _b)
+        with pytest.raises(ci_runs.github_client.GhError):
+            _REAL_WORKFLOW_STATES(OWNER, "app")
 
 
 def test_no_sweep_yet_is_unavailable(fleet):

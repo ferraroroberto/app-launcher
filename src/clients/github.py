@@ -609,6 +609,25 @@ def workflow_runs(owner: str, repo: str, branch: str) -> List[Dict[str, Any]]:
     return [r for r in runs if isinstance(r, dict)]
 
 
+def workflow_states(owner: str, repo: str) -> Dict[Any, str]:
+    """Each workflow's Actions ``state`` (``active``, ``disabled_manually``,
+    ``deleted``, ...) keyed by its id, in one ``gh api`` call.
+
+    :class:`GhError` when the list did not read: an unread state is not a state.
+    """
+    if not (_SAFE_NAME.match(repo) and _SAFE_NAME.match(owner)):
+        raise GhError(f"unsafe repo name {owner}/{repo}")
+    out = _run_gh(["api", f"repos/{owner}/{repo}/actions/workflows?per_page=100"])
+    try:
+        data = json.loads(out or "{}")
+    except ValueError as exc:
+        raise GhError(f"gh api workflows for {repo}: unparseable JSON: {exc}") from exc
+    rows = data.get("workflows") if isinstance(data, dict) else None
+    if not isinstance(rows, list):
+        raise GhError(f"gh api workflows for {repo}: no workflows list")
+    return {r["id"]: str(r.get("state") or "") for r in rows if isinstance(r, dict) and "id" in r}
+
+
 # Matches the owner-check and CI sweeps' own cooldowns.
 AUTO_REFRESH_COOLDOWN_SECONDS = 60
 
