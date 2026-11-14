@@ -41,6 +41,9 @@ _GH_COMPLETED = "completed"
 #: A run that ends neither way (cancelled, skipped, neutral) says nothing
 #: about the branch, so the streak looks past it.
 _GREEN_CONCLUSIONS = frozenset({"success"})
+#: The Actions state of a workflow that still runs; any other state (disabled,
+#: deleted) is a workflow whose last red run is permanent.
+_ACTIVE = "active"
 
 #: The Board's own staleness re-refresh comes every two minutes; one fleet
 #: sweep a minute is the most GitHub ever sees from here.
@@ -84,11 +87,16 @@ def default_branch(repo_path: Path) -> Optional[str]:
     return ref[len("origin/"):] or None
 
 
-def summarize(runs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def summarize(
+    runs: List[Dict[str, Any]], states: Optional[Dict[Any, str]] = None,
+) -> List[Dict[str, Any]]:
     """The red workflows among ``runs`` (newest first): one entry per workflow.
 
     Each entry is the workflow's latest finished run, with ``red_since`` the
-    creation time of the oldest failure in its unbroken red streak.
+    creation time of the oldest failure in its unbroken red streak. A workflow
+    that ``states`` (workflow id to Actions state) lists as anything but
+    ``active`` is dropped: no newer run can clear its last red one. A workflow
+    ``states`` does not name, or no ``states`` at all, keeps its entry.
     """
     by_workflow: Dict[Any, List[Dict[str, Any]]] = {}
     for run in runs:
@@ -102,6 +110,8 @@ def summarize(runs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     for decisive in by_workflow.values():
         latest = decisive[0]
         if latest.get("conclusion") not in RED_CONCLUSIONS:
+            continue
+        if states and states.get(latest.get("workflow_id"), _ACTIVE) != _ACTIVE:
             continue
         streak_start = latest
         for run in decisive[1:]:
@@ -121,6 +131,25 @@ def summarize(runs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return red
 
 
+def _drop_inactive(
+    owner: str, repo: str, runs: List[Dict[str, Any]], red: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """``red`` without the workflows GitHub reports as not active.
+
+    Read only when something is red. A state that cannot be read keeps every
+    card, as before: unreadable is never "inactive".
+    """
+    try:
+        states = github_client.workflow_states(owner, repo)
+    except github_client.GhError as exc:
+        logger.info("ℹ️ CI runs: %s workflow states unreadable, keeping red cards: %s", repo, exc)
+        return red
+    kept = summarize(runs, states)
+    if len(kept) != len(red):
+        logger.info("ℹ️ CI runs: %s dropped %d red workflow(s) that are not active", repo, len(red) - len(kept))
+    return kept
+
+
 def read_repo(owner: str, repo: Dict[str, Any]) -> Dict[str, Any]:
     """One repo's CI state; every failure is an ``unknown`` with its reason."""
     branch = default_branch(repo["path"])
@@ -131,6 +160,8 @@ def read_repo(owner: str, repo: Dict[str, Any]) -> Dict[str, Any]:
     except github_client.GhError as exc:
         return {"state": STATE_UNKNOWN, "reason": str(exc), "branch": branch, "red": []}
     red = summarize(runs)
+    if red:
+        red = _drop_inactive(owner, repo["name"], runs, red)
     return {"state": STATE_RED if red else STATE_GREEN, "reason": "", "branch": branch, "red": red}
 
 

@@ -411,6 +411,7 @@ def _isolated_chief_pointer(request, tmp_path, monkeypatch):
         raise ci_runs_mod.github_client.GhError("tests never read real CI runs")
 
     monkeypatch.setattr(ci_runs_mod.github_client, "workflow_runs", _no_real_runs)
+    monkeypatch.setattr(ci_runs_mod.github_client, "workflow_states", _no_real_runs)
     # The write-side memo is module-level and would otherwise leak one test's
     # chief into the next (a second test would then observe "no write").
     monkeypatch.setattr(chief_router, "_last_noted_chief_conversation", "")
