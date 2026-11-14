@@ -547,7 +547,9 @@ time_budget_s         = 1200
 # (the iPhone projection is the phone-width run) and the stop failure is folded into the stop test.
 # 2026-11-11: 651 -> 653, two nodes (one test, both projections) for tests/e2e/board/test_board_repo_filter_counts.py: a filtered owner-check payload
 # across two repos, which no existing Board test shares; its geometry half (Start work in the stacked Claude turn) rides the same node.
-test_budget = 653
+# 2026-11-14: 653 -> 654, one node (one test, chromium only) for tests/e2e/shell/test_build_watch.py: a mocked /api/version answered per step on a jumped
+# clock, which no existing test shares; the current, empty-hash, unreadable and dismissed cases ride that one node.
+test_budget = 654
 
 # --- static assets under the webapp's static dir -> Chromium smoke ----------
 [[e2e.rule]]
