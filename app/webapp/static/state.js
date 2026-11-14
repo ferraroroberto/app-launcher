@@ -180,6 +180,7 @@ export const els = {
   boardStatus: document.getElementById('boardStatus'),
   boardFetchState: document.getElementById('boardFetchState'),
   boardRefresh: document.getElementById('boardRefresh'),
+  boardFoldAll: document.getElementById('boardFoldAll'),
   boardColBacklog: document.getElementById('boardColBacklog'),
   boardColClaude: document.getElementById('boardColClaude'),
   boardColYours: document.getElementById('boardColYours'),
