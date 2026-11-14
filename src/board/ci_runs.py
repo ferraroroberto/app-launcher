@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from src import fleet_scope
+from src.board import ci_dismissed
 from src.board.attention_state import AttentionState
 from src.board.state import age_seconds, parse_iso
 from src.clients import github as github_client
@@ -240,9 +241,20 @@ def section(snap: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def board_cards(snap: Dict[str, Any], *, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
-    """One ``failed`` card per red workflow, one ``unknown`` card per unreadable repo."""
+def board_cards(
+    snap: Dict[str, Any],
+    *,
+    now: Optional[datetime] = None,
+    dismissed: Optional[ci_dismissed.Dismissed] = None,
+) -> List[Dict[str, Any]]:
+    """One ``failed`` card per red workflow, one ``unknown`` card per unreadable repo.
+
+    A red run the owner dismissed makes no card; the workflow's next red run
+    does. ``dismissed`` defaults to the file's marks.
+    """
     moment = now or datetime.now(timezone.utc)
+    if dismissed is None:
+        dismissed = ci_dismissed.read_dismissed()
     cards: List[Dict[str, Any]] = []
     for name in sorted(snap.get("repos") or {}):
         result = snap["repos"][name]
@@ -253,6 +265,8 @@ def board_cards(snap: Dict[str, Any], *, now: Optional[datetime] = None) -> List
             })
             continue
         for red in result.get("red") or []:
+            if ci_dismissed.is_dismissed(dismissed, name, red["workflow"], red["run_id"]):
+                continue
             since = parse_iso(red.get("red_since"))
             cards.append({
                 "kind": "ci", "repo": name, "state": AttentionState.FAILED,
@@ -262,6 +276,15 @@ def board_cards(snap: Dict[str, Any], *, now: Optional[datetime] = None) -> List
                 "error": None,
             })
     return cards
+
+
+def is_red_run(snap: Dict[str, Any], repo: str, workflow: str, run_id: object) -> bool:
+    """True when ``run_id`` is ``repo``'s ``workflow``'s current red run in ``snap``."""
+    result = (snap.get("repos") or {}).get(repo) or {}
+    return any(
+        red["workflow"] == workflow and red["run_id"] == run_id
+        for red in result.get("red") or []
+    )
 
 
 def reset_ci_cache() -> None:

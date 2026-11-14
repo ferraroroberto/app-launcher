@@ -418,17 +418,14 @@ const JOB_CHIPS = {
 
 // Drop the card at once rather than wait out the 5 s poll. Bumping the edit
 // seq discards a Board read already in flight, which would put it back.
-async function dismissJob(card, btn) {
+async function dismissAlert(btn, path, opts, isSame) {
   btn.disabled = true;
   try {
-    await jsonApi('/api/jobs/' + encodeURIComponent(card.job_id) + '/runs/' +
-      encodeURIComponent(card.run_id) + '/dismiss', { method: 'POST' });
+    await jsonApi(path, Object.assign({ method: 'POST' }, opts));
     noteBoardEdit();
     const other = state.board && state.board.columns && state.board.columns.other;
     if (other) {
-      state.board.columns.other = other.filter(function (c) {
-        return !(c.kind === 'job' && c.job_id === card.job_id && c.run_id === card.run_id);
-      });
+      state.board.columns.other = other.filter(function (c) { return !isSame(c); });
       renderBoard();
     }
     fetchBoard().catch(function () {});
@@ -436,6 +433,23 @@ async function dismissJob(card, btn) {
     apiFailToast('Could not dismiss the alert', exc);
     btn.disabled = false;
   }
+}
+
+function dismissJob(card, btn) {
+  return dismissAlert(btn, '/api/jobs/' + encodeURIComponent(card.job_id) + '/runs/' +
+    encodeURIComponent(card.run_id) + '/dismiss', null, function (c) {
+    return c.kind === 'job' && c.job_id === card.job_id && c.run_id === card.run_id;
+  });
+}
+
+function dismissCi(card, btn) {
+  return dismissAlert(btn, '/api/board/ci/dismiss', {
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repo: card.repo, workflow: card.workflow, run_id: card.run_id }),
+  }, function (c) {
+    return c.kind === 'ci' && c.repo === card.repo && c.workflow === card.workflow &&
+      c.run_id === card.run_id;
+  });
 }
 
 function renderJobCard(card) {
@@ -486,7 +500,7 @@ function renderCard(colKey, card, openItem) {
   if (colKey === 'done') return renderDoneCard(card);
   if (card.kind === 'pr') return renderPrCard(card);
   if (card.kind === 'job') return renderJobCard(card);
-  if (card.kind === 'ci') return renderCiCard(card);
+  if (card.kind === 'ci') return renderCiCard(card, dismissCi);
   return renderSessionCard(card, openItem);
 }
 
