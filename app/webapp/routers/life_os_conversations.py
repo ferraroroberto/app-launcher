@@ -511,7 +511,7 @@ async def split_system_chats(
     A bot chat is one a live ``telegram:*`` session holds, whose capture shows
     channel turns, or that carries the fixed bot title (``bot_rule``); the last
     two outlive the session, so a restarted bot's old conversation stays
-    system. Nothing is deleted or relabelled: the rows only land in the second
+    system, unless the owner has since renamed it (their title wins). Nothing is deleted or relabelled: the rows only land in the second
     list. ``title`` also gives an untitled live bot row its fixed title.
 
     When the session host cannot be asked, the live marker is unknown, not
