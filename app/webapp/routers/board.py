@@ -66,7 +66,7 @@ from fastapi.responses import Response
 
 from app.webapp.hot_poll import BuildSteps, hot_poll, session_poll
 from app.webapp.quota_cache import rate_limits_cache, read_quota_lines
-from app.webapp.routers import board_chief, board_ci, board_owner
+from app.webapp.routers import board_chief, board_owner
 from app.webapp.routers._helpers import (
     attach_provider_web_urls,
     audit_session_start_and_maybe_mirror,
@@ -108,7 +108,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 router.include_router(board_chief.router)
 router.include_router(board_owner.router)
-router.include_router(board_ci.router)
 
 _quota_refresh_gate = quota_usage.RefreshGate()
 _quota_refresh_task: asyncio.Task[str] | None = None
