@@ -117,17 +117,21 @@ export function sessionStatusBits(status, ageSeconds, opts) {
   return [o.hideStatus ? '' : meta.text, fmtDuration(ageSeconds)].filter(Boolean);
 }
 
-// Drop the tail whenever the line would otherwise be ellipsized, so a phone
-// keeps the folder, status and age whole instead of cutting "up 1d 4h" to
-// "up 1". Re-measured on every width change (rotation, the keyboard).
-// The tail leaves the line's own width alone, so hiding it cannot re-trigger
-// the observer. Without ResizeObserver the tail simply stays.
-function fitMetaTail(metaText, tail) {
+// Hide each part whose `over()` says the line is too tight, in order, so a
+// phone keeps what matters whole instead of cutting "up 1d 4h" to "up 1".
+// Re-measured on every width change (rotation, the keyboard). A hidden part
+// leaves the line's own width alone, so hiding it cannot re-trigger the
+// observer. Without ResizeObserver every part simply stays.
+function fitMetaParts(metaText, steps) {
   if (typeof ResizeObserver !== 'function') return;
   new ResizeObserver(function () {
-    tail.hidden = false;
-    tail.hidden = metaText.scrollWidth > metaText.clientWidth;
+    steps.forEach(function (st) { st.part.hidden = false; });
+    steps.forEach(function (st) { if (st.over()) st.part.hidden = true; });
   }).observe(metaText);
+}
+
+function metaOverflows(metaText) {
+  return metaText.scrollWidth > metaText.clientWidth;
 }
 
 // The session row's leading avatar and text column, for the Code tab's rows
@@ -137,6 +141,8 @@ function fitMetaTail(metaText, tail) {
 //
 // opts: agentId, agentLabel, badge, title, meta (text), chips (elements),
 //       iconClass / titleClass / metaClass (the caller's own hooks),
+//       metaHead (optional leading text, the folder) and metaModel (optional,
+//       shown right after it and dropped second when the line is too narrow),
 //       metaTail (optional text that ends the meta line and is the first
 //       part dropped when the line is too narrow for it, e.g. "up 1d 4h").
 // Returns [avatarEl, textEl].
@@ -166,13 +172,44 @@ export function sessionRowBody(opts) {
   meta.className = 'srow-meta' + (opts.metaClass ? ' ' + opts.metaClass : '');
   const metaText = document.createElement('span');
   metaText.className = 'srow-meta-text';
-  metaText.textContent = opts.meta || '';
+  let tail = null;
   if (opts.metaTail) {
-    const tail = document.createElement('span');
+    tail = document.createElement('span');
     tail.className = 'srow-meta-tail';
-    tail.textContent = (opts.meta ? ' · ' : '') + opts.metaTail;
-    metaText.appendChild(tail);
-    fitMetaTail(metaText, tail);
+  }
+  if (opts.metaHead && opts.metaModel) {
+    // Folder, model, status, age: a phone cuts the folder first (it ellipsizes,
+    // the rest stays whole), then drops "up N", then the model, so a long folder
+    // never costs the status or age.
+    metaText.classList.add('srow-meta-text--split');
+    const head = document.createElement('span');
+    head.className = 'srow-meta-head';
+    head.textContent = opts.metaHead;
+    const rest = document.createElement('span');
+    rest.className = 'srow-meta-rest';
+    const model = document.createElement('span');
+    model.className = 'srow-meta-model';
+    model.textContent = ' · ' + opts.metaModel;
+    rest.appendChild(model);
+    rest.appendChild(document.createTextNode(opts.meta ? ' · ' + opts.meta : ''));
+    if (tail) {
+      tail.textContent = ' · ' + opts.metaTail;
+      rest.appendChild(tail);
+    }
+    metaText.appendChild(head);
+    metaText.appendChild(rest);
+    const steps = [{ part: model, over: function () { return metaOverflows(metaText); } }];
+    if (tail) {
+      steps.unshift({ part: tail, over: function () { return head.scrollWidth > head.clientWidth; } });
+    }
+    fitMetaParts(metaText, steps);
+  } else {
+    metaText.textContent = [opts.metaHead, opts.meta].filter(Boolean).join(' · ');
+    if (tail) {
+      tail.textContent = (metaText.textContent ? ' · ' : '') + opts.metaTail;
+      metaText.appendChild(tail);
+      fitMetaParts(metaText, [{ part: tail, over: function () { return metaOverflows(metaText); } }]);
+    }
   }
   meta.appendChild(metaText);
   (opts.chips || []).forEach(function (c) { meta.appendChild(c); });
