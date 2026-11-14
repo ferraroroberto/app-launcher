@@ -126,9 +126,14 @@
                takes the git refresh below as its model row's trailing
                control. -->
           <div id="codingLaunchToolbar" class="launch-toolbar-slot"></div>
-          <button id="gitRefreshBtn" data-track="git-refresh" type="button" class="icon-button git-refresh-btn"
-                  title="Check each project's git branch and uncommitted changes"
-                  aria-label="Refresh git status"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh-cw"></use></svg></button>
+          <span id="gitToolbarActions" class="git-toolbar-actions">
+            <button id="gitSyncAllBtn" data-track="git-sync-all" type="button" class="icon-button git-refresh-btn"
+                    title="Sync all: fast-forward every clean project that is only behind its remote"
+                    aria-label="Sync all projects"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-download"></use></svg></button>
+            <button id="gitRefreshBtn" data-track="git-refresh" type="button" class="icon-button git-refresh-btn"
+                    title="Fetch each project's remote, then check its branch, changes and ahead/behind"
+                    aria-label="Refresh git status"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh-cw"></use></svg></button>
+          </span>
         </div>
         <label class="action-row-filter list-filter">
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>

@@ -22,7 +22,7 @@ app-launcher/
 │       ├── routers/           # split API routers (config, sessions, life_os, board, …)
 │       └── static/            # SPA shell + PWA manifest + icons + vendored xterm.js
 │           ├── views/         # each view's markup (panes, dialogs, overlays), spliced into index.html when served
-│           ├── apps/          # Apps tab modules beside apps.js: the Coding list, the app dialogs, the list listeners, the Performance card (apps-perf.js)
+│           ├── apps/          # Apps tab modules beside apps.js: the Coding list, its fetch / Pull / Sync all (git-sync.js), the app dialogs, the list listeners, the Performance card (apps-perf.js)
 │           ├── board/         # Board tab modules beside board.js: dispatch, the answer sheet, the drawer, the Chief's plan card, the journal's Since you last looked card, its Clear merged control, the owner checks, the Done lane's earlier days and its Issue / PR / Proof actions
 │           ├── links/         # the session ⋮ menus' Links sheet: every artifact and URL a session mentioned, grouped
 │           ├── background-tasks/ # the session ⋮ menus' Background tasks sheet: running and finished tasks, an output tail
@@ -71,6 +71,7 @@ app-launcher/
 │   ├── inspiration/            # Settings › Inspiration: sources.py (the scan's source list, validated by the skill's own parser, saved atomically with a backup), login.py (the X login window), toml_write.py (stdlib TOML writer)
 │   ├── documents/              # Settings › Documents: the allowlist's validation, the path jail and the read (__init__.py)
 │   ├── git_utils.py            # shared `git` subprocess runner — every git spawn goes through it
+│   ├── git_upstream/           # ahead/behind against origin, the fetch ledger, and Sync all's guarded fast-forward
 │   ├── notifications.py        # notify_on_failure dispatch
 │   ├── notify/                 # vendored provider package behind notifications.py (Telegram, …)
 │   ├── usage_log.py            # vendored: local view/tap log router + SQLite store

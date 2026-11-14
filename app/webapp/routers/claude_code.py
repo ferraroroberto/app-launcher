@@ -13,17 +13,19 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Tuple
 
 from fastapi import APIRouter, HTTPException, Request
 
 from app.webapp.hot_poll import start_or_join
 from app.webapp.routers._helpers import maybe_json
+from src import git_upstream
 from src.launching.vscode_workspace import (
     ensure_workspace_file,
     is_vscode_installed,
     open_workspace,
 )
+from src.registry import load_registry
 from src.scanner import ProjectDir, git_status, scan_project_dirs
 from src.session_view.git_changes import (
     file_diff,
@@ -194,10 +196,34 @@ _SLOW_SCAN_S = 1.0
 _GitStatusCache = Dict[Tuple[str, Tuple[str, ...]], Tuple[float, Dict[str, Any]]]
 
 
-def _timed_git_status(project_dir: Path) -> Tuple[Any, float]:
+def _timed_git_status(project_dir: Path, app_dirs: Tuple[str, ...]) -> Tuple[Dict[str, Any], float]:
     started = time.perf_counter()
     status = git_status(project_dir)
-    return status, time.perf_counter() - started
+    row = status.to_dict()
+    if status.is_git:
+        # Local refs only: the fetch that refreshes them runs apart from this poll.
+        row["upstream"] = git_upstream.upstream_state(project_dir, status.default_branch).to_dict()
+        row["restart_needed"] = git_upstream.was_pulled(project_dir) and _runs_an_app(project_dir, app_dirs)
+    return row, time.perf_counter() - started
+
+
+_OWN_CHECKOUT = Path(__file__).resolve().parents[3]
+
+
+def _registered_app_dirs() -> Tuple[str, ...]:
+    """The folders of every registered app's bat, plus this launcher's own checkout."""
+    dirs = [str(Path(a.bat_path).resolve().parent).lower() for a in load_registry().apps if a.bat_path]
+    return tuple(dirs) + (str(_OWN_CHECKOUT).lower(),)
+
+
+def _runs_an_app(project_dir: Path, app_dirs: Tuple[str, ...]) -> bool:
+    """Whether a registered app (or this launcher) is started from inside this repo.
+
+    A pulled repo that starts one runs older code than its checkout until that
+    app restarts; a repo with no app has nothing to restart.
+    """
+    root = str(Path(project_dir).resolve()).lower()
+    return any(d == root or d.startswith(root + "\\") or d.startswith(root + "/") for d in app_dirs)
 
 
 async def _scan_git_status(
@@ -206,12 +232,13 @@ async def _scan_git_status(
     started_at = time.monotonic()
     projects = scan_project_dirs(Path(projects_dir), list(ignore))
     loop = asyncio.get_running_loop()
+    app_dirs = await asyncio.to_thread(_registered_app_dirs)
     timed = await asyncio.gather(
-        *(loop.run_in_executor(_GIT_STATUS_POOL, _timed_git_status, p.project_dir) for p in projects)
+        *(loop.run_in_executor(_GIT_STATUS_POOL, _timed_git_status, p.project_dir, app_dirs) for p in projects)
     )
     payload = {
         "projects": [
-            {"id": p.id, **gs.to_dict()} for p, (gs, _) in zip(projects, timed)
+            {"id": p.id, **row} for p, (row, _) in zip(projects, timed)
         ]
     }
     # Stamped with the scan's start: it reflects git at or after that moment.
@@ -260,6 +287,8 @@ async def claude_git_status(request: Request, fresh: bool = False) -> Dict[str, 
     window; ``shield`` keeps one caller's disconnect from cancelling
     it for the rest.
     """
+    global _last_status_demand
+    _last_status_demand = time.monotonic()
     cfg: WebappConfig = request.app.state.webapp_config
     key = (str(cfg.projects_dir), tuple(cfg.projects_ignore))
     cache = _git_status_cache(request)
@@ -274,3 +303,110 @@ async def claude_git_status(request: Request, fresh: bool = False) -> Dict[str, 
             return {**cached[1], "age_seconds": round(age, 1)}
     future = start_or_join(key, _GIT_STATUS_RUNNING, _GIT_STATUS_NEXT, scan)
     return {**await asyncio.shield(future), "age_seconds": 0.0}
+
+
+# ------------------------------------------------------------- fetch and sync
+# The fetches and fast-forwards get their own threads: each is network-bound
+# or writes a checkout, and none may queue behind (or hold up) the status scan.
+_SYNC_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="git-sync")
+# One fetch-all or sync at a time: two overlapping runs would fetch every repo
+# twice and could race two fast-forwards on one checkout.
+_SYNC_LOCK = asyncio.Lock()
+_SYNC_BUSY = "a fetch or Sync all is already running"
+# The slow fetch cadence, and how recently a page must have asked for git
+# status for it to run: nobody looking means no network traffic.
+GIT_FETCH_INTERVAL_S = 15 * 60
+_FETCH_DEMAND_WINDOW_S = 10 * 60
+_last_status_demand = 0.0
+
+
+def _projects(request: Request) -> List[ProjectDir]:
+    cfg: WebappConfig = request.app.state.webapp_config
+    return scan_project_dirs(Path(cfg.projects_dir), list(cfg.projects_ignore))
+
+
+def _git_repos(projects: List[ProjectDir]) -> List[ProjectDir]:
+    return [p for p in projects if (p.project_dir / ".git").exists()]
+
+
+async def _fetch_all(projects: List[ProjectDir]) -> Dict[str, int]:
+    loop = asyncio.get_running_loop()
+    repos = [p for p in _git_repos(projects) if git_upstream.has_origin(p.project_dir)]
+    records = await asyncio.gather(
+        *(loop.run_in_executor(_SYNC_POOL, git_upstream.fetch, p.project_dir) for p in repos)
+    )
+    failed = sum(1 for r in records if not r.ok)
+    return {"fetched": len(records) - failed, "failed": failed}
+
+
+def _sync_one(project: ProjectDir) -> Dict[str, Any]:
+    status = git_status(project.project_dir)
+    outcome = git_upstream.sync_repo(project.project_dir, status.default_branch)
+    return {"id": project.id, "name": project.name, **outcome.to_dict()}
+
+
+@router.post("/api/claude-code/git-fetch")
+async def fetch_all_projects(request: Request) -> Dict[str, Any]:
+    """Fetch every project's ``origin`` (the Projects refresh), then drop the status cache.
+
+    The ~45 s poll never fetches; this and the slow cadence below are the only
+    network calls, so a fetch failure reads ``unknown`` on the next scan.
+    """
+    if _SYNC_LOCK.locked():
+        raise HTTPException(status_code=409, detail=_SYNC_BUSY)
+    async with _SYNC_LOCK:
+        counts = await _fetch_all(_projects(request))
+    _git_status_cache(request).clear()
+    return counts
+
+
+@router.post("/api/claude-code/pull/{project_id}")
+async def pull_project(project_id: str, request: Request) -> Dict[str, Any]:
+    """Fast-forward one project, under the same rules as Sync all."""
+    project = _project_or_404(request, project_id)
+    if _SYNC_LOCK.locked():
+        raise HTTPException(status_code=409, detail=_SYNC_BUSY)
+    async with _SYNC_LOCK:
+        result = await asyncio.get_running_loop().run_in_executor(_SYNC_POOL, _sync_one, project)
+    _git_status_cache(request).clear()
+    return result
+
+
+@router.post("/api/claude-code/sync-all")
+async def sync_all_projects(request: Request) -> Dict[str, Any]:
+    """Fetch every repo, fast-forward each clean, on-default, behind-only one.
+
+    One result per git repo: pulled with its commit count, already up to
+    date, or skipped with the reason (no remote, fetch failed, dirty, not on
+    the default branch, ahead, diverged). Never stashes, resets, rebases or
+    merges; a running app is not restarted, its tile says it needs one.
+    """
+    if _SYNC_LOCK.locked():
+        raise HTTPException(status_code=409, detail=_SYNC_BUSY)
+    async with _SYNC_LOCK:
+        loop = asyncio.get_running_loop()
+        repos = _git_repos(_projects(request))
+        results = await asyncio.gather(*(loop.run_in_executor(_SYNC_POOL, _sync_one, p) for p in repos))
+    _git_status_cache(request).clear()
+    return {"results": list(results)}
+
+
+async def fetch_tick_forever(app: Any) -> None:
+    """Fetch every repo on a slow cadence while a page polls git status.
+
+    Canonical instance only (the caller checks), so a disposable gate webapp
+    makes no network calls.
+    """
+    while True:
+        await asyncio.sleep(GIT_FETCH_INTERVAL_S)
+        if time.monotonic() - _last_status_demand > _FETCH_DEMAND_WINDOW_S or _SYNC_LOCK.locked():
+            continue
+        try:
+            cfg: WebappConfig = app.state.webapp_config
+            projects = scan_project_dirs(Path(cfg.projects_dir), list(cfg.projects_ignore))
+            async with _SYNC_LOCK:
+                counts = await _fetch_all(projects)
+            if counts["failed"]:
+                slow_logger.info("⚠️ git fetch cadence: %d fetched, %d failed", counts["fetched"], counts["failed"])
+        except Exception:  # noqa: BLE001 -- a failed round must not end the cadence
+            logging.getLogger(__name__).exception("❌ git fetch cadence round failed")
