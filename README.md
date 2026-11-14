@@ -144,12 +144,13 @@ Two layers, both optional. With nothing configured, the API is open (fine on a p
 - **Settings → API tokens** mints additional *job-scoped* bearer tokens: each can only fire its chosen Jobs-tab job (`POST /api/jobs/<id>/run`) and is rejected everywhere else, so the URL baked into a Stream Deck button no longer carries full-SPA access. The raw token is shown once at mint; revoke + re-mint to rotate without touching `auth_token`. See `docs/jobs-tab.md` → "Scoped API tokens".
 - **Settings → API tokens → Delegate token** (off by default) is a credential for an outside agent: it can read the Board and the chief's plan and file issues for the chief to triage, and is refused everywhere else. See [docs/config.md](docs/config.md#the-delegate-token).
 
-### Login password (`auth_password`)
+### Login password
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\set_password.py <password>
-.\.venv\Scripts\python.exe scripts\set_password.py --clear
+.\.venv\Scripts\python.exe -m src.password set
 ```
+
+Prompts twice and stores only a salted hash in `config/app_password.json` (git-ignored), through the vendored `src/password.py` every fleet app shares; any non-empty password works. Until it has run, the older plaintext `auth_password` in `webapp_config.json` still signs in; after, it is ignored and can be deleted.
 
 Companion to the token. When set, a fresh device with no token in `localStorage` (e.g. an iOS PWA whose storage is partitioned from Safari) shows the sign-in sheet. Type the password → server hands back the bearer token → page stashes it → equivalent to opening the tokenised URL once.
 

@@ -109,7 +109,6 @@ app-launcher/
 │   │                           #   finds that checkout as this repo's sibling — PROJECT_SCAFFOLDING_DIR overrides
 │   ├── gen_tailscale_cert.py   # tailscale cert (real LE) + --check auto-renew
 │   ├── gen_token.py            # bearer token rotate / clear
-│   ├── set_password.py         # login password set / clear
 │   ├── session_retention.py    # dry-run: what the webapp/sessions retention sweep would remove
 │   ├── probe_repaints.py       # counts an agent's full-viewport repaints in a session transcript
 │   │                           #   (#930's measurement — see docs/launcher-owned-pty.md)

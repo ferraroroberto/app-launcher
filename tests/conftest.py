@@ -61,6 +61,12 @@ os.environ.setdefault(
     str(Path(tempfile.gettempdir()) / "app-launcher-test-sessions"),
 )
 
+# The login password hash (`src/password.py`) is read on every login, so a run
+# must never see the live `config/app_password.json`: point it at a file that
+# does not exist. Assigned, not defaulted, so no outer value can reach the live
+# file; the e2e autoboot's spawned servers inherit it.
+os.environ["APP_PASSWORD_FILE"] = str(Path(tempfile.mkdtemp(prefix="app-launcher-password-")) / "app_password.json")
+
 # Credential hygiene (issue #907): every test report — browser suite included —
 # is scrubbed of credentials before any reporter writes it. Re-exported so
 # pytest registers the hook from this conftest; imported only after the
