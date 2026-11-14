@@ -12,6 +12,7 @@ from unittest.mock import Mock
 
 import httpx
 
+from app.webapp import quota_cache
 from app.webapp.routers import board as board_router
 from src import board
 from src.chief import plan as chief_plan
@@ -353,6 +354,24 @@ def test_api_rate_limits_never_follows_the_selected_model(webapp_client):
             "/api/rate-limits?quota_selection=" + selection
         ).json()["quota_lines"]
         assert [line["harness"] for line in lines] == ["claude", "codex"]
+
+
+def test_api_rate_limits_polls_are_served_from_one_snapshot(webapp_client, monkeypatch):
+    """The 5s meter poll reads memory: the shard read runs once, not per poll,
+    and a Grok row appended to one answer never leaks into the shared snapshot."""
+    from dataclasses import replace
+
+    client, app, _overrides = webapp_client
+    reads = Mock(return_value=[{"harness": "claude"}, {"harness": "codex"}])
+    monkeypatch.setattr(quota_cache, "read_quota_lines", reads)
+    monkeypatch.setattr(quota_usage, "grok_quota_line", lambda: {"harness": "grok"})
+
+    assert len(client.get("/api/rate-limits").json()["quota_lines"]) == 2
+    app.state.webapp_config = replace(app.state.webapp_config, usage_providers=["grok"])
+    assert len(client.get("/api/rate-limits").json()["quota_lines"]) == 3
+    app.state.webapp_config = replace(app.state.webapp_config, usage_providers=[])
+    assert len(client.get("/api/rate-limits").json()["quota_lines"]) == 2
+    assert reads.call_count == 1
 
 
 def test_coding_and_board_codex_polls_coalesce_one_native_refresh(

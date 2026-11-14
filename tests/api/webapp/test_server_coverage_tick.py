@@ -212,12 +212,12 @@ class TestLifespanGate:
         assert self.load_ticks[0].cancelled()
 
     async def test_polled_snapshots_refresh_on_every_instance(self, monkeypatch):
-        """/api/version, the channel list and the context filter are read on
+        """/api/version, the channel list, the context filter and the quota rows are read on
         every instance, so their snapshots tick on every instance (each only rebuilds while its
         route is polled) and are cancelled with the lifespan."""
         monkeypatch.setenv(SESSION_HOST_PORT_ENV, "54321")  # disposable
         await self._run_lifespan(_app(), monkeypatch)
-        assert len(self.demand_ticks) == 3
+        assert len(self.demand_ticks) == 4
         assert all(task.cancelled() for task in self.demand_ticks)
 
     async def test_disposable_instance_never_starts_the_tick(

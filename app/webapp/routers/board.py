@@ -65,6 +65,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 
 from app.webapp.hot_poll import BuildSteps, hot_poll, session_poll
+from app.webapp.quota_cache import rate_limits_cache, read_quota_lines
 from app.webapp.routers import board_chief, board_owner
 from app.webapp.routers._helpers import (
     attach_provider_web_urls,
@@ -130,16 +131,6 @@ def _github_section(snap: Dict[str, Any]) -> Dict[str, Any]:
         # Backlog may be missing issues: said on the Board, never hidden.
         "truncated": bool(snap.get("truncated")),
     }
-
-
-def _read_quota_lines(cfg: WebappConfig) -> List[Dict[str, Any]]:
-    """Both heavy agents, always, independent of the current selection."""
-    legacy_path = Path(cfg.rate_limits_file)
-    return quota_usage.read_quota_lines(
-        Path(cfg.fleet_config_dir),
-        legacy_path.parent,
-        legacy_reader=lambda: board.read_rate_limits(legacy_path),
-    )
 
 
 def _refresh_finished(task: asyncio.Task[str]) -> None:
@@ -520,7 +511,9 @@ async def get_rate_limits(request: Request) -> Dict[str, Any]:
     the Grok CLI.
     """
     cfg: WebappConfig = request.app.state.webapp_config
-    quota_lines = await asyncio.to_thread(_read_quota_lines, cfg)
+    # A copy: the snapshot is shared across polls and Grok's row is appended.
+    snapshot, _age = await rate_limits_cache(request.app).get()
+    quota_lines = list(snapshot)
     _refresh_codex_for_lines(cfg, quota_lines)
     if "grok" in cfg.usage_providers:
         quota_lines.append(quota_usage.grok_quota_line())
@@ -834,7 +827,7 @@ async def _auto_switch(
     """
     if not cfg.grok_auto_switch or model not in auto_switch.SONNET_DISPATCH_MODELS:
         return auto_switch.SwitchDecision(model)
-    lines = await asyncio.to_thread(_read_quota_lines, cfg)
+    lines = await asyncio.to_thread(read_quota_lines, cfg)
     claude = next((line for line in lines if line.get("harness") == "claude"), None)
     decision = auto_switch.decide(
         model, enabled=True, claude_line=claude, now=time.time(),
