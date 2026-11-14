@@ -67,42 +67,18 @@ def test_dismissing_a_failed_job_or_ci_card_drops_it_and_the_failing_count(
     dismissals: list[str] = []
 
     def _dismiss(route) -> None:
-        url = route.request.url
-        dismissals.append(f"{route.request.method} {url.split('/api/jobs/')[1]}")
         # What the server does: the dismissed run raises no card any more.
-        current["body"] = {
-            **current["body"],
-            "columns": {
-                **current["body"]["columns"],
-                "other": [
-                    c for c in current["body"]["columns"]["other"]
-                    if c.get("run_id") != "20260702T090200"
-                ],
-            },
-        }
-        route.fulfill(
-            status=200, content_type="application/json",
-            body=_json.dumps({"dismissed": True}),
-        )
-
-    def _dismiss_ci(route) -> None:
-        sent = _json.loads(route.request.post_data)
-        dismissals.append(f"{route.request.method} ci {sent['repo']}/{sent['workflow']}/{sent['run_id']}")
+        sent = _json.loads(route.request.post_data or "{}")
+        run_id = sent.get("run_id") or route.request.url.split("/runs/")[1].split("/")[0]
+        dismissals.append(f"{route.request.method} {route.request.url.split('/api/')[1]} {sent}")
         other = current["body"]["columns"]["other"]
-        current["body"] = {
-            **current["body"],
-            "columns": {
-                **current["body"]["columns"],
-                "other": [c for c in other if c.get("run_id") != sent["run_id"]],
-            },
-        }
+        current["body"]["columns"]["other"] = [c for c in other if c.get("run_id") != run_id]
         route.fulfill(
-            status=200, content_type="application/json",
-            body=_json.dumps({"dismissed": True, **sent}),
+            status=200, content_type="application/json", body=_json.dumps({"dismissed": True}),
         )
 
     authed_page.route(re.compile(r".*/api/jobs/[^/]+/runs/[^/]+/dismiss$"), _dismiss)
-    authed_page.route(re.compile(r".*/api/board/ci/dismiss$"), _dismiss_ci)
+    authed_page.route(re.compile(r".*/api/board/ci/dismiss$"), _dismiss)
     _open_board(authed_page, base_url)
 
     lane = authed_page.locator('.board-list[data-col="other"]')
@@ -125,7 +101,7 @@ def test_dismissing_a_failed_job_or_ci_card_drops_it_and_the_failing_count(
 
     wait_until(authed_page, lambda: len(dismissals) == 1, "the dismiss POST")
     flush_requests(authed_page)
-    assert dismissals == ["POST weekly-photos/runs/20260702T090200/dismiss"]
+    assert dismissals == ["POST jobs/weekly-photos/runs/20260702T090200/dismiss {}"]
     expect(failed).to_have_count(0)
     expect(unconfirmed).to_have_count(1)
     expect(authed_page.locator("#boardColOther .board-count")).to_have_text("5")
@@ -135,7 +111,7 @@ def test_dismissing_a_failed_job_or_ci_card_drops_it_and_the_failing_count(
 
     wait_until(authed_page, lambda: len(dismissals) == 2, "the CI dismiss POST")
     flush_requests(authed_page)
-    assert dismissals[1] == "POST ci alpha/ci/10"
+    assert dismissals[1] == "POST board/ci/dismiss {'repo': 'alpha', 'workflow': 'ci', 'run_id': 10}"
     expect(ci_failed).to_have_count(0)
     expect(lane.locator("li.board-item-ci.is-unknown")).to_have_count(1)
     expect(authed_page.locator("#boardColOther .board-count")).to_have_text("4")
