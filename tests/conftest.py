@@ -366,6 +366,11 @@ def _isolated_chief_pointer(request, tmp_path, monkeypatch):
     monkeypatch.setattr(
         chief_answers_mod, "CHIEF_ANSWERED_FILE", tmp_path / "chief-answered.json"
     )
+    # The journal card's last-look stamp is a file the webapp writes.
+    from src.chief import journal as chief_journal_mod
+    monkeypatch.setattr(
+        chief_journal_mod, "CHIEF_JOURNAL_LOOK_FILE", tmp_path / "chief-journal-look.json"
+    )
     # And the Board's owner-check marks, whose cache is module memory too.
     from src.board import owner_checks as owner_checks_mod
     monkeypatch.setattr(

@@ -88,6 +88,12 @@ DELIBERATELY_TOKEN_ONLY: Dict[str, str] = {
         "the chief writes. No session, transcript or terminal access, so the "
         "same token as /api/board."
     ),
+    "/api/board/chief-journal": (
+        "The chief's journal: one public-safe line per event (a ref and a "
+        "short text, no secrets or paths), read from a file the chief writes, "
+        "the same facts the plan card shows. No session, transcript or "
+        "terminal access, so the same token as /api/board."
+    ),
     "/api/board/chief-settings": (
         "The chief's auto-compact threshold (#1298): one integer the chief "
         "reads over loopback. No session, transcript or terminal access, "

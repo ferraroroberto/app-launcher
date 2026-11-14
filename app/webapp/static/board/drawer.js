@@ -30,6 +30,7 @@ import { confirmDialog } from '../confirm-dialog.js';
 import { createRowMenu } from '../_vendored/row-menu/row-menu.js';
 import { exchangeState } from './exchange-state.js';
 import { isChiefCard } from './board-dispatch.js';
+import { markLooked } from './journal-look.js';
 import { fetchBoard, noteBoardEdit, renderBoard, sessionLabel } from '../board.js';
 
 // Chief-only exchange refresh: loadExchange is one-shot, fine for a
@@ -328,6 +329,7 @@ async function sendFromDrawer(card, text) {
   }
   const outcome = sendOutcome(verdict);
   toast(outcome.text, outcome.kind, { icon: 'send-horizontal' });
+  if (outcome.kind !== 'error' && isChiefCard(card)) markLooked();
   // Close the drawer and optimistically flip the card to Claude's turn right
   // away. Deliberately no immediate fetchBoard() here: the hook that
   // actually flips the server's status hasn't had time to run yet, so an

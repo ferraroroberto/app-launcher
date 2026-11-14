@@ -80,6 +80,7 @@ import { renderCiCard } from './board/ci-card.js';
 import { isDismissible, isFailing } from './board/attention-state.js';
 import { ClaimState, claimState } from './board/claim-state.js';
 import { pollIdeas, renderIdeas, wireIdeas } from './board/ideas-card.js';
+import { pollJournal, wireJournal } from './board/chief-journal.js';
 import {
   bucketChipEls, bucketNodes, hasBuckets, notPlannedCount,
 } from './board/backlog-buckets.js';
@@ -815,6 +816,7 @@ export async function fetchBoard() {
   state.chiefPlan = plan;
   renderBoard();
   pollIdeas();
+  pollJournal();
   maybeAutoRefreshGithub();
 }
 
@@ -955,6 +957,7 @@ export function wireBoard() {
   wireDispatch();
   wireChiefAnswers();
   wireIdeas();
+  wireJournal();
   openDesktopColumns();
   // Back in the foreground: an aged cache refreshes now, not on the next poll.
   document.addEventListener('visibilitychange', function () {

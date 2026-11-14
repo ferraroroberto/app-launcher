@@ -109,6 +109,16 @@ def _mock_board_side_routes(page: Page) -> None:
             status=200, content_type="application/json", body=_json.dumps(_PLAN),
         ),
     )
+    # The journal card's read and its last-look stamp: an empty journal, and
+    # a stamp that never reaches the webapp's own store.
+    page.route(
+        re.compile(r".*/api/board/chief-journal$"),
+        lambda route: route.fulfill(json={"state": "empty"}),
+    )
+    page.route(
+        re.compile(r".*/api/board/chief/journal/looked$"),
+        lambda route: route.fulfill(json={"last_look": "2026-07-18T07:00:00Z"}),
+    )
     # The answer sheet's answered marks (#1487): recorded as sent, never
     # reaching the webapp's own store.
     page.route(

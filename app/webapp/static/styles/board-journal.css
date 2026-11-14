@@ -1,0 +1,40 @@
+/* The Board's "Since you last looked" card (board/chief-journal.js). Its rows
+   are the shared action-row, as every Board row: the entry's text on line 1,
+   `time · repo#N` and the kind chip on line 2, a chevron on a row that opens
+   its issue. An entry the owner already saw is quieter in the Show all view. */
+
+.board-journal[hidden] { display: none; }
+.board-journal-list { list-style: none; margin: 0; padding: 0; }
+.board-journal-row .action-row-meta .chip { margin-left: auto; }
+.board-journal-row.is-read .action-row-title { color: var(--muted); }
+.board-journal-line { margin: 0; }
+/* Nothing new: one line, the way to the older entries at its end. */
+.board-journal-quiet {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.board-journal-all { margin-top: 4px; }
+.board-journal-quiet .board-journal-all { margin-top: 0; flex: none; }
+.board-journal-body > .board-journal-all { width: 100%; }
+
+/* A desktop column is narrow (about 200px of row): the entry is the content, so
+   its text wraps to two lines instead of ellipsizing, and the chip drops under
+   the time when they cannot share a line. The heading wraps the same way, with
+   the count following it inside the column. */
+.board-journal-row .action-row-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.board-journal-row .action-row-meta.has-chips { flex-wrap: wrap; row-gap: 2px; }
+.board-journal-row .action-row-meta.has-chips .action-row-meta-text {
+  white-space: normal;
+  overflow: visible;
+}
+.board-journal .collapse-main { flex-wrap: wrap; max-width: 100%; row-gap: 2px; }
+.board-journal .collapse-title { line-height: 1.2; }

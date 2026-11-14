@@ -9,6 +9,10 @@
     GET  /api/board/chief/settings  → chief settings block (also read by the
                                       /chief skill over loopback)
     PUT  /api/board/chief/settings  → persist chief settings
+    GET  /api/board/chief-journal   → the chief's journal, new entries flagged
+                                      (board token only)
+    POST /api/board/chief/journal/looked → stamp the owner's last look
+                                      (Tailscale + passkey)
     GET  /api/board/chief-settings  → {"auto_compact_threshold": <int>}, the
                                       chief's self-compact threshold
                                       (read by fleet-config's chief_ops.py
@@ -70,6 +74,7 @@ from app.webapp.routers.board_spawn import (
 )
 from src import audit, board
 from src.chief import identity as chief_identity
+from src.chief import journal as chief_journal
 from src.chief import pointer as chief_pointer
 from src.chief.cap_raised import publish_cap_raised
 from src.clients import session as session_client
@@ -484,6 +489,36 @@ def _chief_settings_payload(cfg: WebappConfig) -> Dict[str, Any]:
         "chief_job_self_heal": cfg.chief_job_self_heal,
         "chief_weekly_proposals": cfg.chief_weekly_proposals,
     }
+
+
+@router.get("/api/board/chief-journal")
+async def get_chief_journal(request: Request) -> Dict[str, Any]:
+    """The chief's journal for the Board's "Since you last looked" card.
+
+    Read-only, polled beside ``/api/board``: ``state`` is ``ok`` (with
+    ``entries`` newest first, each flagged ``new``, plus ``new_count`` and
+    ``last_look``), ``empty`` or ``unreadable``. The file sits beside the
+    plan file; the writer is fleet-config's ``chief_ops.py``.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    return await asyncio.to_thread(
+        chief_journal.read_journal,
+        chief_journal.journal_path(Path(cfg.chief_plan_file)), cfg.github_owner,
+    )
+
+
+@router.post("/api/board/chief/journal/looked")
+async def post_chief_journal_looked(request: Request) -> Dict[str, Any]:
+    """Stamp "Roberto looked just now": the Board sent the chief a message or
+    submitted the answer sheet (Tailscale + passkey, as every
+    ``/api/board/chief/`` route). Entries after the stamp read as new.
+    """
+    try:
+        at = await asyncio.to_thread(chief_journal.record_look)
+    except OSError as exc:
+        logger.warning("⚠️ chief journal look not written: %s", exc)
+        raise HTTPException(status_code=500, detail="last look not written")
+    return {"last_look": at}
 
 
 @router.get("/api/board/chief-settings")

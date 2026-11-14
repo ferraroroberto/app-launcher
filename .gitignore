@@ -54,6 +54,7 @@ webapp/chief-pointer.json
 webapp/restart-baseline.json
 # the Board's answered marks on the chief's plan (issue #1487) — machine-written state
 webapp/chief-answered.json
+webapp/chief-journal-look.json
 # Failed job runs the owner dismissed from the Board (issue #1669) — machine-written state
 webapp/jobs-dismissed.json
 # Red CI runs already seen by the chief's ci-failed feed — machine-written state
