@@ -16,7 +16,8 @@
    opts.host in api.js); it carries its own class so a `.toast` selector
    still means the page's one toast. */
 .toast,
-.sheet-toast {
+.sheet-toast,
+.build-prompt {
   position: fixed;
   left: 50%;
   /* --bottom-tabs-* are deliberately undefined in this app's token block
@@ -71,6 +72,23 @@
   max-width: none;
   margin-inline: auto;
 }
+/* The new-build prompt wears the toast's glass but is its own element, so a
+   routine toast cannot overwrite it; it sits one toast-height above where a
+   toast lands. `hidden` must still win over the flex display. */
+.build-prompt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  bottom: calc(
+    var(--bottom-tabs-height, 61px) + var(--bottom-tabs-margin, 21px) * 2 +
+    env(safe-area-inset-bottom, 0px) + 64px
+  );
+  padding: 6px 6px 6px 18px;
+  text-wrap: pretty;
+}
+.build-prompt[hidden] { display: none; }
+.build-prompt-reload { min-height: var(--hit-min); flex: none; }
+.build-prompt-dismiss { flex: none; }
 .toast.error,
 .sheet-toast.error {
   background: color-mix(in srgb, var(--deficit) 75%, transparent);

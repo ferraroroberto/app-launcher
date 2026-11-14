@@ -25,6 +25,7 @@ _SCRIPTS = [
     "terminal_module_helpers.test.mjs",
     "readback_extraction.test.mjs",
     "session_title.test.mjs",
+    "shell/build_watch.test.mjs",
 ]
 
 
