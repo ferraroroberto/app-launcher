@@ -69,6 +69,7 @@ from src.jobs.config import (
 from src.jobs.outcome import OUTCOME_DEFERRED
 from src.jobs.preflight import has_errors, preflight
 from src.jobs.run_status import RunStatus, is_active, run_status
+from src.jobs.script_missing import script_missing
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -202,6 +203,7 @@ def _decorate_job(
     # the schtasks half rides the same 30 s bulk-query cache `next_run` uses,
     # and the snapshot tick refreshes both before they expire.
     payload["coverage"] = jobs_mod.coverage_for_job(job.id)
+    payload["script_missing"] = script_missing(job) is True  # unestablished reads False
     payload["queue_depth"] = (
         len(jobs_mod.peek_mutex_queue(job.mutex_group)) if job.mutex_group else 0
     )
