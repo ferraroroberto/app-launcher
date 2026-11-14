@@ -9,7 +9,6 @@ phone-side review is easy).
 from __future__ import annotations
 
 import logging
-import threading
 import time
 from typing import Any, Callable, Dict, Optional
 
@@ -18,9 +17,10 @@ from fastapi import APIRouter, HTTPException, Request
 from app.webapp.observability import ensure_file_log_handler
 from app.webapp.routers._helpers import PROJECT_ROOT, maybe_json
 from src import password
-from src.login_lockout import LockoutAlert, LoginLockout, retry_after_header
+from src.login_alert import build_login_alert
+from src.login_lockout import LoginLockout, retry_after_header
 from src.middleware import trust
-from src.notify import Notifier, NotifierError, TelegramConfig, build_notifier
+from src.notify import Notifier, TelegramConfig, build_notifier
 from src.webapp_config import WebappConfig
 
 logger = logging.getLogger(__name__)
@@ -48,43 +48,27 @@ def _telegram_notifier(cfg: WebappConfig) -> Optional[Notifier]:
     return build_notifier("telegram", TelegramConfig(token, chat_id))
 
 
-def _spawn_thread(fn: Callable[[], None]) -> None:
-    threading.Thread(target=fn, daemon=True).start()
-
-
 def build_login_lockout(
     get_config: Callable[[], WebappConfig],
     *,
     make_notifier: Callable[[WebappConfig], Optional[Notifier]] = _telegram_notifier,
-    spawn: Callable[[Callable[[], None]], None] = _spawn_thread,
+    spawn: Optional[Callable[[Callable[[], None]], None]] = None,
     clock: Callable[[], float] = time.monotonic,
 ) -> LoginLockout:
-    """The app's one lock-out, alerting through the vendored notifier.
+    """The app's one lock-out, alerting through the vendored login alert.
 
     The notifier is built per alert from the live config, so a token or chat
-    change in Settings applies without a restart; the send runs in a thread
-    because ``on_alert`` is called inside the login request.
+    change in Settings applies without a restart. ``spawn`` replaces the
+    alert's send thread in tests.
     """
-
-    def alert_owner(alert: LockoutAlert) -> None:
-        notifier = make_notifier(get_config())
-        if notifier is None:
-            return
-        held = f" (+{alert.suppressed} more held back)" if alert.suppressed else ""
-        text = (
-            f"🚨 {APP_NAME}: {alert.failures} wrong passwords in a row "
-            f"from {alert.key}{held}"
-        )
-
-        def send() -> None:
-            try:
-                notifier.send_text(text)
-            except NotifierError as exc:
-                logger.warning(f"⚠️  login alert not delivered: {type(exc).__name__}")
-
-        spawn(send)
-
-    return LoginLockout(on_alert=alert_owner, clock=clock)
+    def notifier_source() -> Optional[Notifier]:
+        return make_notifier(get_config())
+    on_alert = (
+        build_login_alert(APP_NAME, notifier_source)
+        if spawn is None
+        else build_login_alert(APP_NAME, notifier_source, run=spawn)
+    )
+    return LoginLockout(on_alert=on_alert, clock=clock)
 
 
 def _client_key(client_host: str, headers: Any) -> str:

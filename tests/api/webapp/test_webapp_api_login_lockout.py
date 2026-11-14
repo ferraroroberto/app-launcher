@@ -6,6 +6,7 @@ notifier on the calling thread, so nothing sleeps and nothing leaves the box.
 
 from __future__ import annotations
 
+import logging
 from typing import List
 
 from fastapi.testclient import TestClient
@@ -123,3 +124,18 @@ def test_a_non_loopback_caller_cannot_choose_its_own_key(webapp_client):
         for n in range(7)
     ]
     assert codes == [401] * 6 + [429]
+
+
+def test_no_alert_channel_is_reported_unconfigured(webapp_client, caplog):
+    client, app, _ = webapp_client
+    _arm(app, FakeClock(), FakeNotifier())
+    app.state.login_lockout = build_login_lockout(
+        lambda: app.state.webapp_config,
+        make_notifier=lambda _cfg: None,
+        spawn=lambda fn: fn(),
+        clock=FakeClock(),
+    )
+    with caplog.at_level(logging.WARNING, logger="src.login_alert"):
+        for _ in range(3):
+            _login(client)
+    assert "unconfigured" in caplog.text and "3 wrong passwords" in caplog.text
