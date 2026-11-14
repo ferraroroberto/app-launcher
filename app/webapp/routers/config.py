@@ -17,7 +17,7 @@ from app.webapp.routers._helpers import (
     claude_flags_payload,
     maybe_json,
 )
-from src import boot_autostart, remote_power_guard
+from src import boot_autostart, password, remote_power_guard
 from src.agents import AGENTS, DEFAULT_AGENT, is_installed
 from src.launching.flags import (
     build_antigravity_flags,
@@ -141,7 +141,7 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "board_dispatch_models": {
             "grok": catalog_payload(GROK_DISPATCH_MODEL_SPECS) if is_installed("grok") else [],
         },
-        "auth_password_set": bool(cfg.auth_password),
+        "auth_password_set": password.is_configured(legacy=cfg.auth_password),
         # Boot-autostart toggle: live-queried, not stored in
         # webapp_config.json — the Startup-folder wrapper bat's presence
         # *is* the state, so a stale cached bool can never drift from it.

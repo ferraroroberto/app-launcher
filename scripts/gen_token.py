@@ -52,8 +52,7 @@ from pathlib import Path
 # without this the script raises UnicodeEncodeError *after*
 # save_webapp_config has already written the token, leaving the operator
 # with a traceback and no confirmation while the config really did change.
-# Same five-line guard as scripts/set_password.py and
-# scripts/session_retention.py (global CLAUDE.md,
+# Same five-line guard as scripts/session_retention.py (global CLAUDE.md,
 # "Windows Python: UTF-8 stdout under capture").
 if hasattr(sys.stdout, "reconfigure"):
     try:

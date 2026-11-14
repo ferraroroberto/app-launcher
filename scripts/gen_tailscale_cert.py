@@ -37,7 +37,7 @@ from typing import Optional
 # defaults to cp1252, which cannot encode it: without this the renewal check
 # raises UnicodeEncodeError and the caller logs "tailscale cert check failed
 # (ignored)" — blaming the check rather than an encoding bug, while the cert
-# silently does not get renewed. Same guard as gen_token.py / set_password.py
+# silently does not get renewed. Same guard as gen_token.py
 # / session_retention.py (global CLAUDE.md, "Windows Python: UTF-8
 # stdout under capture").
 if hasattr(sys.stdout, "reconfigure"):
