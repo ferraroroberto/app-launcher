@@ -66,7 +66,7 @@ from fastapi.responses import Response
 
 from app.webapp.hot_poll import BuildSteps, hot_poll, session_poll
 from app.webapp.quota_cache import rate_limits_cache, read_quota_lines
-from app.webapp.routers import board_chief, board_owner
+from app.webapp.routers import board_chief, board_ci, board_owner
 from app.webapp.routers._helpers import (
     attach_provider_web_urls,
     audit_session_start_and_maybe_mirror,
@@ -86,7 +86,6 @@ from src import agents, audit, board, fleet_scope
 from src.board import (
     active_issue_claims,
     backlog_buckets,
-    ci_dismissed,
     ci_runs,
     owner_checks,
     proof_reports,
@@ -109,6 +108,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 router.include_router(board_chief.router)
 router.include_router(board_owner.router)
+router.include_router(board_ci.router)
 
 _quota_refresh_gate = quota_usage.RefreshGate()
 _quota_refresh_task: asyncio.Task[str] | None = None
@@ -494,34 +494,6 @@ async def post_chief_answered(request: Request) -> Dict[str, Any]:
         logger.warning("⚠️ chief answered marks not written: %s", exc)
         raise HTTPException(status_code=500, detail="answered marks not written")
     return {"recorded": True, "updated_at": updated_at, "answered": answered}
-
-
-@router.post("/api/board/ci/dismiss")
-async def post_ci_dismiss(request: Request) -> Dict[str, Any]:
-    """Mark a red CI run as dealt with, so its card leaves the Board.
-
-    Body: ``{"repo": str, "workflow": str, "run_id": int}``. Only the red run a
-    card shows now is dismissible; any other (a run since replaced, a green
-    workflow, an unreadable repo) answers 409. The workflow's next red run
-    raises a fresh card.
-    """
-    body = await maybe_json(request)
-    repo, workflow, run_id = body.get("repo"), body.get("workflow"), body.get("run_id")
-    if (
-        not isinstance(repo, str) or not isinstance(workflow, str)
-        or not isinstance(run_id, int) or isinstance(run_id, bool)
-    ):
-        raise HTTPException(
-            status_code=400, detail="repo and workflow must be strings and run_id an integer"
-        )
-    if not ci_runs.is_red_run(ci_runs.snapshot(), repo, workflow, run_id):
-        raise HTTPException(status_code=409, detail="that run is not a current red CI run")
-    try:
-        await asyncio.to_thread(ci_dismissed.dismiss, repo, workflow, run_id)
-    except OSError as exc:
-        logger.warning("⚠️ CI alert dismissal not written: %s", exc)
-        raise HTTPException(status_code=500, detail="dismissal not written")
-    return {"dismissed": True, "repo": repo, "workflow": workflow, "run_id": run_id}
 
 
 @router.get("/api/rate-limits")

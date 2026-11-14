@@ -868,6 +868,7 @@ paths    = [
     "app/webapp/static/board/plan-prune.js",
     "app/webapp/routers/board.py",
     "app/webapp/routers/board_chief.py",
+    "app/webapp/routers/board_ci.py",
     "app/webapp/routers/board_spawn.py",
     "tests/e2e/board/test_board_tab.py",
     "tests/e2e/board/test_board_nav_badge.py",
