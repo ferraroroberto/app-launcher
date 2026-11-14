@@ -72,7 +72,7 @@ only manual step left is the restart in step 2.
 
 ## A page left open across a deploy
 
-The hash also lets a page that never reloaded notice the move. `build-watch.js` reads the `?v=` stamp on its own URL (the build the page booted on) and compares it with `asset_hash` from `GET /api/version` when the page becomes visible (at most once per 60 s) and every 5 minutes while visible. A difference raises a "New version available" prompt with a **Reload** button and a dismiss; it never reloads by itself, so an unsent composer draft survives. A dismissed prompt stays down until the server moves to yet another build. Unknown is not stale: a tree with no hashes (no `?v=`), an empty `asset_hash`, a failed read or a 401 show nothing. A failed read is not counted against the throttle, so the next trigger retries it.
+The hash also lets a page that never reloaded notice the move. The vendored `_vendored/build-watch/build-watch.js` reads the `?v=` stamp the page booted on and compares it with `asset_hash` from `GET /api/version` when the page becomes visible (at most once per 60 s) and every 5 minutes while visible. A difference raises a "New version available" prompt with a **Reload** button and a dismiss; it never reloads by itself, so an unsent composer draft survives. A dismissed prompt stays down until the server moves to yet another build. Unknown is not stale: a tree with no hashes (no `?v=`), an empty `asset_hash`, a failed read or a 401 show nothing. A failed read is not counted against the throttle, so the next trigger retries it.
 
 ## Why not a manual `?v=N` query string
 

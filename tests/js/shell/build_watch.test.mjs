@@ -1,4 +1,4 @@
-// Unit pin for build-watch.js's decisions: whether the live build differs from
+// Unit pin for the vendored build-watch.js's decisions: whether the live build differs from
 // the one the page booted on, and whether a trigger should read the server.
 // Unknown is never stale. Invoked by tests/unit/static_ui/test_node_module_helpers.py.
 
@@ -6,7 +6,7 @@ import '../_browser_stubs.mjs';
 import assert from 'node:assert/strict';
 
 const { verdict, shouldCheck, CHECK_THROTTLE_MS, CHECK_INTERVAL_MS } =
-  await import('../../../app/webapp/static/build-watch.js');
+  await import('../../../app/webapp/static/_vendored/build-watch/build-watch.js');
 
 assert.equal(CHECK_THROTTLE_MS, 60000);
 assert.equal(CHECK_INTERVAL_MS, 300000);
