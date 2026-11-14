@@ -28,11 +28,7 @@ The fleet's canonical **primary navigation**: a top segmented control on desktop
    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
    <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">
    ```
-   On the device this launches the installed app's web view below the status bar with every `env(safe-area-inset-*)` at 0, and `theme-color` paints the status bar in the page colour. Desktop browsers and Playwright's WebKit don't reproduce the installed app, so assert the pair in your e2e smoke test rather than waiting for a phone to show it:
-   ```python
-   assert page.locator('meta[name="apple-mobile-web-app-status-bar-style"]').get_attribute("content") == "black-translucent"
-   assert "viewport-fit=auto" in page.locator('meta[name="viewport"]').get_attribute("content")
-   ```
+   On the device this launches the installed app's web view below the status bar and above the home indicator, with every `env(safe-area-inset-*)` at 0, and `theme-color` paints the status bar in the page colour. The pill's bottom offset is measured from that edge: under `viewport-fit=cover` the web view runs under the home indicator and the pill lands on the screen's bottom edge, so the app no longer matches the rest of the fleet. Desktop browsers and Playwright's WebKit don't reproduce the installed app, so the gate holds the pair instead of a phone: list `"nav-standalone-head"` in `.fleet.toml` `[conventions_ratchet] rules` (`docs/conventions-ratchet.md` in project-scaffolding), and every page that links `nav-tabs.css` fails the gate without it.
 5. Wire up the switcher once the DOM is ready:
    ```js
    import { initNavTabs } from '/static/_vendored/nav/nav-tabs.js';

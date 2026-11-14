@@ -24,12 +24,11 @@ The rules (each one quotes its global-instruction line in docs/conventions-ratch
     outside the repo's declared helper (`secret_helpers`);
   * `git-wrapper` -- a spawn whose program is literally `git` outside the
     repo's declared wrapper (`git_wrappers`);
-  * `password-input-vendored` -- a password input (`type="password"`,
-    `type: 'password'`, `.type = 'password'`, `setAttribute('type', 'password')`)
-    in a web file (`.html`, `.htm`, `.js`, `.mjs`, `.cjs`, `.ts`, `.jsx`, `.tsx`,
-    `.vue`, `.svelte`, `.jinja`, `.jinja2`, `.j2`) outside a `_vendored/sign-in/`
-    folder: every app's sign-in goes through the one vendored component. It is
-    the only rule that reads web files, and it reads no `.py`;
+  * `password-input-vendored` -- a password input (`type="password"` or a JS spelling of it)
+    in a web file (`WEB_SUFFIXES`, never `.py`) outside a `_vendored/sign-in/`
+    folder: every app's sign-in goes through the one vendored component;
+  * `nav-standalone-head` -- a web page linking the vendored nav's `nav-tabs.css`
+    without its `viewport-fit=auto` + `black-translucent` page head;
   * `login-lockout` -- a FastAPI password route (`@<x>.post(".../login")`) in a
     module that does not import the vendored `login_lockout`, or whose handler
     never calls `retry_after(...)`: every password route answers `429` with
@@ -135,6 +134,7 @@ def _load_sibling(name: str) -> ModuleType:
 # The pure readers (syntax-tree predicates, the web and text line rules) live in the sibling.
 _readers = _load_sibling("conventions_readers")
 _Findings = Callable[[bytes | str, frozenset[str]], list[tuple[int, str]]]
+_RuleFindings = Callable[[bytes | str, frozenset[str]], list[tuple[int, str, str]]]
 SIGN_IN_DIR: str = _readers.SIGN_IN_DIR
 _docstring_ids: Callable[[ast.Module], set[int]] = _readers._docstring_ids
 _is_main_guard: Callable[[ast.If], bool] = _readers._is_main_guard
@@ -149,7 +149,7 @@ _exempt: Callable[..., bool] = _readers._exempt
 _window: Callable[[ast.AST, list[str]], list[str]] = _readers.window
 _window_at: Callable[[int, int, list[str]], list[str]] = _readers.window_at
 _js_marked: Callable[[list[str]], Callable[[str, int, int], bool]] = _readers.js_marked
-_web_findings: _Findings = _readers.web_findings
+_web_findings: _RuleFindings = _readers.web_findings
 _text_findings: _Findings = _readers.text_findings
 matches_any: Callable[[str, tuple[str, ...]], bool] = _readers.matches_any
 _under: Callable[[str, str], bool] = _readers._under
@@ -165,12 +165,12 @@ BUILTIN_EXCLUDES = ("**/node_modules/**", "**/.venv/**", "**/venv/**")
 GIT_TIMEOUT_S = 120
 
 RULES = ("no-window", "logging-not-print", "no-drive-path", "secret-compare", "git-wrapper",
-         "password-input-vendored", "login-lockout", "no-pwsh-stub", "must-use",
-         "subprocess-timeout", "state-literal", "state-set-repeat", "state-write")
+         "password-input-vendored", "nav-standalone-head", "login-lockout", "no-pwsh-stub",
+         "must-use", "subprocess-timeout", "state-literal", "state-set-repeat", "state-write")
 #: The rules a test module is held to; fixtures legitimately spell drive paths, raw compares and raw git.
 TEST_RULES = frozenset({"no-window"})
 #: The rules read from web files rather than Python source.
-WEB_RULES = frozenset({"password-input-vendored"})
+WEB_RULES = frozenset({"password-input-vendored", "nav-standalone-head"})
 WEB_SUFFIXES = (".html", ".htm", ".js", ".mjs", ".cjs", ".ts", ".jsx", ".tsx", ".vue", ".svelte",
                 ".jinja", ".jinja2", ".j2")
 #: The rule that reads plain text lines, in `.py` files and in the non-Python files below.
@@ -605,7 +605,7 @@ class _Scanner(ast.NodeVisitor):
 
 def scan_web(source: bytes | str, path: str, rules: frozenset[str]) -> list[Hit]:
     """Hits of the web rules in one HTML or JS file, read line by line."""
-    return [Hit(path, n, "password-input-vendored", m) for n, m in _web_findings(source, rules)]
+    return [Hit(path, n, rule, m) for n, rule, m in _web_findings(source, rules)]
 
 
 def scan_text(source: bytes | str, path: str, rules: frozenset[str]) -> list[Hit]:
