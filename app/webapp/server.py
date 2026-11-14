@@ -66,7 +66,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 from starlette.types import Scope
 
-from app.webapp import chief_doorbell, relay_idle_close
+from app.webapp import chief_doorbell, quota_cache, relay_idle_close
 from app.webapp.observability import (
     SlowRequestLogMiddleware,
     ensure_autostart_log_handler,
@@ -467,6 +467,8 @@ async def _lifespan(app: FastAPI):
     tasks.append(asyncio.create_task(life_os_channels.channels_cache(app).tick_forever()))
     # The context-filter card's stats, parsed only while that route is polled.
     tasks.append(asyncio.create_task(context_filter.context_filter_cache(app).tick_forever()))
+    # The usage meters' quota rows, re-read only while /api/rate-limits is polled.
+    tasks.append(asyncio.create_task(quota_cache.rate_limits_cache(app).tick_forever()))
     cfg = getattr(app.state, "webapp_config", None)
     canonical, role_reason = instance_role.canonical_instance()
     if cfg is not None and canonical:

@@ -618,7 +618,7 @@ class TestGrokAutoSwitch:
         monkeypatch.setattr(board_router.agents, "is_installed", lambda a: True)
         state = {"used": 47}
         # Half the week gone: pace 50.
-        monkeypatch.setattr(board_router, "_read_quota_lines", lambda cfg: [{
+        monkeypatch.setattr(board_router, "read_quota_lines", lambda cfg: [{
             "harness": "claude", "state": "available", "stale": False,
             "weekly": {"used_percentage": state["used"],
                        "resets_at": time.time() + 3.5 * 86400,
