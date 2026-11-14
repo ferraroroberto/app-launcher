@@ -125,7 +125,7 @@ def test_answer_sheet_renders_questions_and_done_sends_one_message(
     served_journal, journal_stamps = journal.serve_journal(authed_page)
     with authed_page.expect_response(re.compile(r".*/api/status$")):
         _open_board(authed_page, base_url)
-    journal.assert_new_entries_then_show_all(authed_page)
+    journal.assert_new_entries_then_clear_button(authed_page)
 
     authed_page.locator("#boardChiefPlan .board-plan-answer").click()
     dialog = authed_page.locator("#chiefAnswersDialog")
@@ -182,6 +182,7 @@ def test_answer_sheet_renders_questions_and_done_sends_one_message(
     _assert_chief_plan_rows_marked_answered(authed_page)
     # Answering is a look at the Board: the journal's new entries are now seen.
     journal.assert_a_look_quiets_the_card(authed_page, journal_stamps)
+    journal.assert_clear_stamps_the_look(authed_page, base_url, served_journal, journal_stamps)
     journal.assert_unreadable_then_missing(authed_page, base_url, served_journal)
 
 
