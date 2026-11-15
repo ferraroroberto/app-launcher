@@ -36,6 +36,7 @@ def _apps_payload() -> dict:
                 "id": "photo-ocr-app",
                 "name": "Photo OCR",
                 "kind": "streamlit",
+                "refreshable": True,
                 "bat_path": "C:\\stub\\photo-ocr\\run.bat",
                 "added_at": "2026-01-01T00:00:00",
                 "autostart": False,
@@ -62,6 +63,7 @@ def _apps_payload() -> dict:
                 "id": "home-automation-tray",
                 "name": "Home Automation",
                 "kind": "tray",
+                "refreshable": True,
                 "bat_path": "C:\\stub\\home-automation\\tray.bat",
                 "added_at": "2026-01-01T00:00:00",
                 "autostart": False,
@@ -211,6 +213,8 @@ def test_rows_hide_path_and_url_and_launch_both_modes(
         f"tray row launch sent {launches[2:]}"
     )
 
+    _assert_refresh_stops_and_relaunches(authed_page, row, tray, launches)
+
     # The autostart switch is the row's one leading toggle and carries no
     # visible label — its accessible name is the only thing that must still
     # say what it does.
@@ -219,6 +223,49 @@ def test_rows_hide_path_and_url_and_launch_both_modes(
     expect(toggle).to_have_attribute("aria-label", "Autostart Home Automation at boot")
 
     _assert_trays_panel_and_autostart(authed_page, toggle)
+
+
+def _assert_refresh_stops_and_relaunches(page: Page, row, tray, launches: list[dict]) -> None:
+    """The row's Refresh verb: one POST per tap, never a launch, a stop failure shown.
+
+    The route's own stop / wait / relaunch is pinned in
+    tests/api/webapp/test_webapp_api_apps_refresh.py; this is the page's half.
+    """
+    refreshes: list[str] = []
+    replies = iter([
+        (200, {"refreshed": "photo-ocr-app", "stops": [{"pid": 11, "stopped": True}]}),
+        (409, {"detail": "Photo OCR: pid 11 did not stop, so it was not relaunched"}),
+        (200, {"refreshed": "home-automation-tray", "stops": [], "restart": {"exit_code": 0}}),
+    ])
+
+    def _refresh_handler(route):
+        refreshes.append(route.request.url.rsplit("/api/apps/", 1)[1])
+        status, body = next(replies)
+        route.fulfill(status=status, content_type="application/json", body=json.dumps(body))
+
+    page.route("**/api/apps/*/refresh", _refresh_handler)
+    launched = len(launches)
+    toast = page.locator("#toast")
+
+    button = row.locator("[data-item=app-refresh-btn]")
+    expect(button).to_have_accessible_name(re.compile(r"^Refresh Photo OCR"))
+    button.click()
+    expect(toast).to_contain_text("Refreshed Photo OCR")
+
+    # A stop that did not take is shown, and says nothing was relaunched.
+    button.click()
+    expect(toast).to_contain_text("did not stop")
+    expect(toast).not_to_contain_text("Refreshed")
+
+    # A tray row has the same verb; a row the server marks not refreshable has none.
+    tray.locator("[data-item=app-refresh-btn]").click()
+    expect(toast).to_contain_text("Refreshed Home Automation")
+    expect(page.locator('#appsList li[data-id="dead-tunnel"] [data-item=app-refresh-btn]')).to_have_count(0)
+
+    assert refreshes == [
+        "photo-ocr-app/refresh", "photo-ocr-app/refresh", "home-automation-tray/refresh",
+    ], f"refresh posts {refreshes}"
+    assert len(launches) == launched, "a Refresh tap must never launch the row"
 
 
 def _assert_trays_panel_and_autostart(page: Page, toggle) -> None:
