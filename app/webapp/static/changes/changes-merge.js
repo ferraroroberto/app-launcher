@@ -3,13 +3,13 @@
  * loaded. Pure: no panel state, no requests (changes-overlay.js owns those).
  */
 
-// "A very long transcript: only part of it was read · Load older". The older
+// "A very long transcript: only part of it was read. [Load older]". The older
 // part comes one chunk per tap, merged into the list; the line goes once the
 // start of the transcript is read.
 export function olderLine(loading, onLoad) {
   const line = document.createElement('div');
   line.className = 'chg-note chg-partial muted small';
-  line.append('A very long transcript: only part of it was read · ');
+  line.append('A very long transcript: only part of it was read. ');
   const older = document.createElement('button');
   older.dataset.track = 'changes.load-older';
   older.type = 'button';
