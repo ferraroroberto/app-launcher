@@ -158,6 +158,9 @@ read over loopback and cached behind /api/system/health"]
     GHCLIENT["clients/github.py\ngh CLI reads, cached snapshot"]
     PROOFREPORTS["board/proof_reports.py\nread-only view of each repo's\n.proof visual-proof store"]
     OWNERCHECKS["board/owner_checks.py\nowner-check list cache + Later/Problem marks,\nvia fleet-config's owner_check CLI"]
+    MACHCRIT["chief/machine_critical.py
+act on ports or commit in the hub verdict,
+one machine-critical chief mailbox event per incident"]
     CIRUNS["board/ci_runs.py + chief/ci_failed.py\nred default-branch CI per fleet repo,\nci-failed chief mailbox events"]
     NOTIFY["notifications.py\nPushover/Telegram on job failure"]
     WEBAPPCFG["webapp_config.py\nconfig/webapp_config.json"]
@@ -228,6 +231,8 @@ read over loopback and cached behind /api/system/health"]
   WSERVER -->|"lifespan 60 s tick, canonical only,\nno-op while the night restart switch is off"| AUTORESTART
   AUTORESTART -->|"flagged + allowlisted + in window"| PROCRESTART
   AUTORESTART --> HUBHEALTH
+  WSERVER -->|"lifespan 30 s tick, canonical only"| MACHCRIT
+  MACHCRIT --> HUBHEALTH
   R_MISC --> HUBHEALTH
   R_DESKTOP -->|"capture only inside a connected WS"| DESKCAP
   R_DESKTOP -->|"input only on the gated WS"| DESKIN

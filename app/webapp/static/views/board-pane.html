@@ -44,6 +44,14 @@
                 data-fold="collapse" title="Collapse all cards"
                 aria-label="Collapse all cards"><svg class="icon" aria-hidden="true" focusable="false"><use></use></svg></button>
       </div>
+      <!-- Machine health under the lane toolbar: the hub's verdict and the worse of
+           ports and commit, opening the PC load sheet (machine-health.js). -->
+      <button data-track="board.machine-health" type="button" class="card machine-health" data-tone="none"
+              aria-label="Machine health: reading. Show details">
+        <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-monitor"></use></svg>
+        <span class="mh-label">Machine</span>
+        <span class="mh-value">Reading…</span>
+      </button>
       <!-- One attention banner, only while a source is down or stale
            (renderStatusLine). -->
       <div id="boardStatus" class="board-status" role="status" hidden></div>

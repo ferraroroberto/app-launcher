@@ -169,7 +169,7 @@ class TestLifespanGate:
                 self.demand_ticks.append(task)
             elif coro.__qualname__ == "tick_forever" and module in (
                     "app.webapp.chief_doorbell", "app.webapp.relay_idle_close",
-                    "src.process_auto_restart"):
+                    "src.process_auto_restart", "src.chief.machine_critical"):
                 self.doorbell_ticks.append(task)
             elif coro.__qualname__ == "fetch_tick_forever":
                 self.fetch_ticks.append(task)

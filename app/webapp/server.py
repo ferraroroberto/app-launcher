@@ -107,6 +107,7 @@ from app.webapp.static_trim import trim_js
 from src import app_runtime, instance_role, process_auto_restart, system_load
 from src.app_config import load_app_config
 from src.auth.webauthn_gate import WebAuthnGate
+from src.chief import machine_critical
 from src.clients import session as session_client
 from src.compression import StreamSafeGZipMiddleware
 from src.jobs import snapshot as jobs_snapshot
@@ -527,6 +528,10 @@ async def _lifespan(app: FastAPI):
         # nothing while it is off. Canonical instance only, so a disposable gate
         # webapp never restarts a real process.
         tasks.append(asyncio.create_task(process_auto_restart.tick_forever(app)))
+        # The hub's machine verdict at `act` on ports or commit becomes one
+        # chief mailbox event per incident. Canonical instance only, so a gate
+        # webapp never writes the real mailbox.
+        tasks.append(asyncio.create_task(machine_critical.tick_forever(app)))
         # Always started: it reads each bot's idle_close_minutes every tick and
         # touches only what the relay reopened, so a settings save applies live.
         tasks.append(asyncio.create_task(relay_idle_close.tick_forever(app)))

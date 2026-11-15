@@ -295,6 +295,12 @@ def _owner_of(pid: int, cmdline: List[str]) -> Optional[str]:
     return _repo_folder(_cwd(pid))
 
 
+def process_owner(pid: int) -> Optional[str]:
+    """The repo or worktree folder a live process works in, else None (also
+    when the process is gone or its command line cannot be read)."""
+    return _owner_of(pid, _cmdline(pid))
+
+
 def level_for(samples: Iterable[Sample]) -> str:
     """The reading's tone from the samples so far (oldest first).
 
