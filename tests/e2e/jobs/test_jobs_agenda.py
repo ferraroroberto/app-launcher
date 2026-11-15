@@ -140,9 +140,9 @@ def test_agenda_groups_by_day_holds_across_midnight_and_says_when_empty(
     authed_page.locator("#tabJobs").click()
 
     # Next up (#1438): three fires, no tap needed — time, name, and
-    # "<day> · <Cadence>" (the cadence's first letter lifted). Since #1505 they
-    # are three distinct jobs: Alpha's 18:00 folds into its row as "also
-    # 18:00", and its fire the next day is not a row of its own.
+    # "<day> · <Cadence>" (the cadence's first letter lifted). They are three
+    # distinct jobs: Alpha's 18:00 and its fire the next day are not rows of
+    # their own, and the cadence names the repeat.
     # While the schedule loads the card already holds three id-less
     # placeholder rows (#1641), so the count alone is met before the real rows
     # exist: wait for the card to settle, then read them (#1727).
@@ -152,7 +152,7 @@ def test_agenda_groups_by_day_holds_across_midnight_and_says_when_empty(
     assert nxt.evaluate_all("els => els.map(e => e.dataset.jobId)") == ["alpha", "zeta", "kappa"]
     expect(nxt.locator(".jobs-fire-time")).to_have_text(["13:00", "01:00", "04:00"])
     expect(nxt.locator(".action-row-meta")).to_have_text(
-        ["today · also 18:00 · Daily 13:00", "tomorrow · Daily 01:00",
+        ["today · Daily 13:00", "tomorrow · Daily 01:00",
          "tomorrow · Daily 04:00"])
 
     authed_page.locator("#jobsAgendaOpen").click()

@@ -449,8 +449,9 @@ function renderIdleLine() {
 
 // A running row's common actions as visible buttons: CSS shows them
 // at the wide layout only, where hiding them behind the kebab is a phone
-// compromise; the kebab keeps them for the phone. Open is also the row tap.
-// All three are the vendored plain verb (icon-button action-row-verb, no fill
+// compromise; the kebab keeps them for the phone. Open is the row tap, so it
+// has no button: with the kebab that is three controls beside the row's main
+// button, the most the design review allows a row. Both are the vendored plain verb (icon-button action-row-verb, no fill
 // or border at rest); Stop takes the quiet danger hover.
 function runningVerb(className, glyph, label, onTap, disabled, hint, opts) {
   const btn = document.createElement('button');
@@ -469,9 +470,6 @@ function runningActions(r, noUrl) {
   const box = document.createElement('span');
   box.className = 'running-app-actions icon-button-group';
   box.append(
-    runningVerb('icon-button action-row-verb running-app-open-inline', 'globe', 'Open ' + r.name,
-      function () { window.open(r.url, '_blank', 'noopener,noreferrer'); }, !r.url, noUrl,
-      { track: 'apps.running-open' }),
     runningVerb('icon-button action-row-verb running-app-copy-inline', 'copy', 'Copy ' + r.name + ' URL',
       function () { copyUrl(r.url); }, !r.url, noUrl, { track: 'apps.running-copy' }),
     runningVerb('icon-button action-row-verb danger running-app-stop-inline',

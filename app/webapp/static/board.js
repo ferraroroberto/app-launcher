@@ -486,7 +486,7 @@ function renderJobCard(card) {
 export function renderDoneCard(card, stampRef) {
   // Done holds closed issues only — a merged PR that closed one is
   // already reflected here by the issue itself, so there's no PR/pairing
-  // branch to render. Its Issue / PR / Proof actions ride the issue's row
+  // branch to render. Its PR / Proof actions ride the issue's row
   // (board/proof-chip.js).
   return laneRow('board-item-done', card.title || '',
     [[card.repo, '#' + card.number].join(' '), card.state,

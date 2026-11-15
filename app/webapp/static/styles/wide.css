@@ -214,7 +214,7 @@
     padding-block: var(--space-md);
     color: var(--muted);
   }
-  /* Open, Copy URL and Stop beside the kebab, each the 44px plain verb; the
+  /* Copy URL and Stop beside the kebab, each the 44px plain verb; the
      group's box matches theirs so its gap is 0 and the targets touch. */
   .running-app-actions { display: flex; --icon-btn-box: var(--row-sm); }
 }

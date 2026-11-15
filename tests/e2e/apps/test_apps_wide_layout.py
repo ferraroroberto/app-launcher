@@ -137,15 +137,14 @@ def test_wide_apps_is_two_columns_list_then_pane(
         f"horizontal overflow at {width}px: {m}")
     assert m["listFirst"], "the pane comes before the list in keyboard order"
     assert not m["titleCut"], f"a running app's title is clipped at {width}px"
-    # Open, Copy URL and Stop are visible 44px buttons beside the kebab.
+    # Copy URL and Stop are visible 44px buttons beside the kebab; Open is the row tap.
     assert [v[0] for v in m["verbs"]] == [
-        "Open Beta Web with a rather long name for its row",
         "Copy Beta Web with a rather long name for its row URL",
         "Stop Beta Web with a rather long name for its row",
     ], m["verbs"]
     assert all(v[1] >= 44 and v[2] >= 44 for v in m["verbs"]), m["verbs"]
-    # Plain verbs (fleet-config#1420): Stop is no longer outlined, and none of
-    # the three is painted at rest, in light or dark.
+    # Plain verbs (fleet-config#1420): Stop is no longer outlined, and neither
+    # is painted at rest, in light or dark.
     for verb in page.locator("#runningAppsList .running-app-actions button").all():
         assert_unpainted_at_rest(page, verb)
     # The sheet's drill row gives way to the inline card; the phone's empty

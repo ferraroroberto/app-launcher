@@ -84,8 +84,10 @@ _JOBS = {"jobs": [_job("ledger", "Ledger reconciliation"), _job("mailbox", "Mail
                   _job("planner", "Planner sync")]}
 
 _AGENDA = {"days": 7, "generated_epoch": _NOW, "occurrences": [
+    # A cadence long enough to wrap at phone width, which the card must not
+    # grow by when it lands: its meta stays one line.
     {"job_id": "ledger", "name": "Ledger reconciliation",
-     "fire_epoch": _NOW + 6 * 3600, "cadence": "daily 03:00"},
+     "fire_epoch": _NOW + 6 * 3600, "cadence": "daily 03:00 09:00 15:00 21:00 23:30"},
     {"job_id": "mailbox", "name": "Mailbox sweep",
      "fire_epoch": _NOW + 7 * 3600, "cadence": "daily 03:00"},
     {"job_id": "planner", "name": "Planner sync",

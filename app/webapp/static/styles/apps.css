@@ -142,21 +142,18 @@
 }
 .perf-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .perf-name { font-size: var(--font-body); font-weight: 600; overflow-wrap: anywhere; }
-.perf-status,
-.perf-nums {
+.perf-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 2px var(--space-sm);
+  gap: 2px 12px;
   min-width: 0;
   font-size: var(--font-body-sm);
   line-height: 1.45;
   color: var(--muted);
 }
-.perf-status > *,
-.perf-num { white-space: nowrap; }
+.perf-meta > * { white-space: nowrap; }
 .perf-verdict { color: var(--success-text); font-weight: 600; }
-.perf-nums { gap: 0 12px; }
 .perf-num.is-over { color: var(--danger-text); font-weight: 600; }
 .perf-spark { width: 60px; height: 16px; flex: none; color: var(--accent-text); }
 .perf-row[data-over] .perf-spark { color: var(--danger-text); }

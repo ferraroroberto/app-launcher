@@ -174,7 +174,7 @@ def test_the_card_lists_measured_apps_against_budget_and_the_rest_with_reasons(
     # A pass seeded from an issue log has no numbers and says so.
     seeded = _row(authed_page, "seeded-web")
     expect(seeded).to_contain_text("Passed, no timings yet")
-    expect(seeded.locator(".perf-nums")).to_have_count(0)
+    expect(seeded.locator(".perf-num")).to_have_count(0)
 
     # Everything else is listed once, under why it has no result; none reads as a pass.
     expect(_reason(authed_page, "never")).to_have_text("Never measuredNever Run App")
