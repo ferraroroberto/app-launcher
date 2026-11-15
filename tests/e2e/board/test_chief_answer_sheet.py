@@ -47,11 +47,15 @@ def _assert_answer_sheet_questions(dialog, blocks):
     expect(options).to_have_count(3)
     expect(options.nth(0)).to_contain_text("Yes, all four (Recommended)")
     expect(options.nth(0)).to_contain_text("Ship them in order")
-    expect(first.locator('.tr-ask-opt[aria-pressed="true"]')).to_have_count(0)
+    # The recommended option starts picked (#2382), and only it.
+    expect(first.locator('.tr-ask-opt[aria-pressed="true"]')).to_have_count(1)
+    expect(options.nth(0)).to_have_attribute("aria-pressed", "true")
 
     second = blocks.nth(1)
     expect(second.locator(".chief-answer-ref")).to_have_count(0)
     expect(second.get_by_text("Pick any number")).to_be_visible()
+    # No option carries the recommendation, so nothing is picked for it.
+    expect(second.locator('.tr-ask-opt[aria-pressed="true"]')).to_have_count(0)
     # A recommendation no option carries stays, as one quiet line of text.
     rec = second.locator(".chief-answer-rec")
     expect(rec).to_have_text("Recommended: Mon and Wed suit the gym.")
@@ -80,6 +84,20 @@ def _assert_answer_sheet_questions(dialog, blocks):
     return first, second, options, also
 
 
+def _assert_prepick_is_an_answer(dialog, options):
+    """Assert the pre-picked recommendation readies Done and the sheet says so,
+    then that tapping it off leaves Done waiting with its reason; return Done."""
+    done = dialog.locator("#chiefAnswersDone")
+    expect(done).to_be_enabled()
+    expect(dialog.locator("#chiefAnswersNote")).to_be_hidden()
+    expect(dialog.locator("#chiefAnswersDefaults")).to_be_visible()
+    options.nth(0).click()
+    expect(options.nth(0)).to_have_attribute("aria-pressed", "false")
+    expect(done).to_be_disabled()
+    expect(dialog.locator("#chiefAnswersNote")).to_contain_text("Pick or type an answer first")
+    return done
+
+
 def _assert_sheet_fits_viewport(page: Page, dialog) -> None:
     """Assert the sheet is full-screen at phone width and a centred dialog on desktop."""
     viewport = page.viewport_size
@@ -105,8 +123,8 @@ def test_answer_sheet_renders_questions_and_done_sends_one_message(
     authed_page: Page, base_url: str, tmp_path
 ) -> None:
     """#1295: the sheet shows each question in file order (repo, linked ref,
-    question, detail, the options with the recommended one labelled but not
-    picked, Other on every item, an old text-only item as a free-text
+    question, detail, the options with the recommended one labelled and
+    already picked, Other on every item, an old text-only item as a free-text
     question) plus Anything else. The recommendation is no card and no star:
     the labelled option carries it, and an item whose recommendation marks
     no option keeps it as one quiet line. Anything else is the shared
@@ -136,10 +154,7 @@ def test_answer_sheet_renders_questions_and_done_sends_one_message(
 
     first, second, options, also = _assert_answer_sheet_questions(dialog, blocks)
 
-    # Nothing answered yet: Done waits, and says why.
-    done = dialog.locator("#chiefAnswersDone")
-    expect(done).to_be_disabled()
-    expect(dialog.locator("#chiefAnswersNote")).to_contain_text("Pick or type an answer first")
+    done = _assert_prepick_is_an_answer(dialog, options)
 
     # Single-select: typing Other then tapping an option keeps only the pick.
     first.locator(".tr-ask-input").fill("maybe later")
@@ -351,9 +366,10 @@ def test_answer_sheet_other_fields_dictate_into_the_draft(
         assert fbox and mbox and fbox["x"] + fbox["width"] <= mbox["x"] + 1, (
             f"item {i}: the field and its mic overlap: {fbox} {mbox}")
 
-    # Single-select: a pick, then a take into Other, which replaces the pick.
+    # Single-select: the pre-picked recommendation, then a take into Other,
+    # which replaces the pick.
     first = blocks.nth(0)
-    first.locator(".tr-ask-opt").nth(0).click()
+    expect(first.locator(".tr-ask-opt").nth(0)).to_have_attribute("aria-pressed", "true")
     mics.nth(0).click()
     expect(mics.nth(0)).to_have_class(re.compile(r"\brecording\b"))
     mics.nth(0).click()  # stop
@@ -388,28 +404,57 @@ def test_answer_sheet_other_fields_dictate_into_the_draft(
     }], posts
 
 
-def open_sheet_with_answer(page: Page, base_url: str, tmp_path, length: int) -> None:
-    """Open the answer sheet over the shared questions and type *length* characters into the first Other field."""
+# One question beyond the shared ones: a multi-select with two recommended options.
+_WITH_MULTI = _QUESTIONS + [
+    {"id": "q-multi", "text": "Which apps?", "question": "Which apps?", "multi": True,
+     "options": [{"label": "A", "recommended": True}, {"label": "B"},
+                 {"label": "C", "recommended": True}]},
+]
+
+
+def open_sheet_with_answer(page: Page, base_url: str, tmp_path, length: int | None) -> None:
+    """Open the answer sheet and, given *length*, type that many characters into the first Other field."""
     _mock_board(page, _board_payload(with_chief=True))
-    _route_plan_from(page, {"plan": _plan_with(tmp_path, _QUESTIONS)})
+    _route_plan_from(page, {"plan": _plan_with(tmp_path, _WITH_MULTI)})
     _route_voice(page, False)
     with page.expect_response(re.compile(r".*/api/status$")):
         _open_board(page, base_url)
     page.locator("#boardChiefPlan .board-plan-answer").click()
+    if length is None:
+        return
     field = page.locator("#chiefAnswersDialog .chief-answer").nth(0).locator(".tr-ask-input")
     field.fill(("word " * (length // 5 + 1))[:length].strip() + "x")
 
 
-def test_a_long_answer_is_kept_whole_and_names_its_limit(
+def test_done_alone_sends_the_recommendations_and_a_long_answer_is_kept_whole(
     authed_page: Page, base_url: str, tmp_path
 ) -> None:
-    """A dictated answer is not cut at 500: 5,000 characters stay in the field and ride the one
+    """#2382: a sheet the owner agrees with is one tap. Each recommended option starts picked
+    (every recommended one on a multi-select, none where the recommendation marks no option), so
+    Done straight after opening sends them all in one message; the rest go as skipped.
+
+    A dictated answer is not cut at 500: 5,000 characters stay in the field and ride the one
     message whole, with no limit line far from the cap. Near the cap the field says how many
     characters are left, before Done."""
     posts = _capture_chief_input(authed_page)
     _mock_ensure(authed_page, {})
-    open_sheet_with_answer(authed_page, base_url, tmp_path, 5000)
+    open_sheet_with_answer(authed_page, base_url, tmp_path, None)
     dialog = authed_page.locator("#chiefAnswersDialog")
+    expect(dialog.locator(".chief-answer")).to_have_count(4)
+    dialog.locator("#chiefAnswersDone").click()
+    expect(authed_page.locator("#toast")).to_contain_text("Sent to chief")
+    assert posts == [{
+        "data": (
+            "Answers from the Board (2 of 4):\n"
+            "1. [fleet-config#959] Approve the four plans? → Yes, all four (recommended) {id: q-plans}\n"
+            "4. Which apps? → A (recommended), C (recommended) {id: q-multi}\n"
+            "Skipped: 2, 3"
+        ),
+        "submit": True,
+    }], posts
+
+    authed_page.reload()
+    open_sheet_with_answer(authed_page, base_url, tmp_path, 5000)
     field = dialog.locator(".chief-answer").nth(0).locator(".tr-ask-input")
     assert len(field.input_value()) == 5000
     count = dialog.locator(".chief-answer").nth(0).locator(".tr-ask-count")
@@ -417,7 +462,7 @@ def test_a_long_answer_is_kept_whole_and_names_its_limit(
 
     dialog.locator("#chiefAnswersDone").click()
     expect(authed_page.locator("#toast")).to_contain_text("Sent to chief")
-    sent = posts[0]["data"]
+    sent = posts[1]["data"]
     assert ("word " * 1001)[:4999].strip() + "x" in sent, "the 5,000-character answer must arrive whole"
 
     authed_page.reload()

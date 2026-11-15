@@ -5,7 +5,7 @@
  * transcript's AskUserQuestion card (the same `.tr-ask-*` rows) with
  * one block per waiting item, in file order: the repo and ref, the question,
  * the detail, the options (single- or multi-select, the recommended one
- * labelled "(Recommended)"), an Other field on every item (with a mic when
+ * labelled "(Recommended)" and already picked), an Other field on every item (with a mic when
  * dictation is available), and an "Anything else"
  * box under them all. The chief's recommendation shows as its own
  * quiet line only when it marks no option — the label already says it.
@@ -89,8 +89,19 @@ let sending = false;
 // Owner-check drafts by ref, kept across opens until their answer lands.
 const ownerDrafts = {};
 
-function emptyChiefDraft() {
-  return { picks: [], other: '', files: emptyFiles() };
+// A fresh draft starts on the chief's recommendation: the recommended option
+// is already picked (every recommended one on a multi-select), so a sheet the
+// owner agrees with is one tap on Done. A pick is still a tap to change.
+function emptyChiefDraft(item) {
+  return { picks: recommendedPicks(item), other: '', files: emptyFiles() };
+}
+
+function recommendedPicks(item) {
+  const picks = [];
+  ((item && item.options) || []).forEach(function (opt, i) {
+    if (opt.recommended && (item.multi || !picks.length)) picks.push(i);
+  });
+  return picks;
 }
 
 function ownerDraft(item) {
@@ -451,6 +462,10 @@ function openSheet(mode, plan, run, indices, owner, startKey, ownerKind) {
       itemFiles(draft, item.ref)));
   });
   els.chiefAnswersList.replaceChildren.apply(els.chiefAnswersList, blocks);
+  // Pre-picked answers are a send, not a suggestion: say so whenever one shows.
+  els.chiefAnswersDefaults.hidden = !(chief && indices.some(function (i) {
+    return recommendedPicks(items[i]).length > 0;
+  }));
   els.chiefAnswersTitleText.textContent = chief ? 'Answer the chief'
     : 'Owner checks' + (ownerKind ? ': ' + groupLabel(ownerKind) : '');
   syncChiefAnswers(run);
@@ -534,7 +549,7 @@ async function submitAnswers() {
       // Sent: the drafts it carried are done with, so the next open starts
       // clean. One typed for an item the filter hid was not sent, and stays.
       // The close handler saves the box into `sheet.also`, so empty the box.
-      sheet.shown.forEach(function (i) { sheet.drafts[i] = emptyChiefDraft(); });
+      sheet.shown.forEach(function (i) { sheet.drafts[i] = emptyChiefDraft(sheet.items[i]); });
       also.textarea.value = '';
       sheet.also = '';
     }

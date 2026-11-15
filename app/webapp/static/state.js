@@ -198,6 +198,7 @@ export const els = {
   chiefWorkerCapScopeToggle: document.getElementById('chiefWorkerCapScopeToggle'),
   chiefAnswersDialog: document.getElementById('chiefAnswersDialog'),
   chiefAnswersClose: document.getElementById('chiefAnswersClose'),
+  chiefAnswersDefaults: document.getElementById('chiefAnswersDefaults'),
   chiefAnswersList: document.getElementById('chiefAnswersList'),
   chiefAnswersTitleText: document.getElementById('chiefAnswersTitleText'),
   chiefAnswersAlso: document.getElementById('chiefAnswersAlso'),
