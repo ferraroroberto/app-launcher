@@ -4,7 +4,8 @@ iOS routes the mic to a connected Bluetooth headset that can carry nothing,
 and a take used to run for minutes before the finish-time "silent recording"
 toast said so. The recorder now reads the live stream's level: a silent input
 raises a banner within seconds and the recorder names the input; a real signal
-never raises it.
+never raises it. With Settings' dictation auto-stop on, that silence does not
+end the take, and a pause after speech then does.
 
 The input is a real ``MediaStream`` built from Web Audio (a silent node, or an
 oscillator), so the page's own ``AnalyserNode`` path runs for real; only
@@ -15,10 +16,11 @@ voice-transcriber is needed.
 
 from __future__ import annotations
 
+import json
 import re
 
 import pytest
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Page, Route, expect
 
 from tests.e2e._audio_mock import RECORDER_BASE_JS
 from tests.e2e.compose.test_voice_dictation import (
@@ -30,9 +32,10 @@ pytestmark = pytest.mark.smoke
 
 _LABEL = "Test Headset"
 
-# A stream with a real audio graph behind it. `__tone` picks an oscillator
-# over silence; closing a context the page opened is counted, so a test can
-# wait on the page having finished listening instead of sleeping.
+# A stream with a real audio graph behind it. `__tone` opens an oscillator's
+# gain from the start, and `__speakFor(ms)` opens it for ms then shuts it,
+# timed in the page; closing a context the page opened is counted, so a test
+# can wait on the page having finished listening instead of sleeping.
 _INPUT_MOCK = ("""
 (() => {
   window.__watchClosed = 0;
@@ -46,12 +49,17 @@ _INPUT_MOCK = ("""
     const ctx = new AudioContext();
     await ctx.resume();
     const dest = ctx.createMediaStreamDestination();
-    if (window.__tone) {
-      const osc = ctx.createOscillator();
-      osc.frequency.value = 440;
-      osc.connect(dest);
-      osc.start();
-    }
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.frequency.value = 440;
+    gain.gain.value = window.__tone ? 1 : 0;
+    osc.connect(gain);
+    gain.connect(dest);
+    osc.start();
+    window.__speakFor = (ms) => {
+      gain.gain.value = 1;
+      setTimeout(() => { gain.gain.value = 0; }, ms);
+    };
     const track = dest.stream.getAudioTracks()[0];
     Object.defineProperty(track, 'label', { value: '__LABEL__' });
     return dest.stream;
@@ -76,6 +84,15 @@ def _mock_sessions(page: Page) -> None:
     )
 
 
+def _config_with_auto_stop(route: Route) -> None:
+    """GET /api/config answered with a 2 s auto-stop, leaving the shared
+    disposable config as it is."""
+    resp = route.fetch()
+    body = resp.json()
+    body["dictation_auto_stop_seconds"] = 2
+    route.fulfill(response=resp, body=json.dumps(body))
+
+
 def _start_take(
     page: Page, base_url: str, sid: str, tone: bool, label: str = _LABEL
 ) -> None:
@@ -91,7 +108,12 @@ def test_silent_remote_audio_input_names_the_remote_desktop_setting(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
     """A silent "Remote Audio" input (Windows' redirected Remote Desktop mic)
-    raises the Remote Desktop wording, not the Bluetooth one."""
+    raises the Remote Desktop wording, not the Bluetooth one.
+
+    The dictation auto-stop is on (2 s): the three silent seconds before the
+    warning never stop the take, since no speech came first; speech then a
+    pause stops it by itself."""
+    authed_page.route(re.compile(r".*/api/config$"), _config_with_auto_stop)
     _start_take(
         authed_page, base_url, launched_pty_session, tone=False, label="Remote Audio"
     )
@@ -102,6 +124,11 @@ def test_silent_remote_audio_input_names_the_remote_desktop_setting(
     expect(warning).to_be_visible(timeout=6_000)
     expect(warning).to_contain_text("check the Remote Desktop audio recording setting")
     expect(warning).not_to_contain_text("Bluetooth")
+
+    mic = authed_page.locator("#terminalComposeBar .composer-mic")
+    expect(mic).to_have_class(re.compile(r"\brecording\b"))
+    authed_page.evaluate("window.__speakFor(800)")
+    expect(mic).not_to_have_class(re.compile(r"\brecording\b"), timeout=8_000)
 
 
 _RECTS_JS = """

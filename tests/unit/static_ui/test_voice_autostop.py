@@ -3,7 +3,7 @@
 The detector is a pure function of level readings over time, so the pause
 rules (only after speech, only once, against the room's own level) are pinned
 in plain Node, in ``tests/js/shared/voice_autostop.test.mjs``; machines without Node
-skip cleanly. The browser leg is ``tests/e2e/compose/test_voice_auto_stop.py``.
+skip cleanly. The browser leg is in ``tests/e2e/compose/test_voice_silent_input.py``.
 """
 
 from __future__ import annotations
