@@ -119,6 +119,50 @@
   line-height: 1.45;
   color: var(--muted);
 }
+/* The split status line: the words in `.action-row-meta-text` truncate on one
+ * line, the parts an ellipsis must never cut (a count, a duration, `N failed`)
+ * sit beside them as non-shrinking `.action-row-meta-tail` items. Both rules
+ * hold at once: the figures stay whole (LAYOUT-09) and no text node wraps
+ * inside the row's main button (COMP-07), which the two-line wrap above cannot
+ * promise for a short line. A meta without the text wrapper keeps the wrap. */
+.action-row-meta:has(> .action-row-meta-text) {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+}
+.action-row-meta-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.action-row-meta-text:empty { display: none; }
+.action-row-meta-tail {
+  flex: none;
+  white-space: nowrap;
+}
+/* The separator is drawn, not typed, so it stays out of the accessible name. */
+.action-row-meta-tail::before {
+  content: "·";
+  content: "·" / "";
+  margin-right: 6px;
+}
+.action-row-meta-text:empty + .action-row-meta-tail::before { content: none; }
+
+/* The overline role (design.md typography): a list group header, the one place
+ * the type scale allows capitals. Its class name is the contract, so a date or
+ * a state group above a run of rows is never read as a label set in capitals. */
+.overline {
+  margin: 4px 14px 6px;
+  font-size: var(--font-caption);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
 
 /* A leading avatar sits inside the main button, so the text column moves into
  * an .action-row-text wrapper beside it. Only a main button holding an avatar

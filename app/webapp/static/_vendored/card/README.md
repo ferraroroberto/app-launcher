@@ -32,6 +32,7 @@ The fleet's canonical **card**: an elevated surface one step above the canvas (s
 ```
 
 - The header is optional — a bare `.card` is just the elevated surface.
+- **A glance card** (the first card under the page header, which answers the tab's one question) draws every row at once: `<div class="glance-row"><span>Label</span><span class="glance-value"></span></div>`. An empty `.glance-value` draws a dash, the row keeps its height and the value never wraps, so the card does not grow as its reads land (design-review `LAYOUT-10`). Fill the value in place; never append a row when its read arrives.
 - A **collapsible** card is a different component: use [`disclosure/`](../disclosure/) (`<details class="card card--collapsible">`), which zeroes the card's own padding so closed cards align (the padding-doubling rule in `design.md`).
 
 ## Required design tokens
@@ -49,6 +50,7 @@ Define these CSS custom properties in your app's `:root` / `[data-theme="dark"]`
 | `--space-sm` | `8px` | header gap |
 | `--font-body` | `1rem` | title |
 | `--font-label` | `0.875rem` | right-pinned meta |
+| `--row-sm` | `44px` | `.glance-row` height (falls back to 44px) |
 | `--font-caption` | `0.75rem` | meta line |
 | `--icon-title` | `18px` | leading glyph (`icons.size.title`) |
 

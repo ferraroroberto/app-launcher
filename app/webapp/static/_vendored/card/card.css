@@ -42,6 +42,28 @@
   color: var(--muted);
   font-size: var(--font-label);
 }
+/* Glance rows (design.md glance card): every row of the card is in the markup
+ * from the first paint, and a value still loading is an empty `.glance-value`
+ * that draws a dash. The card never changes height as its reads land (LAYOUT-10):
+ * the row keeps its height and the value never wraps to a second line. */
+.glance-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  min-height: var(--row-sm, 44px);
+}
+.glance-value {
+  flex: none;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.glance-value:empty::before {
+  content: "—";
+  content: "—" / "";
+  color: var(--muted);
+}
+
 /* Muted secondary line under the header. */
 .card-meta {
   margin: 6px 0 0;
