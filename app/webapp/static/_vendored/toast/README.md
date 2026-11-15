@@ -63,6 +63,7 @@ showToast('Snoozed', undefined, { action: { label: 'Undo', onClick: undo } }); /
 | `--shadow` | `0 8px 24px rgba(31,35,40,0.12)` | the theme shadow (falls back to the nav bar's `0 10px 34px rgba(0,0,0,0.5)` if undefined) |
 | `--radius-md` | `12px` | corners |
 | `--font-label` | `0.875rem` | text size |
+| `--hit-min` | `44px` | the action button's minimum height (falls back to 44px) |
 | `--bottom-tabs-height` / `--bottom-tabs-margin` | `61px` / `21px` | optional; fall back to the nav's own defaults |
 
 ## Error contrast
