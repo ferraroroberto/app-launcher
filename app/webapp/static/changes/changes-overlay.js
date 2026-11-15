@@ -30,6 +30,7 @@
 import { els } from '../state.js';
 import { apiFailToast, escapeHtml, jsonApi, sessionRoute, toast } from '../api.js';
 import { icon } from '../_vendored/icons/icons.js';
+import { emptyStateEl } from '../_vendored/empty-state/empty-state.js';
 import { diffTint, renderHunks } from './diff-view.js';
 import { tintDiffLines } from './syntax-tint.js';
 import { terminalJsonApi } from '../webauthn.js';
@@ -61,6 +62,9 @@ const FILE_REASON = {
 // from an Edited card also carries `turn` (its files and how to draw a step),
 // `scope` ('turn' | 'session') and `focus` (the recorded path to open).
 let view = null;
+
+// design.md action-row: filterAboveRows. A shorter list needs no search.
+const FILTER_ABOVE_ROWS = 12;
 
 function showState(html) {
   els.changesState.innerHTML = html;
@@ -550,12 +554,71 @@ function group(title, files) {
   return wrap;
 }
 
+// "N files · +a −d · tail"; while a filter narrows it, "M of N files" with the
+// matches' own counts.
+function setSummary(summary, files, c, tail, shown) {
+  const n = files.length;
+  const narrowed = shown && shown.length !== n;
+  const sum = narrowed ? sumCounts(shown) : c;
+  summary.innerHTML = (narrowed ? shown.length + ' of ' + n : n) + (n === 1 ? ' file' : ' files') +
+    ' · ' + counts(sum.additions || 0, sum.deletions || 0) + (tail ? ' · ' + escapeHtml(tail) : '');
+}
+
+function sumCounts(files) {
+  return files.reduce(function (s, f) {
+    return { additions: s.additions + (f.additions || 0), deletions: s.deletions + (f.deletions || 0) };
+  }, { additions: 0, deletions: 0 });
+}
+
 function summaryLine(files, c, tail) {
   const summary = document.createElement('div');
   summary.className = 'chg-summary muted small';
-  summary.innerHTML = files.length + (files.length === 1 ? ' file' : ' files') +
-    ' · ' + counts(c.additions || 0, c.deletions || 0) + (tail ? ' · ' + escapeHtml(tail) : '');
+  setSummary(summary, files, c, tail, null);
   return summary;
+}
+
+// A search field over a long session list: a case-folded substring match on
+// the file's whole path, so the name and the folder both count. It narrows the
+// rows already drawn (no request), keeps its text across Refresh and the scope
+// switch, and shows the canonical no-match block with a way back.
+function fileFilter(files, built, summary, c, tail) {
+  const label = document.createElement('label');
+  label.className = 'action-row-filter list-filter chg-filter';
+  label.setAttribute('role', 'search');
+  label.innerHTML = icon('search');
+  const input = document.createElement('input');
+  input.type = 'search';
+  input.dataset.track = 'changes.filter';
+  input.autocomplete = 'off';
+  input.setAttribute('autocapitalize', 'none');
+  input.spellcheck = false;
+  input.placeholder = 'Filter ' + files.length + ' files…';
+  input.setAttribute('aria-label', 'Filter changed files by name or folder');
+  input.value = view.query || '';
+  label.appendChild(input);
+  const none = emptyStateEl('search', 'No files match', {
+    actionLabel: 'Clear filter',
+    onAction: function () { input.value = ''; apply(); input.focus(); },
+  });
+  none.querySelector('.empty-state-action').dataset.track = 'changes.clear-filter';
+  none.hidden = true;
+  built.wrap.after(none);
+  function apply() {
+    const q = input.value.trim().toLowerCase().replace(/\\/g, '/');
+    if (view) view.query = input.value;
+    const shown = [];
+    files.forEach(function (f, i) {
+      const hit = !q || String(f.path).toLowerCase().replace(/\\/g, '/').indexOf(q) !== -1;
+      built.rows[i].hidden = !hit;
+      if (hit) shown.push(f);
+    });
+    built.wrap.hidden = !shown.length;
+    none.hidden = !!shown.length;
+    setSummary(summary, files, c, tail, q ? shown : null);
+  }
+  input.addEventListener('input', apply);
+  apply();
+  return label;
 }
 
 function renderProject(body) {
@@ -668,7 +731,9 @@ function renderSession(body) {
     return;
   }
   hideState();
-  list.appendChild(summaryLine(files, body.counts || {}, 'from this session’s transcript'));
+  const tail = 'from this session’s transcript';
+  const summary = summaryLine(files, body.counts || {}, tail);
+  list.appendChild(summary);
   if (view.turn) list.appendChild(scopeSwitch());
   if (body.partial) {
     list.insertAdjacentHTML('beforeend', note('A very long transcript: only its newest part was read'));
@@ -679,6 +744,9 @@ function renderSession(body) {
   }
   const built = fileList(files);
   list.appendChild(built.wrap);
+  if (files.length > FILTER_ABOVE_ROWS) {
+    built.wrap.before(fileFilter(files, built, summary, body.counts || {}, tail));
+  }
   showFocus(files, built.rows);
 }
 

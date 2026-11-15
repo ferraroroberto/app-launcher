@@ -11,6 +11,8 @@ against stubbed routes (every path and line synthetic):
   file with its A / M / D badge and +/− counts, and opens a file into its
   own edits in order (numbered diffs, the Chat step renderer);
 * the rows meet the 44px floor and nothing scrolls sideways at 390px;
+* a long list (past 12) gets a search field over name and folder, with the
+  match count and a no-match way back (#2424); a short one has none;
 * no edits, and a session whose transcript can't be read, each get their
   own sentence — never a blank panel.
 
@@ -148,6 +150,7 @@ def test_changed_files_lists_the_sessions_edits_and_opens_one(
     expect(rows.first.locator(".chg-add")).to_have_text("+5")
     # One flat list: no Changes / Untracked groups for a session.
     expect(authed_page.locator("#changesList .chg-group-title")).to_have_count(0)
+    expect(authed_page.locator("#changesList .chg-filter")).to_have_count(0)   # a short list needs no search
     assert diffs == []
 
     fit = stable_read(lambda: authed_page.evaluate(_FIT))
@@ -167,6 +170,7 @@ def test_changed_files_lists_the_sessions_edits_and_opens_one(
     expect(diffs_shown.nth(0).locator(".d-add").first).not_to_have_css("background-color", "rgba(0, 0, 0, 0)")
     assert len(diffs) == 1 and "path=E%3A%2Fwork%2Fproj%2Fdocs%2Fnotes.md" in diffs[0], diffs
 
+    _assert_long_list_filters_by_name_and_folder(authed_page)
     _assert_empty_and_unreadable_say_so(authed_page)
 
     # Closing lands back on the session view it came from.
@@ -195,6 +199,62 @@ def _assert_empty_and_unreadable_say_so(page: Page) -> None:
                         "entries": [], "next_cursor": None, "source": None})
     page.locator("#changesRefresh").click()
     expect(state).to_have_text("No transcript for this session")
+
+
+def _many_files(n: int = 14) -> dict:
+    """`n` synthetic files: two named `*_alpha.py` under `src/`, the rest `docs/note_<i>.md`."""
+    names = ["src/one_alpha.py", "src/two_alpha.py"] + [f"docs/note_{i}.md" for i in range(n - 2)]
+    return {
+        **_FILES,
+        "counts": {"additions": n * 2, "deletions": n},
+        "files": [
+            {"path": p, "key": "E:/work/proj/" + p, "status": "M", "additions": 2, "deletions": 1, "steps": 1}
+            for p in names
+        ],
+    }
+
+
+def _assert_long_list_filters_by_name_and_folder(page: Page) -> None:
+    """A long list gets a search field: name or folder narrows it, the summary counts the
+    matches, no match says so with a way back, and Refresh keeps the text."""
+    _serve_files(page, _many_files())
+    page.locator("#changesRefresh").click()
+
+    rows = page.locator("#changesList .chg-file:visible")
+    expect(rows).to_have_count(14)
+    field = page.locator("#changesList .chg-filter input")
+    expect(field).to_have_attribute("placeholder", "Filter 14 files…")
+    summary = page.locator("#changesList .chg-summary")
+    expect(summary).to_contain_text("14 files")
+
+    field.fill("ALPHA")                                   # case-insensitive, on the name
+    expect(rows).to_have_count(2)
+    expect(summary).to_contain_text("2 of 14 files")
+    expect(summary).to_contain_text("+4")
+
+    field.fill("docs/")                                   # on the folder
+    expect(rows).to_have_count(12)
+    expect(summary).to_contain_text("12 of 14 files")
+
+    field.fill("zzz-nothing")
+    expect(rows).to_have_count(0)
+    none = page.locator("#changesList .empty-state")
+    expect(none).to_contain_text("No files match")
+    none.get_by_role("button", name="Clear filter").click()
+    expect(rows).to_have_count(14)
+    expect(none).to_be_hidden()
+    expect(field).to_have_value("")
+    expect(summary).to_have_text(re.compile(r"^14 files · "))
+
+    fit = stable_read(lambda: page.evaluate(_FIT))
+    assert fit["body"] <= 0 and fit["doc"] <= 0, f"sideways scroll at 390px: {fit}"
+    box = stable_read(lambda: field.locator("xpath=..").bounding_box())
+    assert box and box["height"] >= 44, f"the filter field is under the 44px floor: {box}"
+
+    field.fill("alpha")                                   # Refresh re-reads and keeps the text
+    page.locator("#changesRefresh").click()
+    expect(page.locator("#changesList .chg-filter input")).to_have_value("alpha")
+    expect(rows).to_have_count(2)
 
 
 def test_changed_files_opens_for_a_codex_session_with_unnumbered_diffs(
@@ -226,5 +286,3 @@ def test_changed_files_opens_for_a_codex_session_with_unnumbered_diffs(
     expect(first.locator(".tr-diff .d-ln")).to_have_count(0)    # unnumbered: no gutter
     expect(first).to_contain_text("This agent’s diffs carry no line numbers")
     assert len(diffs) == 1, diffs
-
-
