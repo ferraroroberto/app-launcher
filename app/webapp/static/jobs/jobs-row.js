@@ -210,7 +210,7 @@ export function renderJobRow(job, handlers) {
     label: 'Open ' + job.name,
     onMain: function () { handlers.onOpen(job); },
     kebabClass: 'job-menu-anchor',
-    kebabLabel: job.name + ' actions',
+    kebabLabel: 'Job actions',
   });
   row.meta.dataset.role = 'job-meta';
   const spark = renderSparkline(job);

@@ -16,6 +16,10 @@
   font-weight: 600;
   line-height: 1;
 }
+/* A letter is text, so it needs AA against the avatar's grey; the accent
+   itself only reaches 4.2:1 (light) and 3.8:1 (dark) there, `accent-text`
+   clears it in both themes. */
+.lifeos-avatar .lifeos-monogram { color: var(--accent-text); }
 /* The fold: skills not used lately sit under one "N more skills"
    row and show once it opens, or while a filter is typed (which searches
    every skill, so the row itself steps aside). */

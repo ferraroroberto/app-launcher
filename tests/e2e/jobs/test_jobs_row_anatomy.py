@@ -171,7 +171,7 @@ def test_row_is_avatar_name_one_meta_line_history_and_a_kebab_of_five_actions(
     # The row's own controls are the main button and the kebab, nothing else.
     expect(row.locator(":scope > button")).to_have_count(2)
     expect(row.locator(".action-row-kebab")).to_have_attribute(
-        "aria-label", "Nightly reconciliation actions")
+        "aria-label", "Job actions")
 
     # A running job: the avatar's alive badge says so, the meta line leads with
     # it, no chip is raised for the (history) outcome, and the live dot is the
