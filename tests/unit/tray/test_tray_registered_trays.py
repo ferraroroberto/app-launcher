@@ -351,11 +351,11 @@ class TestWaitForTrayReady:
 class TestTrayStartLaunchesTraysRegardless:
     """``TrayApp._start`` must launch Registered Trays even when the webapp
     ready-wait fails (#1339). A slow cold-boot uvicorn import used to trip
-    ``_wait_until_ready``'s timeout, the shared ``try`` skipped
+    ``wait_until_ready``'s timeout, the shared ``try`` skipped
     ``launch_all()``, and nothing reached ``registered_trays.log`` — so no
     sister tray came up and the boot left no trace of why.
 
-    ``_start`` only touches ``self.manager`` and ``self.starter_exc``, so it
+    ``_start`` only touches ``self._start_webapp`` and ``self.starter_exc``, so it
     runs off the class against a stub ``self``, the same way
     ``test_tray_session_host_log.py`` drives ``_start_session_host``.
     """
@@ -373,7 +373,7 @@ class TestTrayStartLaunchesTraysRegardless:
 
     def test_webapp_wait_failure_still_launches_trays_and_logs_why(self, tray, tmp_path: Path):
         tray_mod, stub, launch_all = tray
-        stub.manager.start.side_effect = RuntimeError("webapp not ready after 15.0s")
+        stub._start_webapp.side_effect = RuntimeError("webapp not ready after 15.0s")
 
         tray_mod.TrayApp._start(stub)
 
@@ -387,7 +387,7 @@ class TestTrayStartLaunchesTraysRegardless:
 
         tray_mod.TrayApp._start(stub)
 
-        stub.manager.start.assert_called_once_with(wait=True)
+        stub._start_webapp.assert_called_once_with(restart=False)
         launch_all.assert_called_once_with()
         assert stub.starter_exc is None
         assert not (tmp_path / "webapp" / "registered_trays.log").exists()

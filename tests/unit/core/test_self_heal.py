@@ -14,6 +14,7 @@ from app.tray.self_heal import (
     SelfHealer,
     should_heal_webapp,
 )
+from app.tray.watchdog import RespawnGuard
 from app.webapp import observability
 from app.webapp.manager import (
     HEALTH_ANSWERING,
@@ -101,6 +102,8 @@ class _FakeManager:
         self.healths = healths
         self.config = SimpleNamespace(enabled=True, port=18445)
         self.calls: List[str] = []
+        self.pids: List[int] = []
+        self.wait_raises = False
 
     def probe_health(self) -> str:
         return self.healths.pop(0) if len(self.healths) > 1 else self.healths[0]
@@ -116,12 +119,56 @@ class _FakeManager:
 
     def start(self, wait: bool = True):
         self.calls.append("start")
+        self.pids.append(100 + len(self.pids) + 1)
         return SimpleNamespace(health=HEALTH_ANSWERING, detail="running")
 
+    def restart(self, wait: bool = True):
+        self.calls.append("restart")
+        return self.start(wait=wait)
 
-def _tray(manager: _FakeManager, monkeypatch, lines: List[str]) -> tray.TrayApp:
+    def child_pid(self):
+        return self.pids[-1] if self.pids else None
+
+    def wait_until_ready(self) -> None:
+        self.calls.append("wait")
+        if self.wait_raises:
+            raise RuntimeError("did not become ready")
+
+
+class _ProcessTable:
+    """A fake process table + clock for the respawn guard."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.alive: set[int] = set()
+        self.stopped: List[int] = []
+
+    def clock(self) -> float:
+        return self.now
+
+    def identity(self, pid: int):
+        return pid if pid in self.alive else None
+
+    def stop_tree(self, pid: int) -> None:
+        self.stopped.append(pid)
+        self.alive.discard(pid)
+
+
+def _tray(
+    manager: _FakeManager,
+    monkeypatch,
+    lines: List[str],
+    table: _ProcessTable | None = None,
+) -> tray.TrayApp:
+    table = table or _ProcessTable()
     app = tray.TrayApp.__new__(tray.TrayApp)
     app.manager = manager
+    app.respawn_guard = RespawnGuard(
+        lambda _m: None,
+        identity=table.identity,
+        stop_tree=table.stop_tree,
+        clock=table.clock,
+    )
     app.webapp_healer = SelfHealer(
         "webapp", app._restart_webapp_for_heal, RestartBudget(), lines.append
     )
@@ -139,7 +186,86 @@ def test_wedged_webapp_is_stopped_then_reclaimed_then_started(monkeypatch):
     assert reclaimed == [18445]
     assert lines[0].startswith("SELF-HEAL webapp restarting (13 failed probes, health=bound_not_answering")
     assert "process exited with code 1" in lines[0]
-    assert lines[1] == "SELF-HEAL webapp done: running"
+    assert lines[1] == "SELF-HEAL webapp spawned webapp pid 101"
+
+
+def test_a_second_spawn_is_refused_while_the_first_child_is_still_starting(monkeypatch):
+    """A slow boot (child alive, port not bound yet) must not get a second copy."""
+    lines: List[str] = []
+    table = _ProcessTable()
+    manager = _FakeManager([HEALTH_DOWN])
+    app = _tray(manager, monkeypatch, lines, table)
+    table.alive.add(101)
+
+    assert app._restart_webapp_for_heal() == "spawned webapp pid 101"
+    table.now = 120.0  # well inside the startup window, child still alive
+    assert app._restart_webapp_for_heal() == "refused: webapp pid 101 is still starting"
+    assert manager.calls == ["start"]
+    assert table.stopped == []
+
+
+def test_a_child_past_its_startup_window_is_stopped_before_the_next_spawn(monkeypatch):
+    lines: List[str] = []
+    table = _ProcessTable()
+    manager = _FakeManager([HEALTH_DOWN])
+    app = _tray(manager, monkeypatch, lines, table)
+    table.alive.add(101)
+    app._restart_webapp_for_heal()
+    table.alive.add(102)
+    table.now = 301.0
+
+    assert app._restart_webapp_for_heal() == "spawned webapp pid 102"
+    assert table.stopped == [101]
+    assert manager.calls == ["start", "start"]
+
+
+def test_the_heal_leaves_a_starting_child_alone_without_spending_budget(monkeypatch):
+    lines: List[str] = []
+    table = _ProcessTable()
+    manager = _FakeManager([HEALTH_DOWN])
+    app = _tray(manager, monkeypatch, lines, table)
+    table.alive.add(101)
+    app.respawn_guard.track(101)
+
+    app._heal_webapp(5)
+    assert manager.calls == [] and lines == []
+    assert app.webapp_healer._budget.blocked_reason() is None
+
+
+def test_a_boot_whose_readiness_wait_times_out_still_leaves_the_child_tracked(monkeypatch):
+    """The pid reaches the guard before the wait, so the timed-out child is never
+    forgotten and a later heal refuses instead of stacking a second copy."""
+    lines: List[str] = []
+    table = _ProcessTable()
+    manager = _FakeManager([HEALTH_DOWN])
+    manager.wait_raises = True
+    app = _tray(manager, monkeypatch, lines, table)
+    table.alive.add(101)
+
+    try:
+        app._start_webapp(restart=False)
+    except RuntimeError:
+        pass
+    assert app.respawn_guard.pid == 101
+    assert app._restart_webapp_for_heal() == "refused: webapp pid 101 is still starting"
+    assert manager.calls == ["start", "wait"]
+
+
+def test_the_wedge_handler_backs_off_for_a_starting_child_and_rearms(monkeypatch):
+    lines: List[str] = []
+    notes: List[str] = []
+    rearmed: List[bool] = []
+    monkeypatch.setattr(tray, "_notify", lambda *a, **_k: notes.append(a[0]))
+    monkeypatch.setattr(tray, "_wd_log", lines.append)
+    table = _ProcessTable()
+    app = _tray(_FakeManager([HEALTH_DOWN]), monkeypatch, [], table)
+    app.watchdog = SimpleNamespace(rearm=lambda: rearmed.append(True))
+    table.alive.add(101)
+    app.respawn_guard.track(101)
+
+    app._on_webapp_wedge(3)
+    assert rearmed == [True] and notes == []
+    assert lines == ["webapp pid 101 still starting (3 failed probes)"]
 
 
 def test_webapp_answering_again_before_the_heal_is_left_alone(monkeypatch):

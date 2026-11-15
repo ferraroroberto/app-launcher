@@ -38,9 +38,13 @@ from typing import Optional
 from app.tray import registered_trays, tailscale
 from app.tray.self_heal import RestartBudget, SelfHealer, should_heal_webapp
 from app.tray.single_instance import SingleInstance
-from app.tray.watchdog import DEFAULT_FAILURES_TO_ALERT, HealthWatchdog
+from app.tray.watchdog import (
+    DEFAULT_FAILURES_TO_ALERT,
+    HealthWatchdog,
+    RespawnGuard,
+    RespawnOutcome,
+)
 from app.webapp.manager import (
-    HEALTH_ANSWERING,
     HEALTH_BOUND_NOT_ANSWERING,
     OWNERSHIP_OURS,
     WebappManager,
@@ -232,6 +236,10 @@ class TrayApp:
         # a one-shot start that found the port held would otherwise leave it
         # dead until someone ran tray.bat --restart by hand.
         self.watchdog_stop = threading.Event()
+        # Owns the one webapp child this tray spawned: a slow boot (a child
+        # still importing, port not yet bound) must never be answered with a
+        # second spawn, which would leave two copies sharing the port.
+        self.respawn_guard = RespawnGuard(_wd_log)
         self.webapp_healer = SelfHealer(
             "webapp", self._restart_webapp_for_heal, RestartBudget(), _wd_log
         )
@@ -341,7 +349,7 @@ class TrayApp:
         # import past startup_timeout_seconds) must not skip them, and must
         # leave its reason in registered_trays.log.
         try:
-            self.manager.start(wait=True)
+            self._start_webapp(restart=False)
             _notify("Launcher webapp ready", self.manager.base_url)
         except Exception as exc:  # noqa: BLE001
             self.starter_exc = exc
@@ -357,7 +365,41 @@ class TrayApp:
             logger.error(f"❌ Registered Trays launch failed: {exc}")
             registered_trays._log_breadcrumb(f"launch_all raised: {exc}")
 
+    def _start_webapp(self, *, restart: bool) -> None:
+        """Start (or restart) the webapp and wait for it, reporting the child to
+        the respawn guard the moment it exists.
+
+        The guard learns the pid before the readiness wait, so a wait that times
+        out leaves a tracked child behind, never an anonymous one a later
+        respawn would stack a second copy next to.
+        """
+        if restart:
+            self.manager.restart(wait=False)
+        else:
+            self.manager.start(wait=False)
+        pid = self.manager.child_pid()
+        if pid is None:
+            return  # adopted a healthy webapp: nothing of ours to track or wait on
+        self.respawn_guard.track(pid)
+        self.manager.wait_until_ready()
+
+    def _spawn_webapp(self) -> int:
+        """The guard's spawn: start the child and return its pid before readiness."""
+        self.manager.start(wait=False)
+        pid = self.manager.child_pid()
+        if pid is None:
+            raise RuntimeError("no webapp child was spawned (a healthy webapp was adopted)")
+        return pid
+
     def _on_webapp_wedge(self, failures: int) -> None:
+        if self.respawn_guard.is_starting():
+            # Our own child is still booting: not a wedge, so no alert and no heal.
+            _wd_log(
+                f"webapp pid {self.respawn_guard.pid} still starting "
+                f"({failures} failed probes)"
+            )
+            self.watchdog.rearm()
+            return
         msg = (
             f"webapp on :{self.manager.config.port} stopped answering /healthz "
             f"({failures} consecutive probes, health={self.manager.probe_health()}, "
@@ -369,6 +411,7 @@ class TrayApp:
 
     def _on_webapp_recover(self) -> None:
         self.webapp_healer.recovered()
+        self.respawn_guard.mark_healthy()
         msg = f"webapp on :{self.manager.config.port} answering /healthz again"
         logger.info(f"✅ {msg}")
         _wd_log(f"RECOVERED {msg}")
@@ -389,6 +432,8 @@ class TrayApp:
         health = self.manager.probe_health()
         if not should_heal_webapp(health, failures, DEFAULT_FAILURES_TO_ALERT):
             return
+        if self.respawn_guard.is_starting():
+            return  # a child we spawned is still booting; a restart would stack a copy
         self.webapp_healer.attempt(
             f"{failures} failed probes, health={health}, {self._webapp_exit_detail()}"
         )
@@ -402,10 +447,11 @@ class TrayApp:
             error = _reclaim_port(port)
             if error is not None:
                 raise RuntimeError(f"could not reclaim :{port}: {error}")
-        status = self.manager.start(wait=True)
-        if status.health != HEALTH_ANSWERING:
-            raise RuntimeError(f"webapp started but {status.detail}")
-        return f"done: {status.detail}"
+        # Readiness is the watchdog probe's job, not this restart's: a wait that
+        # times out would drop the child's pid and let the next spawn double it.
+        if self.respawn_guard.respawn(self._spawn_webapp) is RespawnOutcome.STARTING:
+            return f"refused: webapp pid {self.respawn_guard.pid} is still starting"
+        return f"spawned webapp pid {self.respawn_guard.pid}"
 
     def _on_session_host_down(self, failures: int) -> None:
         msg = (
@@ -561,7 +607,7 @@ class TrayApp:
         def _do_restart():
             try:
                 _notify("Launcher", "Restarting webapp…")
-                self.manager.restart(wait=True)
+                self._start_webapp(restart=True)
                 _notify("Launcher webapp restarted", self.manager.base_url)
             except Exception as exc:  # noqa: BLE001
                 logger.error(f"❌ webapp restart failed: {exc}")
