@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import subprocess
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -33,6 +34,7 @@ from src.diagnostics import (
     listening_port_for_pid_tree,
 )
 from src.git_upstream import launch_refusal
+from src.launching import app_refresh
 from src.launching.flags import (
     build_antigravity_flags,
     build_claude_flags,
@@ -43,7 +45,9 @@ from src.launching.flags import (
     build_resume_flags,
 )
 from src.launching.launcher import (
+    TRAY_RESTART_TIMEOUT_SECONDS,
     open_local_terminal_window,
+    restart_tray_bat,
     spawn_bat,
     spawn_claude_session,
 )
@@ -137,6 +141,11 @@ async def get_apps(request: Request) -> Dict[str, Any]:
     for d in decorated:
         if d.get("kind") == KIND_CLAUDE_CODE:
             d["is_favorite"] = d.get("id") in favorites
+        else:
+            # The row's Refresh control only shows where the route would not
+            # refuse on sight: the launcher's own bat never offers it.
+            bat = d.get("bat_path")
+            d["refreshable"] = bool(bat) and not app_refresh.is_launcher_bat(Path(bat))
     return {
         "scan_root": registry.scan_root,
         "apps": decorated,
@@ -248,9 +257,20 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
     body = await maybe_json(request)
     stealth = bool(body.get("stealth"))
     try:
-        pid = spawn_bat(Path(entry.bat_path), stealth=stealth)
+        _spawn_and_track(entry, stealth)
     except OSError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    return {
+        "launched": entry.id,
+        "name": entry.name,
+        "kind": entry.kind,
+        "stealth": stealth,
+    }
+
+
+def _spawn_and_track(entry: AppEntry, stealth: bool) -> None:
+    """Spawn an app's bat and record the instance, unless it is a tray."""
+    pid = spawn_bat(Path(entry.bat_path), stealth=stealth)
     # A tray.bat hands its real long-lived process off to
     # tray_lifecycle.ps1's `Start-Process`, then that PowerShell hop exits —
     # so the pythonw.exe tray is never a live descendant of spawn_bat's own
@@ -264,12 +284,6 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
     # there is no process to track.
     if entry.kind != KIND_TRAY and pid is not None:
         app_runtime.record_spawn(entry.id, entry.name, entry.kind, pid)
-    return {
-        "launched": entry.id,
-        "name": entry.name,
-        "kind": entry.kind,
-        "stealth": stealth,
-    }
 
 
 def _behind_refusal(project_dir: Path) -> Optional[str]:
@@ -503,6 +517,101 @@ async def stop_app_instance(app_id: str, pid: int) -> Dict[str, Any]:
     await asyncio.to_thread(kill_process_tree, pid)
     app_runtime.forget_spawn(app_id, pid)
     return {"stopped": pid}
+
+
+# App ids with a refresh in flight: a second tap while the first is still
+# stopping or starting must not stack a second relaunch.
+_refreshing: set[str] = set()
+
+
+def _refresh_refusal(entry: AppEntry, cfg: WebappConfig) -> Optional[str]:
+    """Why this row must not be refreshed, or ``None`` when it may be.
+
+    The launcher itself and the session-host are never refreshable: stopping
+    either from a request they serve ends the request (the launcher) or every
+    live Coding session (the session-host). Both are matched on what they are,
+    the bat's folder and the ports their processes listen on, not on a name.
+    """
+    if entry.kind == KIND_CLAUDE_CODE or not entry.bat_path:
+        return f"{entry.name} has nothing to refresh"
+    if app_refresh.is_launcher_bat(Path(entry.bat_path)):
+        return f"{entry.name} is the launcher itself and cannot refresh itself"
+    tracked = [i for i in app_runtime.list_running() if i.app_id == entry.id]
+    port = app_refresh.protected_port_in_use(
+        tracked, (cfg.port, cfg.session_host_port)
+    )
+    if port is not None:
+        return f"{entry.name} is serving :{port}, a launcher port, and is not refreshed"
+    return None
+
+
+@router.post("/api/apps/{app_id}/refresh")
+async def refresh_app(app_id: str, request: Request) -> Dict[str, Any]:
+    """Stop every tracked instance of an app, wait for it to exit, relaunch hidden.
+
+    A stop that did not take is a 409 naming the pid and nothing is relaunched.
+    A tray is not tracked (see ``_spawn_and_track``), so it has nothing to stop
+    here and is restarted through its own ``tray.bat --restart`` instead.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    entry = get_by_id(load_registry(), app_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"unknown app {app_id}")
+    app_runtime.prune_dead()
+    refusal = await asyncio.to_thread(_refresh_refusal, entry, cfg)
+    if refusal:
+        raise HTTPException(status_code=403, detail=refusal)
+    if entry.id in _refreshing:
+        raise HTTPException(
+            status_code=409, detail=f"{entry.name} is already refreshing"
+        )
+    _refreshing.add(entry.id)
+    try:
+        return await _refresh(entry)
+    finally:
+        _refreshing.discard(entry.id)
+
+
+async def _refresh(entry: AppEntry) -> Dict[str, Any]:
+    instances = [i for i in app_runtime.list_running() if i.app_id == entry.id]
+    stops = [await asyncio.to_thread(app_refresh.stop_instance, i) for i in instances]
+    result: Dict[str, Any] = {
+        "refreshed": entry.id,
+        "name": entry.name,
+        "kind": entry.kind,
+        "stops": [{"pid": s.pid, "stopped": s.stopped} for s in stops],
+    }
+    stuck = [s.pid for s in stops if not s.stopped]
+    if stuck:
+        pids = ", ".join(str(p) for p in stuck)
+        logger.warning(f"⚠️ refresh of {entry.name!r} skipped the relaunch: pid {pids} did not stop")
+        raise HTTPException(
+            status_code=409,
+            detail=f"{entry.name}: pid {pids} did not stop, so it was not relaunched",
+        )
+    bat = Path(entry.bat_path)
+    try:
+        if entry.kind == KIND_TRAY:
+            code = await asyncio.to_thread(restart_tray_bat, bat)
+            if code != 0:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"{entry.name}: tray.bat --restart exited {code}",
+                )
+            result["restart"] = {"exit_code": code}
+        else:
+            await asyncio.to_thread(_spawn_and_track, entry, True)
+            result["launched"] = {"stealth": True}
+    except subprocess.TimeoutExpired:
+        raise HTTPException(
+            status_code=504,
+            detail=f"{entry.name}: tray restart not confirmed within "
+            f"{TRAY_RESTART_TIMEOUT_SECONDS:.0f}s",
+        )
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    logger.info(f"🔄 refreshed {entry.name!r}: stopped {len(stops)}, relaunched hidden")
+    return result
 
 
 # --------------------------------------------------------------- helpers

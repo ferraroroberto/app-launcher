@@ -182,6 +182,7 @@ function renderList(host, items, running) {
       avatar: tray ? null : kindAvatar(a.kind, appBadge(a, running)),
       label: 'Launch ' + a.name + ' hidden, with no window',
       onMain: function () { launchApp(a, undefined, true); },
+      trailing: a.refreshable ? refreshVerb(a) : null,
       kebabClass: 'app-menu-anchor',
       kebabLabel: a.name + ' actions',
     });
@@ -244,6 +245,43 @@ function renderList(host, items, running) {
     ], { header: kindLabel(a.kind) });
     host.appendChild(row.li);
   });
+}
+
+// The row's one trailing verb: Refresh. Separate from the row tap (launch),
+// so a restart is never a mistaken launch.
+function refreshVerb(a) {
+  const btn = document.createElement('button');
+  btn.dataset.track = 'apps.refresh';
+  btn.dataset.item = 'app-refresh-btn';
+  btn.type = 'button';
+  btn.className = 'icon-button action-row-verb app-refresh-btn';
+  btn.innerHTML = icon('refresh-cw');
+  btn.title = 'Refresh ' + a.name;
+  btn.setAttribute('aria-label', 'Refresh ' + a.name + ': stop it and start it again hidden');
+  btn.addEventListener('click', function () { refreshApp(a); });
+  return btn;
+}
+
+// A tray restarts through its own tray.bat, which waits for the new build, so
+// it gets longer than the stop-and-spawn of a bat app before "not confirmed".
+const REFRESH_TIMEOUT_MS = 40000;
+const REFRESH_TRAY_TIMEOUT_MS = 130000;
+
+async function refreshApp(a) {
+  const verdict = await runSensitiveAction({
+    key: 'app-refresh:' + a.id,
+    pending: 'Refreshing ' + a.name + '…',
+    icon: 'refresh-cw',
+    timeoutMs: a.kind === 'tray' ? REFRESH_TRAY_TIMEOUT_MS : REFRESH_TIMEOUT_MS,
+    run: function () {
+      return jsonApi('/api/apps/' + encodeURIComponent(a.id) + '/refresh', { method: 'POST' });
+    },
+    done: function () { return 'Refreshed ' + a.name; },
+    failPrefix: 'Refresh failed',
+    unconfirmed: 'Refresh of ' + a.name + ' not confirmed — check Running before trying again.',
+  });
+  // Success or not, the Running panel may have changed: stops landed before a failure.
+  if (verdict.outcome !== SensitiveOutcome.DROPPED) fetchRunningApps().catch(function () {});
 }
 
 // Coding-tab launch mode is the Detached switch in the Projects card's

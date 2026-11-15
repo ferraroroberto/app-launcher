@@ -126,6 +126,37 @@ def spawn_bat(bat_path: Path, stealth: bool = False) -> Optional[int]:
     return pid
 
 
+# A tray's own restart (reclaim, start, build check) is measured in seconds;
+# past this the outcome is reported as not confirmed rather than waited on.
+TRAY_RESTART_TIMEOUT_SECONDS = 120.0
+
+
+def restart_tray_bat(bat_path: Path, timeout: float = TRAY_RESTART_TIMEOUT_SECONDS) -> int:
+    """Run ``<tray.bat> --restart``, the repo's own safe restart, and return its exit code.
+
+    Output goes to DEVNULL, never a pipe: the fresh tray inherits this
+    process's handles, and a pipe it still holds would keep a read open until
+    the timeout. Raises ``OSError`` when the bat is missing and
+    ``subprocess.TimeoutExpired`` when the restart did not finish in time.
+    """
+    if not bat_path.is_file():
+        raise OSError(f"BAT file not found: {bat_path}")
+    logger.info(f"♻️ restarting tray via {bat_path} --restart")
+    proc = subprocess.run(
+        ["cmd", "/c", str(bat_path), "--restart"],
+        cwd=str(bat_path.parent),
+        shell=False,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=NO_WINDOW,
+        close_fds=True,
+        timeout=timeout,
+    )
+    logger.info(f"♻️ tray restart of {bat_path} exited {proc.returncode}")
+    return proc.returncode
+
+
 def spawn_claude_session(
     project_dir: Path,
     name: str,
