@@ -16,3 +16,8 @@ STOP_GRACE_SECONDS = 5.0
 # no scrollback, no WebSocket — the Claude cloud app drives it).
 KIND_PTY = "pty"
 KIND_REMOTE = "remote"
+
+# A Telegram channel session carries ``telegram:<profile id>`` as its label. One
+# bot token has one ``getUpdates`` consumer, so the host allows one live session
+# per such label whatever the caller.
+CHANNEL_LABEL_PREFIX = "telegram:"

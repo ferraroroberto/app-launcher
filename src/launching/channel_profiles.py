@@ -60,6 +60,7 @@ from typing import Any, Collection, Dict, List, Optional, Tuple
 from src import runtime_files
 from src.launching.model_catalog import CLAUDE_MODEL_SPECS, available_values
 from src.runtime_data import runtime_data_dir
+from src.session_hosting.kinds import CHANNEL_LABEL_PREFIX
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,7 @@ DEFAULT_PROFILES_PATH = PROJECT_ROOT / "config" / "channel_profiles.json"
 
 # The session-host tags a session with this label (``telegram:<profile id>``);
 # the Board, the Coding tab and the one-live-session-per-profile guard key on it.
-LABEL_PREFIX = "telegram:"
+LABEL_PREFIX = CHANNEL_LABEL_PREFIX
 # A conversation the relay opened for a profile carries this label, so the Board
 # does not read it as the owner's own interactive session.
 RELAY_LABEL_PREFIX = "relay:"

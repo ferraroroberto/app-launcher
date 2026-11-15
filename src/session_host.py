@@ -44,6 +44,7 @@ from src.session_host_scan import (  # noqa: F401 — re-exported for callers/te
     _scan_bracketed_paste_mode,
     _strip_color_osc,
 )
+from src.session_hosting.channel_claims import ChannelClaims
 from src.session_hosting.child_env import agent_child_env
 from src.session_hosting.kinds import (
     KIND_PTY,
@@ -756,6 +757,7 @@ class SessionManager:
     def __init__(self) -> None:
         self._sessions: Dict[str, Any] = {}
         self._lock = threading.Lock()
+        self._channel_claims = ChannelClaims()
         self._loop: Optional[asyncio.AbstractEventLoop] = None
 
     def attach_loop(self, loop: asyncio.AbstractEventLoop) -> None:
@@ -763,6 +765,36 @@ class SessionManager:
         self._loop = loop
 
     def create(
+        self,
+        project_dir: str,
+        name: str,
+        flags: str,
+        agent: str = DEFAULT_AGENT,
+        rows: int = 40,
+        cols: int = 120,
+        history_lines: Optional[int] = None,
+        label: str = "",
+    ) -> PtySession:
+        """:meth:`_spawn_pty`, refusing a second live session on a channel label.
+
+        The claim is held from the check until the session is in ``_sessions``:
+        the spawn runs outside ``_lock`` and takes real time.
+        """
+        if not ChannelClaims.applies(label):
+            return self._spawn_pty(
+                project_dir, name, flags, agent, rows, cols, history_lines, label
+            )
+        with self._lock:
+            self._channel_claims.claim(label, self._sessions.values())
+        try:
+            return self._spawn_pty(
+                project_dir, name, flags, agent, rows, cols, history_lines, label
+            )
+        finally:
+            with self._lock:
+                self._channel_claims.release(label)
+
+    def _spawn_pty(
         self,
         project_dir: str,
         name: str,

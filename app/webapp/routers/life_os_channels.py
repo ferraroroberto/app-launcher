@@ -36,13 +36,17 @@ confirmed it starts nothing and answers 502.
 **Boot-time autostart.** With ``autostart_channel_sessions`` on, the
 webapp's lifespan calls :func:`autostart_channel_sessions`, which starts each
 ready profile through :func:`start_channel_session` — the launch route's own
-body, so the lock and the already-running refusal hold for it too.
+body, so the lock and the already-running refusal hold for it too. Those are
+per-process, so the lifespan runs it only in the process holding the webapp's
+listener, and the session-host refuses (409) a second live session on one
+profile's label whoever asks.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -778,7 +782,7 @@ async def autostart_channel_sessions(
         sid = str((result.get("session") or {}).get("session_id") or "")
         logger.info(
             f"✅ Telegram autostart: profile {profile.id} started in "
-            f"session {sid[:8]}"
+            f"session {sid[:8]} (webapp pid {os.getpid()})"
         )
         started.append(profile.id)
     return started
