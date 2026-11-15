@@ -41,6 +41,7 @@ The fleet's canonical **switch** (shadcn Switch shape): a compact 44×26 track +
 
 - The `.toggle-label` is visually hidden by contract (`display: none`) — the label text exists for legacy/robustness only; ARIA carries the state.
 - Disabled: set the `disabled` attribute (opacity recipe in the CSS).
+- `aria-checked="true"` paints the accent on-track by itself, with or without the `on` class, so a switch written by hand or by a script that sets only the attribute is never drawn in the off colour while it reads as on (design-review `COLOR-04`). `setSwitch()` still writes both.
 - The visible track is 26px; a `::before` extends the tap target to the 44px floor.
 
 ## Required design tokens

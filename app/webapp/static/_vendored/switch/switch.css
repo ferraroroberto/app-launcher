@@ -48,8 +48,14 @@
 /* No visual text label — role="switch" + aria-checked carry the state. */
 .toggle-label { display: none; }
 
-.toggle.on { background: var(--accent-fill); }   /* switch.trackOn */
-.toggle.on .knob { transform: translateX(18px); }
+/* aria-checked is the state, so it paints the track by itself: a switch whose
+ * markup carries the attribute but not the `on` class (written by hand, or by a
+ * script that sets one and not the other) still draws the accent, never the
+ * off track. */
+.toggle.on,
+.toggle[aria-checked="true"] { background: var(--accent-fill); }   /* switch.trackOn */
+.toggle.on .knob,
+.toggle[aria-checked="true"] .knob { transform: translateX(18px); }
 
 .toggle:disabled {
   cursor: default;

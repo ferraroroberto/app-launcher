@@ -40,9 +40,9 @@ extra_junctions = ["webapp/certificates"]
 
 [vendored]
 icons = { src = "app/webapp/static/_vendored/icons", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/icons" }
-switch = { src = "app/webapp/static/_vendored/switch", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/switch" }
+switch = { src = "app/webapp/static/_vendored/switch", sha = "8f15c49560adbc076d24a8a63dd671868ffa7a4e", dest = "app/webapp/static/_vendored/switch" }
 button = { src = "app/webapp/static/_vendored/button", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "app/webapp/static/_vendored/button" }
-card = { src = "app/webapp/static/_vendored/card", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/card" }
+card = { src = "app/webapp/static/_vendored/card", sha = "8f15c49560adbc076d24a8a63dd671868ffa7a4e", dest = "app/webapp/static/_vendored/card" }
 disclosure = { src = "app/webapp/static/_vendored/disclosure", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/disclosure" }
 home-head = { src = "app/webapp/static/_vendored/home-head", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "app/webapp/static/_vendored/home-head" }
 nav = { src = "app/webapp/static/_vendored/nav", sha = "cb9fff9130453c781146f2cdf5083d83fb43b0df", dest = "app/webapp/static/_vendored/nav" }
@@ -53,7 +53,7 @@ sign-in = { src = "app/webapp/static/_vendored/sign-in", sha = "fb7591e8a80afb39
 text-size = { src = "app/webapp/static/_vendored/text-size", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/text-size" }
 segmented = { src = "app/webapp/static/_vendored/segmented", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/segmented" }
 base = { src = "app/webapp/static/_vendored/base", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "app/webapp/static/_vendored/base" }
-action-row = { src = "app/webapp/static/_vendored/action-row", sha = "6c8ae06472edc4c7448a767656060cd2b79cefe9", dest = "app/webapp/static/_vendored/action-row" }
+action-row = { src = "app/webapp/static/_vendored/action-row", sha = "8f15c49560adbc076d24a8a63dd671868ffa7a4e", dest = "app/webapp/static/_vendored/action-row" }
 row-menu = { src = "app/webapp/static/_vendored/row-menu", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "app/webapp/static/_vendored/row-menu" }
 # Every vendored web component above is byte-identical to the scaffold and declared;
 # tests/unit/repo/test_vendored_manifest.py pins that. icons joined on 2026-10-15 (the owner's
