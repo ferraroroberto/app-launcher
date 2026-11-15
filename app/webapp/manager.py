@@ -175,6 +175,16 @@ class WebappManager:
         adopted webapp's exit is not observable from here)."""
         return None if self._proc is None else self._proc.poll()
 
+    def child_pid(self) -> Optional[int]:
+        """Pid of the webapp process this manager spawned while it is alive.
+
+        Unlike ``status().pid`` this is set from the moment of the spawn, before
+        the port is bound, which is when a respawn guard needs it.
+        """
+        if self._proc is None or self._proc.poll() is not None:
+            return None
+        return self._proc.pid
+
     def is_port_in_use(self) -> bool:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(0.2)
@@ -254,7 +264,7 @@ class WebappManager:
         # status()-then-Popen critical section across processes so two trays
         # starting at once cannot both spawn uvicorn. The loser blocks, then
         # re-checks below and adopts the now-listening webapp. The lock is held
-        # through _wait_until_ready so a serialized caller sees a bound port.
+        # through wait_until_ready so a serialized caller sees a bound port.
         # cross_process_lock fails open (Windows mutex glitch / non-Windows), so
         # it never blocks startup. Vendored byte-identical from the scaffold.
         with cross_process_lock(rf"Global\app-launcher-webapp-start-{self.config.port}"):
@@ -307,7 +317,7 @@ class WebappManager:
                 raise RuntimeError(f"❌ failed to launch webapp: {exc}") from exc
 
             if wait:
-                self._wait_until_ready()
+                self.wait_until_ready()
             return self.status()
 
     def restart(self, wait: bool = True) -> WebappStatus:
@@ -430,7 +440,7 @@ class WebappManager:
                 return status
         return self.status()
 
-    def _wait_until_ready(self) -> None:
+    def wait_until_ready(self) -> None:
         deadline = time.time() + self.config.startup_timeout_seconds
         while time.time() < deadline:
             if self._proc is None or self._proc.poll() is not None:
