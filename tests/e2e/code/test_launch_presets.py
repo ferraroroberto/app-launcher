@@ -1,9 +1,10 @@
 """Launch presets: a named model + effort picked beside the model dropdown.
 
-Settings › Launch defaults › Launch presets adds, renames and removes them;
-the Coding toolbar then offers each beside "Default", and a launch posts the
-preset's model and effort. Picking a model by hand afterwards drops the
-effort, so it never outlives the model it was chosen for.
+One flow: Settings › Launch defaults › Launch presets adds, renames and removes
+presets, the Coding toolbar then offers the one left beside "Default", and a
+launch posts the preset's model and effort. Picking a model by hand afterwards
+drops the effort, so it never outlives the model it was chosen for; the pick is
+remembered on the device; with no preset nothing is drawn.
 
 Hermetic: ``/api/config`` is passed through to the real disposable webapp with
 its ``launch_presets`` swapped for an in-memory list that a POST edits, and the
@@ -21,13 +22,10 @@ from tests.e2e.fixtures.ui import close_settings_sheets, open_settings_sheet
 
 pytestmark = pytest.mark.smoke
 
-OPUS_DEEP = {"id": "p1", "name": "Opus deep", "agent": "claude", "model": "opus", "effort": "xhigh"}
-SONNET_QUICK = {"id": "p2", "name": "Sonnet quick", "agent": "claude", "model": "sonnet", "effort": "low"}
 
-
-def _mock(page: Page, presets: list) -> list:
-    """Serve ``presets`` from /api/config; a POST carrying them edits the list."""
-    store = list(presets)
+def _mock(page: Page) -> list:
+    """Serve an in-memory preset list from /api/config; a POST carrying one edits it."""
+    store: list = []
 
     def config(route):
         request = route.request
@@ -77,83 +75,70 @@ def _launch(page: Page) -> dict:
 
 
 def _pick(page: Page, combo: str, value: str) -> None:
-    """Open the ``combo`` dropdown ('coding' + 'Preset' or 'Model') and tap an option."""
+    """Open the ``combo`` dropdown ('codingPreset' or 'codingModel') and tap an option."""
     page.locator(f"#{combo}Btn").click()
     page.locator(f'#{combo}Menu [role="option"][data-value="{value}"]').click()
 
 
-def test_a_preset_launches_with_its_model_and_effort(authed_page: Page, base_url: str) -> None:
-    _mock(authed_page, [OPUS_DEEP, SONNET_QUICK])
+def _add_preset(page: Page, name: str, model: str, effort: str) -> None:
+    page.locator("#launchPresetName").fill(name)
+    page.locator("#launchPresetModel").select_option(model)
+    page.locator("#launchPresetEffort").select_option(effort)
+    page.locator("#launchPresetAdd").click()
+
+
+def test_presets_are_managed_in_settings_and_launch_with_their_effort(
+    authed_page: Page, base_url: str
+) -> None:
+    store = _mock(authed_page)
+    _open_coding(authed_page, base_url)
+    expect(authed_page.locator("#codingModelBtn")).to_be_visible()
+    expect(authed_page.locator("#codingPresetCombo")).to_have_count(0)
+
+    # Settings: add two, rename one in place, remove the other from its menu.
+    open_settings_sheet(authed_page, "launchDefaultsSheet")
+    _add_preset(authed_page, "Opus draft", "claude:opus", "xhigh")
+    rows = authed_page.locator("#launchPresetList li")
+    expect(rows).to_have_count(1)
+    expect(rows.first.locator(".launch-preset-meta")).to_contain_text("Opus")
+    _add_preset(authed_page, "Sonnet quick", "claude:sonnet", "low")
+    expect(rows).to_have_count(2)
+    name = rows.first.locator(".launch-preset-name")
+    name.fill("Opus deep")
+    name.press("Tab")
+    expect(rows.first.locator(".launch-preset-name")).to_have_value("Opus deep")
+    rows.nth(1).locator(".action-row-kebab").click()
+    authed_page.locator('[data-item="launch-preset-remove-item"]').click()
+    expect(rows).to_have_count(1)
+    assert [(p["name"], p["model"], p["effort"]) for p in store] == [("Opus deep", "opus", "xhigh")]
+    close_settings_sheets(authed_page)
+    preset_id = store[0]["id"]
+
     _open_coding(authed_page, base_url)
     trigger = authed_page.locator("#codingPresetBtn")
     expect(trigger).to_have_text("Default")
-
-    # Default: today's behaviour, no effort on the launch.
     assert "effort" not in _launch(authed_page)
 
-    _pick(authed_page, "codingPreset", "p1")
+    _pick(authed_page, "codingPreset", preset_id)
     expect(trigger).to_have_text("Opus deep")
     expect(authed_page.locator("#codingModelBtn")).to_contain_text("Opus")
     payload = _launch(authed_page)
-    assert payload["model"] == "claude:opus"
-    assert payload["effort"] == "xhigh"
+    assert (payload["model"], payload["effort"]) == ("claude:opus", "xhigh")
 
     # A model picked by hand turns the preset off: its effort never rides on.
     _pick(authed_page, "codingModel", "claude:sonnet")
     expect(trigger).to_have_text("Default")
     payload = _launch(authed_page)
-    assert payload["model"] == "claude:sonnet"
-    assert "effort" not in payload
+    assert payload["model"] == "claude:sonnet" and "effort" not in payload
 
-    # Another preset, then back to Default.
-    _pick(authed_page, "codingPreset", "p2")
-    payload = _launch(authed_page)
-    assert (payload["model"], payload["effort"]) == ("claude:sonnet", "low")
+    _pick(authed_page, "codingPreset", preset_id)
     _pick(authed_page, "codingPreset", "default")
     expect(trigger).to_have_text("Default")
     assert "effort" not in _launch(authed_page)
 
-
-def test_the_pick_is_remembered_on_the_device(authed_page: Page, base_url: str) -> None:
-    _mock(authed_page, [OPUS_DEEP])
-    _open_coding(authed_page, base_url)
-    _pick(authed_page, "codingPreset", "p1")
+    # The pick outlives a reload on this device.
+    _pick(authed_page, "codingPreset", preset_id)
     authed_page.reload(wait_until="domcontentloaded")
     authed_page.locator("details.projects-card").evaluate("el => { el.open = true; }")
     expect(authed_page.locator("#codingPresetBtn")).to_have_text("Opus deep")
     assert _launch(authed_page)["effort"] == "xhigh"
-
-
-def test_no_preset_draws_nothing(authed_page: Page, base_url: str) -> None:
-    _mock(authed_page, [])
-    _open_coding(authed_page, base_url)
-    expect(authed_page.locator("#codingModelBtn")).to_be_visible()
-    expect(authed_page.locator("#codingPresetCombo")).to_have_count(0)
-
-
-def test_settings_adds_renames_and_removes_a_preset(authed_page: Page, base_url: str) -> None:
-    store = _mock(authed_page, [])
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    open_settings_sheet(authed_page, "launchDefaultsSheet")
-
-    authed_page.locator("#launchPresetName").fill("Opus deep")
-    authed_page.locator("#launchPresetModel").select_option("claude:opus")
-    authed_page.locator("#launchPresetEffort").select_option("xhigh")
-    authed_page.locator("#launchPresetAdd").click()
-    row = authed_page.locator("#launchPresetList li")
-    expect(row).to_have_count(1)
-    expect(row.locator(".launch-preset-name")).to_have_value("Opus deep")
-    expect(row.locator(".launch-preset-meta")).to_contain_text("Opus")
-    assert [(p["name"], p["model"], p["effort"]) for p in store] == [("Opus deep", "opus", "xhigh")]
-
-    name = row.locator(".launch-preset-name")
-    name.fill("Opus max")
-    name.press("Tab")
-    expect(authed_page.locator("#launchPresetList .launch-preset-name")).to_have_value("Opus max")
-    assert store[0]["name"] == "Opus max"
-
-    row.locator(".action-row-kebab").click()
-    authed_page.locator('[data-item="launch-preset-remove-item"]').click()
-    expect(authed_page.locator("#launchPresetList li")).to_have_count(0)
-    assert store == []
-    close_settings_sheets(authed_page)

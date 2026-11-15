@@ -140,8 +140,9 @@
           <ul id="launchPresetList" class="card-list launch-presets" aria-label="Launch presets"></ul>
           <div class="opt-row">
             <span class="opt-name">Name</span>
-            <input id="launchPresetName" type="text" class="input-native" maxlength="40" aria-label="New preset name" autocomplete="off" placeholder="Opus deep">
+            <input id="launchPresetName" type="text" class="input-native" maxlength="40" aria-label="New preset name" aria-describedby="launchPresetNameHelp" autocomplete="off" placeholder="Opus deep">
           </div>
+          <p id="launchPresetNameHelp" class="field-help">What the launch dropdowns call it; up to 40 characters, each name used once.</p>
           <div class="opt-row">
             <span class="opt-name">Model</span>
             <select data-track="launch-presets.model" id="launchPresetModel" class="select-native" aria-label="New preset model"></select>

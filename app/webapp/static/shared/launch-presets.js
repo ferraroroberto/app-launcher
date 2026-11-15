@@ -20,7 +20,7 @@ import { modelChoices } from './model-choices.js';
 
 const DEFAULT_VALUE = 'default';
 
-// surface key -> { picker, combo, presets, activeId, restored }
+// surface key -> { picker, controller, presets, activeId, restored, signature }
 const surfaces = new Map();
 
 function storageKey(key) {
@@ -116,6 +116,7 @@ function removePicker(state) {
   state.picker.remove();
   state.picker = null;
   state.controller = null;
+  state.signature = '';
 }
 
 // Redraw each surface's dropdown from `config`. Called whenever the config
@@ -124,7 +125,7 @@ export function syncLaunchPresets(config, specs) {
   specs.forEach(function (spec) {
     let state = surfaces.get(spec.key);
     if (!state) {
-      state = { picker: null, controller: null, presets: [], activeId: readActive(spec.key), restored: false };
+      state = { picker: null, controller: null, presets: [], activeId: readActive(spec.key), restored: false, signature: '' };
       surfaces.set(spec.key, state);
     }
     state.presets = offeredPresets(config);
@@ -137,7 +138,13 @@ export function syncLaunchPresets(config, specs) {
     const options = [{ value: DEFAULT_VALUE, label: 'Default' }].concat(
       state.presets.map(function (p) { return { value: p.id, label: p.name, title: p.name + ' · ' + p.effort }; })
     );
-    state.controller.setOptions(options);
+    // Rebuilt only when the list changed: setOptions closes an open menu, and the
+    // config is re-read after every save.
+    const signature = JSON.stringify(options);
+    if (signature !== state.signature) {
+      state.controller.setOptions(options);
+      state.signature = signature;
+    }
     // A surface whose model is not saved on the server (Life OS) forgets it on
     // a reload: put the remembered preset's model back once.
     const wanted = state.presets.find(function (p) { return p.id === state.activeId; });
