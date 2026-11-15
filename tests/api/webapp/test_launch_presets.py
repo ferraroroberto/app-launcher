@@ -183,3 +183,4 @@ class TestLifeOsLaunchEffort:
         resp = client.post("/api/life-os/recap/launch", json={"mode": "pty", "model": "claude:opus"})
         assert resp.status_code == 200, resp.text
         assert "effort" not in resp.json()
+        assert "--model opus" in captured["flags"]
