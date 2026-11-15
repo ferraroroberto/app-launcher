@@ -14,9 +14,9 @@
  * from the config's catalog (modelChoices), never from a list here.
  */
 
-import { el } from './dom-utils.js';
-import { wireModelCombo } from './shared/model-combo.js';
-import { modelChoices } from './shared/model-choices.js';
+import { el } from '../dom-utils.js';
+import { wireModelCombo } from './model-combo.js';
+import { modelChoices } from './model-choices.js';
 
 const DEFAULT_VALUE = 'default';
 

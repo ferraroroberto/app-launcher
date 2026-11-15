@@ -37,7 +37,7 @@ import { avatar, chip } from './glance.js';
 import { confirmDialog } from './confirm-dialog.js';
 import { failedFetchState, setAsyncState } from './async-state.js';
 import { mountLaunchToolbar } from './launch-toolbar.js';
-import { presetEffortFor, presetNameFor } from './launch-presets.js';
+import { presetEffortFor, presetNameFor } from './shared/launch-presets.js';
 import { listFilter } from './list-filter.js';
 import { openSettingsAt } from './tabs.js';
 import { renderChannelSetup } from './settings/telegram-setup.js';

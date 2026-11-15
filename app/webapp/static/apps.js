@@ -15,7 +15,7 @@ import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
 import { renderHomeHead } from './home-head.js';
 import { fmtAgo } from './sessions.js';
 import { applyLaunchSizePayload } from './shared/launch-size.js';
-import { presetEffortFor } from './launch-presets.js';
+import { presetEffortFor } from './shared/launch-presets.js';
 import { handleLaunchResponse } from './terminal.js';
 import { SensitiveOutcome, runSensitiveAction } from './shared/sensitive-action.js';
 import { switchEl } from './_vendored/switch/switch.js';

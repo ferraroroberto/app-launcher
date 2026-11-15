@@ -154,9 +154,7 @@ class WebappConfig:
     coding_hidden_agents: list = field(default_factory=list)
     # Provider-qualified models the dropdowns leave out (`src.launching.model_catalog`).
     hidden_models: list = field(default_factory=lambda: list(DEFAULT_HIDDEN_MODELS))
-    # Named model + effort shortcuts the Coding and Life OS launch dropdowns
-    # offer beside "Default" (`src.launching.presets`): a list of
-    # {id, name, agent, model, effort} rows.
+    # Named model + effort launch shortcuts, {id, name, agent, model, effort} rows (`src.launching.presets`).
     launch_presets: list = field(default_factory=list)
     # The one agent whose launch button stays on a Coding project row.
     # Every other visible agent — and the GitHub-issues
@@ -921,9 +919,7 @@ def _validate(cfg: WebappConfig) -> None:
     if not (1 <= cfg.port <= 65535):
         raise ValueError(f"port out of range: {cfg.port}")
     if not (1 <= cfg.session_host_port <= 65535):
-        raise ValueError(
-            f"session_host_port out of range: {cfg.session_host_port}"
-        )
+        raise ValueError(f"session_host_port out of range: {cfg.session_host_port}")
     if cfg.session_host_port == cfg.port:
         raise ValueError("session_host_port must differ from the webapp port")
     if not (MIN_TERMINAL_HISTORY_LINES <= cfg.terminal_history_lines <= MAX_TERMINAL_HISTORY_LINES):
@@ -939,9 +935,7 @@ def _validate(cfg: WebappConfig) -> None:
     for field_name, allowed in _ENUM_VALIDATIONS:
         value = getattr(cfg, field_name)
         if value not in allowed:
-            raise ValueError(
-                f"{field_name} must be one of {allowed}; got {value!r}"
-            )
+            raise ValueError(f"{field_name} must be one of {allowed}; got {value!r}")
     if not isinstance(cfg.claude_model_efforts, dict):
         raise ValueError("claude_model_efforts must be an object")
     for model, effort in cfg.claude_model_efforts.items():

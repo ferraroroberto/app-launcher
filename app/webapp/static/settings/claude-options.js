@@ -16,7 +16,7 @@ import { apiFailToast, jsonApi, toast } from '../api.js';
 import { wireModelCombo } from '../shared/model-combo.js';
 import { setBoardDispatchModelOptions } from '../board/board-dispatch.js';
 import { setLifeOsModel, setLifeOsModelOptions } from '../life-os.js';
-import { syncLaunchPresets } from '../launch-presets.js';
+import { syncLaunchPresets } from '../shared/launch-presets.js';
 import { renderLaunchPresetsEditor, wireLaunchPresets } from './launch-presets-settings.js';
 import { setSwitch, switchEl } from '../_vendored/switch/switch.js';
 import { setUsageShows } from '../usage-meter.js';
