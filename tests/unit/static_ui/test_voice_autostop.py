@@ -2,7 +2,7 @@
 
 The detector is a pure function of level readings over time, so the pause
 rules (only after speech, only once, against the room's own level) are pinned
-in plain Node, in ``tests/js/voice_autostop.test.mjs``; machines without Node
+in plain Node, in ``tests/js/shared/voice_autostop.test.mjs``; machines without Node
 skip cleanly. The browser leg is ``tests/e2e/compose/test_voice_auto_stop.py``.
 """
 
@@ -17,7 +17,7 @@ import pytest
 from src.subprocess_flags import NO_WINDOW
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-_TEST_SCRIPT = _REPO_ROOT / "tests" / "js" / "voice_autostop.test.mjs"
+_TEST_SCRIPT = _REPO_ROOT / "tests" / "js" / "shared" / "voice_autostop.test.mjs"
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="Node.js is required")

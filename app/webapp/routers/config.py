@@ -121,9 +121,7 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "chief_weekly_proposals": cfg.chief_weekly_proposals,
         # The Grok Bot on/off switch; on by default.
         "grokbot_enabled": cfg.grokbot_enabled,
-        "life_os_refresh_skill_instructions": cfg.life_os_refresh_skill_instructions,
-        # Settings > Voice: quiet seconds that end a dictation take, 0 = off.
-        "dictation_auto_stop_seconds": cfg.dictation_auto_stop_seconds,
+        **_preferences_payload(cfg),
         # The chief's model and worker cap, read-only here so the
         # Settings > Chief row can show them without a passkey prompt. Writes
         # stay on the passkey-gated PUT /api/board/chief/settings.
@@ -151,6 +149,15 @@ async def get_config(request: Request) -> Dict[str, Any]:
         # Remote power guard: live-queried from Task Scheduler and the
         # registry each time, same reason as boot-autostart above.
         "remote_power_guard": remote_power_guard.payload(),
+    }
+
+
+def _preferences_payload(cfg: WebappConfig) -> Dict[str, Any]:
+    """Settings > Life OS and Dictation: the skill refresh switch and the
+    quiet seconds that end a dictation take (0 = off)."""
+    return {
+        "life_os_refresh_skill_instructions": cfg.life_os_refresh_skill_instructions,
+        "dictation_auto_stop_seconds": cfg.dictation_auto_stop_seconds,
     }
 
 
@@ -388,13 +395,6 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         if isinstance(value, bool) or not isinstance(value, int):
             raise HTTPException(
                 status_code=400, detail="large_upload_max_mb must be a whole number of MB"
-            )
-    # Whole seconds, refused like the threshold; the set itself is _validate's.
-    if "dictation_auto_stop_seconds" in patch:
-        value = patch["dictation_auto_stop_seconds"]
-        if isinstance(value, bool) or not isinstance(value, int):
-            raise HTTPException(
-                status_code=400, detail="dictation_auto_stop_seconds must be whole seconds"
             )
     # The switches: anything but a real boolean is a client bug.
     for key in _SWITCH_KEYS:

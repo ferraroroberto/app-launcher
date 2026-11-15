@@ -4,9 +4,9 @@
 // tests/unit/static_ui/test_voice_autostop.py.
 
 import assert from 'node:assert/strict';
-import './_browser_stubs.mjs';
+import '../_browser_stubs.mjs';
 
-const { createPauseDetector, PAUSE_TICK_MS } = await import('../../app/webapp/static/voice-autostop.js');
+const { createPauseDetector, PAUSE_TICK_MS } = await import('../../../app/webapp/static/voice-autostop.js');
 
 // Feed `ms` of a steady level at the 100 ms tick; returns whether it fired.
 function run(detector, clock, rms, ms) {
