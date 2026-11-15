@@ -65,10 +65,10 @@ def test_done_rows_show_proof_no_proof_or_nothing(
     expect(without.locator(".board-proof-none")).to_have_text("no proof")
     expect(without.locator(".board-proof-chip")).to_have_count(0)
     expect(plain.locator(".board-proof-chip, .board-proof-none, .board-done-pr")).to_have_count(0)
-    # Issue on every row, PR once a merged PR is known, Proof only with a stored report.
-    expect(with_report.locator(".board-done-action .chip")).to_have_text(["Issue", "PR", "Proof"])
-    expect(without.locator(".board-done-action .chip")).to_have_text(["Issue", "PR"])
-    expect(plain.locator(".board-done-action .chip")).to_have_text(["Issue"])
+    # PR once a merged PR is known, Proof only with a stored report; the issue is the row's tap.
+    expect(with_report.locator(".board-done-action .chip")).to_have_text(["PR", "Proof"])
+    expect(without.locator(".board-done-action .chip")).to_have_text(["PR"])
+    expect(plain.locator(".board-done-action")).to_have_count(0)
     # Reading the board fetched no report: it is read on tap only.
     assert fetched == []
 

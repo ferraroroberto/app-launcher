@@ -1,4 +1,4 @@
-/* A Done row's actions: Issue and PR open GitHub; Proof opens the merged UI
+/* A Done row's actions: PR opens GitHub (the row's own tap opens the issue); Proof opens the merged UI
  * PR's stored walkthrough, or a "no proof" chip says the PR declared a UI diff
  * shipped without one. The server decides which (card.proof: 'available' |
  * 'missing', card.proof_pr, card.pr_url); a row with neither shows no Proof.
@@ -56,15 +56,11 @@ function openGithub(url) {
   return function () { window.open(url, '_blank', 'noopener'); };
 }
 
-// The row's trailing actions, each a chip inside a 44px tap target: Issue, PR
-// (once a merged PR is known to have closed it) and Proof (once a report is
-// stored). Null when the row has nothing to offer.
+// The row's trailing actions, each a chip inside a 44px tap target: PR (once a
+// merged PR is known to have closed it) and Proof (once a report is stored).
+// The issue is the row's own tap. Null when the row has nothing to offer.
 export function doneActions(card) {
   const buttons = [];
-  if (card.url) {
-    buttons.push(actionButton('Issue', 'Open issue #' + card.number + ' on GitHub',
-      'neutral', 'board-done-issue', openGithub(card.url), { track: 'board.done-issue' }));
-  }
   if (card.pr_url) {
     buttons.push(actionButton('PR', 'Open PR #' + card.pr + ' on GitHub',
       'neutral', 'board-done-pr', openGithub(card.pr_url), { track: 'board.done-pr' }));

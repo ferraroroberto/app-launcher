@@ -16,6 +16,9 @@ import { attachSwipe } from './swipe-row.js';
 //   className  -> extra li classes (the list's hook: coding-item, …)
 //   title      -> the one-line title; `meta` -> the optional context line
 //   chips      -> optional exception chips, after the meta text
+//   metaSplit  -> the meta's words in the vendored `.action-row-meta-text`, so
+//                 they ellipsize on one line instead of wrapping to two (a
+//                 row whose height must not depend on its text)
 //   label      -> the main button's accessible name (what a tap does)
 //   onMain     -> the primary action; `disabled` + `hint` grey it out
 //   favorite   -> { on, onToggle } adds the leading star
@@ -67,7 +70,7 @@ export function actionRow(opts) {
   title.textContent = opts.title;
   title.title = opts.title;
   column.appendChild(title);
-  const meta = metaLine(opts.meta, opts.chips || []);
+  const meta = metaLine(opts.meta, opts.chips || [], opts.metaSplit);
   if (meta) column.appendChild(meta);
   if (opts.inert) {
     // Nothing to name: the row's own text is what a reader hears.
@@ -132,12 +135,12 @@ function favoriteStar(favorite) {
 // The context line: the plain meta text, then any exception chips
 // (glance.js chip()) after it, so a chip never ellipsizes away. Null when
 // there is neither.
-function metaLine(text, chips) {
+function metaLine(text, chips, split) {
   if (!text && !chips.length) return null;
   const meta = document.createElement('span');
   meta.className = 'action-row-meta';
-  if (chips.length) {
-    meta.classList.add('has-chips');
+  if (chips.length || split) {
+    if (chips.length) meta.classList.add('has-chips');
     const span = document.createElement('span');
     span.className = 'action-row-meta-text';
     span.textContent = text || '';

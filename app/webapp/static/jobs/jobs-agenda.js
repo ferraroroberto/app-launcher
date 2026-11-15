@@ -74,27 +74,24 @@ function openFire(o) {
   openJobSheet(o.job_id);
 }
 
-// Later fires the same day, as "also 12:00, 18:00", and "+N" past two.
-function _alsoText(also) {
-  if (!also || !also.length) return '';
-  const shown = also.slice(0, 2).map(function (o) { return _clock(o.fire_epoch); });
-  return 'also ' + shown.join(', ') + (also.length > 2 ? ' +' + (also.length - 2) : '');
-}
-
 // One fire on the action-row: the time as the leading value, the job's
-// name, and a meta line. Next up's carries the day and any same-day repeats
-// ("today · also 18:00 · Daily 06:00, 18:00"); the sheet's rows sit under a
-// day header and carry the cadence.
-function fireRow(o, withDay, also) {
+// name, and a one-line meta. Next up's carries the day first ("today · Daily
+// 06:00, 18:00"; the cadence names every time the job fires, so a repeat
+// needs no line of its own); the sheet's rows sit under a day header and
+// carry the cadence alone. The meta ellipsizes on one line rather than
+// wrapping, so a long cadence never makes the card taller than the
+// placeholder rows it was drawn as.
+function fireRow(o, withDay) {
   const time = document.createElement('span');
   time.className = 'jobs-fire-time';
   time.textContent = _clock(o.fire_epoch);
-  const meta = [withDay ? _dayWord(o.fire_epoch) : '', _alsoText(also), cadenceText(o.cadence)]
+  const meta = [withDay ? _dayWord(o.fire_epoch) : '', cadenceText(o.cadence)]
     .filter(Boolean).join(' · ');
   const row = actionRow({
     className: 'jobs-fire-row',
     title: o.name,
     meta: meta,
+    metaSplit: true,
     avatar: time,
     label: 'Open ' + o.name + ', next at ' + time.textContent,
     onMain: function () { openFire(o); },
@@ -121,21 +118,15 @@ function setNextUpState(name, glyph, message) {
 }
 
 // The Next up rows: the first fire of each of the next NEXT_UP_COUNT
-// distinct jobs, each carrying that job's later fires on the same day. The
-// payload is in fire order, so a job's first appearance is its next fire.
+// distinct jobs. The payload is in fire order, so a job's first appearance is
+// its next fire.
 function nextUpRows(occurrences) {
   const rows = [];
-  const byJob = {};
+  const seen = {};
   (occurrences || []).forEach(function (o) {
-    const seen = byJob[o.job_id];
-    if (seen) {
-      if (_dayKey(o.fire_epoch) === _dayKey(seen.fire.fire_epoch)) seen.also.push(o);
-      return;
-    }
-    if (rows.length >= NEXT_UP_COUNT) return;
-    const row = { fire: o, also: [] };
-    byJob[o.job_id] = row;
-    rows.push(row);
+    if (seen[o.job_id] || rows.length >= NEXT_UP_COUNT) return;
+    seen[o.job_id] = true;
+    rows.push(o);
   });
   return rows;
 }
@@ -152,6 +143,7 @@ function pendingRow() {
     className: 'jobs-fire-row is-pending',
     title: '–',
     meta: '–',
+    metaSplit: true,
     avatar: time,
     inert: true,
   });
@@ -180,7 +172,7 @@ function renderNextUp() {
       'Nothing scheduled in the next ' + (agenda.days || AGENDA_DAYS) + ' days.');
     return;
   }
-  rows.forEach(function (r) { host.appendChild(fireRow(r.fire, true, r.also)); });
+  rows.forEach(function (o) { host.appendChild(fireRow(o, true)); });
   setNextUpState('ready');
 }
 

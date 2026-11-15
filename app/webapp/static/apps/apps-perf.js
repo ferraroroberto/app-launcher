@@ -107,6 +107,9 @@ function sparkline(values) {
   const svg = document.createElementNS(SVG_NS, 'svg');
   svg.setAttribute('class', 'perf-spark');
   svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+  // A chart, not an icon: it is stretched to its box, which the design review
+  // keeps off the icon size steps.
+  svg.setAttribute('preserveAspectRatio', 'none');
   svg.setAttribute('role', 'img');
   svg.setAttribute('aria-label', 'Cold ready, last ' + values.length + ' runs: '
     + fmtMs(values[0]) + ' to ' + fmtMs(values[values.length - 1]));
@@ -134,9 +137,9 @@ function issuesLink(name, url) {
   return a;
 }
 
-// One measured app: name, verdict and age, then the figures against budget
-// and the cold-ready sparkline. The chip is for the exception only; within
-// budget is plain success text.
+// One measured app: its name, then one meta line holding the verdict and age,
+// the figures against budget and the cold-ready sparkline. The chip is for the
+// exception only; within budget is plain success text.
 function measuredRow(item) {
   const entry = item.entry;
   const over = entry.state === 'over-budget';
@@ -147,31 +150,25 @@ function measuredRow(item) {
   const text = node('div', 'perf-row-text');
   text.appendChild(node('span', 'perf-name', item.name));
 
-  const status = node('div', 'perf-status');
-  if (over) status.appendChild(chip('Over budget', 'danger', 'perf-chip'));
-  else status.appendChild(node('span', 'perf-verdict', entry.seeded ? 'Passed, no timings yet' : 'Within budget'));
+  const meta = node('div', 'perf-meta');
+  if (over) meta.appendChild(chip('Over budget', 'danger', 'perf-chip'));
+  else meta.appendChild(node('span', 'perf-verdict', entry.seeded ? 'Passed, no timings yet' : 'Within budget'));
   if (over && failedIds.length) {
-    status.appendChild(node('span', 'perf-ago', failedIds.map(function (id) {
+    meta.appendChild(node('span', 'perf-ago', failedIds.map(function (id) {
       return CHECK_LABEL[id] || id;
     }).join(', ')));
   } else {
     const secs = entry.ts ? Date.parse(entry.ts) / 1000 : NaN;
-    if (!isNaN(secs)) status.appendChild(node('span', 'perf-ago', fmtAgo(secs) + ' ago'));
+    if (!isNaN(secs)) meta.appendChild(node('span', 'perf-ago', fmtAgo(secs) + ' ago'));
   }
-  text.appendChild(status);
-
-  const parts = [
+  [
     numberPart('cold', entry.cold_ready_ms, fmtMs, failedIds.indexOf('cold.ready_ms') >= 0),
     numberPart('warm', entry.warm_ready_ms, fmtMs, failedIds.indexOf('warm.ready_ms') >= 0),
     numberPart('transfer', entry.warm_bytes_kb, fmtKb, failedIds.indexOf('warm.bytes_kb') >= 0),
-  ].filter(Boolean);
+  ].filter(Boolean).forEach(function (part) { meta.appendChild(part); });
   const spark = sparkline(entry.trend || []);
-  if (parts.length || spark) {
-    const nums = node('div', 'perf-nums');
-    parts.forEach(function (p) { nums.appendChild(p); });
-    if (spark) nums.appendChild(spark);
-    text.appendChild(nums);
-  }
+  if (spark) meta.appendChild(spark);
+  text.appendChild(meta);
   li.appendChild(text);
   if (over && entry.issues_url) li.appendChild(issuesLink(item.name, entry.issues_url));
   return li;

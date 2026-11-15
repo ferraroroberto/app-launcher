@@ -575,7 +575,7 @@ span.chief-answer-ref { color: var(--muted); }
 .board-done-more { margin-top: 12px; }
 .board-done-more[hidden] { display: none; }
 
-/* A Done row's trailing actions (Issue, PR, Proof): each chip is the look, the
+/* A Done row's trailing actions (PR, Proof): each chip is the look, the
    button around it the 44px tap target (the same box as the row's other
    trailing controls). */
 .board-done-actions {
