@@ -126,10 +126,9 @@ export async function syncAll(onDone) {
     if (!results.length) {
       setAsyncState(status, 'empty', { message: 'No git repos found.' });
     } else {
-      const pulled = results.filter(function (r) { return r.outcome === 'pulled'; }).length;
+      // The sheet's lines are the report; a page toast would sit under it.
       setAsyncState(status, 'ready');
       renderResults(body, results);
-      toast(pulled ? 'Pulled ' + plural(pulled, 'repo', 'repos') : 'Nothing to pull', pulled ? 'good' : 'ok');
     }
   } catch (exc) {
     setAsyncState(status, 'error', { message: 'Sync all failed: ' + exc.message });
