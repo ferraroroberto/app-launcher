@@ -226,10 +226,13 @@
   color: var(--muted);
 }
 /* Link rows (design.md: the settings row is the link row inside a detail
-   sheet), boxed; Delete sits alone in the last box, in danger. */
+   sheet), boxed. The sheet's verbs are buttons by the action-to-variant
+   table: Copy link a surface, Delete a danger tint, Rename a header pencil. */
 .lifeos-sheet-links { margin-top: 12px; }
-.lifeos-sheet-danger,
-.lifeos-sheet-danger .settings-row-icon { color: var(--danger-text); }
+.lifeos-sheet-actions { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.lifeos-sheet-actions .button-surface { align-self: flex-start; }
+#lifeOsDocLinks .lifeos-sheet-actions { flex-direction: row; align-items: center; }
+#lifeOsDocLinks .lifeos-sheet-actions .button-tint { flex: 1; width: auto; }
 /* The reader and Browse's sheets are tall reading surfaces: the vendored
    modal at full height, the card exactly that tall so the text scrolls
    inside it and the Done footer stays at its foot. */

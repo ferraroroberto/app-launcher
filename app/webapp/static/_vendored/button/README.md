@@ -40,6 +40,36 @@ The fleet's canonical **button**: four tiers covering every action, settled by t
 - Disabled is the plain `disabled` attribute on any tier, not a separate class — the shared recipe handles the look.
 - `.danger` only composes with `.button-tint` and is outlined, so use it for every destructive verb, a confirm dialog's Delete included (the vendored recipe covers that one combination; a primary/ghost/surface destructive action is out of scope until a real usage shows up).
 
+## Action → variant (one component per action)
+
+The design-review rule `INV-02` fails when one normalised action is drawn by more than one component or variant across apps. This table is the single answer: pick the row for the action, use that component, and never invent a local class for it. Sizes are what each recipe renders (`--font-body` 16px, `--font-label` 14px, `--font-caption` 12px).
+
+| Action | Component and variant | Renders | Where it goes |
+| --- | --- | --- | --- |
+| commit (save, apply, confirm, add, create, submit) | `.button-primary` | 16px / 700, 48px | The one main action per view; a dialog's footer commit, full width |
+| opener (an "Add …" or "New …" control that opens a dialog, sheet or menu instead of writing anything) | `.button-tint` | 16px / 700, 48px | Wherever it sits; the commit lives inside what it opens, so the view's one primary stays free for its own main action |
+| secondary run (run now, start, export) | `.button-tint` | 16px / 700, 48px | A second action of real weight beside the commit |
+| cancel (back out of a form or dialog without a verb) | `.button-ghost` | 12px / 600, 36px | Beside a commit in a footer |
+| dismiss (close a sheet, dialog, banner or toast) | `icon-button` with the `x` glyph | glyph only | The header corner of the sheet; never a labelled button |
+| destructive (delete, remove, discard, clear) | `.button-tint.danger` | 16px / 700, outlined | A dialog or confirm footer, a menu's danger item; on a list row it is an `icon-button danger` |
+| copy | `.button-surface` | 14px / 600, 36px | A labelled toolbar copy; inside a [`code-listing`](../code-listing/) header it is the unpainted `icon-button` |
+| refresh (reload, re-scan) | `.button-surface` | 14px / 600, 36px | A toolbar above the data it reloads |
+| edit | `icon-button` with the `pencil` glyph | glyph only | A row or card header verb |
+| filter | `icon-button` with the `sliders-horizontal` glyph | glyph only | Opens the filter sheet; a filter *field* above a list is the [`action-row`](../action-row/) one |
+| search | `icon-button` with the `search` glyph | glyph only | The header verb that opens search; the submit inside the search field is a commit |
+| overflow menu | `icon-button` with the `ellipsis-vertical` glyph | glyph only | The row's kebab, opening [`row-menu`](../row-menu/) |
+| row open | [`action-row`](../action-row/) button | row | The whole row is the tap target; a link row differs only in its element |
+
+Rules that follow from the table:
+
+- An action never moves between components for taste, size or space: a sheet too narrow for a labelled copy button keeps `.button-surface` and wraps, it does not swap to an icon.
+- A glyph-only control is always `icon-button`, a labelled one is always a tier. The same action is two components only where the table says so by *context* (a copy inside a code listing, a destructive on a list row), never per app.
+- A bespoke local class for any action above (`.save-btn`, `.close-x`, `.refresh-btn`, a hand-built kebab) is the defect `INV-02` and `INV-03` report: re-vendor and use the row's component.
+- The verb does not decide the tier, what the tap does does: an "Add …" that opens a dialog or menu is an opener (`.button-tint`), and only the control that actually writes (the dialog's own "Add" footer) is the commit and takes `.button-primary`. An opener never counts as a view's primary, so one primary per view still holds.
+- An action not in the table (rename, share, pin, record) takes the tier that matches its weight: primary only if it is the view's one main action, otherwise tint, ghost or surface, or `icon-button` when glyph-only.
+
+The live demo is the "action to variant" card of `demo.html`.
+
 ## Legacy-class migration
 
 Per-app adoption is tracked separately (fleet-config#279) — this table is the mapping when a consuming app re-skins its own buttons to the vendored classes:

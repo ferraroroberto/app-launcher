@@ -53,7 +53,7 @@
 .outbox-roots .icon-button { --icon-btn-box: var(--hit-min); flex: none; }
 .outbox-root-add { margin: 10px 0; }
 .outbox-root-add .input-native { flex: 1; min-width: 0; }
-.outbox-root-add .button-ghost { flex: none; min-height: var(--hit-min); }
+.outbox-root-add .button-tint { flex: none; width: auto; }
 .settings-footnote {
   font-size: var(--font-body-sm);
   color: var(--muted);
@@ -102,20 +102,10 @@
 .settings-sheet .select-native,
 .opt-row .select-native,
 .job-param-row .select-native { height: var(--row-sm); }
-/* .big-btn / .ghost-btn migrated to the vendored button-tint / button-ghost
-   tiers (project-scaffolding's button/ component) — fill,
-   border, radius, cursor and the shared :disabled recipe now come from
-   _vendored/button/button.css. What's left here is app-launcher's own
-   layout/size/weight/press-feedback, kept as-is so this migration doesn't
-   restyle any existing button. */
-.button-tint {
-  width: 100%;
-  padding: 14px 18px;
-  font-size: var(--font-label);
-  font-weight: 600;
-  min-height: 44px;
-}
-.button-tint:active { filter: brightness(0.9); }
+/* The tiers' fill, border, size, weight and :disabled recipe come from
+   _vendored/button/button.css; a tint's size is the vendored 16px / 700, so
+   the one local rule is the full-width layout. */
+.button-tint { width: 100%; }
 .button-ghost {
   padding: 8px 12px;
 }

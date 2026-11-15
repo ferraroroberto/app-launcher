@@ -215,7 +215,7 @@ def test_life_os_conversation_sheet_offers_resume_links_and_fits_the_phone(
 
 def _conversation_controls_are_full_targets(page: Page) -> None:
     """#1528/#1504: the field's scope chip, each conversation row and the
-    sheet's ✕, link rows and Resume are 44px targets, and the chip never
+    sheet's ✕, link rows, verbs and Resume are 44px targets, and the chip never
     shares a pixel with the box it sits in."""
     scope = page.locator("#lifeOsConvoScope")
     assert_min_target(scope)
@@ -224,9 +224,11 @@ def _conversation_controls_are_full_targets(page: Page) -> None:
     sheet = _open_sheet(page, 0)
     assert_min_target(page.locator("#lifeOsConvoSheetClose"))
     links = sheet.locator(".settings-row:visible")
-    expect(links).to_have_count(6)   # Read, Rename, Copy link, Open raw, Delete, Model
-    for i in range(6):
+    expect(links).to_have_count(3)   # Read, Open raw, Model
+    for i in range(3):
         assert_min_target(links.nth(i))
+    for verb in (".lifeos-convo-rename", ".lifeos-convo-copy-link", ".lifeos-convo-delete"):
+        assert_min_target(sheet.locator(verb))
     assert_min_target(page.locator("#lifeOsConvoSheetResume"))
     _close_sheet(page)
 
@@ -254,11 +256,11 @@ def _unresumable_conversation_says_so(page: Page) -> None:
 
 
 def _sheet_has_resume_primary_and_link_rows(page: Page, base_url: str) -> None:
-    """#1504: the sheet's one primary is Resume, and every other action of the
-    old row menu and reader menu is a link row — Read, Rename, Copy link,
-    Open raw — with Delete alone last in the danger tone. With the
-    toolbar on the conversation's own harness there is no handoff to offer.
-    Copy link writes the ?convo= link (#1170)."""
+    """#1504: the sheet's one primary is Resume. Read, Open raw and Model are
+    link rows; Rename is the header pencil, Copy link a surface button and
+    Delete a danger tint (the action-to-variant table). With the toolbar on
+    the conversation's own harness there is no handoff to offer. Copy link
+    writes the ?convo= link (#1170)."""
     sheet = _open_sheet(page, 0)
     expect(page.locator("#lifeOsConvoSheetTitle")).to_have_text("booking the ferry")
     resume = page.locator("#lifeOsConvoSheetResume")
@@ -266,13 +268,17 @@ def _sheet_has_resume_primary_and_link_rows(page: Page, base_url: str) -> None:
     expect(resume).to_have_class(re.compile(r"\bbutton-primary\b"))
     expect(sheet.locator(".detail-actions button")).to_have_count(1)
     expect(sheet.locator(".settings-row:visible .settings-row-label")).to_have_text(
-        ["Read the conversation", "Rename", "Copy link", "Open raw", "Delete", "Model"])
+        ["Read the conversation", "Open raw", "Model"])
     expect(sheet.locator(".lifeos-convo-handoff")).to_be_hidden()
+    expect(sheet.locator(".detail-header .lifeos-convo-rename")).to_have_class(
+        re.compile(r"\bicon-button\b"))
     delete = sheet.locator(".lifeos-convo-delete")
-    expect(delete).to_have_class(re.compile(r"\blifeos-sheet-danger\b"))
-    # Delete is alone in the last link box; the Model row's own box then sits above Resume.
+    expect(delete).to_have_class("button-tint danger lifeos-convo-delete")
+    expect(sheet.locator(".lifeos-convo-copy-link")).to_have_class(
+        re.compile(r"\bbutton-surface\b"))
+    # Copy link and Delete share the sheet's action box; the Model row's own box then sits above Resume.
     expect(delete.locator("xpath=..")).to_have_class(re.compile(r"\blifeos-sheet-links\b"))
-    expect(delete.locator("xpath=../button")).to_have_count(1)
+    expect(delete.locator("xpath=../button")).to_have_count(2)
 
     sheet.locator(".lifeos-convo-copy-link").click()
     page.wait_for_function(
