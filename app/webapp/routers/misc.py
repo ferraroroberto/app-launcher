@@ -331,11 +331,15 @@ async def system_health_verdict(request: Request) -> Dict[str, Any]:
     / ``act`` / ``unknown``, read from local-llm-hub and cached briefly. A hub
     that is off, down or unreadable is ``unknown``, never ``ok``."""
     cfg: WebappConfig = request.app.state.webapp_config
+    this_pc = _is_this_pc(request)
 
     def _read() -> Dict[str, Any]:
         out = process_restart.annotate(hub_health.read(cfg.llm_hub_url))
         # The sheet's "Restarted automatically at 02:14" line (the night restart).
         out["auto_restarted"] = process_auto_restart.last_auto_restart()
+        # The hub's own page is loopback: only a browser on this PC can open it.
+        base = (cfg.llm_hub_url or "").strip().rstrip("/")
+        out["hub_url"] = f"{base}/admin/" if base and this_pc else None
         return out
 
     return await asyncio.to_thread(_read)

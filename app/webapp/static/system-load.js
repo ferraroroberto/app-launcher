@@ -17,6 +17,9 @@
  * local-llm-hub's verdict on the machine, drawn only for "watch" or "act"
  * and read on the same poll. A verdict that could not be read is "Not
  * confirmed" in the sheet, never "OK"; the hub does the alerting.
+ *
+ * The same verdict feeds the machine-health row (machine-health.js) on the
+ * Board and Code tabs, and its port and commit rows in this sheet.
  */
 
 import { SYSTEM_LOAD_WARMING_RETRY_MS } from './state.js';
@@ -24,6 +27,7 @@ import { jsonApi, logPollFailure, toast, apiFailToast } from './api.js';
 import { confirmDialog } from './confirm-dialog.js';
 import { el, sheetRow } from './dom-utils.js';
 import { pctText } from './shared/format.js';
+import { appendMachineRows, renderMachineRows } from './machine-health.js';
 
 // The last payload; null when the fetch itself failed. Before the first
 // answer it reads as the server's own "still taking the first sample".
@@ -124,6 +128,7 @@ function appendHealthRows(body) {
     btn.addEventListener('click', function () { restartOwner(h); });
     body.appendChild(btn);
   }
+  if (h.verdict !== 'unknown') appendMachineRows(body, h);
 }
 
 // "Restarted automatically at 02:14": the night restart's own line. A process
@@ -210,6 +215,7 @@ function sheet() {
 function render() {
   renderReadings();
   renderHealthMark();
+  renderMachineRows(health);
   const dialog = sheet();
   if (dialog && dialog.open) renderSheet();
 }
@@ -265,7 +271,8 @@ function closeSheet() {
 export function wireSystemLoad() {
   renderReadings();
   renderHealthMark();
-  document.querySelectorAll('.cpu-reading').forEach(function (btn) {
+  renderMachineRows(health);
+  document.querySelectorAll('.cpu-reading, .machine-health').forEach(function (btn) {
     btn.addEventListener('click', openSheet);
   });
   const close = document.getElementById('cpuSheetClose');

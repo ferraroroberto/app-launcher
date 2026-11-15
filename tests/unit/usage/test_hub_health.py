@@ -120,3 +120,42 @@ def test_the_route_says_unknown_when_the_hub_is_unset(webapp_client):
     app.state.webapp_config.llm_hub_url = ""
     body = client.get("/api/system/health").json()
     assert (body["verdict"], body["why"]) == ("unknown", "disabled")
+
+
+_PORTS_BODY = {
+    "verdict": "act", "reason": "ports", "fix": None, "host_id": "example-host",
+    "findings": [
+        {"level": "act", "metric": "tcp_percent", "value": 84.5},
+        {"level": "watch", "metric": "tcp_time_wait", "value": 5000},
+        {"level": "act", "metric": "total_handles", "value": 5_000_000},
+    ],
+    "system": {"commit_percent": 68.5},
+    "offenders": {"memory_mb": [{"name": "llama-server.exe", "pid": 7, "value": 24998.8}] * 4},
+    "ports": {
+        "stale": False,
+        "tcp": {"percent": 84.5}, "udp": {"percent": 0.6},
+        "top_holders": [{"name": f"p{i}.exe", "pid": i, "value": 10 - i, "tcp": 10 - i, "udp": 0} for i in range(7)],
+        "last_event": {"ts": 1794766557.8, "event_id": 4231, "protocol": "tcp", "reason": "TCP ran out of ephemeral ports"},
+    },
+}
+
+
+def test_the_machine_block_carries_the_worst_ports_percent_commit_holders_and_event():
+    machine = hh.parse(_PORTS_BODY)["machine"]
+    assert machine["host"] == "example-host"
+    assert machine["ports_percent"] == 84.5  # tcp, the worse of tcp and udp
+    assert machine["commit_percent"] == 68.5
+    assert [h["name"] for h in machine["holders"]] == ["p0.exe", "p1.exe", "p2.exe", "p3.exe", "p4.exe"]
+    assert len(machine["memory_holders"]) == 3
+    assert machine["last_event"]["event_id"] == 4231
+    # Only an act finding on a ports or commit metric is critical.
+    assert machine["critical"] == [{"metric": "tcp_percent", "value": 84.5}]
+
+
+def test_a_stale_port_block_leaves_ports_unmeasured_never_zero():
+    body = dict(_PORTS_BODY, ports=dict(_PORTS_BODY["ports"], stale=True))
+    assert hh.parse(body)["machine"]["ports_percent"] is None
+
+
+def test_a_payload_with_no_machine_data_has_no_machine_block():
+    assert "machine" not in hh.parse({"verdict": "ok", "reason": "fine"})

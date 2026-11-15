@@ -66,6 +66,12 @@ def test_watch_and_act_draw_a_toned_dot_with_the_reason_and_fix(
     )
     assert head["height"] <= 60 and head["overflow"] <= 0, head
     danger = chip.evaluate("el => getComputedStyle(el, '::after').backgroundColor")
+    # The machine row keeps one tap-sized line at the phone's width.
+    row = stable_eval(
+        page.locator(_ROWS[0]),
+        "(el) => ({ spill: el.scrollWidth - el.clientWidth, h: el.getBoundingClientRect().height })",
+    )
+    assert row["spill"] <= 0 and row["h"] >= 44, row
 
     # Tapping the reading opens the PC load sheet on the verdict.
     chip.click()
@@ -235,6 +241,68 @@ def _refetch_health(page: Page) -> None:
     page.evaluate("document.dispatchEvent(new Event('visibilitychange'))")
 
 
+_ROWS = ("#paneClaude .machine-health", "#paneBoard .machine-health")
+
+
+def _machine(ports, commit) -> dict:
+    return {
+        "host": "example-host", "ports_percent": ports, "commit_percent": commit,
+        "holders": [
+            {"name": "example-app-webapp", "pid": 4242, "value": 18400, "tcp": 18000, "udp": 400},
+            {"name": "other.exe", "pid": 977, "value": 9100, "tcp": 9100, "udp": 0},
+        ],
+        "memory_holders": [], "critical": [],
+        "last_event": {"ts": 1_700_000_000, "event_id": 4231, "protocol": "tcp",
+                       "reason": "TCP ran out of ephemeral ports"},
+    }
+
+
+def _assert_the_machine_row_reads_each_verdict_and_the_sheet_lists_the_port_holders(
+    page: Page, state: dict
+) -> None:
+    """The Code and Board rows read ok, watch, act and unknown (a verdict
+    the page could not read is the words "Not confirmed", never a percent), and
+    the sheet lists the top port holders, the last exhaustion event and the hub
+    link. Runs on the page the verdict test already loaded."""
+    page.locator("#cpuSheetDone").click()
+    code = page.locator(_ROWS[0])
+    for verdict, machine, words, tone in (
+        ("ok", _machine(3.2, 68.5), "OK · Commit 69%", "ok"),
+        ("watch", _machine(55.0, 40.0), "Watch · Ports 55%", "attention"),
+        ("act", _machine(84.5, 40.0), "Needs action · Ports 85%", "danger"),
+        ("unknown", None, "Not confirmed", "none"),
+    ):
+        state.update(status=200, body={
+            "verdict": verdict, "why": "unreachable" if verdict == "unknown" else None,
+            "reason": None, "fix": None, "machine": machine, "hub_url": None,
+        })
+        _refetch_health(page)
+        expect(code).to_have_text(re.compile(r"Machine\s*" + re.escape(words)))
+        expect(code).to_have_attribute("data-tone", tone)
+    assert "%" not in code.inner_text()
+    state.update(status=200, body={
+        "verdict": "act", "why": None, "reason": "TCP dynamic ports at 85% in use", "fix": None,
+        "machine": _machine(84.5, 40.0), "hub_url": "http://127.0.0.1:8000/admin/",
+    })
+    _refetch_health(page)
+    expect(code).to_contain_text("Needs action")
+    code.click()
+    body = page.locator("#cpuSheetBody")
+    expect(body.locator("[data-row='holder-0']")).to_contain_text("example-app-webapp")
+    expect(body.locator("[data-row='holder-0']")).to_contain_text("18400 ports")
+    expect(body.locator("[data-row='holder-1']")).to_contain_text("other.exe")
+    expect(body.locator("[data-row='last-event']")).to_be_visible()
+    expect(body).to_contain_text("TCP ran out of ephemeral ports")
+    expect(body.get_by_role("link", name=re.compile("Machines tab"))).to_have_attribute(
+        "href", "http://127.0.0.1:8000/admin/")
+    page.locator("#cpuSheetDone").click()
+    # The same row sits under the Board's lane toolbar.
+    page.locator("#tabBoard").click()
+    board = page.locator(_ROWS[1])
+    expect(board).to_be_visible()
+    expect(board).to_contain_text("Needs action · Ports 85%")
+
+
 def test_the_sheet_reads_each_verdict_the_hub_sends(authed_page: Page, base_url: str) -> None:
     """One page load reads every verdict the sheet draws as text alone: the
     health stub's reply changes, the page reads it again, and the open sheet
@@ -287,3 +355,5 @@ def test_the_sheet_reads_each_verdict_the_hub_sends(authed_page: Page, base_url:
         _refetch_health(page)
         note = sheet_body.locator(".cpu-sheet-note", has_text="Restarted automatically")
         expect(note).to_have_text("Restarted automatically at 02:14 · Elgato Wave Link" + tail)
+
+    _assert_the_machine_row_reads_each_verdict_and_the_sheet_lists_the_port_holders(page, state)

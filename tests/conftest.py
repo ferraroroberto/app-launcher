@@ -402,6 +402,10 @@ def _isolated_chief_pointer(request, tmp_path, monkeypatch):
     from src.board import ci_runs as ci_runs_mod
     from src.chief import ci_failed as ci_failed_mod
     monkeypatch.setattr(ci_failed_mod, "SEEN_FILE", tmp_path / "ci-failed-seen.json")
+    # The machine watch keeps its open incidents on disk: never the live file.
+    from src.chief import machine_critical as machine_critical_mod
+    monkeypatch.setattr(machine_critical_mod, "STATE_FILE", tmp_path / "machine-critical-open.json")
+    machine_critical_mod.reset()
     from src.board import ci_dismissed as ci_dismissed_mod
     monkeypatch.setattr(ci_dismissed_mod, "CI_DISMISSED_FILE", tmp_path / "isolated-ci-dismissed.json")
     ci_runs_mod.reset_ci_cache()
