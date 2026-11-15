@@ -663,6 +663,9 @@ button.tr-file-open { padding: 0; border: 0; background: none; font: inherit; cu
   pointer-events: none;
 }
 .tr-file-md { padding: 10px 12px; overflow-wrap: anywhere; }
+/* The open button covers the preview, so a fence's copy button could not be
+   tapped here; the viewer has it. */
+.tr-file-md .md-block-copy { display: none; }
 .tr-file-md-open {
   position: absolute;
   inset: 0;
