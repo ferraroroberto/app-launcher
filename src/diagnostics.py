@@ -68,6 +68,29 @@ def find_pids_on_port(port: int) -> List[int]:
     return sorted(pids)
 
 
+def listener_pids(port: int) -> Optional[List[int]]:
+    """Every PID LISTENing on ``port``, this process included.
+
+    ``None`` means the answer could not be established (psutil missing or the
+    socket table unreadable), which is not the same as ``[]`` (nobody listens).
+    """
+    if psutil is None:
+        return None
+    try:
+        connections = psutil.net_connections(kind="inet")
+    except (psutil.AccessDenied, PermissionError, OSError) as exc:
+        logger.debug(f"listener_pids denied ({exc})")
+        return None
+    return sorted({
+        int(c.pid)
+        for c in connections
+        if c.status == psutil.CONN_LISTEN
+        and c.laddr
+        and c.laddr.port == port
+        and c.pid
+    })
+
+
 def listening_port_for_pid_tree(root_pid: int) -> Optional[int]:
     """Return the first port any process in ``root_pid``'s tree LISTENs on.
 

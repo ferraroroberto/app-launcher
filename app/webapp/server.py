@@ -432,17 +432,58 @@ def _autostart_channel_sessions_on(cfg: object) -> bool:
     return getattr(cfg, "autostart_channel_sessions", False) is True
 
 
+LISTENER_WAIT_SECONDS = 120.0
+LISTENER_POLL_SECONDS = 1.0
+
+
+async def _owns_listener(port: int) -> bool:
+    """Whether this process holds the LISTEN socket on ``port``, waiting for it
+    to be bound (the lifespan runs before the server binds).
+
+    ``False`` when another process holds it, or when it never bound or the
+    socket table could not be read within ``LISTENER_WAIT_SECONDS``: a launch
+    whose ownership is not confirmed would duplicate the owner's.
+    """
+    from src import diagnostics
+
+    own = os.getpid()
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + LISTENER_WAIT_SECONDS
+    while True:
+        pids = await asyncio.to_thread(diagnostics.listener_pids, port)
+        if pids is not None and own in pids:
+            return True
+        if pids:
+            _autostart_log.info(
+                f"ℹ️ Telegram autostart: pid {own} skipped, :{port} is held by "
+                f"pid {pids[0]}"
+            )
+            return False
+        if loop.time() >= deadline:
+            what = "never bound" if pids is not None else "could not be read"
+            _autostart_log.warning(
+                f"⚠️ Telegram autostart: pid {own} skipped, :{port} {what} "
+                f"within {LISTENER_WAIT_SECONDS:.0f}s; ownership not confirmed"
+            )
+            return False
+        await asyncio.sleep(LISTENER_POLL_SECONDS)
+
+
 async def _channel_autostart(app: FastAPI) -> None:
     """Start the ready Telegram channel profiles once, at boot.
 
     Canonical-instance only: a disposable gate webapp has its own empty
     session-host, so its "already running" check would see none of the live
-    bots and start a second listener on each one's token.
+    bots and start a second listener on each one's token. Listener-owner
+    only too: a second webapp process that lost the bind would otherwise
+    race the owner's pass through the same check-then-spawn.
     """
     from app.webapp.routers.life_os_channels import autostart_channel_sessions
 
     cfg = getattr(app.state, "webapp_config", None)
     if cfg is None:
+        return
+    if not await _owns_listener(cfg.port):
         return
     await autostart_channel_sessions(
         cfg,

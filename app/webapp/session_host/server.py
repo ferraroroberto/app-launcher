@@ -64,6 +64,7 @@ from src.session_host_input import (
     INPUT_DROPPED,
     INPUT_NOT_INGESTED,
 )
+from src.session_hosting.channel_claims import DuplicateChannelSession
 
 logger = logging.getLogger(__name__)
 
@@ -228,6 +229,9 @@ async def create_session(request: Request) -> Dict[str, Any]:
                 rows=rows, cols=cols, history_lines=history_lines,
                 label=label,
             )
+    except DuplicateChannelSession as exc:
+        logger.info(f"ℹ️ refused a second spawn for {exc.label}: {exc}")
+        raise HTTPException(status_code=409, detail=str(exc))
     except (OSError, RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return session.to_api()

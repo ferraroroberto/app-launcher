@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -21,7 +22,8 @@ import pytest
 
 from app.webapp import server
 from app.webapp.routers import life_os_channels, life_os_spawn
-from src import instance_role
+from src import diagnostics, instance_role
+from src.clients.session import SessionHostError
 from src.webapp_config import SESSION_HOST_PORT_ENV
 
 _LOGGER = life_os_channels.logger.name
@@ -282,3 +284,91 @@ class TestLifespanGate:
         monkeypatch.setenv(SESSION_HOST_PORT_ENV, "54321")
         app = _app(autostart_channel_sessions=True)
         assert asyncio.run(lifespan(app)) == []
+
+
+class TestTwoWebappProcesses:
+    """A second webapp process has its own lock and a list taken before the
+    first one's spawn registered; only the session-host's 409 stops it."""
+
+    def test_the_second_pass_starts_nothing_and_says_why(
+        self, boot, caplog, monkeypatch
+    ):
+        def host_spawn(project_dir, name, flags, port, kind, agent,
+                       rows=40, cols=120, history_lines=None, label=""):
+            if any(s["label"] == label for s in boot.live):
+                raise SessionHostError(
+                    f"{label} is live in session sid-1; one Telegram bot can "
+                    "only be attached to one session.", status=409,
+                )
+            boot.live.append({"session_id": f"sid-{len(boot.live) + 1}",
+                              "label": label, "name": name, "alive": True})
+            boot.spawned.append(label)
+            return {"session_id": boot.live[-1]["session_id"], "kind": kind}
+
+        monkeypatch.setattr(life_os_spawn, "spawn_claude_session", host_spawn)
+        life_os_channels.session_client.list_sessions.side_effect = (
+            lambda port: []
+        )
+        with caplog.at_level(logging.INFO, logger=_LOGGER):
+            assert boot.run() == ["garden", "kitchen"]
+            life_os_channels._launch_locks.clear()  # the other process's locks
+            assert boot.run() == []
+        assert boot.spawned == ["telegram:garden", "telegram:kitchen"]
+        assert "profile garden skipped: telegram:garden is live" in _messages(caplog)
+
+
+class TestListenerOwnership:
+    @pytest.fixture
+    def own(self, monkeypatch):
+        monkeypatch.setattr(server, "LISTENER_WAIT_SECONDS", 0.2)
+        monkeypatch.setattr(server, "LISTENER_POLL_SECONDS", 0.01)
+        views: list = []
+
+        def listener_pids(port):
+            return views.pop(0) if len(views) > 1 else views[0]
+
+        monkeypatch.setattr(diagnostics, "listener_pids", listener_pids)
+        return views
+
+    def test_the_process_holding_the_port_runs_it(self, own):
+        own.append([os.getpid()])
+        assert asyncio.run(server._owns_listener(8445)) is True
+
+    def test_waits_for_its_own_bind(self, own):
+        own.extend([[], [], [os.getpid()]])
+        assert asyncio.run(server._owns_listener(8445)) is True
+
+    def test_another_process_holding_the_port_skips_at_once(self, own, caplog):
+        own.append([os.getpid() + 1])
+        with caplog.at_level(logging.INFO, logger=server._autostart_log.name):
+            assert asyncio.run(server._owns_listener(8445)) is False
+        assert f"held by pid {os.getpid() + 1}" in caplog.text
+
+    def test_a_port_nobody_bound_is_not_confirmed(self, own, caplog):
+        own.append([])
+        with caplog.at_level(logging.INFO, logger=server._autostart_log.name):
+            assert asyncio.run(server._owns_listener(8445)) is False
+        assert "never bound" in caplog.text
+
+    def test_an_unreadable_socket_table_is_not_confirmed(self, own, caplog):
+        own.append(None)
+        with caplog.at_level(logging.INFO, logger=server._autostart_log.name):
+            assert asyncio.run(server._owns_listener(8445)) is False
+        assert "could not be read" in caplog.text
+
+    def test_a_non_owner_launches_nothing(self, own, monkeypatch):
+        own.append([os.getpid() + 1])
+        called: list = []
+
+        async def autostart(*a, **k):
+            called.append(a)
+
+        monkeypatch.setattr(life_os_channels, "autostart_channel_sessions",
+                            autostart)
+        app = _app(autostart_channel_sessions=True)
+        app.state.webapp_config.port = 8445
+        asyncio.run(server._channel_autostart(app))
+        assert called == []
+        own[:] = [[os.getpid()]]
+        asyncio.run(server._channel_autostart(app))
+        assert len(called) == 1
