@@ -230,8 +230,10 @@ def _assert_chief_plan(authed_page: Page, viewport: dict) -> None:
     expect(queue.nth(0).locator(".action-row-meta-text")).to_have_text("app-launcher#1273")
     expect(queue.nth(0).locator(".board-plan-chip")).to_have_text("gate")
     expect(queue.nth(0).locator(".board-plan-chip")).to_have_attribute("data-tone", "accent")
-    expect(queue.nth(1).locator(".action-row-meta-text")).to_have_text(
-        "automation#135 · before Thu 1 Oct 16:00")
+    # The chief's note is the row's hover text, so no ellipsis cuts a figure in it.
+    expect(queue.nth(1).locator(".action-row-meta-text")).to_have_text("automation#135")
+    expect(queue.nth(1).locator(".action-row-main")).to_have_attribute(
+        "title", "before Thu 1 Oct 16:00")
     # An unknown status is shown as it is, on the neutral chip.
     expect(queue.nth(1).locator(".board-plan-chip")).to_have_text("someday")
     expect(queue.nth(1).locator(".board-plan-chip")).to_have_attribute("data-tone", "neutral")

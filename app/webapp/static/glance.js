@@ -200,7 +200,11 @@ export function sessionRowBody(opts) {
     metaText.appendChild(rest);
     const steps = [{ part: model, over: function () { return metaOverflows(metaText); } }];
     if (tail) {
-      steps.unshift({ part: tail, over: function () { return head.scrollWidth > head.clientWidth; } });
+      // The folder is cut, or it already sits at its minimum width and the
+      // line still runs over (the uptime would be what the phone cuts).
+      steps.unshift({ part: tail, over: function () {
+        return head.scrollWidth > head.clientWidth || metaOverflows(metaText);
+      } });
     }
     fitMetaParts(metaText, steps);
   } else {

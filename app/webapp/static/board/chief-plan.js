@@ -229,18 +229,18 @@ function isParked(q) {
   return PARKED_STATUSES.indexOf(q.status) !== -1;
 }
 
-// A queue row: the issue title leads, the meta is `repo#N`, then the
-// chief's note. An item without a title is named by its label and keeps just
-// the note here.
+// A queue row: the issue title leads, the meta is `repo#N` (then the model),
+// and the chief's note is the row's hover text: free text with figures in it
+// (PR numbers, short hashes), so no ellipsis on the meta line may cut it.
 function queueRow(q) {
   const ref = q.ref && q.ref.charAt(0) === '#' && q.repo ? q.repo + q.ref : q.ref;
   const label = ref || q.repo;
   const meta = [];
   if (q.title && label) meta.push(label);
-  if (q.note) meta.push(q.note);
   return planRow({
     title: q.title || label,
     meta: meta,
+    note: q.note || '',
     status: q.status,
     model: q.model,
     url: q.ref_url,
@@ -281,11 +281,12 @@ function planRow(o) {
     title: o.title,
     meta: pieces.length ? ' ' : '',
     chips: o.status ? [chip(o.status, PLAN_TONES[o.status] || 'neutral', 'board-plan-chip')] : [],
-    label: 'Open ' + (o.ref || o.title) + ' on GitHub',
+    label: 'Open ' + (o.ref || o.title) + ' on GitHub' + (o.note ? ': ' + o.note : ''),
     onMain: open,
     inert: !open,
     trailing: open ? chevron('chevron-right', open) : null,
   });
+  if (o.note) row.main.title = o.note;
   // The pieces take the place of the meta text, so the line still
   // ellipsizes as one and the chip never does.
   const text = row.meta && row.meta.querySelector('.action-row-meta-text');

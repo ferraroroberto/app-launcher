@@ -39,12 +39,15 @@ export function notPlannedCount(cards) {
   return cards.filter(function (card) { return card.bucket === 'not_planned'; }).length;
 }
 
-// A card's bucket reasons as one chip in that bucket's tone: chips never
-// shrink, so a second one would push the repo and number off a phone row.
+// A card's bucket reasons as one chip in that bucket's tone. It is the one chip
+// that ellipsizes (board.css), so a long reason never pushes the repo, number
+// and date off a phone row; `title` carries the whole text.
 export function bucketChipEls(card) {
   const reasons = (card.bucket_chips || []).map(String).filter(Boolean);
   if (!reasons.length) return [];
-  return [chip(reasons.join(' · '), TONES[card.bucket] || 'neutral', 'board-bucket-chip')];
+  const el = chip(reasons.join(' · '), TONES[card.bucket] || 'neutral', 'board-bucket-chip');
+  el.title = el.textContent;
+  return [el];
 }
 
 // One open bucket as a fold on the plan card's heading, open until the reader
