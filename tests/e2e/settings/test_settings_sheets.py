@@ -34,7 +34,7 @@ from tests.e2e.fixtures.ui import (
 
 pytestmark = pytest.mark.smoke
 
-_GROUPS = ["Activity", "Appearance", "Agents", "Sessions", "Life OS", "Connections", "This PC"]
+_GROUPS = ["Activity", "Appearance", "Agents", "Sessions", "Life OS", "Dictation", "Connections", "This PC"]
 _SHEETS = [
     "screenTimeSheet", "usageShowsSheet", "launchDefaultsSheet", "chiefSheet",
     "channelsSheet", "contextFilterSheet", "fleetScopeSheet", "inspirationSheet", "tokensSheet", "foldersSheet",
