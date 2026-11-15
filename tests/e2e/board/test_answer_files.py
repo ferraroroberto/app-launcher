@@ -74,7 +74,7 @@ def test_chief_answer_carries_each_files_path_under_its_line(
     assert box and box["height"] >= 44 and box["width"] >= 44, box
     expect(clip).to_have_attribute("data-track", "board.answer-attach")
 
-    first.locator(".tr-ask-opt").nth(0).click()
+    # The first question's recommended option is already picked.
     _attach(first, "e2e-stub-a.png", "e2e-stub-b.png")
     chips = first.locator(".tr-ask-file")
     expect(chips).to_have_count(2)

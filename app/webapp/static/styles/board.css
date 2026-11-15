@@ -523,6 +523,7 @@ span.chief-answer-ref { color: var(--muted); }
   background: transparent;
 }
 .chief-answers-note { margin: 0; text-align: center; }
+.chief-answers-defaults { margin: 0 0 4px; }
 @media (max-width: 520px) {
   .chief-answers-dialog, .idea-sheet-dialog {
     width: 100vw;

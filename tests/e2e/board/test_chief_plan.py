@@ -251,7 +251,8 @@ def test_answered_marks_show_on_every_device_until_the_plan_moves(
         authed_page.locator("#boardChiefPlan .board-plan-answer").click()
         blocks = authed_page.locator("#chiefAnswersDialog .chief-answer")
         expect(blocks).to_have_count(3)
-        blocks.nth(0).locator(".tr-ask-opt").nth(0).click()
+        # The first is answered by its pre-picked recommendation.
+        expect(blocks.nth(0).locator(".tr-ask-opt").nth(0)).to_have_attribute("aria-pressed", "true")
         blocks.nth(2).locator(".tr-ask-input").fill("yes")
         authed_page.locator("#chiefAnswersDone").click()
         expect(authed_page.locator("#chiefAnswersDialog")).to_be_hidden()

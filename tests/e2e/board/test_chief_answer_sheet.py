@@ -47,11 +47,15 @@ def _assert_answer_sheet_questions(dialog, blocks):
     expect(options).to_have_count(3)
     expect(options.nth(0)).to_contain_text("Yes, all four (Recommended)")
     expect(options.nth(0)).to_contain_text("Ship them in order")
-    expect(first.locator('.tr-ask-opt[aria-pressed="true"]')).to_have_count(0)
+    # The recommended option starts picked (#2382), and only it.
+    expect(first.locator('.tr-ask-opt[aria-pressed="true"]')).to_have_count(1)
+    expect(options.nth(0)).to_have_attribute("aria-pressed", "true")
 
     second = blocks.nth(1)
     expect(second.locator(".chief-answer-ref")).to_have_count(0)
     expect(second.get_by_text("Pick any number")).to_be_visible()
+    # No option carries the recommendation, so nothing is picked for it.
+    expect(second.locator('.tr-ask-opt[aria-pressed="true"]')).to_have_count(0)
     # A recommendation no option carries stays, as one quiet line of text.
     rec = second.locator(".chief-answer-rec")
     expect(rec).to_have_text("Recommended: Mon and Wed suit the gym.")
@@ -105,8 +109,8 @@ def test_answer_sheet_renders_questions_and_done_sends_one_message(
     authed_page: Page, base_url: str, tmp_path
 ) -> None:
     """#1295: the sheet shows each question in file order (repo, linked ref,
-    question, detail, the options with the recommended one labelled but not
-    picked, Other on every item, an old text-only item as a free-text
+    question, detail, the options with the recommended one labelled and
+    already picked, Other on every item, an old text-only item as a free-text
     question) plus Anything else. The recommendation is no card and no star:
     the labelled option carries it, and an item whose recommendation marks
     no option keeps it as one quiet line. Anything else is the shared
@@ -136,8 +140,15 @@ def test_answer_sheet_renders_questions_and_done_sends_one_message(
 
     first, second, options, also = _assert_answer_sheet_questions(dialog, blocks)
 
-    # Nothing answered yet: Done waits, and says why.
+    # The pre-picked recommendation is an answer: Done is ready at once, and
+    # the sheet says the picks are a send.
     done = dialog.locator("#chiefAnswersDone")
+    expect(done).to_be_enabled()
+    expect(dialog.locator("#chiefAnswersNote")).to_be_hidden()
+    expect(dialog.locator("#chiefAnswersDefaults")).to_be_visible()
+    # Tapping the picked option clears it; with nothing left Done waits, and says why.
+    options.nth(0).click()
+    expect(options.nth(0)).to_have_attribute("aria-pressed", "false")
     expect(done).to_be_disabled()
     expect(dialog.locator("#chiefAnswersNote")).to_contain_text("Pick or type an answer first")
 
@@ -351,9 +362,10 @@ def test_answer_sheet_other_fields_dictate_into_the_draft(
         assert fbox and mbox and fbox["x"] + fbox["width"] <= mbox["x"] + 1, (
             f"item {i}: the field and its mic overlap: {fbox} {mbox}")
 
-    # Single-select: a pick, then a take into Other, which replaces the pick.
+    # Single-select: the pre-picked recommendation, then a take into Other,
+    # which replaces the pick.
     first = blocks.nth(0)
-    first.locator(".tr-ask-opt").nth(0).click()
+    expect(first.locator(".tr-ask-opt").nth(0)).to_have_attribute("aria-pressed", "true")
     mics.nth(0).click()
     expect(mics.nth(0)).to_have_class(re.compile(r"\brecording\b"))
     mics.nth(0).click()  # stop
@@ -423,3 +435,38 @@ def test_a_long_answer_is_kept_whole_and_names_its_limit(
     authed_page.reload()
     open_sheet_with_answer(authed_page, base_url, tmp_path, 19500)
     expect(count).to_have_text("500 characters left")
+
+
+def test_done_alone_sends_every_recommended_answer(
+    authed_page: Page, base_url: str, tmp_path
+) -> None:
+    """#2382: a sheet the owner agrees with is one tap. Each recommended option
+    starts picked (every recommended one on a multi-select, none where the
+    recommendation marks no option), so Done straight after opening sends them
+    all in one message; the rest go as skipped."""
+    questions = _QUESTIONS + [
+        {"id": "q-multi", "text": "Which apps?", "question": "Which apps?", "multi": True,
+         "options": [{"label": "A", "recommended": True}, {"label": "B"},
+                     {"label": "C", "recommended": True}]},
+    ]
+    _mock_board(authed_page, _board_payload(with_chief=True))
+    _route_plan_from(authed_page, {"plan": _plan_with(tmp_path, questions)})
+    _mock_ensure(authed_page, {})
+    posts = _capture_chief_input(authed_page)
+    _route_voice(authed_page, False)
+    _open_board(authed_page, base_url)
+
+    authed_page.locator("#boardChiefPlan .board-plan-answer").click()
+    dialog = authed_page.locator("#chiefAnswersDialog")
+    expect(dialog.locator(".chief-answer")).to_have_count(4)
+    dialog.locator("#chiefAnswersDone").click()
+    expect(authed_page.locator("#toast")).to_contain_text("Sent to chief")
+    assert posts == [{
+        "data": (
+            "Answers from the Board (2 of 4):\n"
+            "1. [fleet-config#959] Approve the four plans? → Yes, all four (recommended) {id: q-plans}\n"
+            "4. Which apps? → A (recommended), C (recommended) {id: q-multi}\n"
+            "Skipped: 2, 3"
+        ),
+        "submit": True,
+    }], posts
