@@ -122,9 +122,7 @@ function favoriteStar(favorite) {
   // `star-btn` stays as the hook the e2e suite has always used.
   fav.className = 'icon-button action-row-fav star-btn';
   fav.setAttribute('aria-pressed', favorite.on ? 'true' : 'false');
-  fav.title = favorite.on
-    ? 'Unstar (remove from favorites)'
-    : 'Star (add to favorites)';
+  fav.title = favorite.on ? 'Unstar' : 'Star';
   fav.setAttribute('aria-label', fav.title);
   fav.innerHTML = icon('star', 'action-row-fav-off') + icon('star-fill', 'action-row-fav-on');
   fav.addEventListener('click', favorite.onToggle);

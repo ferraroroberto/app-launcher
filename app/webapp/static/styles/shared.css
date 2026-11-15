@@ -33,7 +33,7 @@
   line-height: 1.45;
 }
 /* Chat file folders (settings-sheets.js): flat full-bleed rows on a
-   hairline (design.md list-row), the path in mono, a 44px remove at the
+   hairline (design.md list-row), the path in mono, a 44px kebab at the
    trailing edge; the add field and its button sit under the list. */
 .outbox-roots > li {
   display: flex;
@@ -50,8 +50,7 @@
   font-size: var(--font-body-sm);
   overflow-wrap: anywhere;
 }
-.outbox-roots .icon-button { --icon-btn-box: var(--hit-min); flex: none; color: var(--danger-text); }
-.outbox-roots .icon-button:disabled { color: var(--muted); opacity: 0.5; }
+.outbox-roots .icon-button { --icon-btn-box: var(--hit-min); flex: none; }
 .outbox-root-add { margin: 10px 0; }
 .outbox-root-add .input-native { flex: 1; min-width: 0; }
 .outbox-root-add .button-ghost { flex: none; min-height: var(--hit-min); }

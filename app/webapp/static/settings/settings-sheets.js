@@ -35,6 +35,9 @@ import { fetchSkills } from '../life-os.js';
 import { profileNeedsSetup } from './telegram-setup.js';
 import { formatMinutes } from '../screen/screen-time.js';
 import { plural } from '../shared/format.js';
+import { ACTION_ROW_MENU } from '../action-rows.js';
+import { createRowMenu } from '../_vendored/row-menu/row-menu.js';
+import { icon } from '../_vendored/icons/icons.js';
 
 // ------------------------------------------------------------ navigation
 // The open sheets, the shown one last.
@@ -310,6 +313,9 @@ async function saveConfigField(input, patch, message, after) {
 // server's answer (fetchConfig), so a refused entry never lingers on screen.
 // The last row cannot be removed: an empty list would read as unset on the
 // server and bring the default back, a state this editor must not offer.
+// Remove sits in the row's menu, never as a visible control on the row.
+const outboxMenu = createRowMenu({ className: 'project-menu', placement: ACTION_ROW_MENU });
+
 function renderOutboxRoots(roots) {
   const list = els.outboxRootsList;
   if (!list) return;
@@ -319,20 +325,26 @@ function renderOutboxRoots(roots) {
     const path = document.createElement('span');
     path.className = 'outbox-root-path';
     path.textContent = root;
-    const remove = document.createElement('button');
-    remove.dataset.track = 'folders.outbox-remove';
-    remove.type = 'button';
-    remove.className = 'icon-button';
-    remove.setAttribute('aria-label', 'Remove ' + root);
-    remove.title = roots.length > 1 ? 'Remove' : 'Keep at least one folder';
-    remove.disabled = roots.length < 2;
-    remove.innerHTML = '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-trash-2"></use></svg>';
-    remove.addEventListener('click', function () {
-      saveOutboxRoots(roots.filter(function (r) { return r !== root; }), 'Chat file folder removed.');
-    });
-    li.append(path, remove);
+    const kebab = document.createElement('button');
+    kebab.dataset.track = 'folders.outbox-menu';
+    kebab.type = 'button';
+    kebab.className = 'icon-button action-row-kebab';
+    kebab.title = 'Folder actions';
+    kebab.setAttribute('aria-label', 'Folder actions');
+    kebab.innerHTML = icon('ellipsis-vertical');
+    outboxMenu.attach(root, kebab, [{
+      dataset: { item: 'outbox-remove-item' }, glyph: 'trash-2', danger: true,
+      label: 'Remove', ariaLabel: 'Remove ' + root,
+      disabled: roots.length < 2,
+      hint: roots.length < 2 ? 'Keep at least one folder' : '',
+      onTap: function () {
+        saveOutboxRoots(roots.filter(function (r) { return r !== root; }), 'Chat file folder removed.');
+      },
+    }]);
+    li.append(path, kebab);
     list.appendChild(li);
   });
+  outboxMenu.endRender();
 }
 
 async function saveOutboxRoots(roots, message) {

@@ -28,6 +28,7 @@ from tests.e2e.fixtures.sessions import auth_headers
 from tests.e2e.fixtures.ui import (
     close_settings_sheets,
     open_agent_sheet,
+    open_row_menu,
     open_settings,
     open_settings_sheet,
 )
@@ -391,9 +392,10 @@ def test_chat_file_folders_add_remove_and_refuse(
     expect(field).to_have_value("")
     assert _config(base_url, auth_token)["outbox_scratch_roots"] == [*before, str(drop)]
 
-    # Every remove is a real 44px target; the path is mono.
-    remove = rows.last.locator(".icon-button")
-    box = remove.bounding_box()
+    # No row carries a visible Remove; its kebab is a real 44px target.
+    expect(rows.last.get_by_role("button", name=re.compile("remove", re.I))).to_have_count(0)
+    kebab = rows.last.locator(".icon-button")
+    box = kebab.bounding_box()
     assert box and box["width"] >= 44 - 0.5 and box["height"] >= 44 - 0.5, box
 
     # A refusal reads in the server's own words and saves nothing.
@@ -408,11 +410,14 @@ def test_chat_file_folders_add_remove_and_refuse(
     expect(page.locator("#outboxRootInputError")).to_contain_text("already in the list")
     expect(rows).to_have_count(len(before) + 1)
 
-    remove.click()
+    kebab.click()
+    open_row_menu(page).locator("[data-item='outbox-remove-item']").click()
     expect(rows).to_have_count(len(before))
     assert _config(base_url, auth_token)["outbox_scratch_roots"] == before
 
     if len(before) == 1:
         # The last folder cannot be removed: an empty list reads as unset.
-        expect(rows.first.locator(".icon-button")).to_be_disabled()
+        rows.first.locator(".icon-button").click()
+        expect(open_row_menu(page).locator("[data-item='outbox-remove-item']")).to_have_attribute(
+            "aria-disabled", "true")
 
