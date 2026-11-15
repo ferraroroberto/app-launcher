@@ -38,6 +38,7 @@ import { createRowMenu } from '../_vendored/row-menu/row-menu.js';
 import { fileBadge, fileCounts, fileKey, fileName } from '../chat/edited-card.js';
 import { previewKind, renderFileView, windowsPath } from './file-view.js';
 import { openTextPreview } from '../lightbox.js';
+import { mergeOlder, olderLine } from './changes-merge.js';
 import { onThePc } from '../chat/transcript-render.js';
 
 // Why a session's Changed files could not be read, in the panel's words.
@@ -742,7 +743,7 @@ function renderSession(body, refocus) {
   const summary = summaryLine(files, body.counts || {}, tail);
   list.appendChild(summary);
   if (view.turn) list.appendChild(scopeSwitch());
-  if (body.partial) list.appendChild(olderLine(body));
+  if (body.partial) list.appendChild(olderLine(body.loading, function () { loadOlder(); }));
   if (!body.project_exists) {
     list.insertAdjacentHTML('beforeend',
       note('The project folder is gone, so deleted files can’t be told apart'));
@@ -753,60 +754,6 @@ function renderSession(body, refocus) {
     built.wrap.before(fileFilter(files, built, summary, body.counts || {}, tail));
   }
   if (refocus !== false) showFocus(files, built.rows);
-}
-
-// "A very long transcript: only its newest part was read · Load older". The
-// older part comes one chunk per tap, merged into the list; the line goes
-// once the start of the transcript is read.
-function olderLine(body) {
-  const line = document.createElement('div');
-  line.className = 'chg-note chg-partial muted small';
-  line.append('A very long transcript: only part of it was read · ');
-  const older = document.createElement('button');
-  older.dataset.track = 'changes.load-older';
-  older.type = 'button';
-  older.className = 'chg-older';
-  older.textContent = body.loading ? 'Loading…' : 'Load older';
-  older.disabled = !!body.loading;
-  older.addEventListener('click', function () { loadOlder(); });
-  line.appendChild(older);
-  return line;
-}
-
-// A file's row keyed like the server folds it: either slash, any case.
-function rowKey(row) {
-  return String(row.key || row.path).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-}
-
-// Fold one older chunk's rows into the list. A file seen in both is one row
-// with the summed counts, its path spelled as its first (older) edit gave it;
-// the file is deleted if the newer part says so, else created if the older
-// part created it.
-function mergeOlder(state, body) {
-  const byKey = new Map(state.files.map(function (f) { return [rowKey(f), f]; }));
-  (body.files || []).forEach(function (old) {
-    const row = byKey.get(rowKey(old));
-    if (!row) {
-      const fresh = Object.assign({}, old);
-      byKey.set(rowKey(fresh), fresh);
-      state.files.push(fresh);
-      return;
-    }
-    row.path = old.path;
-    row.key = old.key;
-    row.additions += old.additions;
-    row.deletions += old.deletions;
-    row.steps += old.steps;
-    if (row.status === 'M' && old.status === 'A') row.status = 'A';
-  });
-  state.files.sort(function (x, y) {
-    const a = String(x.path).toLowerCase();
-    const b = String(y.path).toLowerCase();
-    return a < b ? -1 : a > b ? 1 : 0;
-  });
-  state.counts = sumCounts(state.files);
-  state.next_cursor = body.next_cursor == null ? null : body.next_cursor;
-  state.partial = state.next_cursor != null;
 }
 
 async function loadOlder() {
@@ -832,6 +779,7 @@ async function loadOlder() {
   state.loading = false;
   if (body && body.available) {
     mergeOlder(state, body);
+    state.counts = sumCounts(state.files);
     view.since = state.next_cursor == null ? 0 : state.next_cursor;
   } else if (body) {
     toast('Couldn’t load older edits');

@@ -174,6 +174,7 @@ def test_changed_files_lists_the_sessions_edits_and_opens_one(
 
     _assert_long_list_filters_by_name_and_folder(authed_page)
     _assert_empty_and_unreadable_say_so(authed_page)
+    _assert_partial_read_loads_older_in_chunks(authed_page, diffs)
 
     # Closing lands back on the session view it came from.
     authed_page.locator("#changesClose").click()
@@ -290,13 +291,11 @@ def test_changed_files_opens_for_a_codex_session_with_unnumbered_diffs(
     assert len(diffs) == 1, diffs
 
 
-def test_a_partial_read_loads_older_edits_in_chunks_until_the_start(
-    authed_page: Page, base_url: str
-) -> None:
+def _assert_partial_read_loads_older_in_chunks(page: Page, diffs: list) -> None:
     """A long transcript says only part of it was read; Load older adds the next
     older chunk per tap (a file in two chunks stays one row, counts summed) and
     goes away at the start. An older-only file's diff reads as far back as the list."""
-    diffs = _mock(authed_page)
+    seen_diffs = len(diffs)
     chunks = {
         None: {**_FILES, "partial": True, "next_cursor": 5000},
         "5000": {
@@ -322,16 +321,15 @@ def test_a_partial_read_loads_older_edits_in_chunks_until_the_start(
         route.fulfill(status=200, content_type="application/json",
                       body=_json.dumps(chunks[match.group(1) if match else None]))
 
-    authed_page.route(
+    page.route(
         re.compile(r".*/api/claude-code/sessions/" + re.escape(_SID) + r"/changed-files(\?.*)?$"), _chunk)
-    _open_session(authed_page, base_url)
-    _menu(authed_page).get_by_role("menuitem", name="Changed files").click()
+    page.locator("#changesRefresh").click()
 
-    rows = authed_page.locator("#changesList .chg-file")
-    older = authed_page.locator("#changesList .chg-older")
-    summary = authed_page.locator("#changesList .chg-summary")
+    rows = page.locator("#changesList .chg-file")
+    older = page.locator("#changesList .chg-older")
+    summary = page.locator("#changesList .chg-summary")
     expect(rows).to_have_count(3)
-    expect(authed_page.locator("#changesList .chg-partial")).to_contain_text("only part of it was read")
+    expect(page.locator("#changesList .chg-partial")).to_contain_text("only part of it was read")
     expect(older).to_have_text("Load older")
     box = stable_read(lambda: older.bounding_box())
     assert box and box["height"] >= 44, f"Load older is under the 44px floor: {box}"
@@ -346,11 +344,11 @@ def test_a_partial_read_loads_older_edits_in_chunks_until_the_start(
     older.click()
     expect(rows).to_have_count(5)
     expect(summary).to_contain_text("+15")
-    expect(authed_page.locator("#changesList .chg-partial")).to_have_count(0)
+    expect(page.locator("#changesList .chg-partial")).to_have_count(0)
     assert asked == [None, "5000", "1200"], asked
 
     rows.filter(has_text="zeta.py").locator("summary").click()
-    expect(authed_page.locator("#changesList .chg-step").first).to_be_visible()
-    assert len(diffs) == 1 and "since=0" in diffs[0], diffs
-    fit = stable_read(lambda: authed_page.evaluate(_FIT))
+    expect(page.locator("#changesList .chg-step").first).to_be_visible()
+    assert len(diffs) == seen_diffs + 1 and "since=0" in diffs[-1], diffs
+    fit = stable_read(lambda: page.evaluate(_FIT))
     assert fit["body"] <= 0 and fit["doc"] <= 0, f"sideways scroll at 390px: {fit}"
