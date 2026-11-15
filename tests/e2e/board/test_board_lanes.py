@@ -12,6 +12,7 @@ from playwright.sync_api import Page, expect
 
 from scripts import synthetic_gh
 from tests.e2e._contrast import contrast_ratio
+from tests.e2e._geometry import assert_min_target
 from tests.e2e.board._support import (
     _FAKE_BOARD,
     _board_payload,
@@ -34,7 +35,7 @@ def test_lane_toolbar_and_start_with_geometry(
     """#1436 — the lane toolbar and "Start with", in one shape check.
 
     (1) The toolbar is the Board's first row under the page header, the first
-    lane, Backlog, right under it: the project filter fills the line and ↻
+    lane, Backlog, right under it: the project filter fills the line and Refresh
     trails it, both at the 44px floor. (2) "Start with" is the shared
     `.model-combo` (#496/#851), in the Backlog lane.
     """
@@ -65,14 +66,16 @@ def test_lane_toolbar_and_start_with_geometry(
     assert boxes["first"]["y"] >= boxes["toolbar"]["y"] + boxes["toolbar"]["h"], boxes
     assert boxes["firstId"] == "boardColBacklog", boxes["firstId"]
     assert boxes["filter"]["h"] >= 44 - 0.5, f"filter is {boxes['filter']['h']}px tall"
-    assert boxes["refresh"]["w"] >= 44 - 0.5 and boxes["refresh"]["h"] >= 44 - 0.5, boxes["refresh"]
+    # A labelled surface button: 36px drawn, its tap area grown to the 44px floor.
+    assert_min_target(authed_page.locator("#boardRefresh"))
     assert boxes["refresh"]["x"] > boxes["filter"]["x"] + boxes["filter"]["w"], boxes
     assert abs((boxes["refresh"]["y"] + boxes["refresh"]["h"] / 2)
                - (boxes["filter"]["y"] + boxes["filter"]["h"] / 2)) <= 2, boxes
     viewport = authed_page.viewport_size or {"width": 0}
     if viewport["width"] < 700:
-        assert boxes["filter"]["w"] >= boxes["toolbar"]["w"] - 2 * 44 - 2 * 8 - 1, (
-            f"phone filter should fill the line beside ↻ and fold-all: {boxes['filter']} vs {boxes['toolbar']}")
+        beside = boxes["refresh"]["w"] + 44 + 2 * 8
+        assert boxes["filter"]["w"] >= boxes["toolbar"]["w"] - beside - 1, (
+            f"phone filter should fill the line beside Refresh and fold-all: {boxes['filter']} vs {boxes['toolbar']}")
         # The count pill keeps AA on its --card-2 fill: --fg, not --muted
         # (4.08:1 in dark, #1175).
         fg = authed_page.evaluate("getComputedStyle(document.body).color")

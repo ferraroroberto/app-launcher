@@ -63,11 +63,12 @@
         <div class="settings-sheet-body">
           <p id="remotePowerGuardSheetLead" class="opt-hint">Windows lets only an administrator change this. On the PC, open PowerShell with Run as administrator and paste:</p>
           <pre class="guard-command"><code id="remotePowerGuardCommand"></code></pre>
+          <button type="button" id="remotePowerGuardCopy" class="button-surface guard-copy" data-track="settings.remote-power-guard.copy">Copy command</button>
           <p class="opt-hint">To shut down on purpose from a Remote Desktop session while the guard is on, run <code>shutdown /s /t 0</code>.</p>
         </div>
         <div class="detail-actions">
           <div id="remotePowerGuardToast" class="sheet-toast" role="status" aria-live="polite" hidden></div>
-          <button type="button" id="remotePowerGuardCopy" class="button-primary detail-save-btn" data-track="settings.remote-power-guard.copy">Copy command</button>
+          <button type="button" class="button-primary detail-save-btn" data-sheet-close data-track="remote-power-guard.done">Done</button>
         </div>
       </div>
     </dialog>
@@ -592,7 +593,7 @@
         </div>
         <div class="document-meta">
           <p id="documentUpdated" class="muted small" role="status" aria-live="polite"></p>
-          <button data-track="document.copy" type="button" id="documentCopy" class="button-ghost document-github document-copy" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard"></use></svg> Copy Markdown</button>
+          <button data-track="document.copy" type="button" id="documentCopy" class="button-surface document-github document-copy" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard"></use></svg> Copy Markdown</button>
           <button data-track="document.github" type="button" id="documentGithub" class="button-ghost document-github" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#b-github"></use></svg> Open on GitHub</button>
         </div>
         <div class="settings-sheet-body document-sheet-body">
@@ -678,7 +679,7 @@
             <span class="muted small">Copy it now — it is shown only once.</span>
             <div class="row">
               <input id="tokenMintValue" type="text" class="input-native" readonly>
-              <button data-track="tokens.copy" id="tokenCopyBtn" type="button" class="button-ghost"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard"></use></svg> Copy</button>
+              <button data-track="tokens.copy" id="tokenCopyBtn" type="button" class="button-surface"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard"></use></svg> Copy</button>
             </div>
             <span id="tokenMintUrl" class="muted small"></span>
           </div>
@@ -694,7 +695,7 @@
               <span id="delegateTokenValueHelp" class="field-help">Copy it now — it is shown only once.</span>
               <div class="row">
                 <input id="delegateTokenValue" type="text" class="input-native" readonly aria-label="Delegate token" aria-describedby="delegateTokenValueHelp">
-                <button data-track="tokens.delegate-copy" id="delegateTokenCopyBtn" type="button" class="button-ghost"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard"></use></svg> Copy</button>
+                <button data-track="tokens.delegate-copy" id="delegateTokenCopyBtn" type="button" class="button-surface"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard"></use></svg> Copy</button>
               </div>
             </div>
           </div>
@@ -747,7 +748,7 @@
           </div>
           <div class="row outbox-root-add">
             <input id="outboxRootInput" type="text" class="input-native" placeholder="C:\Drop or %USERPROFILE%\Drop" aria-label="Add a chat file folder" aria-describedby="outboxRootsHelp" autocomplete="off" autocapitalize="off" spellcheck="false">
-            <button data-track="folders.outbox-add" id="outboxRootAdd" type="button" class="button-ghost">Add</button>
+            <button data-track="folders.outbox-add" id="outboxRootAdd" type="button" class="button-tint">Add</button>
           </div>
           <p id="outboxRootsHelp" class="field-help">The session's own folder is always allowed. These are extra folders an agent may send files from.</p>
         </div>

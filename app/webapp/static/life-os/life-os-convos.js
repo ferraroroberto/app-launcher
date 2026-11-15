@@ -566,7 +566,7 @@ function fillConvoSheet() {
   sheetLink('lifeos-convo-open-raw').hidden = !r.path;
   sheetLink('lifeos-convo-rename').hidden = !editable;
   sheetLink('lifeos-convo-copy-link').hidden = !(r.skill && r.file);
-  sheetLink('lifeos-convo-delete').parentElement.hidden = !editable;
+  sheetLink('lifeos-convo-delete').hidden = !editable;
 }
 
 function openConvoSheet(r) {

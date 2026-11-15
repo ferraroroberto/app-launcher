@@ -12,6 +12,9 @@
       <div class="detail-card">
         <div class="detail-header">
           <h2 id="lifeOsConvoSheetTitle" class="lifeos-sheet-title" tabindex="-1" autofocus>Conversation</h2>
+          <button data-track="life-os-convo.rename" type="button" class="icon-button lifeos-convo-rename" aria-label="Rename" title="Rename">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg>
+          </button>
           <button data-track="life-os-convo.close" type="button" id="lifeOsConvoSheetClose" class="icon-button detail-close" aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
@@ -25,17 +28,9 @@
             <span class="settings-row-label">Read the conversation</span>
             <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
           </button>
-          <button data-track="life-os-convo.rename" type="button" class="settings-row lifeos-convo-rename">
-            <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg>
-            <span class="settings-row-label">Rename</span>
-          </button>
           <button data-track="life-os-convo.start-new" type="button" class="settings-row lifeos-convo-handoff" hidden>
             <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-messages-square"></use></svg>
             <span class="settings-row-label">Start new</span>
-          </button>
-          <button data-track="life-os-convo.copy-link" type="button" class="settings-row lifeos-convo-copy-link">
-            <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-link"></use></svg>
-            <span class="settings-row-label">Copy link</span>
           </button>
           <button data-track="life-os-convo.open-raw" type="button" class="settings-row lifeos-convo-open-raw" aria-haspopup="dialog">
             <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-file-text"></use></svg>
@@ -43,11 +38,11 @@
             <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
           </button>
         </div>
-        <div class="settings-group settings-group--nested lifeos-sheet-links">
-          <button data-track="life-os-convo.delete" type="button" class="settings-row lifeos-sheet-danger lifeos-convo-delete">
-            <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-trash-2"></use></svg>
-            <span class="settings-row-label">Delete</span>
+        <div class="lifeos-sheet-links lifeos-sheet-actions">
+          <button data-track="life-os-convo.copy-link" type="button" class="button-surface lifeos-convo-copy-link">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-link"></use></svg> Copy link
           </button>
+          <button data-track="life-os-convo.delete" type="button" class="button-tint danger lifeos-convo-delete">Delete</button>
         </div>
         <div class="settings-group settings-group--nested lifeos-sheet-links" hidden>
           <button data-track="life-os-convo.model" type="button" id="lifeOsConvoModelRow" class="settings-row" aria-haspopup="dialog">
@@ -79,7 +74,7 @@
         <p class="model-switch-note">Applies to this resume only; nothing is saved as a default. The whole conversation is read again on the model you pick.</p>
         <div id="lifeOsConvoModelList" class="settings-group settings-group--nested" role="list"></div>
         <div class="detail-actions">
-          <button data-track="life-os-convo-model.done" type="button" id="lifeOsConvoModelDone" class="button-primary detail-save-btn">Close</button>
+          <button data-track="life-os-convo-model.done" type="button" id="lifeOsConvoModelDone" class="button-primary detail-save-btn">Done</button>
         </div>
       </div>
     </dialog>
@@ -98,7 +93,7 @@
         </div>
         <div id="lifeOsStartPickerList" class="settings-group settings-group--nested lifeos-sheet-links"></div>
         <div class="detail-actions">
-          <button data-track="life-os-start-picker.done" type="button" id="lifeOsStartPickerDone" class="button-primary detail-save-btn">Close</button>
+          <button data-track="life-os-start-picker.done" type="button" id="lifeOsStartPickerDone" class="button-primary detail-save-btn">Done</button>
         </div>
       </div>
     </dialog>
@@ -161,17 +156,11 @@
         </div>
         <div id="lifeOsFileContent" class="lifeos-file-content"></div>
         <div id="lifeOsDocLinks" hidden>
-          <div class="settings-group settings-group--nested lifeos-sheet-links">
-            <button data-track="life-os-doc.rename" type="button" id="lifeOsDocRename" class="settings-row">
-              <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg>
-              <span class="settings-row-label">Rename log</span>
+          <div class="lifeos-sheet-links lifeos-sheet-actions">
+            <button data-track="life-os-doc.rename" type="button" id="lifeOsDocRename" class="icon-button" aria-label="Rename log" title="Rename log">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg>
             </button>
-          </div>
-          <div class="settings-group settings-group--nested lifeos-sheet-links">
-            <button data-track="life-os-doc.delete" type="button" id="lifeOsDocDelete" class="settings-row lifeos-sheet-danger">
-              <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-trash-2"></use></svg>
-              <span class="settings-row-label">Delete log</span>
-            </button>
+            <button data-track="life-os-doc.delete" type="button" id="lifeOsDocDelete" class="button-tint danger">Delete log</button>
           </div>
         </div>
         <div class="detail-actions">

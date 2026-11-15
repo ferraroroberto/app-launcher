@@ -143,6 +143,8 @@ button.settings-row:active { background: var(--card-2); }
   overflow-wrap: anywhere;
   user-select: all;
 }
+/* The copy button sits under the command it copies, ahead of the hint. */
+.guard-copy { margin: 0 2px 12px; }
 /* A short command in the sheet's running text stays on one line. */
 #remotePowerGuardSheet .opt-hint code { white-space: nowrap; }
 /* The switch's unknown state: no position is claimed, so the knob sits
