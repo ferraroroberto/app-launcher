@@ -15,6 +15,7 @@ import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
 import { renderHomeHead } from './home-head.js';
 import { fmtAgo } from './sessions.js';
 import { applyLaunchSizePayload } from './shared/launch-size.js';
+import { presetEffortFor } from './shared/launch-presets.js';
 import { handleLaunchResponse } from './terminal.js';
 import { SensitiveOutcome, runSensitiveAction } from './shared/sensitive-action.js';
 import { switchEl } from './_vendored/switch/switch.js';
@@ -284,6 +285,24 @@ async function refreshApp(a) {
   if (verdict.outcome !== SensitiveOutcome.DROPPED) fetchRunningApps().catch(function () {});
 }
 
+// A launch preset in force for the payload's model adds its effort.
+function addPresetEffort(payload) {
+  const effort = payload.model ? presetEffortFor('coding', payload.model) : '';
+  if (effort) payload.effort = effort;
+}
+
+// The launch toast's tag: the agent's label for any non-default agent,
+// resolved against the registry so a new agent needs no change here, then the
+// effort the launch ran at.
+function launchTag(a, reply) {
+  let tag = '';
+  if (a.kind === 'claude-code' && reply.agent && reply.agent !== 'claude') {
+    const known = state.agents.find(function (ag) { return ag.id === reply.agent; });
+    tag = ' (' + (known ? known.label : reply.agent) + ')';
+  }
+  return tag + (reply.effort ? ' (' + reply.effort + ')' : '');
+}
+
 // Coding-tab launch mode is the Detached switch in the Projects card's
 // launch toolbar (launch-toolbar.js): on → 'remote' (detached
 // console window, listed + killable here but no phone terminal); off →
@@ -324,6 +343,7 @@ export async function launchApp(a, agentId, stealth) {
       } else if (payload.agent === 'codex' && state.config && state.config.codex) {
         payload.model = 'codex:' + state.config.codex.model;
       }
+      addPresetEffort(payload);
     }
     else if (stealth) payload.stealth = true;
     // Streamed (pty) coding launches need a starting PTY size. Detached
@@ -347,16 +367,9 @@ export async function launchApp(a, agentId, stealth) {
         return jsonApi('/api/apps/' + encodeURIComponent(a.id) + '/launch', opts);
       },
       done: function (reply) {
-        // Tag the toast with the agent's label for any non-default agent;
-        // resolved against the registry so a new agent needs no change here.
-        let agentTag = '';
-        if (a.kind === 'claude-code' && reply.agent && reply.agent !== 'claude') {
-          const known = state.agents.find(function (ag) { return ag.id === reply.agent; });
-          agentTag = ' (' + (known ? known.label : reply.agent) + ')';
-        }
         // A stealth launch leaves nothing on screen to confirm it worked, so
         // the toast is the only feedback — say the mode out loud.
-        return (resume ? 'Resumed ' : 'Launched ') + a.name + agentTag +
+        return (resume ? 'Resumed ' : 'Launched ') + a.name + launchTag(a, reply) +
           (mode === 'remote' ? ' (detached)' : '') +
           (stealth ? ' (stealth)' : '');
       },

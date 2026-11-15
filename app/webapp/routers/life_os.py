@@ -59,7 +59,7 @@ from app.webapp.routers import (
     life_os_relay,
     life_os_search,
 )
-from app.webapp.routers._helpers import maybe_json
+from app.webapp.routers._helpers import maybe_json, requested_launch_effort
 from app.webapp.routers.life_os_conversations import (
     _SESSION_ID_RE,
     _launch_conversation,
@@ -293,18 +293,25 @@ async def launch_recap(request: Request) -> Dict[str, Any]:
     body = await maybe_json(request)
     mode = str(body.get("mode") or "pty").strip().lower()
     agent, model = _resolve_launch_choice(body)
+    effort = requested_launch_effort(body, agent, model)
 
     if agent == "claude":
-        flags = f"{build_claude_flags(cfg, model_override=model)} /{_RECAP_COMMAND}"
+        flags = (
+            f"{build_claude_flags(cfg, model_override=model, effort_override=effort)}"
+            f" /{_RECAP_COMMAND}"
+        )
     else:
         prompt = _codex_skill_prompt(".claude/skills/_recap", _RECAP_COMMAND)
-        flags = f"{build_codex_flags(cfg, model_override=model)} {prompt}"
+        flags = (
+            f"{build_codex_flags(cfg, model_override=model, effort_override=effort)}"
+            f" {prompt}"
+        )
     kind = "remote" if mode == "remote" else "pty"
     result = await _spawn_skill_session(
         cfg, request, life_os_dir,
         flags=flags, name=_RECAP_COMMAND, kind=kind, agent=agent, model=model,
         resume=False,
-        audit_skill="_recap", body=body,
+        audit_skill="_recap", body=body, effort=effort,
     )
     return {"launched": _RECAP_COMMAND, **result}
 
@@ -343,6 +350,7 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
     body = await maybe_json(request)
     mode = str(body.get("mode") or "pty").strip().lower()
     agent, model = _resolve_launch_choice(body)
+    effort = requested_launch_effort(body, agent, model)
     resume_sid = str(body.get("resume_sid") or "").strip()
     if resume_sid and not _SESSION_ID_RE.match(resume_sid):
         raise HTTPException(
@@ -363,18 +371,27 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
     # `--resume --remote-control` in its process command without activating
     # Remote Control for the selected conversation.
     if resume and agent == "claude":
-        flags = f"{build_claude_flags(cfg, model_override=model)} /resume"
+        flags = (
+            f"{build_claude_flags(cfg, model_override=model, effort_override=effort)}"
+            " /resume"
+        )
     elif resume:
-        flags = build_resume_flags(cfg, agent, model_override=model)
+        flags = build_resume_flags(
+            cfg, agent, model_override=model, effort_override=effort
+        )
     elif agent == "claude":
         flags = (
-            f"{build_claude_flags(cfg, model_override=model)} /{skill.command}"
+            f"{build_claude_flags(cfg, model_override=model, effort_override=effort)}"
+            f" /{skill.command}"
         )
     else:
         prompt = _codex_skill_prompt(
             f".claude/skills/{skill.id}", skill.command
         )
-        flags = f"{build_codex_flags(cfg, model_override=model)} {prompt}"
+        flags = (
+            f"{build_codex_flags(cfg, model_override=model, effort_override=effort)}"
+            f" {prompt}"
+        )
     name = skill.name
 
     # Detached and Resume are orthogonal (matching the Coding
@@ -384,7 +401,7 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
     result = await _spawn_skill_session(
         cfg, request, life_os_dir,
         flags=flags, name=name, kind=kind, agent=agent, model=model, resume=resume,
-        audit_skill=skill.id, body=body, resume_sid=resume_sid,
+        audit_skill=skill.id, body=body, resume_sid=resume_sid, effort=effort,
     )
     return {"launched": skill.id, **result}
 

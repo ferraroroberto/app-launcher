@@ -557,7 +557,10 @@ time_budget_s         = 1200
 # clock, which no existing test shares; the current, empty-hash, unreadable and dismissed cases ride that one node.
 # 2026-11-15: 654 -> 655, one node (one test, chromium only) for tests/e2e/code/test_git_upstream_flags.py: mocked upstream state with
 # the pull-first confirm, the Launch anyway payload and the Sync all sheet, which no existing Coding test shares; all three ride that one node.
-test_budget = 655
+# 2026-11-16: 655 -> 656, one node (one test, chromium only) for tests/e2e/code/test_launch_presets.py: a preset list served from a mocked /api/config,
+# managed in the Settings sheet and then picked in the Coding toolbar, which no existing Coding or Settings test shares; the add, rename, remove, hand-picked
+# model, Default and reload cases all ride that one node.
+test_budget = 656
 
 # --- static assets under the webapp's static dir -> Chromium smoke ----------
 [[e2e.rule]]

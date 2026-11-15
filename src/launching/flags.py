@@ -315,7 +315,7 @@ def build_grok_flags(
 def build_resume_flags(
     cfg: WebappConfig, agent_id: str, model_override: Optional[str] = None,
     session_id: Optional[str] = None, *, keep_model: bool = False,
-    effort_model: Optional[str] = None,
+    effort_model: Optional[str] = None, effort_override: Optional[str] = None,
 ) -> str:
     """Compose the full flags string for a *Resume* launch.
 
@@ -354,6 +354,10 @@ def build_resume_flags(
     ``effort_model`` (Claude, with ``keep_model``) is the conversation's
     recorded model id: no ``--model`` is sent, so the effort is resolved for
     that model's family, and omitted when it is unknown.
+
+    ``effort_override`` is one launch's effort (a launch preset's), already
+    checked against the model; Claude and Codex carry it, ``None`` keeps the
+    saved per-model effort.
     """
     token = resume_command_for(agent_id)
     if session_id:
@@ -366,12 +370,13 @@ def build_resume_flags(
         if model in VALID_CODEX_MODELS:
             parts.extend(["--model", model])
         if model in VALID_CODEX_MODELS:
-            effort = effective_effort("codex", model, cfg)
+            effort = effort_override or effective_effort("codex", model, cfg)
             parts.extend(["-c", f"model_reasoning_effort={effort}"])
         return " ".join(parts).strip()
     if agent_id == "claude":
         base = build_claude_flags(
-            cfg, model_override=model_override, effort_model=effort_model
+            cfg, model_override=model_override, effort_model=effort_model,
+            effort_override=effort_override,
         )
     elif agent_id == "antigravity":
         base = build_antigravity_flags(cfg)

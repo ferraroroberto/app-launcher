@@ -20,6 +20,7 @@ from src.auth.webauthn_gate import WebAuthnGate
 from src.clients.session import SessionHostError
 from src.jobs.config import get_by_id, load_jobs
 from src.launching.flags import build_claude_flags, default_effort, effective_effort
+from src.launching.presets import efforts_for
 from src.webapp_config import (
     ALWAYS_ON_CLAUDE_FLAGS,
     VALID_CLAUDE_EFFORTS,
@@ -33,6 +34,32 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+
+
+def requested_launch_effort(
+    body: Dict[str, Any], agent: str, model_value: str
+) -> Optional[str]:
+    """The body's per-launch ``effort`` (a launch preset's), ``None`` when absent.
+
+    400 when it is not a string, when no per-launch model was sent for it to
+    apply to, or when that model does not offer it; the message names the
+    allowed values.
+    """
+    effort = body.get("effort")
+    if effort is None or effort == "":
+        return None
+    if not isinstance(effort, str):
+        raise HTTPException(status_code=400, detail="effort must be a string")
+    effort = effort.strip().lower()
+    offered = efforts_for(agent, model_value)
+    if not model_value or effort not in offered:
+        allowed = ", ".join(offered) if offered else "none"
+        target = f"{agent}:{model_value}" if model_value else f"{agent} (no model sent)"
+        raise HTTPException(
+            status_code=400,
+            detail=f"effort {effort!r} is not offered by {target}; allowed: {allowed}",
+        )
+    return effort
 
 
 def known_run_dir(job_id: str, run_id: str) -> Optional[Path]:

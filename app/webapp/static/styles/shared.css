@@ -54,6 +54,28 @@
 .outbox-root-add { margin: 10px 0; }
 .outbox-root-add .input-native { flex: 1; min-width: 0; }
 .outbox-root-add .button-tint { flex: none; width: auto; }
+/* Launch presets (launch-presets-settings.js): the chat-folder list's flat
+   hairline rows, the name an editable field over a muted model line, and a
+   44px kebab at the trailing edge. */
+.launch-presets > li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+.launch-presets > li:first-child { border-top: 1px solid var(--line); }
+.launch-preset-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.launch-preset-meta { font-size: var(--font-body-sm); color: var(--muted); }
+.launch-presets .icon-button { --icon-btn-box: var(--hit-min); flex: none; }
+.launch-preset-add { margin: 10px 0; }
+.launch-preset-add .button-tint { flex: 1; }
 .settings-footnote {
   font-size: var(--font-body-sm);
   color: var(--muted);

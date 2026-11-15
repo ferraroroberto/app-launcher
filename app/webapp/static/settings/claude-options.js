@@ -15,7 +15,9 @@ import { els, state } from '../state.js';
 import { apiFailToast, jsonApi, toast } from '../api.js';
 import { wireModelCombo } from '../shared/model-combo.js';
 import { setBoardDispatchModelOptions } from '../board/board-dispatch.js';
-import { setLifeOsModelOptions } from '../life-os.js';
+import { setLifeOsModel, setLifeOsModelOptions } from '../life-os.js';
+import { syncLaunchPresets } from '../shared/launch-presets.js';
+import { renderLaunchPresetsEditor, wireLaunchPresets } from './launch-presets-settings.js';
 import { setSwitch, switchEl } from '../_vendored/switch/switch.js';
 import { setUsageShows } from '../usage-meter.js';
 import { renderSettingsValues } from './settings-sheets.js';
@@ -107,6 +109,18 @@ function modelGroups() {
   ].filter(function (group) { return (group.models || []).length; });
 }
 
+// A launch preset sets its model through each surface's own path: Coding saves
+// the pick like a hand pick, Life OS keeps it for this page.
+function chooseCodingModel(value) {
+  if (codingModelCombo) codingModelCombo.setValue(value);
+  selectCodingModel({ coding_model_choice: value });
+}
+
+const PRESET_SURFACES = [
+  { key: 'coding', comboId: 'codingModelCombo', select: chooseCodingModel },
+  { key: 'life', comboId: 'lifeOsModelCombo', select: setLifeOsModel, restore: true },
+];
+
 function renderSharedModelSelectors() {
   const config = state.config || {};
   let options = [];
@@ -123,6 +137,8 @@ function renderSharedModelSelectors() {
   if (codingModelCombo) codingModelCombo.setValue(config.coding_model_choice);
   setLifeOsModelOptions(options);
   setBoardDispatchModelOptions(boardOptions);
+  syncLaunchPresets(config, PRESET_SURFACES);
+  renderLaunchPresetsEditor();
 }
 
 // The list to write, read off the rendered switches (a fast second tap must
@@ -608,6 +624,7 @@ export function wireConfigSwitch(el, key, opts) {
 }
 
 export function wireClaudeOptions() {
+  wireLaunchPresets(patchConfig);
   codingModelCombo = wireModelCombo(
     document.getElementById('codingModelCombo'),
     function (v) { selectCodingModel({ coding_model_choice: v }); }

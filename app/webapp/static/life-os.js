@@ -37,6 +37,7 @@ import { avatar, chip } from './glance.js';
 import { confirmDialog } from './confirm-dialog.js';
 import { failedFetchState, setAsyncState } from './async-state.js';
 import { mountLaunchToolbar } from './launch-toolbar.js';
+import { presetEffortFor, presetNameFor } from './shared/launch-presets.js';
 import { listFilter } from './list-filter.js';
 import { openSettingsAt } from './tabs.js';
 import { renderChannelSetup } from './settings/telegram-setup.js';
@@ -114,6 +115,18 @@ export function setLifeOsModelOptions(items) {
 // 
 export function lifeOsModel() {
   return (lifeOsModelCombo && lifeOsModelCombo.getValue()) || 'claude:sonnet';
+}
+
+// A launch preset's model, set on the dropdown without a pick event.
+export function setLifeOsModel(value) {
+  if (lifeOsModelCombo) lifeOsModelCombo.setValue(value);
+}
+
+// What a launch of `model` adds to its payload and toast for the launch
+// preset in force: the effort to send, and " (<preset name>)" for the toast.
+function presetLaunch(model) {
+  const effort = presetEffortFor('life', model);
+  return { effort: effort, tag: effort ? ' (' + presetNameFor('life', model) + ')' : '' };
 }
 
 // ----------------------------------------------------------- skills list
@@ -621,6 +634,8 @@ async function launchRecap() {
   const mode = launchDetached() ? 'remote' : 'pty';
   const model = lifeOsModel();
   const payload = { mode: mode, model: model };
+  const preset = presetLaunch(model);
+  if (preset.effort) payload.effort = preset.effort;
   // A desktop browser launch gets a dedicated PC Edge --app window; the phone carries its real
   // terminal size so the PTY spawns at
   // the width the overlay will fit() to. Remote
@@ -636,7 +651,7 @@ async function launchRecap() {
       return terminalJsonApi('/api/life-os/recap/launch', { method: 'POST', body: payload });
     },
     done: function () {
-      return 'Launched weekly recap' + modelTag(model) + (mode === 'remote' ? ' (detached)' : '');
+      return 'Launched weekly recap' + (preset.tag || modelTag(model)) + (mode === 'remote' ? ' (detached)' : '');
     },
     failPrefix: 'Recap launch failed',
     unconfirmed: 'Recap launch not confirmed — check the session list before trying again.',
@@ -661,6 +676,8 @@ export async function launchSkill(s, opts) {
   const mode = launchDetached() ? 'remote' : 'pty';
   const model = lifeOsModel();
   const payload = { mode: mode, model: model, resume: picker };
+  const preset = presetLaunch(model);
+  if (preset.effort) payload.effort = preset.effort;
   // Same size contract as launchRecap. Remote
   // launches have no terminal/mirror, so it only matters for pty.
   if (mode !== 'remote') applyLaunchSizePayload(payload);
@@ -678,7 +695,7 @@ export async function launchSkill(s, opts) {
     },
     done: function () {
       return (picker ? 'Opening Claude’s session picker for ' + s.name
-        : 'Launched ' + s.name + modelTag(model)) +
+        : 'Launched ' + s.name + (preset.tag || modelTag(model))) +
         (mode === 'remote' ? ' (detached)' : '');
     },
     failPrefix: 'Launch failed',

@@ -135,6 +135,27 @@
           <div id="modelVisibility" class="toggles"></div>
         </div>
         <div class="opt-group">
+          <h3 class="opt-group-title">Launch presets</h3>
+          <p class="opt-hint">A named model with the effort it runs at, such as Opus at Extra high. The Coding and Life OS launch dropdowns offer each one beside Default; picking one sets the model and launches at its effort. Default keeps the model dropdown&rsquo;s pick and the saved effort.</p>
+          <ul id="launchPresetList" class="card-list launch-presets" aria-label="Launch presets"></ul>
+          <div class="opt-row">
+            <span class="opt-name">Name</span>
+            <input id="launchPresetName" type="text" class="input-native" maxlength="40" aria-label="New preset name" aria-describedby="launchPresetNameHelp" autocomplete="off" placeholder="Opus deep">
+          </div>
+          <p id="launchPresetNameHelp" class="field-help">What the launch dropdowns call it; up to 40 characters, each name used once.</p>
+          <div class="opt-row">
+            <span class="opt-name">Model</span>
+            <select data-track="launch-presets.model" id="launchPresetModel" class="select-native" aria-label="New preset model"></select>
+          </div>
+          <div class="opt-row">
+            <span class="opt-name">Effort</span>
+            <select data-track="launch-presets.effort" id="launchPresetEffort" class="select-native" aria-label="New preset effort"></select>
+          </div>
+          <div class="row launch-preset-add">
+            <button data-track="launch-presets.add" id="launchPresetAdd" type="button" class="button-tint">Add preset</button>
+          </div>
+        </div>
+        <div class="opt-group">
           <h3 class="opt-group-title">Per agent</h3>
           <div class="settings-group settings-group--nested">
             <button data-track="launch-defaults.claude-code" type="button" class="settings-row" data-agent-sheet="claude" aria-haspopup="dialog">
