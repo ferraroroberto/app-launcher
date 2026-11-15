@@ -595,8 +595,14 @@ async def session_links_list(
 
 
 @router.get("/api/claude-code/sessions/{sid}/changed-files")
-async def session_changed_files(sid: str, request: Request) -> Dict[str, Any]:
+async def session_changed_files(
+    sid: str, request: Request, before: Optional[int] = Query(default=None, ge=0),
+) -> Dict[str, Any]:
     """Every file this session's edits touched (Tailscale + passkey).
+
+    One request reads one window of the transcript: the newest, or the one
+    ending at ``before``, the ``next_cursor`` of the response after it (null
+    once the start is read), like Session links.
 
     Folded from the transcript, never ``git diff`` — see
     :mod:`src.session_view.changes` for why. Every agent with a transcript reader;
@@ -611,14 +617,14 @@ async def session_changed_files(sid: str, request: Request) -> Dict[str, Any]:
         return _unavailable(sid, reason)
     project_dir = str((session or {}).get("project_dir") or "") or None
     found, refusal = await _read_or_unavailable(
-        sid, agent, "changed files", asyncio.to_thread(changed_files, path, project_dir, flavor),
+        sid, agent, "changed files", asyncio.to_thread(changed_files, path, project_dir, flavor, before),
     )
     if refusal is not None:
         return refusal
     logger.info(
-        "ℹ️ changed files %s (%s): %d files, +%d -%d, partial=%s, project_exists=%s",
+        "ℹ️ changed files %s (%s): %d files, +%d -%d, window from byte %s, partial=%s, project_exists=%s",
         sid[:8], agent, len(found["files"]), found["counts"]["additions"],
-        found["counts"]["deletions"], found["partial"], found["project_exists"],
+        found["counts"]["deletions"], found["next_cursor"] or 0, found["partial"], found["project_exists"],
     )
     return {
         "available": True, "reason": None, "session_id": sid,
@@ -629,10 +635,11 @@ async def session_changed_files(sid: str, request: Request) -> Dict[str, Any]:
 @router.get("/api/claude-code/sessions/{sid}/changed-files/diff")
 async def session_changed_file_diff(
     sid: str, request: Request, path: str = Query(min_length=1),
+    since: Optional[int] = Query(default=None, ge=0),
 ) -> Dict[str, Any]:
     """One changed file's diff: each of this session's edits to it, in
     order (Tailscale + passkey). ``path`` is a ``key`` the list
-    handed out; a file the session never edited is ``file_not_found`` —
+    handed out; ``since`` the oldest ``next_cursor`` the panel loaded; a file the session never edited is ``file_not_found`` —
     nothing here reads the file system, only the transcript."""
     cfg: WebappConfig = request.app.state.webapp_config
     reason, flavor, source, agent, _why, session = await _resolve_source(sid, cfg)
@@ -641,7 +648,7 @@ async def session_changed_file_diff(
     project_dir = str((session or {}).get("project_dir") or "") or None
     found, refusal = await _read_or_unavailable(
         sid, agent, "changed file diff",
-        asyncio.to_thread(file_steps, source, path, flavor=flavor, project_dir=project_dir),
+        asyncio.to_thread(file_steps, source, path, flavor=flavor, project_dir=project_dir, since=since),
     )
     if refusal is not None:
         return refusal
@@ -656,7 +663,7 @@ async def session_changed_file_diff(
 
 
 async def _changed_file_target(
-    sid: str, request: Request, requested: str, what: str,
+    sid: str, request: Request, requested: str, what: str, since: Optional[int] = None,
 ) -> Tuple[Optional[str], Optional[Dict[str, Any]], str]:
     """``(target, refusal, agent)`` for a file the panel names: the absolute
     path when this session's edits touched it, else the unavailable body to
@@ -669,7 +676,7 @@ async def _changed_file_target(
     project_dir = str((session or {}).get("project_dir") or "") or None
     target, refusal = await _read_or_unavailable(
         sid, agent, f"changed file {what}",
-        asyncio.to_thread(changed_file_path, source, requested, flavor=flavor, project_dir=project_dir),
+        asyncio.to_thread(changed_file_path, source, requested, flavor=flavor, project_dir=project_dir, since=since),
     )
     if refusal is not None:
         return None, refusal, agent
@@ -682,6 +689,7 @@ async def _changed_file_target(
 @router.get("/api/claude-code/sessions/{sid}/changed-files/content")
 async def session_changed_file_content(
     sid: str, request: Request, path: str = Query(min_length=1),
+    since: Optional[int] = Query(default=None, ge=0),
 ) -> Dict[str, Any]:
     """One changed file as it is on disk now, for the panel's File view
     (Tailscale + passkey).
@@ -692,7 +700,7 @@ async def session_changed_file_content(
     ``deleted``, ``too_large`` (over 256 KB, with ``size``), ``not_text``
     and ``read_failed``. The text is never logged, nor the path.
     """
-    target, refusal, agent = await _changed_file_target(sid, request, path, "content")
+    target, refusal, agent = await _changed_file_target(sid, request, path, "content", since)
     if refusal is not None:
         return refusal
     try:
@@ -715,7 +723,9 @@ async def session_changed_file_content(
 
 
 @router.post("/api/claude-code/sessions/{sid}/changed-files/open")
-async def session_changed_file_open(sid: str, request: Request) -> Dict[str, Any]:
+async def session_changed_file_open(
+    sid: str, request: Request, since: Optional[int] = Query(default=None, ge=0),
+) -> Dict[str, Any]:
     """Open one changed file on the PC: in VS Code, else selected in
     Explorer — never the OS default handler, which would run a script.
 
@@ -731,7 +741,7 @@ async def session_changed_file_open(sid: str, request: Request) -> Dict[str, Any
     requested = str((body or {}).get("path") or "").strip()
     if not requested:
         raise HTTPException(status_code=400, detail="missing path")
-    target, refusal, agent = await _changed_file_target(sid, request, requested, "open")
+    target, refusal, agent = await _changed_file_target(sid, request, requested, "open", since)
     if refusal is not None:
         return {**refusal, "opened": False}
     if not await asyncio.to_thread(os.path.isfile, target):

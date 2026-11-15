@@ -38,6 +38,7 @@ import { createRowMenu } from '../_vendored/row-menu/row-menu.js';
 import { fileBadge, fileCounts, fileKey, fileName } from '../chat/edited-card.js';
 import { previewKind, renderFileView, windowsPath } from './file-view.js';
 import { openTextPreview } from '../lightbox.js';
+import { mergeOlder, olderLine } from './changes-merge.js';
 import { onThePc } from '../chat/transcript-render.js';
 
 // Why a session's Changed files could not be read, in the panel's words.
@@ -99,6 +100,13 @@ function noteLargeDiff(body) {
 // the bearer token like the rest of the Coding tab.
 async function sessionApi(path, opts) {
   return terminalJsonApi(sessionRoute(view.sid, path), opts);
+}
+
+// Once older chunks of a long transcript are loaded, a file's diff, content
+// and Open on PC read as far back as the list does, so a file that only an
+// older chunk holds opens too (`view.since`: the oldest chunk's cursor).
+function sinceParam(sep) {
+  return view && view.since != null ? sep + 'since=' + view.since : '';
 }
 
 // `diff --git` and `index` headers repeat what the row already says; every
@@ -188,7 +196,7 @@ async function loadSessionDiff(file, body) {
   const seq = view.seq;
   let res;
   try {
-    res = await sessionApi('/changed-files/diff?path=' + encodeURIComponent(file.key));
+    res = await sessionApi('/changed-files/diff?path=' + encodeURIComponent(file.key) + sinceParam('&'));
   } catch (exc) {
     res = null;
   }
@@ -352,7 +360,7 @@ function fullPathLine(full) {
 async function openOnPc(file) {
   let res;
   try {
-    res = await sessionApi('/changed-files/open', { method: 'POST', body: { path: requestPath(file) } });
+    res = await sessionApi('/changed-files/open' + sinceParam('?'), { method: 'POST', body: { path: requestPath(file) } });
   } catch (exc) {
     apiFailToast('Couldn’t open it on the PC', exc);
     return;
@@ -417,7 +425,7 @@ function sessionFileBody(file, body) {
   let fileText = null;
   function read() {
     if (!pending) {
-      pending = sessionApi('/changed-files/content?path=' + encodeURIComponent(requestPath(file)))
+      pending = sessionApi('/changed-files/content?path=' + encodeURIComponent(requestPath(file)) + sinceParam('&'))
         .catch(function () { return null; })
         .then(function (res) {
           if (res && res.available) fileText = res.text || '';
@@ -721,7 +729,7 @@ function renderTurn() {
 
 // One flat list: a session's files are all "what this session changed", so
 // there is nothing to group, and the summary names the source it read.
-function renderSession(body) {
+function renderSession(body, refocus) {
   const list = els.changesList;
   list.innerHTML = '';
   const files = body.files || [];
@@ -735,9 +743,7 @@ function renderSession(body) {
   const summary = summaryLine(files, body.counts || {}, tail);
   list.appendChild(summary);
   if (view.turn) list.appendChild(scopeSwitch());
-  if (body.partial) {
-    list.insertAdjacentHTML('beforeend', note('A very long transcript: only its newest part was read'));
-  }
+  if (body.partial) list.appendChild(olderLine(body.loading, function () { loadOlder(); }));
   if (!body.project_exists) {
     list.insertAdjacentHTML('beforeend',
       note('The project folder is gone, so deleted files can’t be told apart'));
@@ -747,7 +753,38 @@ function renderSession(body) {
   if (files.length > FILTER_ABOVE_ROWS) {
     built.wrap.before(fileFilter(files, built, summary, body.counts || {}, tail));
   }
-  showFocus(files, built.rows);
+  if (refocus !== false) showFocus(files, built.rows);
+}
+
+async function loadOlder() {
+  const state = view && view.session;
+  if (!state || state.next_cursor == null || state.loading) return;
+  const seq = view.seq;
+  const box = els.changesList.parentElement;
+  const top = box ? box.scrollTop : 0;
+  const redraw = function () {
+    renderSession(state, false);
+    if (box) box.scrollTop = top;
+  };
+  state.loading = true;
+  redraw();
+  let body;
+  try {
+    body = await sessionApi('/changed-files?before=' + state.next_cursor);
+  } catch (exc) {
+    body = null;
+    if (view && view.seq === seq) apiFailToast('Couldn’t load older edits', exc);
+  }
+  if (!view || view.seq !== seq) return;
+  state.loading = false;
+  if (body && body.available) {
+    mergeOlder(state, body);
+    state.counts = sumCounts(state.files);
+    view.since = state.next_cursor == null ? 0 : state.next_cursor;
+  } else if (body) {
+    toast('Couldn’t load older edits');
+  }
+  redraw();
 }
 
 async function loadProject(seq) {
@@ -780,12 +817,16 @@ async function loadSession(seq) {
     showState(icon('file-diff') + '<div>' + escapeHtml(why) + '</div>');
     return;
   }
+  view.session = body;
+  view.since = null;
   renderSession(body);
 }
 
 function load() {
   if (!view) return;
   const seq = ++view.seq;
+  view.session = null;
+  view.since = null;
   fileMenu.close();   // the rows are rebuilt below
   els.changesList.innerHTML = '';
   if (view.kind === 'session' && view.scope === 'turn') renderTurn();

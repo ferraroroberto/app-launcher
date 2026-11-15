@@ -21,8 +21,12 @@ carry no line numbers (:mod:`._shared`).
 
 Bounded work per request: the Claude scan reads at most :data:`SCAN_CEILING`
 bytes; the builder fold at most :data:`FLAVOR_SCAN_CEILING`, in windows of
-:data:`FLAVOR_WINDOW` so memory stays flat. Both keep the *newest* part of the
-file and report ``partial`` when they cut. Measured on the dev box: the
+:data:`FLAVOR_WINDOW` so memory stays flat. Both read the *newest* part of the
+file and report ``partial`` with a ``next_cursor`` when they cut; passing it
+back as ``before`` reads the next older window, so a long transcript is
+paged back to its start. The per-file reads (a diff, the jail) take ``since``,
+the oldest cursor the panel has loaded, so a file found in an older window
+opens too. Measured on the dev box: the
 largest Codex rollout, 33.8 MB, builds whole in 0.22 s (~6.5 ms/MB), so the
 64 MiB ceiling is ~0.4 s at worst; no rollout there passes it.
 
@@ -78,20 +82,47 @@ def _key(path: str) -> str:
     return path.replace("\\", "/").rstrip("/").lower()
 
 
-def _claude_edits(path: Path, needle: Optional[bytes] = None) -> Tuple[Iterator[Edit], bool]:
-    """``(edits, partial)``: every successful recorded edit in file order,
-    and whether the file was bigger than :data:`SCAN_CEILING` so only its
-    newest part is read. ``needle`` pre-filters raw lines before parsing
-    (one file's diff)."""
+def _line_start(path: Path, start: int) -> int:
+    """The first line boundary at or after byte ``start``: ``start`` itself
+    when it sits on one (the byte before is a newline), else the start of
+    the next line, so a window that lands mid-line drops only that torn
+    line's head — it belongs to the older window ending here."""
+    if start <= 0:
+        return 0
+    with path.open("rb") as fh:
+        fh.seek(start - 1)
+        return start - 1 + len(fh.readline())
+
+
+def _span(path: Path, ceiling: int, before: Optional[int], since: Optional[int]) -> Tuple[int, int]:
+    """``(first, end)``: the bytes one request reads. ``end`` is ``before``
+    (the ``next_cursor`` of the window after it) or the file's end; the start
+    is ``since`` when the caller names it (every window the panel has loaded),
+    else ``ceiling`` bytes back. ``first`` is the first whole line there, and
+    — unless that line is past ``end`` — the cursor of the next older window."""
     size = path.stat().st_size
-    start = max(0, size - SCAN_CEILING)
+    end = size if before is None else max(0, min(before, size))
+    start = max(0, min(since, end)) if since is not None else max(0, end - ceiling)
+    first = _line_start(path, start)
+    return (first if first < end else start), end
+
+
+def _claude_edits(path: Path, needle: Optional[bytes] = None, before: Optional[int] = None,
+                  since: Optional[int] = None) -> Tuple[Iterator[Edit], int]:
+    """``(edits, offset)``: every successful recorded edit in file order from
+    ``offset`` on (at most :data:`SCAN_CEILING` bytes ending at ``before``, or
+    from ``since``); a non-zero ``offset`` means older lines were not read.
+    ``needle`` pre-filters raw lines before parsing (one file's diff)."""
+    first, end = _span(path, SCAN_CEILING, before, since)
 
     def walk() -> Iterator[Edit]:
         with path.open("rb") as fh:
-            fh.seek(start)
-            if start:
-                fh.readline()   # the ceiling landed mid-line: skip the torn part
+            fh.seek(first)
+            pos = first
             for raw in fh:
+                if pos >= end:
+                    break
+                pos += len(raw)
                 if _EDIT_MARKER not in raw or (needle is not None and needle not in raw):
                     continue
                 obj = _loads(raw.decode("utf-8", errors="replace"))
@@ -107,20 +138,21 @@ def _claude_edits(path: Path, needle: Optional[bytes] = None) -> Tuple[Iterator[
                     added, removed = diff_counts(edit[1])
                     yield Edit(edit[0], edit[1], edit[2], obj.get("timestamp"), added=added, removed=removed)
 
-    return walk(), start > 0
+    return walk(), first
 
 
-def _windows(path: Path, start: int) -> Iterator[List[Tuple[int, str]]]:
-    """The complete lines of ``path`` from byte ``start`` on, as ``(byte
-    offset, text)`` in groups of about :data:`FLAVOR_WINDOW` bytes."""
+def _windows(path: Path, first: int, end: int) -> Iterator[List[Tuple[int, str]]]:
+    """The complete lines of ``path`` from the line boundary ``first`` up to
+    byte ``end``, as ``(byte offset, text)`` in groups of about
+    :data:`FLAVOR_WINDOW` bytes."""
     with path.open("rb") as fh:
-        fh.seek(start)
-        pos = start
-        if start:
-            pos += len(fh.readline())   # the ceiling landed mid-line: skip the torn part
+        fh.seek(first)
+        pos = first
         chunk: List[Tuple[int, str]] = []
         used = 0
         for raw in fh:
+            if pos >= end:
+                break
             offset, pos = pos, pos + len(raw)
             if not raw.strip():
                 continue
@@ -133,19 +165,21 @@ def _windows(path: Path, start: int) -> Iterator[List[Tuple[int, str]]]:
             yield chunk
 
 
-def _flavor_edits(path: Path, flavor: str) -> Tuple[Iterator[Edit], bool]:
-    """``(edits, partial)`` from the flavour's own entry builder, in file
-    order. A call's outcome can sit in the next window, so a
-    successful-looking edit with no result yet is held back and its lines
-    are read again with that window — never split from its result."""
+def _flavor_edits(path: Path, flavor: str, before: Optional[int] = None,
+                  since: Optional[int] = None) -> Tuple[Iterator[Edit], int]:
+    """``(edits, offset)`` from the flavour's own entry builder, in file
+    order, bounded like :func:`_claude_edits`. A call's outcome can sit in the
+    next window, so a successful-looking edit with no result yet is held back
+    and its lines are read again with that window — never split from its
+    result. A call whose result lies past ``before`` has none here and counts
+    as made, like a call the transcript ends on."""
     build = FLAVORS[flavor][0]
-    size = path.stat().st_size
-    start = max(0, size - FLAVOR_SCAN_CEILING)
+    first, end = _span(path, FLAVOR_SCAN_CEILING, before, since)
 
     def walk() -> Iterator[Edit]:
         carried: List[Tuple[int, str]] = []
         seen: Set[Tuple[int, int]] = set()
-        windows = _windows(path, start)
+        windows = _windows(path, first, end)
         window = next(windows, None)
         while window is not None:
             following = next(windows, None)
@@ -175,7 +209,7 @@ def _flavor_edits(path: Path, flavor: str) -> Tuple[Iterator[Edit], bool]:
             carried = [line for line in lines if waiting is not None and line[0] >= waiting]
             window = following
 
-    return walk(), start > 0
+    return walk(), first
 
 
 def _edit_of(action: Dict[str, Any], ts: Any) -> Optional[Edit]:
@@ -209,12 +243,12 @@ def _resolved(path: str, project: Optional[str], flavor: str) -> str:
     return posixpath.normpath(project.replace("\\", "/").rstrip("/") + "/" + path.replace("\\", "/"))
 
 
-def _edits(path: Path, flavor: str, project: Optional[str],
-           needle: Optional[bytes] = None) -> Tuple[Iterator[Edit], bool]:
+def _edits(path: Path, flavor: str, project: Optional[str], needle: Optional[bytes] = None,
+           before: Optional[int] = None, since: Optional[int] = None) -> Tuple[Iterator[Edit], int]:
     if flavor == "claude":
-        return _claude_edits(path, needle)
-    edits, partial = _flavor_edits(path, flavor)
-    return (e._replace(path=_resolved(e.path, project, flavor)) for e in edits), partial
+        return _claude_edits(path, needle, before, since)
+    edits, offset = _flavor_edits(path, flavor, before, since)
+    return (e._replace(path=_resolved(e.path, project, flavor)) for e in edits), offset
 
 
 def _display(path: str, project: Optional[str]) -> str:
@@ -228,8 +262,16 @@ def _display(path: str, project: Optional[str]) -> str:
     return shown
 
 
-def changed_files(path: Path, project_dir: Optional[str], flavor: str = "claude") -> Dict[str, Any]:
+def changed_files(path: Path, project_dir: Optional[str], flavor: str = "claude",
+                  before: Optional[int] = None) -> Dict[str, Any]:
     """Every file the session's edits touched, folded per file.
+
+    One call reads one window of the transcript: the newest, or the one that
+    ends at ``before`` (the ``next_cursor`` of the window after it). The
+    answer's ``next_cursor`` is the byte offset the window starts at, to pass
+    back as ``before`` for the next older one, and None once the start of the
+    transcript is read. A file edited in several windows is a row in each,
+    with that window's counts; the caller merges them.
 
     ``files`` rows are ``{path, key, status, additions, deletions, steps}``:
     ``path`` is what the panel shows, ``key`` the recorded path the diff
@@ -239,7 +281,7 @@ def changed_files(path: Path, project_dir: Optional[str], flavor: str = "claude"
     still there (with the folder gone, a missing file says nothing, so
     nothing is marked). A later edit of a deleted file makes it ``M`` again.
     """
-    edits, partial = _edits(path, flavor, project_dir)
+    edits, offset = _edits(path, flavor, project_dir, before=before)
     files: Dict[str, Dict[str, Any]] = {}
     for edit in edits:
         row = files.get(_key(edit.path))
@@ -268,23 +310,27 @@ def changed_files(path: Path, project_dir: Optional[str], flavor: str = "claude"
             "additions": sum(r["additions"] for r in rows),
             "deletions": sum(r["deletions"] for r in rows),
         },
-        "partial": partial,
+        "partial": offset > 0,
+        "next_cursor": offset or None,
         "project_exists": project_exists,
     }
 
 
 def file_steps(path: Path, key: str, max_bytes: int = DIFF_FULL_BYTES,
-               flavor: str = "claude", project_dir: Optional[str] = None) -> Optional[Dict[str, Any]]:
+               flavor: str = "claude", project_dir: Optional[str] = None,
+               since: Optional[int] = None) -> Optional[Dict[str, Any]]:
     """The diffs of every edit the session made to ``key``, in order, all
     together capped at ``max_bytes``; None when the session never edited
-    that file (so only a path the list handed out is ever answered)."""
+    that file (so only a path the list handed out is ever answered).
+    ``since`` is the oldest ``next_cursor`` the panel has loaded: the read
+    covers everything the list does, not just the newest window."""
     # The recorded path as it sits in the JSON line, to skip every other
     # edit before parsing. Only when it round-trips as plain ASCII: a line
     # may hold non-ASCII raw or \u-escaped, and a missed match would drop
     # a real step — without the needle every edit line is parsed instead.
     escaped = json.dumps(key)[1:-1]
     needle = escaped.encode("ascii") if escaped.isascii() and "\\u" not in escaped else None
-    edits, partial = _edits(path, flavor, project_dir, needle)
+    edits, offset = _edits(path, flavor, project_dir, needle, since=since)
     target = _key(key)
     steps: List[Dict[str, Any]] = []
     budget = max_bytes
@@ -307,7 +353,7 @@ def file_steps(path: Path, key: str, max_bytes: int = DIFF_FULL_BYTES,
             truncated = True
     if not found:
         return None
-    return {"steps": steps, "truncated": truncated, "partial": partial}
+    return {"steps": steps, "truncated": truncated, "partial": offset > 0}
 
 
 # ------------------------------------------------------------- the file itself
@@ -337,7 +383,7 @@ class FileRefusal(Exception):
 
 
 def changed_file_path(path: Path, requested: str, flavor: str = "claude",
-                      project_dir: Optional[str] = None) -> Optional[str]:
+                      project_dir: Optional[str] = None, since: Optional[int] = None) -> Optional[str]:
     """The absolute path of the file ``requested`` names, when this session's
     edits touched it; None otherwise.
 
@@ -351,7 +397,7 @@ def changed_file_path(path: Path, requested: str, flavor: str = "claude",
     # No raw-line needle (unlike file_steps): a Chat step's spelling of the
     # path may differ in case or slashes from the line, and a miss here would
     # refuse a file the session did edit. The fold costs the same as the list.
-    edits, _partial = _edits(path, flavor, project_dir)
+    edits, _offset = _edits(path, flavor, project_dir, since=since)
     # The first spelling, as the list's ``key`` keeps it: a later step may
     # record the same file in another case or with other slashes.
     found = next((edit.path for edit in edits if _key(edit.path) == target), None)
