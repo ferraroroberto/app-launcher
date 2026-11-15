@@ -104,6 +104,7 @@
   margin-bottom: 10px;
 }
 .opt-row .select-native { flex: 1; }
+.opt-row .input-native { flex: 1; min-width: 0; }
 .opt-row .model-combo { flex: 1; min-width: 0; }
 .model-combo--settings .model-combo-trigger {
   flex: 1;
