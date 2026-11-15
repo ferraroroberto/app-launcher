@@ -44,6 +44,7 @@ from src.launching.model_catalog import (
     DEFAULT_HIDDEN_MODELS,
     load_hidden_models, migrate_renamed_models, with_visible_defaults,
 )
+from src.launching.presets import load_launch_presets
 from src.restart_window import DEFAULT_END, DEFAULT_START, validate_window
 from src import runtime_files
 from src.usage.providers import DEFAULT_USAGE_PROVIDERS, load_usage_providers
@@ -153,6 +154,10 @@ class WebappConfig:
     coding_hidden_agents: list = field(default_factory=list)
     # Provider-qualified models the dropdowns leave out (`src.launching.model_catalog`).
     hidden_models: list = field(default_factory=lambda: list(DEFAULT_HIDDEN_MODELS))
+    # Named model + effort shortcuts the Coding and Life OS launch dropdowns
+    # offer beside "Default" (`src.launching.presets`): a list of
+    # {id, name, agent, model, effort} rows.
+    launch_presets: list = field(default_factory=list)
     # The one agent whose launch button stays on a Coding project row.
     # Every other visible agent — and the GitHub-issues
     # button — moved into the row's ⋯ menu, so the row is three controls
@@ -627,6 +632,7 @@ _CUSTOM_LOADERS: Dict[str, Callable[[dict], Any]] = {
     "pi_model_efforts": _load_pi_model_efforts,
     "usage_providers": load_usage_providers,
     "hidden_models": load_hidden_models,
+    "launch_presets": load_launch_presets,
 }
 
 

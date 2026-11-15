@@ -103,6 +103,7 @@ async def _spawn_skill_session(
     resume_sid: str = "",
     label: str = "",
     mirror: bool = True,
+    effort: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Spawn a Claude or Codex session in life-os and shape the reply.
 
@@ -112,7 +113,8 @@ async def _spawn_skill_session(
     response fields. The caller prepends its own ``launched`` id. ``label``
     tags the session with a role (``telegram:<profile>``); ``""``
     for every other launch. ``request`` is ``None`` (and ``mirror`` off) only
-    for the Telegram boot-time autostart, which no client asked for.
+    for the Telegram boot-time autostart, which no client asked for. ``effort``
+    is a launch preset's, echoed back when set.
     """
     # The phone passes its real terminal size: a skill streams
     # output the moment the PTY spawns, so spawning at the legacy 40×120
@@ -144,4 +146,5 @@ async def _spawn_skill_session(
         "resume": resume,
         "resume_sid": resume_sid,
         "session": session,
+        **({"effort": effort} if effort else {}),
     }

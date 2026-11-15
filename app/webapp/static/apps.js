@@ -15,6 +15,7 @@ import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
 import { renderHomeHead } from './home-head.js';
 import { fmtAgo } from './sessions.js';
 import { applyLaunchSizePayload } from './shared/launch-size.js';
+import { presetEffortFor } from './launch-presets.js';
 import { handleLaunchResponse } from './terminal.js';
 import { SensitiveOutcome, runSensitiveAction } from './shared/sensitive-action.js';
 import { switchEl } from './_vendored/switch/switch.js';
@@ -324,6 +325,9 @@ export async function launchApp(a, agentId, stealth) {
       } else if (payload.agent === 'codex' && state.config && state.config.codex) {
         payload.model = 'codex:' + state.config.codex.model;
       }
+      // A launch preset in force for this model adds its effort.
+      const presetEffort = payload.model ? presetEffortFor('coding', payload.model) : '';
+      if (presetEffort) payload.effort = presetEffort;
     }
     else if (stealth) payload.stealth = true;
     // Streamed (pty) coding launches need a starting PTY size. Detached
@@ -357,6 +361,7 @@ export async function launchApp(a, agentId, stealth) {
         // A stealth launch leaves nothing on screen to confirm it worked, so
         // the toast is the only feedback — say the mode out loud.
         return (resume ? 'Resumed ' : 'Launched ') + a.name + agentTag +
+          (reply.effort ? ' (' + reply.effort + ')' : '') +
           (mode === 'remote' ? ' (detached)' : '') +
           (stealth ? ' (stealth)' : '');
       },

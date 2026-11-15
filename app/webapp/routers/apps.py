@@ -22,6 +22,7 @@ from app.webapp.routers._helpers import (
     audit_session_start_and_maybe_mirror,
     client_ip,
     maybe_json,
+    requested_launch_effort,
     safe_int,
     spawn_launcher_session,
     spawn_session_or_400,
@@ -343,7 +344,8 @@ async def _launch_coding(entry: AppEntry, cfg: WebappConfig, request: Request) -
         )
     await _refuse_if_behind(entry, body)
     model_value = _validated_launch_model(agent, requested_model)
-    flags = _coding_flags(cfg, agent, resume, model_value)
+    effort = requested_launch_effort(body, agent, model_value)
+    flags = _coding_flags(cfg, agent, resume, model_value, effort)
 
     if mode == "remote":
         session = await spawn_session_or_400(
@@ -372,6 +374,7 @@ async def _launch_coding(entry: AppEntry, cfg: WebappConfig, request: Request) -
             "agent": agent,
             "mode": "remote",
             "session": session,
+            **({"effort": effort} if effort else {}),
         }
 
     session, sid = await spawn_launcher_session(
@@ -391,6 +394,7 @@ async def _launch_coding(entry: AppEntry, cfg: WebappConfig, request: Request) -
         "agent": agent,
         "mode": "pty",
         "session": session,
+        **({"effort": effort} if effort else {}),
     }
 
 
@@ -449,19 +453,28 @@ def _validated_launch_model(agent: str, requested_model: str) -> str:
     return model_value
 
 
-def _coding_flags(cfg: WebappConfig, agent: str, resume: bool, model_value: str) -> List[str]:
-    """The agent's CLI flags for a Coding launch, or its resume invocation."""
+def _coding_flags(
+    cfg: WebappConfig, agent: str, resume: bool, model_value: str,
+    effort: Optional[str] = None,
+) -> List[str]:
+    """The agent's CLI flags for a Coding launch, or its resume invocation.
+
+    ``effort`` is a launch preset's, already checked against the model."""
     if resume:
         # Swap the normal flags for the agent's resume invocation; the
         # requested `mode` decides where its picker renders — a detached
         # console (mode="remote") or a streamed PTY.
         return build_resume_flags(
-            cfg, agent, model_override=model_value or None
+            cfg, agent, model_override=model_value or None, effort_override=effort
         )
     if agent == "claude":
-        return build_claude_flags(cfg, model_override=model_value or None)
+        return build_claude_flags(
+            cfg, model_override=model_value or None, effort_override=effort
+        )
     if agent == "codex":
-        return build_codex_flags(cfg, model_override=model_value or None)
+        return build_codex_flags(
+            cfg, model_override=model_value or None, effort_override=effort
+        )
     return _NO_MODEL_FLAG_BUILDERS[agent](cfg)
 
 

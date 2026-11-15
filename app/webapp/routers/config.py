@@ -36,6 +36,7 @@ from src.launching.model_catalog import (
     PI_MODEL_SPECS,
     catalog_payload,
 )
+from src.launching.presets import checked_launch_presets
 from src.middleware import terminal_reachability
 from src.session_view import outbox as session_outbox
 from src.usage.providers import VALID_USAGE_PROVIDERS, validate_usage_providers
@@ -80,6 +81,8 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "coding_model_choice": cfg.coding_model_choice,
         # Models the Projects, Skills and Board dropdowns leave out.
         "hidden_models": cfg.hidden_models,
+        # Named model + effort shortcuts in the Coding and Life OS launch dropdowns.
+        "launch_presets": cfg.launch_presets,
         # Telegram channel sessions leave the Board and session list.
         "hide_channel_sessions": cfg.hide_channel_sessions,
         # Where the SPA opens a session: the PC window, and Chat first.
@@ -307,6 +310,7 @@ _PATCH_KEYS = frozenset({
     "coding_favorite_agent",
     "coding_model_choice",
     "hidden_models",
+    "launch_presets",
     "hide_channel_sessions",
     "open_sessions_in_window",
     "open_sessions_in_chat",
@@ -377,6 +381,11 @@ async def patch_config(request: Request) -> Dict[str, Any]:
     for key in ("coding_hidden_agents", "hidden_models"):
         if key in patch:
             patch[key] = [str(p).strip() for p in (patch[key] or []) if str(p).strip()]
+    if "launch_presets" in patch:
+        try:
+            patch["launch_presets"] = checked_launch_presets(patch["launch_presets"])
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
     if "usage_providers" in patch:
         patch["usage_providers"] = _checked_usage_providers(patch["usage_providers"])
     # The threshold is a whole percent. A bool is an int in Python
