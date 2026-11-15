@@ -79,10 +79,8 @@ async def get_config(request: Request) -> Dict[str, Any]:
         # every other visible one is a row in that row's ⋯ menu.
         "coding_favorite_agent": cfg.coding_favorite_agent,
         "coding_model_choice": cfg.coding_model_choice,
-        # Models the Projects, Skills and Board dropdowns leave out.
-        "hidden_models": cfg.hidden_models,
-        # Named model + effort shortcuts in the Coding and Life OS launch dropdowns.
-        "launch_presets": cfg.launch_presets,
+        # Models the Projects, Skills and Board dropdowns leave out; the named model + effort presets they offer.
+        "hidden_models": cfg.hidden_models, "launch_presets": cfg.launch_presets,
         # Telegram channel sessions leave the Board and session list.
         "hide_channel_sessions": cfg.hide_channel_sessions,
         # Where the SPA opens a session: the PC window, and Chat first.
@@ -270,6 +268,16 @@ def _checked_outbox_roots(raw: Any, current: List[str]) -> List[str]:
     return entries
 
 
+def _checked_presets(raw: Any) -> List[Dict[str, str]]:
+    """The written launch presets, clean, with an id each; 400 on one the
+    catalog does not offer. Checked on write only: a saved row whose model later
+    leaves the catalog must still load."""
+    try:
+        return checked_launch_presets(raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 def _checked_usage_providers(raw: Any) -> List[str]:
     """The written provider list in card order, whatever order the client
     sent; 400 on an unknown name. Checked here rather than in _validate: the
@@ -382,10 +390,7 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         if key in patch:
             patch[key] = [str(p).strip() for p in (patch[key] or []) if str(p).strip()]
     if "launch_presets" in patch:
-        try:
-            patch["launch_presets"] = checked_launch_presets(patch["launch_presets"])
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
+        patch["launch_presets"] = _checked_presets(patch["launch_presets"])
     if "usage_providers" in patch:
         patch["usage_providers"] = _checked_usage_providers(patch["usage_providers"])
     # The threshold is a whole percent. A bool is an int in Python
