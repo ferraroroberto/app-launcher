@@ -105,6 +105,16 @@ def _long_chip_gives_way(page: Page, chip) -> None:
     assert not geo["textCut"], f"the repo and number are cut: {geo}"
     assert geo["chipCut"], f"the chip should be what ends in an ellipsis: {geo}"
 
+    # A long repo name too: the text may now ellipsize, the date still stays whole.
+    tight = stable_eval(chip, """chip => {
+      const el = chip.closest('li');
+      el.querySelector('.action-row-meta-text').textContent = 'grocery-shopping-automation #497';
+      const main = el.querySelector('.action-row-main').getBoundingClientRect();
+      const stamp = el.querySelector('.board-card-stamp').getBoundingClientRect();
+      return {mainRight: main.right, stampRight: stamp.right};
+    }""")
+    assert tight["stampRight"] <= tight["mainRight"] + 1, f"the date runs past the row: {tight}"
+
 
 def test_backlog_buckets_count_fold_and_name_the_plan_groups(
     authed_page: Page, base_url: str, tmp_path

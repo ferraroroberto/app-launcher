@@ -559,13 +559,13 @@ span.chief-answer-ref { color: var(--muted); }
    part that gets cut (LAYOUT-09) while a long repo name still ellipsizes. */
 .board-card-stamp { flex: none; white-space: nowrap; }
 /* A Backlog row's bucket chip (`blocked by ...`, `after ...`) is the one chip
-   that gives way: it takes the whole shortfall and ends in its own ellipsis, so
-   the repo, number and date beside it stay whole. The text keeps only a sliver
-   of shrink for a row with a long repo name and a claim chip as well. */
-.board-item-issue .action-row-meta:has(.board-bucket-chip) .action-row-meta-text { flex: 0 0.001 auto; }
+   that gives way: its shrink weight dwarfs the meta text's, so it takes the
+   shortfall first and ends in its own ellipsis, and the repo and number stay
+   whole. At its minimum width the text then ellipsizes as before, never the
+   date. */
 .board-item-issue .board-bucket-chip {
   display: block;
-  flex: 0 1 auto;
+  flex: 0 1000 auto;
   min-width: 6ch;
   overflow: hidden;
   text-overflow: ellipsis;
