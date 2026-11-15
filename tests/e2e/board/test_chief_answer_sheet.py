@@ -404,63 +404,41 @@ def test_answer_sheet_other_fields_dictate_into_the_draft(
     }], posts
 
 
-def open_sheet_with_answer(page: Page, base_url: str, tmp_path, length: int) -> None:
-    """Open the answer sheet over the shared questions and type *length* characters into the first Other field."""
+# One question beyond the shared ones: a multi-select with two recommended options.
+_WITH_MULTI = _QUESTIONS + [
+    {"id": "q-multi", "text": "Which apps?", "question": "Which apps?", "multi": True,
+     "options": [{"label": "A", "recommended": True}, {"label": "B"},
+                 {"label": "C", "recommended": True}]},
+]
+
+
+def open_sheet_with_answer(page: Page, base_url: str, tmp_path, length: int | None) -> None:
+    """Open the answer sheet and, given *length*, type that many characters into the first Other field."""
     _mock_board(page, _board_payload(with_chief=True))
-    _route_plan_from(page, {"plan": _plan_with(tmp_path, _QUESTIONS)})
+    _route_plan_from(page, {"plan": _plan_with(tmp_path, _WITH_MULTI)})
     _route_voice(page, False)
     with page.expect_response(re.compile(r".*/api/status$")):
         _open_board(page, base_url)
     page.locator("#boardChiefPlan .board-plan-answer").click()
+    if length is None:
+        return
     field = page.locator("#chiefAnswersDialog .chief-answer").nth(0).locator(".tr-ask-input")
     field.fill(("word " * (length // 5 + 1))[:length].strip() + "x")
 
 
-def test_a_long_answer_is_kept_whole_and_names_its_limit(
+def test_done_alone_sends_the_recommendations_and_a_long_answer_is_kept_whole(
     authed_page: Page, base_url: str, tmp_path
 ) -> None:
-    """A dictated answer is not cut at 500: 5,000 characters stay in the field and ride the one
+    """#2382: a sheet the owner agrees with is one tap. Each recommended option starts picked
+    (every recommended one on a multi-select, none where the recommendation marks no option), so
+    Done straight after opening sends them all in one message; the rest go as skipped.
+
+    A dictated answer is not cut at 500: 5,000 characters stay in the field and ride the one
     message whole, with no limit line far from the cap. Near the cap the field says how many
     characters are left, before Done."""
     posts = _capture_chief_input(authed_page)
     _mock_ensure(authed_page, {})
-    open_sheet_with_answer(authed_page, base_url, tmp_path, 5000)
-    dialog = authed_page.locator("#chiefAnswersDialog")
-    field = dialog.locator(".chief-answer").nth(0).locator(".tr-ask-input")
-    assert len(field.input_value()) == 5000
-    count = dialog.locator(".chief-answer").nth(0).locator(".tr-ask-count")
-    expect(count).to_be_hidden()
-
-    dialog.locator("#chiefAnswersDone").click()
-    expect(authed_page.locator("#toast")).to_contain_text("Sent to chief")
-    sent = posts[0]["data"]
-    assert ("word " * 1001)[:4999].strip() + "x" in sent, "the 5,000-character answer must arrive whole"
-
-    authed_page.reload()
-    open_sheet_with_answer(authed_page, base_url, tmp_path, 19500)
-    expect(count).to_have_text("500 characters left")
-
-
-def test_done_alone_sends_every_recommended_answer(
-    authed_page: Page, base_url: str, tmp_path
-) -> None:
-    """#2382: a sheet the owner agrees with is one tap. Each recommended option
-    starts picked (every recommended one on a multi-select, none where the
-    recommendation marks no option), so Done straight after opening sends them
-    all in one message; the rest go as skipped."""
-    questions = _QUESTIONS + [
-        {"id": "q-multi", "text": "Which apps?", "question": "Which apps?", "multi": True,
-         "options": [{"label": "A", "recommended": True}, {"label": "B"},
-                     {"label": "C", "recommended": True}]},
-    ]
-    _mock_board(authed_page, _board_payload(with_chief=True))
-    _route_plan_from(authed_page, {"plan": _plan_with(tmp_path, questions)})
-    _mock_ensure(authed_page, {})
-    posts = _capture_chief_input(authed_page)
-    _route_voice(authed_page, False)
-    _open_board(authed_page, base_url)
-
-    authed_page.locator("#boardChiefPlan .board-plan-answer").click()
+    open_sheet_with_answer(authed_page, base_url, tmp_path, None)
     dialog = authed_page.locator("#chiefAnswersDialog")
     expect(dialog.locator(".chief-answer")).to_have_count(4)
     dialog.locator("#chiefAnswersDone").click()
@@ -474,3 +452,19 @@ def test_done_alone_sends_every_recommended_answer(
         ),
         "submit": True,
     }], posts
+
+    authed_page.reload()
+    open_sheet_with_answer(authed_page, base_url, tmp_path, 5000)
+    field = dialog.locator(".chief-answer").nth(0).locator(".tr-ask-input")
+    assert len(field.input_value()) == 5000
+    count = dialog.locator(".chief-answer").nth(0).locator(".tr-ask-count")
+    expect(count).to_be_hidden()
+
+    dialog.locator("#chiefAnswersDone").click()
+    expect(authed_page.locator("#toast")).to_contain_text("Sent to chief")
+    sent = posts[1]["data"]
+    assert ("word " * 1001)[:4999].strip() + "x" in sent, "the 5,000-character answer must arrive whole"
+
+    authed_page.reload()
+    open_sheet_with_answer(authed_page, base_url, tmp_path, 19500)
+    expect(count).to_have_text("500 characters left")
