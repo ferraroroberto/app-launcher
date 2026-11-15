@@ -23,7 +23,7 @@ A small bar sits above the terminal for the things a phone keyboard can't do wel
 
 **Files an agent sends to Chat**
 
-Any agent in a launcher session, whatever the harness, can put a file in front of you in that session's Chat: an image or a PDF shows inline, a text or markdown file shows its opening lines, each under the agent's caption, with an **Open** link for the whole thing. The agent posts the file to its session's outbox from the PC:
+Any agent in a launcher session, whatever the harness, can put a file in front of you in that session's Chat: an image or a PDF shows inline, a text file shows its opening lines, a markdown file shows its opening rendered as a page (a tap or **Open** shows the whole rendered file in the viewer), each under the agent's caption, with an **Open** link for the whole thing. The agent posts the file to its session's outbox from the PC:
 
 ```
 curl -k -X POST https://127.0.0.1:8445/api/claude-code/sessions/$APP_LAUNCHER_SESSION_ID/outbox \

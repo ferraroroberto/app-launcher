@@ -329,9 +329,30 @@ def test_a_sent_html_document_runs_no_script_and_the_viewer_closes_every_way(
     assert authed_page.evaluate("history.state === null || !history.state.htmlViewer")
 
 
-def test_a_document_past_5_mb_is_a_tile_in_the_card_and_renders_in_the_viewer(
+_MD_ID = "9" * 32
+_TXT_ID = "8" * 32
+_MD = (
+    "# Weekly report\n\n"
+    "- first item\n- second item\n\n"
+    "```python\nprint('hello')\n```\n\n"
+    "<img src=x onerror=window.__pwned=1>\n\n"
+    + "\n\n".join(f"Paragraph {i} of filler prose." for i in range(200))
+    + "\n\n## Tail heading\n"
+)
+
+
+def _text_entry(entry_id: str, name: str, kind: str, size: int) -> dict:
+    return {"id": entry_id, "name": name, "caption": "", "kind": kind,
+            "media": "text/plain; charset=utf-8", "size": size, "timestamp": "2026-10-12T10:00:05Z"}
+
+
+def test_sent_documents_render_in_their_cards_and_open_whole_in_the_viewer(
     authed_page: Page, base_url: str
 ) -> None:
+    """An HTML document past 5 MB is a tile (the viewer still renders it). A
+    sent .md card shows the rendered opening (heading, list, code), not raw
+    text, and a tap opens the whole rendered file in the viewer the Changed
+    files Preview uses; a plain text file keeps its <pre> preview."""
     def doc(size: int) -> str:
         head = "<!doctype html><h1 id='h'>Big report</h1>"
         return head + " " * (size - len(head))
@@ -339,7 +360,8 @@ def test_a_document_past_5_mb_is_a_tile_in_the_card_and_renders_in_the_viewer(
     small, big = "e" * 32, "f" * 32
     _open_chat_with(authed_page, base_url, [
         _html_entry(small, "at-the-line.html", _MB5), _html_entry(big, "past-the-line.html", _MB5 + 1),
-    ], {small: doc(_MB5), big: doc(_MB5 + 1)})
+        _text_entry(_MD_ID, "report.md", "markdown", len(_MD)), _text_entry(_TXT_ID, "notes.txt", "text", 5),
+    ], {small: doc(_MB5), big: doc(_MB5 + 1), _MD_ID: _MD, _TXT_ID: "hello"})
     cards = authed_page.locator("#transcriptList .tr-file-card[data-kind='html']")
     expect(cards.first.locator("iframe.tr-file-html-frame")).to_have_count(1)
     expect(cards.first.locator(".tr-file-html-tile")).to_have_count(0)
@@ -347,3 +369,30 @@ def test_a_document_past_5_mb_is_a_tile_in_the_card_and_renders_in_the_viewer(
     expect(cards.nth(1).locator("iframe")).to_have_count(0)
     cards.nth(1).locator(".tr-file-html-open").click()
     expect(authed_page.locator("#htmlViewer iframe").content_frame.locator("#h")).to_have_text("Big report")
+    authed_page.keyboard.press("Escape")
+    expect(authed_page.locator("#htmlViewer")).to_be_hidden()
+
+    card = authed_page.locator("#transcriptList .tr-file-card[data-kind='markdown']")
+    body = card.locator(".tr-file-md")
+    expect(body.locator("h1")).to_have_text("Weekly report")
+    expect(body.locator("li")).to_have_count(2)
+    expect(body.locator("pre.md-code")).to_contain_text("print('hello')")
+    expect(card.locator("pre.tr-file-preview")).to_have_count(0)
+    # Markup in the file is text, and the card holds only the file's opening.
+    expect(body.locator("img")).to_have_count(0)
+    expect(body.locator("h2")).to_have_count(0)  # the tail is past the preview
+
+    viewer = authed_page.locator("#htmlViewer")
+    for opener in (card.locator(".tr-file-md-open"), card.locator("button.tr-file-open")):
+        opener.click()
+        expect(viewer).to_be_visible()
+        expect(viewer.locator("#htmlViewerName")).to_have_text("report.md")
+        expect(viewer.locator(".html-viewer-md h1")).to_have_text("Weekly report")
+        expect(viewer.locator(".html-viewer-md h2")).to_have_text("Tail heading")
+        authed_page.keyboard.press("Escape")
+        expect(viewer).to_be_hidden()
+    assert authed_page.evaluate("window.__pwned === undefined")
+
+    plain = authed_page.locator("#transcriptList .tr-file-card[data-kind='text']")
+    expect(plain.locator("pre.tr-file-preview")).to_have_text("hello")
+    expect(plain.locator(".tr-file-md-box")).to_have_count(0)
