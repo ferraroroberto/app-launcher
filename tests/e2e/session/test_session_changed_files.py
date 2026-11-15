@@ -13,6 +13,8 @@ against stubbed routes (every path and line synthetic):
 * the rows meet the 44px floor and nothing scrolls sideways at 390px;
 * a long list (past 12) gets a search field over name and folder, with the
   match count and a no-match way back (#2424); a short one has none;
+* a long transcript read in part offers Load older: each tap merges the next older
+  chunk (a file in two chunks is one row, counts summed) until the start (#2425);
 * no edits, and a session whose transcript can't be read, each get their
   own sentence — never a blank panel.
 
@@ -286,3 +288,69 @@ def test_changed_files_opens_for_a_codex_session_with_unnumbered_diffs(
     expect(first.locator(".tr-diff .d-ln")).to_have_count(0)    # unnumbered: no gutter
     expect(first).to_contain_text("This agent’s diffs carry no line numbers")
     assert len(diffs) == 1, diffs
+
+
+def test_a_partial_read_loads_older_edits_in_chunks_until_the_start(
+    authed_page: Page, base_url: str
+) -> None:
+    """A long transcript says only part of it was read; Load older adds the next
+    older chunk per tap (a file in two chunks stays one row, counts summed) and
+    goes away at the start. An older-only file's diff reads as far back as the list."""
+    diffs = _mock(authed_page)
+    chunks = {
+        None: {**_FILES, "partial": True, "next_cursor": 5000},
+        "5000": {
+            **_FILES, "partial": True, "next_cursor": 1200, "counts": {"additions": 5, "deletions": 1},
+            "files": [
+                {"path": "docs/notes.md", "key": "E:/work/proj/docs/notes.md", "status": "A",
+                 "additions": 2, "deletions": 0, "steps": 1},
+                {"path": "lib/early.py", "key": "E:/work/proj/lib/early.py", "status": "A",
+                 "additions": 3, "deletions": 1, "steps": 1},
+            ],
+        },
+        "1200": {
+            **_FILES, "partial": False, "next_cursor": None, "counts": {"additions": 1, "deletions": 0},
+            "files": [{"path": "zeta.py", "key": "E:/work/proj/zeta.py", "status": "A",
+                       "additions": 1, "deletions": 0, "steps": 1}],
+        },
+    }
+    asked: list = []
+
+    def _chunk(route):
+        match = re.search(r"before=(\d+)", route.request.url)
+        asked.append(match.group(1) if match else None)
+        route.fulfill(status=200, content_type="application/json",
+                      body=_json.dumps(chunks[match.group(1) if match else None]))
+
+    authed_page.route(
+        re.compile(r".*/api/claude-code/sessions/" + re.escape(_SID) + r"/changed-files(\?.*)?$"), _chunk)
+    _open_session(authed_page, base_url)
+    _menu(authed_page).get_by_role("menuitem", name="Changed files").click()
+
+    rows = authed_page.locator("#changesList .chg-file")
+    older = authed_page.locator("#changesList .chg-older")
+    summary = authed_page.locator("#changesList .chg-summary")
+    expect(rows).to_have_count(3)
+    expect(authed_page.locator("#changesList .chg-partial")).to_contain_text("only part of it was read")
+    expect(older).to_have_text("Load older")
+    box = stable_read(lambda: older.bounding_box())
+    assert box and box["height"] >= 44, f"Load older is under the 44px floor: {box}"
+
+    older.click()
+    expect(rows).to_have_count(4)
+    expect(summary).to_contain_text("4 files")
+    expect(summary).to_contain_text("+14")
+    expect(rows.filter(has_text="notes.md").locator(".chg-add")).to_have_text("+7")   # one row, 5 + 2
+    expect(older).to_have_text("Load older")
+
+    older.click()
+    expect(rows).to_have_count(5)
+    expect(summary).to_contain_text("+15")
+    expect(authed_page.locator("#changesList .chg-partial")).to_have_count(0)
+    assert asked == [None, "5000", "1200"], asked
+
+    rows.filter(has_text="zeta.py").locator("summary").click()
+    expect(authed_page.locator("#changesList .chg-step").first).to_be_visible()
+    assert len(diffs) == 1 and "since=0" in diffs[0], diffs
+    fit = stable_read(lambda: authed_page.evaluate(_FIT))
+    assert fit["body"] <= 0 and fit["doc"] <= 0, f"sideways scroll at 390px: {fit}"

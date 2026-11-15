@@ -161,6 +161,100 @@ def test_a_transcript_past_the_ceiling_reads_its_newest_part(tmp_path, monkeypat
     assert "src/a.py" not in {r["path"] for r in out["files"]}   # its edits sit in the older half
 
 
+def _paged(path: Path, project: Path, flavor: str = "claude") -> List[Dict[str, Any]]:
+    """Every window of the fold, newest first, following ``next_cursor``."""
+    pages: List[Dict[str, Any]] = []
+    cursor = None
+    while True:
+        page = changed_files(path, str(project), flavor, before=cursor)
+        pages.append(page)
+        cursor = page["next_cursor"]
+        if cursor is None:
+            return pages
+        assert len(pages) < 50, "the cursor never reached the start"
+
+
+def _merged(pages: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """What the panel does with the windows: one row per file, counts summed."""
+    rows: Dict[str, Dict[str, int]] = {}
+    for page in pages:
+        for r in page["files"]:
+            row = rows.setdefault(r["path"].lower(), {"additions": 0, "deletions": 0, "steps": 0})
+            for k in row:
+                row[k] += r[k]
+    return rows
+
+
+def test_next_cursor_pages_back_to_the_start_and_sums_to_the_whole(tmp_path, monkeypatch):
+    project = tmp_path / "proj"
+    path = _session(tmp_path, project)
+    whole = changed_files(path, str(project))
+    assert whole["next_cursor"] is None and whole["partial"] is False
+    monkeypatch.setattr(session_changes, "SCAN_CEILING", path.stat().st_size // 4)
+    pages = _paged(path, project)
+    assert len(pages) > 1
+    assert all(p["partial"] is True and p["next_cursor"] for p in pages[:-1])
+    assert pages[-1]["partial"] is False and pages[-1]["next_cursor"] is None
+    cursors = [p["next_cursor"] for p in pages[:-1]]
+    assert cursors == sorted(cursors, reverse=True) and len(set(cursors)) == len(cursors)
+    rows = _merged(pages)
+    assert rows == {r["path"]: {k: r[k] for k in ("additions", "deletions", "steps")} for r in whole["files"]}
+    assert sum(p["counts"]["additions"] for p in pages) == whole["counts"]["additions"]
+
+
+def test_a_file_edited_in_two_windows_is_a_row_in_each_with_each_windows_counts(tmp_path, monkeypatch):
+    project = tmp_path / "proj"
+    target = str(project / "a.py")
+    rows: List[Dict[str, Any]] = []
+    for i, (kind, lines) in enumerate([("create", ["+one"]), ("edit", ["+two", "+three"])]):
+        tid = f"e{i}"
+        rows += [_call("Edit", {"file_path": target}, tid),
+                 _result(tid, {"type": kind, "filePath": target, "structuredPatch": _patch(1, lines)})]
+        if i == 0:   # filler between the two edits, so a two-thirds ceiling cuts between them
+            rows += [{"type": "user", "message": {"role": "user", "content": "pad " * 200}}] * 4
+    path = _write_jsonl(tmp_path / "t.jsonl", rows)
+    monkeypatch.setattr(session_changes, "SCAN_CEILING", path.stat().st_size * 2 // 3)
+    newer, older = _paged(path, project)
+    assert [(r["additions"], r["steps"]) for r in newer["files"]] == [(2, 1)]
+    assert [(r["additions"], r["steps"]) for r in older["files"]] == [(1, 1)]
+    assert older["next_cursor"] is None and newer["next_cursor"] > 0
+
+
+def test_a_window_that_starts_on_a_line_keeps_that_line(tmp_path):
+    path = _write_jsonl(tmp_path / "t.jsonl", [{"n": i} for i in range(5)])
+    raw = path.read_bytes()
+    boundary = raw.index(b"\n") + 1
+    assert session_changes._line_start(path, boundary) == boundary          # on a line: kept whole
+    assert session_changes._line_start(path, boundary + 2) == raw.index(b"\n", boundary) + 1   # mid-line: next one
+    assert session_changes._line_start(path, 0) == 0
+
+
+def test_before_past_the_file_reads_the_newest_window(tmp_path):
+    project = tmp_path / "proj"
+    path = _session(tmp_path, project)
+    assert changed_files(path, str(project), before=10**9) == changed_files(path, str(project))
+    empty = changed_files(path, str(project), before=0)
+    assert empty["files"] == [] and empty["next_cursor"] is None
+
+
+def test_since_lets_a_file_only_an_older_window_holds_open(tmp_path, monkeypatch):
+    project = tmp_path / "proj"
+    path = _session(tmp_path, project)
+    monkeypatch.setattr(session_changes, "SCAN_CEILING", path.stat().st_size // 4)
+    pages = _paged(path, project)
+    newest = {r["path"] for r in pages[0]["files"]}
+    old_only = next(r for p in pages[1:] for r in p["files"] if r["path"] not in newest)
+    assert file_steps(path, old_only["key"], project_dir=str(project)) is None
+    found = file_steps(path, old_only["key"], project_dir=str(project), since=pages[-2]["next_cursor"])
+    assert found is not None and found["steps"]
+    assert session_changes.changed_file_path(path, old_only["key"], project_dir=str(project)) is None
+    opened = session_changes.changed_file_path(
+        path, old_only["key"], project_dir=str(project), since=pages[-2]["next_cursor"])
+    assert opened is not None and session_changes._key(opened) == session_changes._key(old_only["key"])
+    whole = file_steps(path, old_only["key"], project_dir=str(project), since=0)
+    assert whole["partial"] is False
+
+
 # ------------------------------------------------------------------ routes
 
 
@@ -210,6 +304,26 @@ class TestChangedFilesEndpoints:
         assert diff["available"] is True and len(diff["steps"]) == 2
         joined = "\n".join(r.getMessage() for r in caplog.records)
         assert "changed files s1" in joined and "a.py" not in joined
+
+    def test_before_reads_the_next_older_window(self, webapp_client, _bypass_gate, monkeypatch, tmp_path):
+        client, _, overrides = webapp_client
+        project = tmp_path / "proj"
+        path = _session(tmp_path, project)
+        _serve(overrides, monkeypatch, path, project)
+        monkeypatch.setattr(session_changes, "SCAN_CEILING", path.stat().st_size // 4)
+        url = "/api/claude-code/sessions/s1/changed-files"
+        seen, cursor, hops = {}, None, 0
+        while True:
+            body = client.get(url, params={} if cursor is None else {"before": cursor}).json()
+            assert body["available"] is True
+            for r in body["files"]:
+                seen[r["path"].lower()] = seen.get(r["path"].lower(), 0) + r["steps"]
+            cursor, hops = body["next_cursor"], hops + 1
+            if cursor is None:
+                break
+            assert hops < 50
+        assert hops > 1 and seen == {"b.md": 2, "old.txt": 1, "src/a.py": 2}
+        assert client.get(url, params={"before": -1}).status_code == 422
 
     def test_unknown_file_is_file_not_found(self, webapp_client, _bypass_gate, monkeypatch, tmp_path):
         client, _, overrides = webapp_client
@@ -267,10 +381,10 @@ def test_a_relative_recorded_path_resolves_against_the_project(tmp_path, monkeyp
     edit = session_changes.Edit("src/x.py", [{"lines": ["+a"]}], True, None, added=1)
     absolute = str(project).replace("\\", "/") + "/src/x.py"
     for requested in ("src/x.py", absolute, absolute.upper()):
-        monkeypatch.setattr(session_changes, "_flavor_edits", lambda path, flavor: (iter([edit]), False))
+        monkeypatch.setattr(session_changes, "_flavor_edits", lambda path, flavor, *window: (iter([edit]), 0))
         assert session_changes.changed_file_path(tmp_path / "t.jsonl", requested, "codex", str(project)) == absolute
     # With no project folder the recorded path stays relative: no file on disk.
-    monkeypatch.setattr(session_changes, "_flavor_edits", lambda path, flavor: (iter([edit]), False))
+    monkeypatch.setattr(session_changes, "_flavor_edits", lambda path, flavor, *window: (iter([edit]), 0))
     assert session_changes.changed_file_path(tmp_path / "t.jsonl", "src/x.py", "codex", None) is None
 
 

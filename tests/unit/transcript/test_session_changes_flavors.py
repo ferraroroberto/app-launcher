@@ -338,6 +338,23 @@ def test_the_ceiling_keeps_the_newest_part_and_says_partial(tmp_path, monkeypatc
     assert "f39.txt" in names and "f0.txt" not in names           # the newest survive
 
 
+def test_next_cursor_pages_a_builder_fold_back_to_the_start(tmp_path, monkeypatch):
+    path = _big_codex(tmp_path, 40)
+    whole = changed_files(path, None, "codex")
+    monkeypatch.setattr(session_changes, "FLAVOR_SCAN_CEILING", path.stat().st_size // 4)
+    monkeypatch.setattr(session_changes, "FLAVOR_WINDOW", 700)
+    seen: list = []
+    cursor = None
+    for _ in range(20):
+        page = changed_files(path, None, "codex", before=cursor)
+        seen += [r["path"] for r in page["files"]]
+        cursor = page["next_cursor"]
+        if cursor is None:
+            break
+    assert cursor is None
+    assert sorted(seen) == sorted(r["path"] for r in whole["files"])   # each file once, none lost
+
+
 def test_a_transcript_of_no_edits_is_an_empty_fold(tmp_path):
     path = _write_jsonl(tmp_path / "r.jsonl", _codex_exec("c1", "ls"))
     found = changed_files(path, None, "codex")

@@ -101,6 +101,13 @@ async function sessionApi(path, opts) {
   return terminalJsonApi(sessionRoute(view.sid, path), opts);
 }
 
+// Once older chunks of a long transcript are loaded, a file's diff, content
+// and Open on PC read as far back as the list does, so a file that only an
+// older chunk holds opens too (`view.since`: the oldest chunk's cursor).
+function sinceParam(sep) {
+  return view && view.since != null ? sep + 'since=' + view.since : '';
+}
+
 // `diff --git` and `index` headers repeat what the row already says; every
 // other line renders, tinted by its first character. Block-level spans so a
 // wrapped long line keeps its tint across the continuation.
@@ -188,7 +195,7 @@ async function loadSessionDiff(file, body) {
   const seq = view.seq;
   let res;
   try {
-    res = await sessionApi('/changed-files/diff?path=' + encodeURIComponent(file.key));
+    res = await sessionApi('/changed-files/diff?path=' + encodeURIComponent(file.key) + sinceParam('&'));
   } catch (exc) {
     res = null;
   }
@@ -352,7 +359,7 @@ function fullPathLine(full) {
 async function openOnPc(file) {
   let res;
   try {
-    res = await sessionApi('/changed-files/open', { method: 'POST', body: { path: requestPath(file) } });
+    res = await sessionApi('/changed-files/open' + sinceParam('?'), { method: 'POST', body: { path: requestPath(file) } });
   } catch (exc) {
     apiFailToast('Couldn’t open it on the PC', exc);
     return;
@@ -417,7 +424,7 @@ function sessionFileBody(file, body) {
   let fileText = null;
   function read() {
     if (!pending) {
-      pending = sessionApi('/changed-files/content?path=' + encodeURIComponent(requestPath(file)))
+      pending = sessionApi('/changed-files/content?path=' + encodeURIComponent(requestPath(file)) + sinceParam('&'))
         .catch(function () { return null; })
         .then(function (res) {
           if (res && res.available) fileText = res.text || '';
@@ -721,7 +728,7 @@ function renderTurn() {
 
 // One flat list: a session's files are all "what this session changed", so
 // there is nothing to group, and the summary names the source it read.
-function renderSession(body) {
+function renderSession(body, refocus) {
   const list = els.changesList;
   list.innerHTML = '';
   const files = body.files || [];
@@ -735,9 +742,7 @@ function renderSession(body) {
   const summary = summaryLine(files, body.counts || {}, tail);
   list.appendChild(summary);
   if (view.turn) list.appendChild(scopeSwitch());
-  if (body.partial) {
-    list.insertAdjacentHTML('beforeend', note('A very long transcript: only its newest part was read'));
-  }
+  if (body.partial) list.appendChild(olderLine(body));
   if (!body.project_exists) {
     list.insertAdjacentHTML('beforeend',
       note('The project folder is gone, so deleted files can’t be told apart'));
@@ -747,7 +752,91 @@ function renderSession(body) {
   if (files.length > FILTER_ABOVE_ROWS) {
     built.wrap.before(fileFilter(files, built, summary, body.counts || {}, tail));
   }
-  showFocus(files, built.rows);
+  if (refocus !== false) showFocus(files, built.rows);
+}
+
+// "A very long transcript: only its newest part was read · Load older". The
+// older part comes one chunk per tap, merged into the list; the line goes
+// once the start of the transcript is read.
+function olderLine(body) {
+  const line = document.createElement('div');
+  line.className = 'chg-note chg-partial muted small';
+  line.append('A very long transcript: only part of it was read · ');
+  const older = document.createElement('button');
+  older.dataset.track = 'changes.load-older';
+  older.type = 'button';
+  older.className = 'chg-older';
+  older.textContent = body.loading ? 'Loading…' : 'Load older';
+  older.disabled = !!body.loading;
+  older.addEventListener('click', function () { loadOlder(); });
+  line.appendChild(older);
+  return line;
+}
+
+// A file's row keyed like the server folds it: either slash, any case.
+function rowKey(row) {
+  return String(row.key || row.path).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+}
+
+// Fold one older chunk's rows into the list. A file seen in both is one row
+// with the summed counts, its path spelled as its first (older) edit gave it;
+// the file is deleted if the newer part says so, else created if the older
+// part created it.
+function mergeOlder(state, body) {
+  const byKey = new Map(state.files.map(function (f) { return [rowKey(f), f]; }));
+  (body.files || []).forEach(function (old) {
+    const row = byKey.get(rowKey(old));
+    if (!row) {
+      const fresh = Object.assign({}, old);
+      byKey.set(rowKey(fresh), fresh);
+      state.files.push(fresh);
+      return;
+    }
+    row.path = old.path;
+    row.key = old.key;
+    row.additions += old.additions;
+    row.deletions += old.deletions;
+    row.steps += old.steps;
+    if (row.status === 'M' && old.status === 'A') row.status = 'A';
+  });
+  state.files.sort(function (x, y) {
+    const a = String(x.path).toLowerCase();
+    const b = String(y.path).toLowerCase();
+    return a < b ? -1 : a > b ? 1 : 0;
+  });
+  state.counts = sumCounts(state.files);
+  state.next_cursor = body.next_cursor == null ? null : body.next_cursor;
+  state.partial = state.next_cursor != null;
+}
+
+async function loadOlder() {
+  const state = view && view.session;
+  if (!state || state.next_cursor == null || state.loading) return;
+  const seq = view.seq;
+  const box = els.changesList.parentElement;
+  const top = box ? box.scrollTop : 0;
+  const redraw = function () {
+    renderSession(state, false);
+    if (box) box.scrollTop = top;
+  };
+  state.loading = true;
+  redraw();
+  let body;
+  try {
+    body = await sessionApi('/changed-files?before=' + state.next_cursor);
+  } catch (exc) {
+    body = null;
+    if (view && view.seq === seq) apiFailToast('Couldn’t load older edits', exc);
+  }
+  if (!view || view.seq !== seq) return;
+  state.loading = false;
+  if (body && body.available) {
+    mergeOlder(state, body);
+    view.since = state.next_cursor == null ? 0 : state.next_cursor;
+  } else if (body) {
+    toast('Couldn’t load older edits');
+  }
+  redraw();
 }
 
 async function loadProject(seq) {
@@ -780,12 +869,16 @@ async function loadSession(seq) {
     showState(icon('file-diff') + '<div>' + escapeHtml(why) + '</div>');
     return;
   }
+  view.session = body;
+  view.since = null;
   renderSession(body);
 }
 
 function load() {
   if (!view) return;
   const seq = ++view.seq;
+  view.session = null;
+  view.since = null;
   fileMenu.close();   // the rows are rebuilt below
   els.changesList.innerHTML = '';
   if (view.kind === 'session' && view.scope === 'turn') renderTurn();

@@ -134,6 +134,20 @@
 .chg-del { color: var(--diff-del-fg); }
 .chg-body { padding: 0 0 10px; }
 .chg-note { padding: 4px 0 6px; }
+/* The "Load older" link in the partial-read line: text-coloured in the accent,
+   at the 44px target, like the Edited card's. */
+.chg-older {
+  min-height: var(--hit-min);
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.chg-older:disabled { color: var(--muted); cursor: default; }
+.chg-partial { display: flex; flex-wrap: wrap; align-items: center; }
 /* The diff: the transcript's mono inset recipe, uncapped (the <details>
    already scopes it), every line a block so a wrapped long line keeps its
    tint across the continuation. */
