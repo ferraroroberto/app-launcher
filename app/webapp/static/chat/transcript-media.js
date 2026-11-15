@@ -5,7 +5,7 @@
  */
 
 import { api, authHeaders, sessionRoute } from '../api.js';
-import { fillHtmlCard, openImageLightbox } from '../lightbox.js';
+import { fillHtmlCard, fillMarkdownCard, openImageLightbox } from '../lightbox.js';
 import { ensureTerminalToken } from '../webauthn.js';
 import { formatBytes } from '../shared/format.js';
 
@@ -208,6 +208,11 @@ function fileNote(card, text) {
   card.appendChild(note);
 }
 
+// A kind whose Open is a button that shows the file in the viewer, not a link.
+function opensViewer(kind) {
+  return kind === 'html' || kind === 'markdown';
+}
+
 async function loadFileCard(card) {
   let got;
   try {
@@ -222,7 +227,7 @@ async function loadFileCard(card) {
   const kind = card.dataset.kind;
   const name = card._trName;
   const open = card.querySelector('.tr-file-open');
-  if (kind !== 'html') open.href = got.objectUrl;
+  if (!opensViewer(kind)) open.href = got.objectUrl;
   open.hidden = false;
   // An archive is download-only: its head link, ready before the tap (fileCard), is the card.
   if (kind === 'image') {
@@ -242,6 +247,8 @@ async function loadFileCard(card) {
     card.appendChild(btn);
   } else if (kind === 'html') {
     await fillHtmlCard(card, got, name);
+  } else if (kind === 'markdown') {
+    await fillMarkdownCard(card, got, name);
   } else if (kind === 'pdf') {
     const frame = document.createElement('iframe');
     frame.className = 'tr-file-pdf';
@@ -285,14 +292,14 @@ function fileCard(name, kind, size, url, sid) {
     sizeEl.textContent = sizeText;
     head.appendChild(sizeEl);
   }
-  const open = document.createElement(kind === 'html' ? 'button' : 'a');
+  const open = document.createElement(opensViewer(kind) ? 'button' : 'a');
   open.className = 'tr-file-open';
   open.textContent = kind === 'archive' ? 'Download' : 'Open';
   if (kind === 'archive') {
     // iOS drops a download started after an await, so the lazy loader fetches the bytes
     // ahead and the tap only follows a ready blob: link. `download` is a property, never markup.
     open.download = name;
-  } else if (kind === 'html') {
+  } else if (opensViewer(kind)) {
     open.type = 'button';
   } else {
     open.target = '_blank';

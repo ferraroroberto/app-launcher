@@ -645,6 +645,34 @@ button.tr-file-open { padding: 0; border: 0; background: none; font: inherit; cu
   background: transparent;
   cursor: zoom-in;
 }
+/* A sent Markdown file: its opening as the rendered page (`.tr-md` styles the
+   prose), clipped and faded into the card, under one transparent button that
+   opens the whole file in the viewer. */
+.tr-file-md-box {
+  position: relative;
+  max-height: 240px;
+  overflow: hidden;
+  border-top: 1px solid var(--line-muted);
+}
+.tr-file-md-box::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 48px;
+  background: linear-gradient(to bottom, transparent, var(--card));
+  pointer-events: none;
+}
+.tr-file-md { padding: 10px 12px; overflow-wrap: anywhere; }
+.tr-file-md-open {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
+}
 .tr-file-card[data-kind="html"][data-sid]:not(.tr-file-loaded):not(.tr-file-failed)::after {
   content: "";
   display: block;

@@ -105,6 +105,37 @@ export async function fillHtmlCard(card, got, name) {
   card.classList.add('tr-file-loaded');
 }
 
+// A sent Markdown file's card body: its opening, drawn by the renderer the
+// viewer uses, faded into the card under one button that opens the whole file
+// in the viewer, as the head's Open does. Only the opening is rendered, so a
+// long report never builds its whole DOM in the transcript.
+const MD_PREVIEW_CHARS = 4000;
+
+export async function fillMarkdownCard(card, got, name) {
+  const text = await got.blob.text();
+  if (!card.isConnected) return;
+  const btn = document.createElement('button');
+  btn.dataset.track = 'lightbox.markdown-open';
+  btn.type = 'button';
+  btn.className = 'tr-file-md-open';
+  btn.setAttribute('aria-label', 'Open ' + name);
+  const show = function (ev) {
+    ev.stopPropagation();
+    openTextPreview(name, text, 'markdown', btn);
+  };
+  btn.addEventListener('click', show);
+  card.querySelector('.tr-file-open').addEventListener('click', show);
+  const cut = text.length > MD_PREVIEW_CHARS;
+  const box = document.createElement('div');
+  box.className = 'tr-file-md-box';
+  const body = document.createElement('div');
+  body.className = 'tr-file-md tr-md';
+  body.innerHTML = renderMarkdown(cut ? text.slice(0, MD_PREVIEW_CHARS) : text);
+  box.append(body, btn);
+  card.appendChild(box);
+  card.classList.add('tr-file-loaded');
+}
+
 // The element focus goes back to on close (Safari does not restore it from a
 // showModal() on its own), whether the back-gesture marker is ours, and the
 // download URL a text-fed viewer made for itself and so must revoke.
