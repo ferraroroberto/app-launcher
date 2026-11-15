@@ -84,6 +84,20 @@ def _assert_answer_sheet_questions(dialog, blocks):
     return first, second, options, also
 
 
+def _assert_prepick_is_an_answer(dialog, options):
+    """Assert the pre-picked recommendation readies Done and the sheet says so,
+    then that tapping it off leaves Done waiting with its reason; return Done."""
+    done = dialog.locator("#chiefAnswersDone")
+    expect(done).to_be_enabled()
+    expect(dialog.locator("#chiefAnswersNote")).to_be_hidden()
+    expect(dialog.locator("#chiefAnswersDefaults")).to_be_visible()
+    options.nth(0).click()
+    expect(options.nth(0)).to_have_attribute("aria-pressed", "false")
+    expect(done).to_be_disabled()
+    expect(dialog.locator("#chiefAnswersNote")).to_contain_text("Pick or type an answer first")
+    return done
+
+
 def _assert_sheet_fits_viewport(page: Page, dialog) -> None:
     """Assert the sheet is full-screen at phone width and a centred dialog on desktop."""
     viewport = page.viewport_size
@@ -140,17 +154,7 @@ def test_answer_sheet_renders_questions_and_done_sends_one_message(
 
     first, second, options, also = _assert_answer_sheet_questions(dialog, blocks)
 
-    # The pre-picked recommendation is an answer: Done is ready at once, and
-    # the sheet says the picks are a send.
-    done = dialog.locator("#chiefAnswersDone")
-    expect(done).to_be_enabled()
-    expect(dialog.locator("#chiefAnswersNote")).to_be_hidden()
-    expect(dialog.locator("#chiefAnswersDefaults")).to_be_visible()
-    # Tapping the picked option clears it; with nothing left Done waits, and says why.
-    options.nth(0).click()
-    expect(options.nth(0)).to_have_attribute("aria-pressed", "false")
-    expect(done).to_be_disabled()
-    expect(dialog.locator("#chiefAnswersNote")).to_contain_text("Pick or type an answer first")
+    done = _assert_prepick_is_an_answer(dialog, options)
 
     # Single-select: typing Other then tapping an option keeps only the pick.
     first.locator(".tr-ask-input").fill("maybe later")
