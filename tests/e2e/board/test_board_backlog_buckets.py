@@ -84,6 +84,28 @@ _STYLE_JS = ("el => { const s = getComputedStyle(el);"
              " return [s.fontSize, s.fontWeight, s.textTransform, s.letterSpacing].join('|'); }")
 
 
+def _long_chip_gives_way(page: Page, chip) -> None:
+    """A long reason gives way at phone width: the chip ends in its own ellipsis,
+    and the repo, number and date beside it stay whole inside the row (LAYOUT-09)."""
+    page.set_viewport_size({"width": 390, "height": 844})
+    # Set and measured in one task, so a poll's re-render cannot land between.
+    geo = stable_eval(chip, """chip => {
+      chip.textContent = 'blocked by a-very-long-repository-name#12345';
+      const el = chip.closest('li');
+      const main = el.querySelector('.action-row-main').getBoundingClientRect();
+      const text = el.querySelector('.action-row-meta-text');
+      const stamp = el.querySelector('.board-card-stamp').getBoundingClientRect();
+      return {mainRight: main.right, stampRight: stamp.right, stampShown: stamp.width > 0,
+              textCut: text.scrollWidth > text.clientWidth,
+              chipCut: chip.scrollWidth > chip.clientWidth,
+              chipRight: chip.getBoundingClientRect().right};
+    }""")
+    assert geo["stampShown"] and geo["stampRight"] <= geo["mainRight"] + 1, geo
+    assert geo["chipRight"] <= geo["mainRight"] + 1, geo
+    assert not geo["textCut"], f"the repo and number are cut: {geo}"
+    assert geo["chipCut"], f"the chip should be what ends in an ellipsis: {geo}"
+
+
 def test_backlog_buckets_count_fold_and_name_the_plan_groups(
     authed_page: Page, base_url: str, tmp_path
 ) -> None:
@@ -125,6 +147,9 @@ def test_backlog_buckets_count_fold_and_name_the_plan_groups(
     expect(chips("waiting")).to_have_text(["validate"])
     expect(chips("queued")).to_have_text(["after fleet-config#9"])
     expect(chips("blocked")).to_have_text(["blocked by app-launcher#13", "owner step · no label"])
+    expect(chips("blocked").first).to_have_attribute("title", "blocked by app-launcher#13")
+
+    _long_chip_gives_way(authed_page, chips("blocked").first)
 
     queued = authed_page.locator(f"{LANE} .board-bucket[data-bucket='queued'] details")
     blocked = authed_page.locator(f"{LANE} .board-bucket[data-bucket='blocked'] details")
@@ -154,3 +179,4 @@ def test_backlog_buckets_count_fold_and_name_the_plan_groups(
         "Unknown (9) · plan unreadable", "In progress (0)", "Waiting on you (0)",
         "Queued (0)", "Blocked (0)", "Not planned (0)"])
     expect(authed_page.locator(f"{LANE} .board-lane-exception")).to_be_hidden()
+

@@ -375,7 +375,7 @@ def test_plan_sections_split_queue_from_parked_and_rows_open_their_issue(
         ],
         "queue": [
             {"repo": "app-launcher", "ref": "#1500", "title": "Adopt the usage log",
-             "status": "queued", "model": "sonnet"},
+             "status": "queued", "model": "sonnet", "note": "PR #276 70a6f93, waits #249"},
             {"repo": "fleet-config", "ref": "#12", "title": "Second in line", "status": "building"},
             {"repo": "app-launcher", "ref": "#1400", "title": "Parked with a ref", "status": "parked"},
             {"repo": "automation", "ref": "", "title": "Parked without a ref",
@@ -414,6 +414,8 @@ def test_plan_sections_split_queue_from_parked_and_rows_open_their_issue(
     # end, the chevron after the title's column, the whole row a 44px target.
     expect(queue.first.locator(".action-row-meta-text")).to_have_text("app-launcher#1500 · Sonnet")
     expect(queue.first.locator(".board-plan-model")).to_have_text("Sonnet")
+    # The chief's note carries figures, so it is the row's hover text, never in the ellipsizing meta.
+    expect(queue.first.locator(".action-row-main")).to_have_attribute("title", "PR #276 70a6f93, waits #249")
     geo = stable_eval(queue.first, (
         "el => { const r = el.getBoundingClientRect();"
         " const t = el.querySelector('.action-row-title');"

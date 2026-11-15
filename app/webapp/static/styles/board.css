@@ -558,6 +558,18 @@ span.chief-answer-ref { color: var(--muted); }
    text ellipsizes; the date is its own item beside the chip so it is never the
    part that gets cut (LAYOUT-09) while a long repo name still ellipsizes. */
 .board-card-stamp { flex: none; white-space: nowrap; }
+/* A Backlog row's bucket chip (`blocked by ...`, `after ...`) is the one chip
+   that gives way: it takes the whole shortfall and ends in its own ellipsis, so
+   the repo, number and date beside it stay whole. The text keeps only a sliver
+   of shrink for a row with a long repo name and a claim chip as well. */
+.board-item-issue .action-row-meta:has(.board-bucket-chip) .action-row-meta-text { flex: 0 0.001 auto; }
+.board-item-issue .board-bucket-chip {
+  display: block;
+  flex: 0 1 auto;
+  min-width: 6ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .board-agent-icon { width: 16px; height: 16px; }
 .board-empty { margin: 0; }
 

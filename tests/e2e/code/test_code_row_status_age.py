@@ -113,9 +113,12 @@ def test_code_row_meta_stays_one_line_and_drops_up_first_at_390px(
 ) -> None:
     authed_page.set_viewport_size({"width": 390, "height": 844})
     _mock(authed_page, [
-        _session("s-short", "demo", "idle", 540, model="Opus"),
+        _session("s-short", "demo", "idle", 540),
         _session("s-long", "demo-garden", "working", 540, model="Sonnet"),
         _session("s-tight", "demo-garden-planner", "working", 540, model="Sonnet"),
+        # The folder is at its minimum width and the line still runs over by a
+        # figure or two: "up" must go, not be clipped (LAYOUT-09).
+        _session("s-edge", "dem", "idle-finished", 68400, model="Opus"),
     ])
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
@@ -132,9 +135,12 @@ def test_code_row_meta_stays_one_line_and_drops_up_first_at_390px(
     }"""
     # Room to spare: the whole line, "up" included.
     expect(_code_row(authed_page, "s-short").locator(".srow-meta-text")).to_have_text(
-        "demo · Opus · idle · 9m · up 1d 3h")
+        "demo · idle · 9m · up 1d 3h")
     short = stable_eval(_code_row(authed_page, "s-short"), read)
     assert short == {"oneLine": True, "cut": False, "tailShown": True}, short
+
+    edge = stable_eval(_code_row(authed_page, "s-edge"), read)
+    assert edge["cut"] is False and edge["oneLine"] is True, edge
 
     # No room: "up" goes first and the rest is whole, not ellipsized.
     long_row = _code_row(authed_page, "s-long")
