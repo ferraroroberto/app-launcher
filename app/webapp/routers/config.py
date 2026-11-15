@@ -122,6 +122,8 @@ async def get_config(request: Request) -> Dict[str, Any]:
         # The Grok Bot on/off switch; on by default.
         "grokbot_enabled": cfg.grokbot_enabled,
         "life_os_refresh_skill_instructions": cfg.life_os_refresh_skill_instructions,
+        # Settings > Voice: quiet seconds that end a dictation take, 0 = off.
+        "dictation_auto_stop_seconds": cfg.dictation_auto_stop_seconds,
         # The chief's model and worker cap, read-only here so the
         # Settings > Chief row can show them without a passkey prompt. Writes
         # stay on the passkey-gated PUT /api/board/chief/settings.
@@ -322,6 +324,7 @@ _PATCH_KEYS = frozenset({
     "chief_weekly_proposals",
     "grokbot_enabled",
     "life_os_refresh_skill_instructions",
+    "dictation_auto_stop_seconds",
     "claude_model",
     "claude_effort",
     "claude_verbose",
@@ -385,6 +388,13 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         if isinstance(value, bool) or not isinstance(value, int):
             raise HTTPException(
                 status_code=400, detail="large_upload_max_mb must be a whole number of MB"
+            )
+    # Whole seconds, refused like the threshold; the set itself is _validate's.
+    if "dictation_auto_stop_seconds" in patch:
+        value = patch["dictation_auto_stop_seconds"]
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise HTTPException(
+                status_code=400, detail="dictation_auto_stop_seconds must be whole seconds"
             )
     # The switches: anything but a real boolean is a client bug.
     for key in _SWITCH_KEYS:

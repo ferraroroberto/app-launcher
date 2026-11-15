@@ -53,7 +53,8 @@ from src.webapp_settings.values import (  # noqa: F401 — re-exported for webap
     DEFAULT_CHIEF_WORKER_CAP_SCOPE,
     DEFAULT_CLAUDE_EFFORT, DEFAULT_CLAUDE_MODEL, DEFAULT_CLAUDE_PERMISSION_MODE,
     DEFAULT_CODEX_EFFORT, DEFAULT_CODEX_MODEL, DEFAULT_CODEX_MODEL_EFFORTS,
-    DEFAULT_CODEX_PERMISSION_MODE, DEFAULT_CODING_MODEL_CHOICE, DEFAULT_GROK_EFFORT,
+    DEFAULT_CODEX_PERMISSION_MODE, DEFAULT_CODING_MODEL_CHOICE,
+    DEFAULT_DICTATION_AUTO_STOP_SECONDS, DEFAULT_GROK_EFFORT,
     DEFAULT_GROK_PERMISSION_MODE, DEFAULT_HOST, DEFAULT_LARGE_UPLOAD_MAX_MB,
     DEFAULT_PI_EFFORT, DEFAULT_PI_MODEL, DEFAULT_PI_TRUST_MODE, DEFAULT_PORT,
     DEFAULT_SESSION_HOST_PORT, DEFAULT_TERMINAL_HISTORY_LINES, LEGACY_CLAUDE_MODELS,
@@ -62,7 +63,8 @@ from src.webapp_settings.values import (  # noqa: F401 — re-exported for webap
     MIN_LARGE_UPLOAD_MAX_MB, MIN_TERMINAL_HISTORY_LINES, SESSION_HOST_PORT_ENV,
     VALID_CHIEF_MODELS, VALID_CHIEF_WORKER_CAP_SCOPES, VALID_CLAUDE_EFFORTS, VALID_CLAUDE_MODELS,
     VALID_CLAUDE_PERMISSION_MODES, VALID_CODEX_EFFORTS, VALID_CODEX_MODELS,
-    VALID_CODEX_PERMISSION_MODES, VALID_CODING_MODEL_CHOICES, VALID_GROK_EFFORTS,
+    VALID_CODEX_PERMISSION_MODES, VALID_CODING_MODEL_CHOICES,
+    VALID_DICTATION_AUTO_STOP_SECONDS, VALID_GROK_EFFORTS,
     VALID_GROK_PERMISSION_MODES, VALID_PI_EFFORTS, VALID_PI_MODELS,
     VALID_PI_TRUST_MODES, WEBAPP_CONFIG_PATH_ENV, valid_claude_efforts_for,
 )
@@ -177,6 +179,9 @@ class WebappConfig:
     # A resumed Life OS conversation re-reads its skill's instructions when
     # they changed since it last loaded them (src/life_os/skill_refresh.py).
     life_os_refresh_skill_instructions: bool = True
+    # Seconds of quiet after speech that end a dictation take by themselves;
+    # 0 = off. The browser's voice.js reads it from GET /api/config.
+    dictation_auto_stop_seconds: int = DEFAULT_DICTATION_AUTO_STOP_SECONDS
     # Root of the fleet-config checkout. The Board, sessions, Life OS
     # conversations and the fleet-chief ensure path read their hooks, state
     # and scripts from it.
@@ -987,6 +992,13 @@ def _validate(cfg: WebappConfig) -> None:
         raise ValueError(
             f"chief_worker_cap must be between {MIN_CHIEF_WORKER_CAP} and "
             f"{MAX_CHIEF_WORKER_CAP}; got {cfg.chief_worker_cap}"
+        )
+    pause = cfg.dictation_auto_stop_seconds
+    # A JSON false equals 0 in Python, so a bool is refused before the set test.
+    if isinstance(pause, bool) or pause not in VALID_DICTATION_AUTO_STOP_SECONDS:
+        raise ValueError(
+            "dictation_auto_stop_seconds must be one of "
+            f"{VALID_DICTATION_AUTO_STOP_SECONDS}; got {pause!r}"
         )
     threshold = cfg.chief_auto_compact_threshold
     if threshold != 0 and not (

@@ -12,9 +12,10 @@
  * call is the source of truth either way. The transcript always lands in
  * the target textarea for review — never straight into a PTY or a dispatch.
  *
- * A tap while recording stops and transcribes; a tap while the stopped take
- * is still transcribing cancels it: its requests are aborted, the
- * button is at rest again at once with "Dictation cancelled", and whatever
+ * A tap while recording stops and transcribes; so does a pause in speech when
+ * Settings > Voice turns the auto-stop on (voice-autostop.js). A tap while
+ * the stopped take is still transcribing cancels it: its requests are aborted,
+ * the button is at rest again at once with "Dictation cancelled", and whatever
  * text is already in the textarea stays. The voice-transcriber has no abort
  * route, so its server-side session is simply dropped.
  */
@@ -27,6 +28,7 @@ import { trackFeature } from './settings/feature-track.js';
 import { usage } from './usage.js';
 import { attachMicNotice } from './_vendored/mic-notice/mic-notice.js';
 import { REMOTE_MIC_HINT, inRemoteDesktopSession } from './voice-remote.js';
+import { watchForPause } from './voice-autostop.js';
 
 const _CHUNK_MS = 1000;
 // A chunk upload that fails (network error or non-2xx) is retried this many
@@ -117,6 +119,9 @@ function newDictationState(opts) {
     noticeEl: opts.noticeEl || null,
     // Stops the live input-level watch of the take in progress, or null.
     levelStop: null,
+    // The take's silence auto-stop watch ({ source, stop }), or null when the
+    // setting is off or the level cannot be measured.
+    pauseWatch: null,
     // The public object createDictation returns; the one-mic-at-a-time mutex
     // compares against it.
     api: null,
@@ -508,6 +513,7 @@ function startStreamedSpan(d) {
 // route within seconds, not at finish.
 function watchTakeLevel(d, stream) {
   d.levelStop = attachMicNotice(d.noticeEl || document.createElement('div'), stream, {
+    source: d.pauseWatch ? d.pauseWatch.source : undefined,
     onSilent: function (text) {
       console.info('[dictation] no sound from the input after the first seconds');
       if (!d.noticeEl) toast(text, 'error', { icon: 'mic' });
@@ -518,6 +524,28 @@ function watchTakeLevel(d, stream) {
 
 function clearInputNotice(d) {
   if (d.levelStop) { d.levelStop(); d.levelStop = null; }
+  if (d.pauseWatch) { d.pauseWatch.stop(); d.pauseWatch = null; }
+}
+
+// Settings > Voice: the quiet that ends a take, in ms; 0 when it is off.
+function autoStopMs() {
+  const seconds = state.config && state.config.dictation_auto_stop_seconds;
+  return typeof seconds === 'number' && seconds > 0 ? seconds * 1000 : 0;
+}
+
+// Start the take's pause watch when the setting is on. A short buzz on the
+// stop tells a phone user the mic let go without looking at it.
+function watchTakePause(d, stream) {
+  const pauseMs = autoStopMs();
+  if (!pauseMs) return;
+  d.pauseWatch = watchForPause(stream, pauseMs, function () {
+    if (!(d.recorder && d.recorder.state === 'recording')) return;
+    console.info('[dictation] auto-stop: ' + pauseMs / 1000 + ' s of quiet after speech');
+    usage.track('mic.auto-stop');
+    try { if (navigator.vibrate) navigator.vibrate(60); } catch (_) { /* no haptic */ }
+    stopRecording(d);
+  });
+  if (!d.pauseWatch) console.info('[dictation] auto-stop off for this take: the input level cannot be measured');
 }
 
 function handleRecorderStop(d, stream, mime) {
@@ -615,6 +643,7 @@ async function startRecording(d) {
   // dataavailable so chunks flow during the take.
   d.recorder.start(d.streaming ? _CHUNK_MS : undefined);
   setRecordingUI(d, true);
+  watchTakePause(d, stream);
   watchTakeLevel(d, stream);
 }
 

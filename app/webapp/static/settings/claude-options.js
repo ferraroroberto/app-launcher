@@ -20,6 +20,7 @@ import { setSwitch, switchEl } from '../_vendored/switch/switch.js';
 import { setUsageShows } from '../usage-meter.js';
 import { renderSettingsValues } from './settings-sheets.js';
 import { renderRemotePowerGuard } from './remote-power-guard.js';
+import { renderDictationAutoStop } from './dictation-autostop.js';
 
 // Shared model-picker controllers, created once the DOM exists.
 let codingModelCombo = null;
@@ -249,6 +250,7 @@ export async function fetchConfig(shouldApply) {
   if (els.lifeOsRefreshSkillToggle) {
     setSwitch(els.lifeOsRefreshSkillToggle, body.life_os_refresh_skill_instructions !== false);
   }
+  renderDictationAutoStop(body);
   renderUsageShows(body);
   if (els.hideChannelSessionsToggle) {
     setSwitch(els.hideChannelSessionsToggle, body.hide_channel_sessions !== false);

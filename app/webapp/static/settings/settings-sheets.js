@@ -27,6 +27,7 @@ import { apiFailToast, jsonApi, toast } from '../api.js';
 import { revealInCard } from '../dom-utils.js';
 import { wireModelCombo } from '../shared/model-combo.js';
 import { fetchConfig, patchConfig, USAGE_PROVIDER_LABELS, wireConfigSwitch } from './claude-options.js';
+import { wireDictationAutoStop } from './dictation-autostop.js';
 import { terminalJsonApi } from '../webauthn.js';
 import { setSwitch } from '../_vendored/switch/switch.js';
 import { fetchApps } from '../apps.js';
@@ -547,6 +548,7 @@ function wireChiefDoorbell() {
 export function wireSettingsSheets() {
   wireConfigSwitch(els.lifeOsRefreshSkillToggle, 'life_os_refresh_skill_instructions',
     { label: 'Skill refresh on resume' });
+  wireDictationAutoStop();
   document.querySelectorAll('#paneSettings [data-sheet]').forEach(function (btn) {
     btn.addEventListener('click', function () { showPath([btn.dataset.sheet]); });
   });

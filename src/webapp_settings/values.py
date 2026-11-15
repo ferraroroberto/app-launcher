@@ -108,6 +108,13 @@ DEFAULT_CHIEF_AUTO_COMPACT_THRESHOLD = 30
 MIN_CHIEF_AUTO_COMPACT_THRESHOLD = 10
 MAX_CHIEF_AUTO_COMPACT_THRESHOLD = 90
 
+# Dictation stops a take by itself after this many seconds of quiet that
+# follow speech; 0 leaves it off (a tap stops it). A short fixed set rather
+# than a free number: under 2 s a breath between sentences ends the take, and
+# past 5 s waiting is slower than the tap it replaces.
+VALID_DICTATION_AUTO_STOP_SECONDS = (0, 2, 3, 5)
+DEFAULT_DICTATION_AUTO_STOP_SECONDS = 0
+
 # Derived from the catalog like the Codex/Pi/chief sets, so a model
 # refresh makes a tier pickable, savable and launchable in one edit. Haiku
 # remains accepted for existing configs and direct launches, but it is not a
