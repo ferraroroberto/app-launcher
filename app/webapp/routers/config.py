@@ -121,7 +121,7 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "chief_weekly_proposals": cfg.chief_weekly_proposals,
         # The Grok Bot on/off switch; on by default.
         "grokbot_enabled": cfg.grokbot_enabled,
-        "life_os_refresh_skill_instructions": cfg.life_os_refresh_skill_instructions,
+        **_preferences_payload(cfg),
         # The chief's model and worker cap, read-only here so the
         # Settings > Chief row can show them without a passkey prompt. Writes
         # stay on the passkey-gated PUT /api/board/chief/settings.
@@ -149,6 +149,15 @@ async def get_config(request: Request) -> Dict[str, Any]:
         # Remote power guard: live-queried from Task Scheduler and the
         # registry each time, same reason as boot-autostart above.
         "remote_power_guard": remote_power_guard.payload(),
+    }
+
+
+def _preferences_payload(cfg: WebappConfig) -> Dict[str, Any]:
+    """Settings > Life OS and Dictation: the skill refresh switch and the
+    quiet seconds that end a dictation take (0 = off)."""
+    return {
+        "life_os_refresh_skill_instructions": cfg.life_os_refresh_skill_instructions,
+        "dictation_auto_stop_seconds": cfg.dictation_auto_stop_seconds,
     }
 
 
@@ -322,6 +331,7 @@ _PATCH_KEYS = frozenset({
     "chief_weekly_proposals",
     "grokbot_enabled",
     "life_os_refresh_skill_instructions",
+    "dictation_auto_stop_seconds",
     "claude_model",
     "claude_effort",
     "claude_verbose",

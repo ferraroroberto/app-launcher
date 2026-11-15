@@ -108,6 +108,26 @@ DEFAULT_CHIEF_AUTO_COMPACT_THRESHOLD = 30
 MIN_CHIEF_AUTO_COMPACT_THRESHOLD = 10
 MAX_CHIEF_AUTO_COMPACT_THRESHOLD = 90
 
+# Dictation stops a take by itself after this many seconds of quiet that
+# follow speech; 0 leaves it off (a tap stops it). A short fixed set rather
+# than a free number: under 2 s a breath between sentences ends the take, and
+# past 5 s waiting is slower than the tap it replaces.
+VALID_DICTATION_AUTO_STOP_SECONDS = (0, 2, 3, 5)
+DEFAULT_DICTATION_AUTO_STOP_SECONDS = 0
+
+
+def check_dictation_auto_stop(seconds: object) -> None:
+    """Raise ValueError unless ``seconds`` is one of the auto-stop choices.
+
+    The type test is exact: a JSON ``false`` equals 0 and ``2.0`` equals 2 in
+    Python, and neither is a choice the Settings control can send.
+    """
+    if type(seconds) is not int or seconds not in VALID_DICTATION_AUTO_STOP_SECONDS:
+        raise ValueError(
+            "dictation_auto_stop_seconds must be one of "
+            f"{VALID_DICTATION_AUTO_STOP_SECONDS}; got {seconds!r}"
+        )
+
 # Derived from the catalog like the Codex/Pi/chief sets, so a model
 # refresh makes a tier pickable, savable and launchable in one edit. Haiku
 # remains accepted for existing configs and direct launches, but it is not a
