@@ -23,6 +23,7 @@ import { setSwitch, switchEl } from '../_vendored/switch/switch.js';
 import { patchConfig } from '../settings/claude-options.js';
 import { fetchApps, launchApp, renderApps } from '../apps.js';
 import { openSettingsAt } from '../tabs.js';
+import { canPull, fetchAll, pullProject, syncAll, wireGitSync } from './git-sync.js';
 
 // ------------------------------------------- Coding row button visibility
 // The row strip grew to one button per registered agent plus GitHub plus the
@@ -70,8 +71,8 @@ export const codingLaunch = mountLaunchToolbar(document.getElementById('codingLa
   },
   detachedTitle: 'Launch detached: a console window on the PC, listed and killable here but no phone terminal',
   resumeTitle: 'Resume: reopen the agent\u2019s own session picker, in a phone terminal, or in the detached console when Detached is also on',
-  // The git refresh rides the model row, pinned right.
-  trailing: document.getElementById('gitRefreshBtn'),
+  // Sync all and the git refresh ride the model row, pinned right.
+  trailing: document.getElementById('gitToolbarActions'),
 });
 
 // The ⋯ menu shared by every Coding row; drops below the row and survives
@@ -371,6 +372,14 @@ function projectMenuItems(a, gs, agents, favoriteId, hidden) {
       onTap: function () { openChanges(a); },
     },
     {
+      // Pull: only for a repo the server would fast-forward (clean, on its
+      // default branch, only behind), the same rule Sync all applies.
+      dataset: { item: 'project-pull-btn' }, glyph: 'download',
+      label: 'Pull',
+      hidden: !canPull(gs),
+      onTap: function () { pullProject(a).then(function () { refreshGitStatus({ quiet: true, fresh: true }); }); },
+    },
+    {
       dataset: { item: 'project-folder-btn' }, glyph: 'folder',
       label: 'Open folder',
       onTap: function () { openFolder(a); },
@@ -451,11 +460,28 @@ function syncFavFilterBtn() {
 function gitFlags(gs) {
   if (!gs || !gs.is_git) return { flag: '', meta: '', chips: [] };
   const offMain = !!gs.branch && !gs.on_default_branch;
+  const chips = gs.dirty ? [chip('uncommitted', 'attention', 'git-uncommitted')] : [];
+  const upChip = upstreamChip(gs.upstream);
+  if (upChip) chips.push(upChip);
+  // Sync all moved this checkout under an app that still runs the old code.
+  if (gs.restart_needed) chips.push(chip('restart needed', 'attention', 'git-restart-needed'));
   return {
     flag: gs.dirty ? 'dirty' : (offMain ? 'off-main' : ''),
     meta: offMain ? 'on ' + gs.branch : '',
-    chips: gs.dirty ? [chip('uncommitted', 'attention', 'git-uncommitted')] : [],
+    chips: chips,
   };
+}
+
+// Where the default branch stands against origin, apart from the dirty
+// chip. Up to date, no remote and not yet fetched say nothing; a failed
+// fetch says unknown, never up to date.
+function upstreamChip(up) {
+  if (!up) return null;
+  if (up.state === 'behind') return chip('behind ' + up.behind, 'attention', 'git-behind');
+  if (up.state === 'diverged') return chip('diverged', 'attention', 'git-diverged');
+  if (up.state === 'ahead') return chip('ahead ' + up.ahead, 'neutral', 'git-ahead');
+  if (up.state === 'unknown') return chip('remote unknown', 'neutral', 'git-upstream-unknown');
+  return null;
 }
 
 // The Projects card's git lines: the uncommitted count in its
@@ -511,13 +537,18 @@ export async function refreshGitStatus(options) {
   }
 }
 
-// The Projects toolbar's refresh (was the "Git status" button):
-// re-run git now. The rows are the off-main list, so there is no popover;
-// the footer's "Git checked just now" is the confirmation.
+// The Projects toolbar's refresh: fetch every remote, then re-run git now.
+// The footer's "Git checked just now" is the confirmation. A fetch that
+// fails still re-reads status, so its repos show as unknown.
 async function checkGitNow() {
   const btn = els.gitRefreshBtn;
   if (btn) btn.disabled = true;
   try {
+    try {
+      await fetchAll();
+    } catch (exc) {
+      apiFailToast('Fetch failed', exc);
+    }
     await refreshGitStatus({ fresh: true });
   } catch (exc) {
     apiFailToast('Git status check failed', exc);
@@ -537,6 +568,17 @@ export function wireCoding() {
     });
   }
   if (els.gitRefreshBtn) els.gitRefreshBtn.addEventListener('click', checkGitNow);
+  const syncBtn = document.getElementById('gitSyncAllBtn');
+  if (syncBtn) {
+    syncBtn.addEventListener('click', function () {
+      syncBtn.disabled = true;
+      syncAll(function () {
+        syncBtn.disabled = false;
+        refreshGitStatus({ quiet: true, fresh: true });
+      });
+    });
+  }
+  wireGitSync();
   if (els.favFilterBtn) {
     els.favFilterBtn.addEventListener('click', function (event) {
       // The trailing star inside the filter field. The field is a

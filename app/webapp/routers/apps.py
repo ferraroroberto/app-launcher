@@ -11,7 +11,7 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 from fastapi import APIRouter, HTTPException, Request
@@ -32,6 +32,7 @@ from src.diagnostics import (
     kill_process_tree,
     listening_port_for_pid_tree,
 )
+from src.git_upstream import launch_refusal
 from src.launching.flags import (
     build_antigravity_flags,
     build_claude_flags,
@@ -58,7 +59,7 @@ from src.registry import (
     rename_by_id,
     set_autostart_by_id,
 )
-from src.scanner import KIND_CLAUDE_CODE, KIND_TRAY, KIND_TUNNEL
+from src.scanner import KIND_CLAUDE_CODE, KIND_TRAY, KIND_TUNNEL, git_status
 from src.webapp_config import (
     VALID_CLAUDE_MODELS,
     VALID_CODEX_MODELS,
@@ -271,6 +272,26 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
     }
 
 
+def _behind_refusal(project_dir: Path) -> Optional[str]:
+    status = git_status(project_dir)
+    return launch_refusal(project_dir, status.default_branch) if status.is_git else None
+
+
+async def _refuse_if_behind(entry: AppEntry, body: Dict[str, Any]) -> None:
+    """409 when the repo's default branch is behind its remote.
+
+    Work started on a stale checkout surfaces only at push time, so the
+    launch waits for a pull. ``ignore_behind`` is the client's explicit
+    "Launch anyway", offered only when a pull cannot run (dirty, off the
+    default branch, diverged).
+    """
+    if body.get("ignore_behind"):
+        return
+    refusal = await asyncio.to_thread(_behind_refusal, Path(entry.project_dir))
+    if refusal:
+        raise HTTPException(status_code=409, detail=f"{entry.name}: {refusal}")
+
+
 async def _launch_coding(entry: AppEntry, cfg: WebappConfig, request: Request) -> Dict[str, Any]:
     """Launch a Coding-tab row as a PTY session or a detached console."""
     if not entry.project_dir:
@@ -306,6 +327,7 @@ async def _launch_coding(entry: AppEntry, cfg: WebappConfig, request: Request) -
             status_code=400,
             detail=f"{agents.AGENTS[agent].label} is not installed",
         )
+    await _refuse_if_behind(entry, body)
     model_value = _validated_launch_model(agent, requested_model)
     flags = _coding_flags(cfg, agent, resume, model_value)
 

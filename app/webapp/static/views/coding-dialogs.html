@@ -211,6 +211,25 @@
       </div>
     </dialog>
 
+    <!-- Sync all's report (Projects toolbar): one line per repo, pulled with
+         its commit count, up to date, or skipped with the reason. Read-only,
+         so its one action is Done. Driven by apps/git-sync.js. -->
+    <dialog id="gitSyncSheet" class="detail-dialog" data-track-view="sheet.git-sync" aria-labelledby="gitSyncTitle">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2 id="gitSyncTitle" tabindex="-1" autofocus><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-download"></use></svg> Sync all</h2>
+          <button data-track="git-sync.close" type="button" id="gitSyncClose" class="icon-button detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div id="gitSyncState" class="bg-tasks-state" role="status" aria-live="polite" hidden></div>
+        <ul id="gitSyncBody" class="git-sync-body"></ul>
+        <div class="detail-actions">
+          <button data-track="git-sync.done" type="button" id="gitSyncDone" class="button-primary detail-save-btn">Done</button>
+        </div>
+      </div>
+    </dialog>
+
     <dialog id="sessionRenameDialog" class="detail-dialog" data-track-view="sheet.session-rename">
       <form id="sessionRenameForm" class="detail-card">
         <div class="detail-header">

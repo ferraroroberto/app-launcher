@@ -23,7 +23,7 @@ import logging
 import os
 import subprocess
 from pathlib import Path
-from typing import Optional, Sequence, Union
+from typing import Callable, Optional, Sequence, Union
 
 from src.subprocess_flags import NO_WINDOW
 
@@ -98,8 +98,41 @@ def run_git(
     """
     cmd = ["git", "-C", str(repo), *args]
     log = logger.warning if warn_on_failure else logger.debug
+    result = run_git_proc(repo, args, timeout=timeout, log=log)
+    if result is None:
+        return None
+    if result.returncode != 0:
+        log(
+            "⚠️ run_git: %s exit=%s stderr=%r",
+            " ".join(cmd), result.returncode, (result.stderr or "").strip(),
+        )
+        return None
+    return result.stdout.strip()
+
+
+def run_git_proc(
+    repo: Union[str, Path],
+    args: Sequence[str],
+    *,
+    timeout: float = _DEFAULT_TIMEOUT_SECONDS,
+    no_prompt: bool = False,
+    log: Callable[..., None] = logger.debug,
+) -> Optional["subprocess.CompletedProcess[str]"]:
+    """Run ``git -C <repo> <args>`` and return the finished process, or ``None``.
+
+    For a caller that needs the exit code itself (``check-ignore`` answers
+    with 0 or 1) or the stderr of a refused write. ``None`` only when git
+    could not be run at all (missing binary, timeout). ``no_prompt`` is for a
+    network call (``fetch``): the webapp has no one to answer a credential
+    prompt, so git and Git Credential Manager fail instead of waiting on one.
+    """
+    cmd = ["git", "-C", str(repo), *args]
+    env = git_env()
+    if no_prompt:
+        env["GIT_TERMINAL_PROMPT"] = "0"
+        env["GCM_INTERACTIVE"] = "never"
     try:
-        result = subprocess.run(
+        return subprocess.run(
             cmd,
             capture_output=True,
             stdin=subprocess.DEVNULL,
@@ -109,18 +142,11 @@ def run_git(
             timeout=timeout,
             check=False,
             creationflags=NO_WINDOW,
-            env=git_env(),
+            env=env,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         log("⚠️ run_git: %s raised %s: %s", " ".join(cmd), type(exc).__name__, exc)
         return None
-    if result.returncode != 0:
-        log(
-            "⚠️ run_git: %s exit=%s stderr=%r",
-            " ".join(cmd), result.returncode, (result.stderr or "").strip(),
-        )
-        return None
-    return result.stdout.strip()
 
 
 def resolve_default_ref(

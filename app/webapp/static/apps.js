@@ -32,6 +32,7 @@ import {
 import { createRowMenu } from './_vendored/row-menu/row-menu.js';
 import { avatar, chip } from './glance.js';
 import { confirmDialog } from './confirm-dialog.js';
+import { behindGate } from './apps/git-sync.js';
 import { failedFetchState, setAsyncState } from './async-state.js';
 import { WIDE_LAYOUT_QUERY, isWideLayout } from './layout.js';
 import { icon } from './_vendored/icons/icons.js';
@@ -265,9 +266,13 @@ export async function launchApp(a, agentId, stealth) {
   // Detached → 'remote', independent of Resume. The two combine: a
   // Detached+Resume launch renders the agent's picker in the console.
   const mode = (coding && codingLaunch.isDetached()) ? 'remote' : null;
+  // A repo behind its remote is pulled first (or, when it cannot be, launched
+  // only on an explicit "Launch anyway"); the server refuses it otherwise.
+  const gate = a.kind === 'claude-code' ? await behindGate(a) : {};
+  if (!gate) return;
   try {
     const opts = { method: 'POST' };
-    const payload = {};
+    const payload = Object.assign({}, gate);
     if (mode) payload.mode = mode;
     if (resume) payload.resume = true;
     if (a.kind === 'claude-code') {

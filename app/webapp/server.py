@@ -38,7 +38,10 @@ full per-family surface.  Top-level families:
                  POST /api/transcribe/sessions/{id}/finish
                  GET  /api/ocr                            → screenshot OCR
 
-    claude_code  GET  /api/claude-code/git-status         → per-project branch+dirty
+    claude_code  GET  /api/claude-code/git-status         → per-project branch+dirty+ahead/behind
+                 POST /api/claude-code/git-fetch          → fetch every repo's origin
+                 POST /api/claude-code/pull/{id}          → fast-forward one repo
+                 POST /api/claude-code/sync-all           → fast-forward every safe repo
                  POST /api/claude-code/vscode/{id}        → open in VS Code
                  GET  /api/claude-code/changes/{id}       → working-tree file list
                  GET  /api/claude-code/changes/{id}/diff  → one file's unified diff
@@ -486,6 +489,9 @@ async def _lifespan(app: FastAPI):
         # Always started: it reads each bot's idle_close_minutes every tick and
         # touches only what the relay reopened, so a settings save applies live.
         tasks.append(asyncio.create_task(relay_idle_close.tick_forever(app)))
+        # The Projects tiles' ahead/behind: a slow fetch round while a page
+        # polls git status. Canonical only, so a gate webapp stays offline.
+        tasks.append(asyncio.create_task(claude_code.fetch_tick_forever(app)))
         if _autostart_channel_sessions_on(cfg):
             tasks.append(asyncio.create_task(_channel_autostart(app)))
         else:
