@@ -75,7 +75,7 @@ function hideToast() {
 function showToast(message, kind) {
   const host = node('progressToast');
   if (!host) return;
-  toast(message, kind || '', { host: host, icon: kind === 'error' ? 'triangle-alert' : 'refresh-cw', duration: TOAST_HOLD_MS });
+  toast(message, kind || '', { host: host, icon: kind === 'error' ? 'triangle-alert' : 'refresh-cw', ms: TOAST_HOLD_MS });
 }
 
 // One read of the cache, drawn. A failed read leaves the last good figures up

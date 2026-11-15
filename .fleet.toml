@@ -103,6 +103,8 @@ webapp_serve = { src = "app/webapp/serve.py", sha = "a37f157cda14dda408c36df5033
 instruction_frontmatter = { src = "scripts/instruction_frontmatter.py", sha = "c5535ac326c398df8f44486f386ff0e0b6d4c61c", dest = "scripts/instruction_frontmatter.py" }
 instruction_repeats = { src = "scripts/instruction_repeats.py", sha = "c5535ac326c398df8f44486f386ff0e0b6d4c61c", dest = "scripts/instruction_repeats.py" }
 tray_watchdog = { src = "app/tray/watchdog.py", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "app/tray/watchdog.py" }
+toast = { src = "app/webapp/static/_vendored/toast", sha = "9435d994dfc621809d9bee30240675a2423013e4", dest = "app/webapp/static/_vendored/toast" }
+build-watch = { src = "app/webapp/static/_vendored/build-watch", sha = "9435d994dfc621809d9bee30240675a2423013e4", dest = "app/webapp/static/_vendored/build-watch" }
 
 # ---------------------------------------------------------------------------
 # [verify] -- the launch recipe the generated verify-app-launcher skill reads

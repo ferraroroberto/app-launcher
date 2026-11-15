@@ -422,7 +422,7 @@ async function acquireStream(d) {
     // No device at all is what a Remote Desktop session without a redirected
     // mic reports; any other refusal (permission, in use) keeps its own text.
     if (exc && exc.name === 'NotFoundError' && (await inRemoteDesktopSession())) {
-      toast(REMOTE_MIC_HINT, 'error', { duration: 9000 });
+      toast(REMOTE_MIC_HINT, 'error', { ms: 9000 });
     } else {
       apiFailToast('Microphone unavailable', exc);
     }

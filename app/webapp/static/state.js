@@ -614,7 +614,6 @@ export const els = {
   sessionLinkInput: document.getElementById('sessionLinkInput'),
   sessionLinkCopy: document.getElementById('sessionLinkCopy'),
 
-  toast: document.getElementById('toast'),
 
 
   terminalOverlay: document.getElementById('terminalOverlay'),

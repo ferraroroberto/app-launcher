@@ -369,7 +369,7 @@ async function sendNow() {
     const answer = await jsonApi('/api/screen-time/export', { method: 'POST' });
     // The server words what changed (or "Nothing new"); a long line needs
     // longer on screen than the default confirmation.
-    toast(answer.result.summary, 'ok', { host, duration: 6000 });
+    toast(answer.result.summary, 'ok', { host, ms: 6000 });
     renderSent(answer);
   } catch (exc) {
     apiFailToast('Send failed', exc, { host });
