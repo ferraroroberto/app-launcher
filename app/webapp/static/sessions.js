@@ -39,7 +39,7 @@ import { fmtDuration } from './shared/format.js';
 import { SubmitState, submitState } from './chat/submit-state.js';
 import { SensitiveOutcome, runSensitiveAction } from './shared/sensitive-action.js';
 import { confirmDialog } from './confirm-dialog.js';
-import { attentionChip, chip, sessionRowBody, sessionStatusBits } from './glance.js';
+import { attentionChip, chip, sessionRowBody, sessionStatusParts } from './glance.js';
 import { renderUsage } from './usage-meter.js';
 import { createRowMenu } from './_vendored/row-menu/row-menu.js';
 import { icon } from './_vendored/icons/icons.js';
@@ -358,7 +358,7 @@ function sessionOpenButton(s, isChief, remote) {
   // placement: the same formatter and words as the Board's row. The word
   // is dropped where the attention chip already says it; the age
   // stays. No placement (null) shows neither.
-  const statusBits = sessionStatusBits(s.board_status, s.board_age_seconds, {
+  const status = sessionStatusParts(s.board_status, s.board_age_seconds, {
     chief: isChief,
     hideStatus: !!attention,
   });
@@ -374,8 +374,8 @@ function sessionOpenButton(s, isChief, remote) {
     // over the launch flag (src/session_model.py), absent when unknown.
     metaHead: projectFolder(s),
     metaModel: s.model || '',
-    meta: statusBits.join(' · '),
-    metaTail: ago ? 'up ' + ago : '',
+    meta: status.status,
+    metaTail: [status.age, ago ? 'up ' + ago : ''],
     chips: chips,
     // `.name`: the hook every row test reads the title through.
     titleClass: 'name',

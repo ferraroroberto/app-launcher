@@ -85,3 +85,44 @@ def test_one_line_and_small_rows_hold_their_heights(
     assert m["small"] == 44, m
     assert m["plain"] == 60, m
     assert m["sameLine"], f"one-line row put the meta on its own line: {m}"
+
+    # A tail figure stays whole beside ellipsized words (LAYOUT-09, COMP-07),
+    # in both themes.
+    for theme in ("light", "dark"):
+        authed_page.emulate_media(color_scheme=theme)
+        t = authed_page.evaluate(_TAIL)
+        assert t == {
+            "oneLine": True, "wordsCut": True, "tails": ["9m", "up 1d 3h"],
+            "tailsWhole": True, "name": "Open sample row",
+        }, (theme, t)
+
+
+_TAIL = """async () => {
+  const { actionRow } = await import('/static/action-rows.js');
+  const ul = document.createElement('ul');
+  ul.className = 'action-rows';
+  ul.style.width = '358px';
+  document.body.appendChild(ul);
+  const r = actionRow({
+    title: 'Sample row', label: 'Open sample row', onMain: function () {},
+    meta: 'a long run of sample words that cannot fit beside the figures at phone width',
+    tail: ['9m', 'up 1d 3h'],
+  });
+  ul.appendChild(r.li);
+  const meta = r.meta.getBoundingClientRect();
+  const line = parseFloat(getComputedStyle(r.meta).lineHeight);
+  const text = r.meta.querySelector('.action-row-meta-text');
+  const tails = Array.from(r.meta.querySelectorAll('.action-row-meta-tail'));
+  const out = {
+    oneLine: meta.height <= line + 1,
+    wordsCut: text.scrollWidth > text.clientWidth,
+    tails: tails.map(function (t) { return t.textContent; }),
+    tailsWhole: tails.every(function (t) {
+      return t.getBoundingClientRect().right <= meta.right + 1 && t.scrollWidth <= t.clientWidth + 1;
+    }),
+    name: r.main.getAttribute('aria-label'),
+  };
+  ul.remove();
+  return out;
+}"""
+

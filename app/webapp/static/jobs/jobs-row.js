@@ -106,17 +106,19 @@ export function cadenceText(text) {
   return t ? t.charAt(0).toUpperCase() + t.slice(1) : '';
 }
 
-/* The row's one meta line: when it next fires, then how often. A running
- * job says so instead of its countdown; a paused one says what its schedule
- * was ("Was daily 07:00"), and its paused chip carries the state. */
+/* The row's one meta line, as `{ text, tail }`: how often is the words, when it
+ * next fires is the tail, a figure the row's ellipsis must not cut. A running
+ * job says so in the tail instead of its countdown; a paused one says what its
+ * schedule was ("Was daily 07:00"), and its paused chip carries the state. */
 export function jobMeta(job) {
   const cadence = (job.schedule_chip || '').trim();
-  if (job.running) return 'running now' + (cadence ? ' · ' + cadenceText(cadence) : '');
-  if (job.paused) return cadence ? 'Was ' + cadence : 'Paused';
-  if (!cadence) return 'Manual only';
-  return Number.isFinite(job.next_run_epoch)
-    ? fmtUntil(job.next_run_epoch) + ' · ' + cadenceText(cadence)
-    : cadenceText(cadence);
+  if (job.running) return { text: cadence ? cadenceText(cadence) : '', tail: 'running now' };
+  if (job.paused) return { text: cadence ? 'Was ' + cadence : 'Paused', tail: '' };
+  if (!cadence) return { text: 'Manual only', tail: '' };
+  return {
+    text: cadenceText(cadence),
+    tail: Number.isFinite(job.next_run_epoch) ? fmtUntil(job.next_run_epoch) : '',
+  };
 }
 
 /* Chips for exceptions only (the tone map): a failed last run is
@@ -200,11 +202,13 @@ export function jobKindGlyph(job) {
 
 // handlers: onOpen (the row tap), onRun, onPause, onEdit, onRemove.
 export function renderJobRow(job, handlers) {
+  const when = jobMeta(job);
   const row = actionRow({
     id: job.id,
     className: 'job-row',
     title: job.name,
-    meta: jobMeta(job),
+    meta: when.text,
+    tail: when.tail,
     chips: jobChips(job),
     avatar: avatar(jobKindGlyph(job), job.running ? 'alive' : null, 'job-avatar'),
     label: 'Open ' + job.name,

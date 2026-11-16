@@ -160,11 +160,8 @@ function appBadge(a, running) {
 // up, and "starts at log on" when its autostart switch is on. Ones the
 // tray process starts at log on are not in the running list, so a row not
 // seen running says nothing about it rather than "not running".
-function autostartMeta(a, running) {
-  const parts = [];
-  if (running.has(a.id)) parts.push('running');
-  if (a.autostart) parts.push('starts at log on');
-  return parts.join(' · ');
+function autostartMeta(a) {
+  return a.autostart ? 'starts at log on' : '';
 }
 
 // Apps and Trays rows on the vendored action-row. Tapping the row
@@ -191,7 +188,8 @@ function renderList(host, items, running) {
       id: a.id,
       className: 'app-row',
       title: a.name,
-      meta: tray ? autostartMeta(a, running) : (tunnel ? kindLabel(a.kind) : ''),
+      meta: tray ? autostartMeta(a) : (tunnel ? kindLabel(a.kind) : ''),
+      tail: tray && running.has(a.id) ? 'running' : '',
       chips: down ? [chip('down', 'danger', 'app-down-chip')] : [],
       avatar: tray ? null : kindAvatar(a.kind, appBadge(a, running)),
       label: 'Launch ' + a.name + ' hidden, with no window',
@@ -565,16 +563,14 @@ export function renderRunningApps() {
 
   state.runningApps.forEach(function (r) {
     const ago = fmtAgo(r.started_at);
-    const parts = [];
-    if (ago) parts.push('up ' + ago);
-    parts.push(r.port ? ':' + r.port : 'binding…');
     const noUrl = r.port
       ? 'Set tailnet_host in config/config.json to enable Open'
       : 'Waiting for the app to bind a port…';
     const row = actionRow({
       className: 'running-app',
       title: r.name,
-      meta: parts.join(' · '),
+      meta: r.port ? ':' + r.port : 'binding…',
+      tail: ago ? 'up ' + ago : '',
       avatar: kindAvatar(r.kind, 'alive'),
       label: r.url ? 'Open ' + r.url : 'Open ' + r.name,
       disabled: !r.url,

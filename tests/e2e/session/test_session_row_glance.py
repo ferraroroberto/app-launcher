@@ -167,9 +167,10 @@ def test_code_rows_and_board_cards_share_the_session_row(
     detached = row("s-remote").locator(".chip.session-detached")
     expect(detached).to_have_text("detached")
     expect(detached).to_have_attribute("data-tone", "neutral")
-    # Meta is "folder · uptime" on Code.
-    expect(row("s-pty").locator(".srow-meta-text")).to_have_text(
-        re.compile(r"^demo-garden · up \d+m"))
+    # Meta is the folder, then the uptime as a tail figure, on Code.
+    expect(row("s-pty").locator(".srow-meta-text")).to_have_text("demo-garden")
+    expect(row("s-pty").locator(".action-row-meta-tail")).to_have_text(
+        re.compile(r"^up \d+m"))
     for sid in ("s-chief", "s-pty", "s-remote"):
         _assert_two_line_row(stable_eval(row(sid), _ROW_GEOMETRY), sid)
     # Both tabs call the same sessionTitle(), so the shared title is the one
@@ -186,11 +187,15 @@ def test_code_rows_and_board_cards_share_the_session_row(
     stalled = card("b-stalled").locator(".chip.board-stalled-chip")
     expect(stalled).to_have_text("stalled")
     expect(stalled).to_have_attribute("data-tone", "danger")
-    # Status is plain meta: "repo · status · age"; stalled says it once, as the chip.
-    expect(card("b-wait").locator(".board-card-meta")).to_have_text(
-        "demo-garden · needs you · 5m")
+    # Status is plain meta, the age its tail figure: "repo · status", "age";
+    # stalled says it once, as the chip.
+    expect(card("b-wait").locator(".board-card-meta .action-row-meta-text")).to_have_text(
+        "demo-garden · needs you")
+    expect(card("b-wait").locator(".board-card-meta .action-row-meta-tail")).to_have_text("5m")
     expect(card("b-stalled").locator(".board-card-meta .action-row-meta-text")).to_have_text(
-        "demo-garden · 5m")
+        "demo-garden")
+    expect(card("b-stalled").locator(".board-card-meta .action-row-meta-tail")).to_have_text(
+        "5m")
     expect(card("b-wait").locator(".chip")).to_have_count(0)
     expect(card("b-idle").locator('.avatar-badge[data-badge="alive"]')).to_have_count(1)
     expect(card("b-chief").locator('.avatar-badge[data-badge="crown"]')).to_have_count(1)

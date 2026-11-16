@@ -129,10 +129,11 @@ def test_stop_confirms_and_posts(authed_page: Page, base_url: str) -> None:
     row0, row1 = rows.nth(0), rows.nth(1)
     # The row itself is Open (#1129, an action-row): enabled with a URL.
     # Since #1437 the kind is the avatar's glyph, which wears the alive
-    # badge, and the context line is "up … · :port"; the pid moved to the
-    # menu's header line.
+    # badge, and the context line is ":port" with "up …" as its tail figure; the
+    # pid moved to the menu's header line.
     expect(row0.locator(".action-row-title")).to_have_text("Voice Transcriber")
-    expect(row0.locator(".action-row-meta")).to_have_text(re.compile(r"^up .+ · :8501$"))
+    expect(row0.locator(".action-row-meta-text")).to_have_text(":8501")
+    expect(row0.locator(".action-row-meta-tail")).to_have_text(re.compile(r"^up .+$"))
     expect(row0.locator(".action-open")).to_be_enabled()
     expect(row0.locator(".action-open .avatar")).to_have_attribute("data-badge", "alive")
     expect(row0.locator(".avatar use")).to_have_attribute("href", "#i-globe")

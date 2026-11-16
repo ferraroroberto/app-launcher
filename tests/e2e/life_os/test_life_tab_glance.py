@@ -225,9 +225,11 @@ def test_a_linked_skill_says_telegram_its_rows_run_full_bleed_and_its_chip_is_co
     on the same load, the phone's full-bleed rows and Settings' code chip."""
     page = life()
     garden, reading, trip = (_row(page, i) for i in ("garden-notes", "reading-list", "trip-planner"))
-    expect(garden.locator(".action-row-meta")).to_have_text("no conversations yet · Telegram")
-    expect(reading.locator(".action-row-meta")).to_have_text("no conversations yet · Telegram")
-    expect(trip.locator(".action-row-meta")).to_have_text("no conversations yet")
+    expect(garden.locator(".action-row-meta-text")).to_have_text("Telegram")
+    expect(reading.locator(".action-row-meta-text")).to_have_text("Telegram")
+    for row in (garden, reading, trip):
+        expect(row.locator(".action-row-meta-tail")).to_have_text("no conversations yet")
+    expect(trip.locator(".action-row-meta-text")).to_have_text("")
     expect(garden.locator(".avatar")).to_have_attribute("data-badge", "none")
     expect(reading.locator(".avatar-badge[data-badge='alive']")).to_have_count(1)
     expect(page.locator("#lifeOsList .chip")).to_have_count(0)
@@ -372,11 +374,14 @@ def test_a_bot_whose_skill_changed_says_restart_due(authed_page: Page, life) -> 
     # Registered after the fixture's route, so it answers first.
     _json_route(authed_page, r".*/api/life-os/channels$", channels)
     page = life()
-    expect(_row(page, "reading-list").locator(".action-row-meta")).to_have_text(
-        "no conversations yet · Telegram · restart due"
+    expect(_row(page, "reading-list").locator(".action-row-meta-text")).to_have_text(
+        "Telegram · restart due"
     )
-    expect(_row(page, "garden-notes").locator(".action-row-meta")).to_have_text(
-        "no conversations yet · Telegram"
+    expect(_row(page, "reading-list").locator(".action-row-meta-tail")).to_have_text(
+        "no conversations yet"
+    )
+    expect(_row(page, "garden-notes").locator(".action-row-meta-text")).to_have_text(
+        "Telegram"
     )
     _row(page, "reading-list").locator(".action-row-kebab").click()
     expect(open_row_menu(page).locator("[data-item=lifeos-channel-restart-btn]")).to_have_text(
@@ -457,8 +462,7 @@ def test_the_recap_is_one_glance_row_and_its_exception_heads_the_tab(
         if meta is None:
             expect(card).to_be_hidden()
         else:
-            text = row.locator(".action-row-meta-text" if chips else ".action-row-meta")
-            expect(text).to_have_text(meta)
+            expect(row.locator(".action-row-meta-tail")).to_have_text(meta)
         expect(status).to_have_text(header)
         if tone:
             expect(status.locator(".head-exception")).to_have_attribute("data-tone", tone)
@@ -649,12 +653,14 @@ def test_rows_say_when_last_used_then_sort_pinned_recent_and_fold(
     skill with no conversation yet offers Resume last disabled."""
     _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _used())
     page = life()
-    for skill_id, meta in (
-        ("garden-notes", "used today · Telegram"), ("trip-planner", "used yesterday"),
-        ("pottery", "used 3 days ago"), ("bird-count", "used 3 months ago"),
-        ("yoga-log", "no conversations yet"),
+    for skill_id, words, tail in (
+        ("garden-notes", "Telegram", "used today"), ("trip-planner", "", "used yesterday"),
+        ("pottery", "", "used 3 days ago"), ("bird-count", "", "used 3 months ago"),
+        ("yoga-log", "", "no conversations yet"),
     ):
-        expect(_row(page, skill_id).locator(".action-row-meta")).to_have_text(meta)
+        meta = _row(page, skill_id).locator(".action-row-meta")
+        expect(meta.locator(".action-row-meta-text")).to_have_text(words)
+        expect(meta.locator(".action-row-meta-tail")).to_have_text(tail)
 
     # The avatar is the skill's glyph; a glyph the page's sprite lacks falls
     # back to the monogram, as does none.
@@ -671,7 +677,9 @@ def test_rows_say_when_last_used_then_sort_pinned_recent_and_fold(
     expect(fold).to_have_attribute("aria-expanded", "false")
     expect(_row(page, "bird-count")).to_be_hidden()
     expect(_row(page, "reading-list")).to_have_attribute("data-pinned", "true")
-    expect(_row(page, "reading-list").locator(".action-row-meta")).to_have_text("used last month · Telegram")
+    reading = _row(page, "reading-list").locator(".action-row-meta")
+    expect(reading.locator(".action-row-meta-text")).to_have_text("Telegram")
+    expect(reading.locator(".action-row-meta-tail")).to_have_text("used last month")
 
     fold.click()
     expect(fold).to_have_attribute("aria-expanded", "true")
