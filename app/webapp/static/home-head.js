@@ -124,7 +124,7 @@ export function renderBoardBadge() {
 // are not apps here).
 function renderAppsHead() {
   const apps = state.apps.filter(function (a) {
-    return a.kind !== 'claude-code' && a.kind !== 'tray';
+    return a.kind !== 'claude-code' && a.kind !== 'tray' && a.kind !== 'mini';
   });
   const down = apps.filter(function (a) {
     return a.kind === 'tunnel' && a.health === 'down';

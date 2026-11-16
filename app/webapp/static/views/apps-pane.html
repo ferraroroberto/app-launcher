@@ -143,6 +143,28 @@
         </div>
       </details>
 
+      <!-- Mini apps: the *.bat files of the mini_apps_root folder. Hidden until
+           a folder is configured (apps.js), then the same rows as Trays. -->
+      <details id="miniAppsCard" class="card card--collapsible action-list mini-apps-card" open hidden>
+        <summary data-track="apps.fold-mini" class="collapse-summary">
+          <span class="collapse-main">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-package"></use></svg>
+            <h3 class="collapse-title">Mini apps</h3>
+            <span id="miniAppsSummaryMeta" class="collapse-count trays-summary-meta" hidden></span>
+          </span>
+          <span class="collapse-chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="collapse-body">
+        <ul id="miniAppsList" class="card-list action-rows" aria-label="Mini apps"></ul>
+        <div id="miniAppsEmpty" class="empty-state" hidden>
+          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-package"></use></svg>
+          <p class="empty-state-message">No mini apps found yet. Scan looks for <code>.bat</code> files in the mini apps folder.</p>
+          <button data-track="apps.mini-empty-scan" type="button" id="miniAppsEmptyAction" class="empty-state-action">Scan for mini apps</button>
+        </div>
+        <p class="group-footer trays-footer">Mini apps switched on start with app-launcher.</p>
+        </div>
+      </details>
+
       <!-- The Performance card: one place for every app's phone-speed result
            (apps/apps-perf.js), in place of a line on each app's row. Collapsed:
            its summary already says how many are measured and whether one is over

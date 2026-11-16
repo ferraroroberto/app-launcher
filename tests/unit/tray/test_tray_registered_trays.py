@@ -399,3 +399,75 @@ class TestTrayStartLaunchesTraysRegardless:
         tray_mod.TrayApp._start(stub)  # must not raise
 
         launch_all.assert_called_once_with()
+
+
+class TestMiniAppsAutostart:
+    """A ``mini`` row with autostart on boots with the trays, once.
+
+    The walk runs on every tray start, so a target already up is skipped, and
+    one that cannot be checked is skipped too rather than doubled.
+    """
+
+    def _registry(self, monkeypatch, tmp_path: Path, *, kind: str = "mini"):
+        bat = tmp_path / "mini" / "helper.bat"
+        bat.parent.mkdir(parents=True)
+        bat.write_text("@echo off\r\n", encoding="utf-8")
+        registry = Registry(
+            scan_root=str(tmp_path),
+            apps=[AppEntry(id="mini-helper", name="Helper", kind=kind,
+                           bat_path=str(bat), autostart=True)],
+        )
+        monkeypatch.setattr(rt_mod, "load_registry", lambda strict=False: registry)
+        return bat
+
+    def test_starts_a_mini_app_without_waiting_for_a_port(self, monkeypatch, tmp_path: Path):
+        bat = self._registry(monkeypatch, tmp_path)
+        monkeypatch.setattr(rt_mod, "find_running_target", lambda b: None)
+        spawn, wait = MagicMock(), MagicMock()
+        monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", spawn)
+        monkeypatch.setattr(rt_mod, "_wait_for_tray_ready", wait)
+
+        rt_mod.launch_all()
+
+        spawn.assert_called_once_with(bat)
+        wait.assert_not_called()
+
+    def test_skips_a_mini_app_that_is_already_running(self, monkeypatch, tmp_path: Path):
+        self._registry(monkeypatch, tmp_path)
+        monkeypatch.setattr(rt_mod, "find_running_target", lambda b: 777)
+        spawn = MagicMock()
+        monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", spawn)
+
+        rt_mod.launch_all()
+
+        spawn.assert_not_called()
+        log_text = (tmp_path / "webapp" / "registered_trays.log").read_text(encoding="utf-8")
+        assert "Helper: already running (pid 777) — skipped" in log_text
+
+    def test_skips_a_mini_app_it_cannot_check(self, monkeypatch, tmp_path: Path):
+        self._registry(monkeypatch, tmp_path)
+
+        def _unknown(_bat):
+            raise RuntimeError("process table unreadable")
+
+        monkeypatch.setattr(rt_mod, "find_running_target", _unknown)
+        spawn = MagicMock()
+        monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", spawn)
+
+        rt_mod.launch_all()
+
+        spawn.assert_not_called()
+        log_text = (tmp_path / "webapp" / "registered_trays.log").read_text(encoding="utf-8")
+        assert "could not check it is not running" in log_text
+
+    def test_a_tray_is_never_checked_for_a_running_target(self, monkeypatch, tmp_path: Path):
+        self._registry(monkeypatch, tmp_path, kind="tray")
+
+        def _checked(_bat):
+            raise AssertionError("a tray row must not be process-checked")
+
+        monkeypatch.setattr(rt_mod, "find_running_target", _checked)
+        monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", MagicMock())
+        monkeypatch.setattr(rt_mod, "_wait_for_tray_ready", lambda repo_dir: True)
+
+        rt_mod.launch_all()

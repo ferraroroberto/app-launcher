@@ -47,6 +47,8 @@ export const state = {
   // null until the boot fetch lands.
   contextFilter: null,
   apps: [],
+  // Whether a mini apps folder is configured (the Mini apps fold's gate).
+  miniAppsEnabled: false,
   // Coding agents — overwritten by /api/agents at boot. The fallback
   // keeps the Coding tab usable if that fetch fails: Claude Code is the
   // launcher's core agent so it's assumed present; the other agents
@@ -486,6 +488,10 @@ export const els = {
   registeredTraysList: document.getElementById('registeredTraysList'),
   registeredTraysEmpty: document.getElementById('registeredTraysEmpty'),
   traysSummaryMeta: document.getElementById('traysSummaryMeta'),
+  miniAppsCard: document.getElementById('miniAppsCard'),
+  miniAppsList: document.getElementById('miniAppsList'),
+  miniAppsEmpty: document.getElementById('miniAppsEmpty'),
+  miniAppsSummaryMeta: document.getElementById('miniAppsSummaryMeta'),
   perfSummaryMeta: document.getElementById('perfSummaryMeta'),
   perfState: document.getElementById('perfState'),
   perfMeasured: document.getElementById('perfMeasured'),

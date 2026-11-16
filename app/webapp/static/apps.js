@@ -51,7 +51,7 @@ const appsFilter = listFilter({
 
 // The kind avatar: one Lucide glyph per bat kind, the shared
 // avatar's alive badge on top.
-const KIND_GLYPH = { streamlit: 'gauge', webapp: 'globe', tunnel: 'cloud', tray: 'package' };
+const KIND_GLYPH = { streamlit: 'gauge', webapp: 'globe', tunnel: 'cloud', tray: 'package', mini: 'package' };
 
 function kindAvatar(kind, badge) {
   return avatar(KIND_GLYPH[kind] || 'layout-grid', badge, 'app-avatar');
@@ -59,16 +59,18 @@ function kindAvatar(kind, badge) {
 
 // The kind in words, for the kebab's header line: the row itself
 // says it only through the avatar.
-const KIND_LABEL = { streamlit: 'Streamlit app', webapp: 'Web app', tunnel: 'Tunnel', tray: 'Tray' };
+const KIND_LABEL = {
+  streamlit: 'Streamlit app', webapp: 'Web app', tunnel: 'Tunnel', tray: 'Tray', mini: 'Mini app',
+};
 
 function kindLabel(kind) {
   return KIND_LABEL[kind] || nameLabel(kind);
 }
 
-// The registry apps the Apps card lists (not coding projects, not trays).
+// The registry apps the Apps card lists (not coding projects, trays or mini apps).
 function launchableApps() {
   return state.apps.filter(function (a) {
-    return a.kind !== 'claude-code' && a.kind !== 'tray';
+    return a.kind !== 'claude-code' && a.kind !== 'tray' && a.kind !== 'mini';
   });
 }
 
@@ -90,13 +92,15 @@ export function renderApps() {
 // of running apps changes, so a launch gains its badge on the next poll.
 function renderBatLists() {
   const trayApps = state.apps.filter(function (a) { return a.kind === 'tray'; });
+  const miniApps = state.apps.filter(function (a) { return a.kind === 'mini'; });
   const otherApps = launchableApps();
   const running = runningIds();
 
   renderList(els.registeredTraysList, trayApps, running);
+  renderList(els.miniAppsList, miniApps, running);
   renderList(els.appsList, otherApps, running);
-  // One endRender for both lists: they share the menu, and a call between
-  // them would close a menu open on the second.
+  // One endRender for every list: they share the menu, and a call between
+  // them would close a menu open on a later one.
   appMenu.endRender();
   appsFilter.apply();
 
@@ -109,6 +113,14 @@ function renderBatLists() {
   const autostart = trayApps.filter(function (a) { return a.autostart; }).length;
   els.traysSummaryMeta.hidden = trayApps.length === 0;
   els.traysSummaryMeta.textContent = trayApps.length + ' · ' + autostart + ' autostart';
+  // The fold shows while a folder is configured, and while rows from an
+  // earlier one remain so they can still be launched and removed.
+  const miniShown = miniApps.length !== 0 || (state.miniAppsEnabled && !!appsReadAt);
+  els.miniAppsCard.hidden = !miniShown;
+  els.miniAppsEmpty.hidden = miniApps.length !== 0 || !appsReadAt;
+  const miniAutostart = miniApps.filter(function (a) { return a.autostart; }).length;
+  els.miniAppsSummaryMeta.hidden = miniApps.length === 0;
+  els.miniAppsSummaryMeta.textContent = miniApps.length + ' · ' + miniAutostart + ' autostart';
   renderPerfCard(state.apps, retryPerf);
   renderIdleLine();
   renderHomeHead();
@@ -118,11 +130,11 @@ function retryPerf() {
   fetchAppsPerf(renderBatLists, true).catch(function () {});
 }
 
-// Flip a Registered Trays entry's autostart flag via
+// Flip a tray's or mini app's autostart flag via
 // the same PATCH /api/apps/{id} the rename dialog uses. Re-fetches
 // /api/apps on success so the switch reflects the authoritative persisted
 // state, not an optimistic local flip.
-async function toggleTrayAutostart(a, next) {
+async function toggleAutostart(a, next) {
   try {
     await jsonApi('/api/apps/' + encodeURIComponent(a.id), {
       method: 'PATCH',
@@ -144,11 +156,11 @@ function appBadge(a, running) {
   return '';
 }
 
-// A tray row's context line: "running" while a launch from here is
-// up, and "starts at log on" when its autostart switch is on. Trays the
-// tray process starts at log on are not in the running list, so a tray not
+// A tray or mini row's context line: "running" while a launch from here is
+// up, and "starts at log on" when its autostart switch is on. Ones the
+// tray process starts at log on are not in the running list, so a row not
 // seen running says nothing about it rather than "not running".
-function trayMeta(a, running) {
+function autostartMeta(a, running) {
   const parts = [];
   if (running.has(a.id)) parts.push('running');
   if (a.autostart) parts.push('starts at log on');
@@ -170,7 +182,8 @@ function trayMeta(a, running) {
 function renderList(host, items, running) {
   host.innerHTML = '';
   items.forEach(function (a) {
-    const tray = a.kind === 'tray';
+    // Trays and mini apps lead with their autostart switch, not a kind avatar.
+    const tray = a.kind === 'tray' || a.kind === 'mini';
     const tunnel = a.kind === 'tunnel';
     const down = tunnel && a.health === 'down';
     const path = a.bat_path || a.project_dir || '';
@@ -178,7 +191,7 @@ function renderList(host, items, running) {
       id: a.id,
       className: 'app-row',
       title: a.name,
-      meta: tray ? trayMeta(a, running) : (tunnel ? kindLabel(a.kind) : ''),
+      meta: tray ? autostartMeta(a, running) : (tunnel ? kindLabel(a.kind) : ''),
       chips: down ? [chip('down', 'danger', 'app-down-chip')] : [],
       avatar: tray ? null : kindAvatar(a.kind, appBadge(a, running)),
       label: 'Launch ' + a.name + ' hidden, with no window',
@@ -192,7 +205,7 @@ function renderList(host, items, running) {
         label: 'Autostart ' + a.name + ' at boot',
         onToggle: function (next, btn) {
           btn.disabled = true;
-          toggleTrayAutostart(a, next).finally(function () {
+          toggleAutostart(a, next).finally(function () {
             btn.disabled = false;
           });
         },
@@ -443,6 +456,7 @@ export async function fetchApps() {
   setAsyncState(els.appsState, 'ready');
   setAsyncState(els.traysState, 'ready');
   state.apps = body.apps || [];
+  state.miniAppsEnabled = !!body.mini_apps_enabled;
   renderApps();
   // Self-throttled: the ledger moves once per /perf-review run, not per poll.
   fetchAppsPerf(renderBatLists).catch(function () {});

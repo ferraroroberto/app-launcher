@@ -33,13 +33,16 @@ from . import runtime_files
 from ._json_io import atomic_write_json
 from .scanner import (
     KIND_CLAUDE_CODE,
+    KIND_MINI,
     KIND_STREAMLIT,
     VALID_KINDS,
     app_id_from_path,
     github_repo_url,
     pretty_folder_name,
     scan_app_bats,
+    scan_mini_bats,
     scan_project_dirs,
+    slugify,
     tunnel_url_for,
 )
 
@@ -72,10 +75,10 @@ class AppEntry:
     project_dir: Optional[str] = None
     repo_url: Optional[str] = None
     added_at: str = ""
-    # Registered Trays panel — whether the tray boots
-    # this ``kind == "tray"`` row automatically. Meaningless on every other
-    # kind; always serialized (like ``added_at``) rather than conditionally,
-    # since it's a plain bool with a real default, not an optional field.
+    # Whether the tray boots this ``tray`` or ``mini`` row automatically.
+    # Meaningless on every other kind; always serialized (like ``added_at``)
+    # rather than conditionally, since it's a plain bool with a real default,
+    # not an optional field.
     autostart: bool = False
 
     def to_dict(self) -> Dict:
@@ -205,18 +208,35 @@ def live_claude_code_entries(
 # ----------------------------------------------------------- scan + diff
 
 
-def discover_new(*, scan_root: Path, existing: Registry) -> List[AppEntry]:
-    """Scan ``scan_root`` for app bats not already in ``existing``.
+def _same_folder(a: Path, b: Path) -> bool:
+    try:
+        return a.resolve() == b.resolve()
+    except OSError:
+        return False
+
+
+def discover_new(
+    *,
+    scan_root: Path,
+    existing: Registry,
+    mini_root: Optional[Path] = None,
+) -> List[AppEntry]:
+    """Scan ``scan_root`` for app bats (and ``mini_root`` for mini apps) not
+    already in ``existing``.
 
     Each returned entry has ``added_at`` empty — the caller is expected
     to stamp it when persisting. ``claude-code`` rows are never returned
-    here; they come from :func:`live_claude_code_entries` instead.
+    here; they come from :func:`live_claude_code_entries` instead. A bat in
+    ``mini_root`` is a ``mini`` row even when ``scan_root`` also covers that
+    folder, so one file never lists twice. New rows start with autostart off.
     """
     have_paths: set[str] = {a.bat_path for a in existing.apps if a.bat_path}
 
     new: List[AppEntry] = []
     for bat, kind in scan_app_bats(scan_root):
         if str(bat) in have_paths:
+            continue
+        if mini_root is not None and _same_folder(bat.parent, mini_root):
             continue
         new.append(
             AppEntry(
@@ -226,6 +246,23 @@ def discover_new(*, scan_root: Path, existing: Registry) -> List[AppEntry]:
                 bat_path=str(bat),
             )
         )
+
+    if mini_root is not None:
+        taken_ids = {a.id for a in existing.apps} | {a.id for a in new}
+        for bat in scan_mini_bats(mini_root):
+            if str(bat) in have_paths:
+                continue
+            mini_id = f"{KIND_MINI}-{slugify(bat.stem)}"
+            if mini_id in taken_ids:
+                continue
+            new.append(
+                AppEntry(
+                    id=mini_id,
+                    name=pretty_folder_name(Path(bat.stem)),
+                    kind=KIND_MINI,
+                    bat_path=str(bat),
+                )
+            )
 
     return new
 
@@ -272,9 +309,9 @@ def rename_by_id(reg: Registry, app_id: str, new_name: str) -> Optional[AppEntry
 def set_autostart_by_id(
     reg: Registry, app_id: str, autostart: bool
 ) -> Optional[AppEntry]:
-    """Flip the Registered Trays autostart flag for ``app_id``. Meaningless
-    on a non-``tray`` entry, but not rejected — the API layer scopes which
-    rows offer the toggle."""
+    """Flip the autostart flag for ``app_id``. Meaningless on an entry that is
+    neither a ``tray`` nor a ``mini`` one, but not rejected — the API layer
+    scopes which rows offer the toggle."""
     for entry in reg.apps:
         if entry.id == app_id:
             entry.autostart = autostart

@@ -36,7 +36,7 @@ def _patch_config_and_registry(monkeypatch, scan_root: Path):
         scan_cmd,
         "load_webapp_config",
         lambda: SimpleNamespace(
-            apps_scan_root=str(scan_root), projects_dir=str(scan_root)
+            apps_scan_root=str(scan_root), projects_dir=str(scan_root), mini_apps_root=""
         ),
     )
     monkeypatch.setattr(
