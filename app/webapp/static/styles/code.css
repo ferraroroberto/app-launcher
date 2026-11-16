@@ -29,7 +29,7 @@
 .home-head .cpu-reading[data-level="danger"] { color: var(--danger-text); }
 .cpu-sheet-body .usage-sheet-value[data-tone="attention"] { color: var(--attention-text); }
 .cpu-sheet-body .usage-sheet-value[data-tone="danger"] { color: var(--danger-text); }
-/* The hub's PC health verdict on the Code header's CPU reading (system-load.js
+/* The hub's PC health verdict on every header's CPU reading (system-load.js
    sets data-pc-health to the tone for watch or act): a dot on the reading's
    corner, so it costs the header line no width. */
 .home-head .cpu-reading { position: relative; }
@@ -62,39 +62,6 @@
   color: var(--muted);
 }
 
-/* Machine health (machine-health.js): one full-width tap row, the hub's
-   verdict in the tone of its dot and word. "Not confirmed" and "Reading…" stay
-   muted words, never a 0%. */
-.machine-health {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  width: 100%;
-  min-width: 0;
-  min-height: var(--hit-min);
-  margin: 0 0 var(--space-sm);
-  color: var(--fg);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.machine-health .icon { flex: none; color: var(--muted); }
-.machine-health .mh-label { font-weight: 600; white-space: nowrap; }
-.machine-health .mh-value {
-  flex: 1;
-  min-width: 0;
-  margin-left: auto;
-  color: var(--muted);
-  font-size: var(--font-body-sm);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-  overflow-wrap: anywhere;
-}
-.machine-health[data-tone="ok"] .mh-value { color: var(--accent-text); }
-.machine-health[data-tone="attention"] .mh-value { color: var(--attention-text); }
-.machine-health[data-tone="danger"] .mh-value { color: var(--danger-text); }
-.machine-health[data-tone="attention"] .icon { color: var(--attention-text); }
-.machine-health[data-tone="danger"] .icon { color: var(--danger-text); }
 .cpu-sheet-link { display: block; padding: var(--space-sm) 0; color: var(--accent-text); }
 
 /* Usage: the full meter in a card. The whole card is one tap to the Usage

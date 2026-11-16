@@ -13,13 +13,11 @@
  * page is hidden. Coming back to the foreground reads once at once. While
  * the sampler is still taking its first sample, one short retry follows.
  *
- * The Code header's reading also carries a dot (data-pc-health) for the
+ * Every header's reading also carries a dot (data-pc-health) for the
  * local-llm-hub's verdict on the machine, drawn only for "watch" or "act"
  * and read on the same poll. A verdict that could not be read is "Not
- * confirmed" in the sheet, never "OK"; the hub does the alerting.
- *
- * The same verdict feeds the machine-health row (machine-health.js) on the
- * Board and Code tabs, and its port and commit rows in this sheet.
+ * confirmed" in the sheet, never "OK"; the hub does the alerting. The same
+ * verdict feeds the port and commit rows in this sheet (machine-health.js).
  */
 
 import { SYSTEM_LOAD_WARMING_RETRY_MS } from './state.js';
@@ -27,7 +25,7 @@ import { jsonApi, logPollFailure, toast, apiFailToast } from './api.js';
 import { confirmDialog } from './confirm-dialog.js';
 import { el, sheetRow } from './dom-utils.js';
 import { pctText } from './shared/format.js';
-import { appendMachineRows, renderMachineRows } from './machine-health.js';
+import { appendMachineRows } from './machine-health.js';
 
 // The last payload; null when the fetch itself failed. Before the first
 // answer it reads as the server's own "still taking the first sample".
@@ -98,7 +96,7 @@ function unknownHealthText(h) {
 function renderHealthMark() {
   const h = healthView();
   const tone = HEALTH_TONES[h.verdict] || '';
-  document.querySelectorAll('.cpu-reading[data-pc-health]').forEach(function (btn) {
+  document.querySelectorAll('.cpu-reading').forEach(function (btn) {
     btn.dataset.pcHealth = tone;
     btn.title = tone ? 'CPU load. PC health: ' + HEALTH_WORDS[h.verdict].toLowerCase() : 'CPU load';
     if (!tone) return;
@@ -108,7 +106,7 @@ function renderHealthMark() {
   });
 }
 
-// The hub's verdict first: the dot on the Code header's reading points here.
+// The hub's verdict first: the dot on the header's reading points here.
 function appendHealthRows(body) {
   const h = healthView();
   const row = sheetRow('Health', h.verdict === 'pending' ? 'Reading…' : HEALTH_WORDS[h.verdict], 'health');
@@ -215,7 +213,6 @@ function sheet() {
 function render() {
   renderReadings();
   renderHealthMark();
-  renderMachineRows(health);
   const dialog = sheet();
   if (dialog && dialog.open) renderSheet();
 }
@@ -271,8 +268,7 @@ function closeSheet() {
 export function wireSystemLoad() {
   renderReadings();
   renderHealthMark();
-  renderMachineRows(health);
-  document.querySelectorAll('.cpu-reading, .machine-health').forEach(function (btn) {
+  document.querySelectorAll('.cpu-reading').forEach(function (btn) {
     btn.addEventListener('click', openSheet);
   });
   const close = document.getElementById('cpuSheetClose');

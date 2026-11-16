@@ -10,7 +10,7 @@
           Code
         </span>
         <span id="homeHeadStatus" class="status"></span>
-        <button data-track="cpu-load" type="button" class="cpu-reading hit-target" data-level="unknown" data-pc-health=""
+        <button data-track="cpu-load" type="button" class="cpu-reading hit-target" data-level="unknown"
                 title="CPU load" aria-label="CPU load unknown. Show details">–</button>
         <button type="button" id="themeToggle" class="icon-button home-toggle hit-target theme-toggle-btn" data-track="theme-toggle"
                 title="Toggle theme" aria-label="Toggle dark mode">
@@ -72,16 +72,6 @@
              hidden when there is nothing saved to report (#713). -->
         <p id="codingUsageFooter" class="usage-card-footer">–</p>
       </section>
-
-      <!-- Machine health: the hub's verdict and the worse of ports and commit,
-           just under the usage meter (machine-health.js). It sits outside the
-           Usage card, whose whole surface opens the Usage sheet. -->
-      <button data-track="coding.machine-health" type="button" class="card machine-health" data-tone="none"
-              aria-label="Machine health: reading. Show details">
-        <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-monitor"></use></svg>
-        <span class="mh-label">Machine</span>
-        <span class="mh-value">Reading…</span>
-      </button>
 
       <!-- Sessions (#1434): "what is running?". The chief's row first, then
            the shared session rows (#1433), then the Telegram row. Card
