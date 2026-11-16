@@ -221,6 +221,10 @@
   line-clamp: none;
   white-space: nowrap;
 }
+/* A split meta keeps the vendored flex line, so its words truncate and its
+   tail (a date, a count) stays whole beside them. */
+.action-row--one-line .action-row-meta:not(.has-chips):has(> .action-row-meta-text),
+.action-row--small .action-row-meta:not(.has-chips):has(> .action-row-meta-text) { display: flex; }
 .action-row-main.is-inert { cursor: default; }
 .action-row-main.is-inert:active { background: transparent; }
 .action-row > .action-row-trailing { flex: none; }
