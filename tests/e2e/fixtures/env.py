@@ -50,6 +50,10 @@ GUARD_TASK_ENV = "LAUNCHER_REMOTE_POWER_GUARD_TASK"
 GUARD_KEY_ENV = "LAUNCHER_REMOTE_POWER_GUARD_KEY"
 GUARD_FAKE_TASK = r"\AppLauncher-E2E-Absent\remote-power-guard"
 GUARD_FAKE_KEY = r"Software\AppLauncher-E2E-Absent\Explorer"
+# Keep awake with the lid closed (src/desktop/lid_keep_awake.py): set, the disposable
+# webapp reports "no lid" without spawning powercfg, so the Settings
+# screenshots read the same on a laptop and a desktop.
+LID_ABSENT_ENV = "LAUNCHER_LID_KEEP_AWAKE_ABSENT"
 # Env var both the webapp and the session-host honour to relocate the audit
 # runtime dir (see src/audit.py:AUDIT_DIR_ENV) — the injection that stops a
 # gate run from writing its throwaway `<sid>.log` / `<sid>.transcript` pairs

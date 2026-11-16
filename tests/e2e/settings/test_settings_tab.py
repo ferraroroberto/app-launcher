@@ -332,7 +332,8 @@ def test_boot_autostart_and_remote_power_guard_switches(
     The remote power guard switch shows the live state (autoboot aims it at a
     task that never exists, so "off") and a tap that Windows refuses opens
     the elevated-command sheet instead of a failure toast. The POST is
-    answered here, so no test run can ever reach the real guard."""
+    answered here, so no test run can ever reach the real guard. It ends on
+    the lid keep-awake switch's states (``_assert_lid_keep_awake_states``)."""
     posts = []
 
     def _refuse(route) -> None:
@@ -386,6 +387,64 @@ def test_boot_autostart_and_remote_power_guard_switches(
     assert posts == [{"enabled": True}]
     close_settings_sheets(authed_page)
     expect(guard).to_have_attribute("aria-checked", "false")
+    _assert_lid_keep_awake_states(authed_page, base_url)
+
+
+def _assert_lid_keep_awake_states(authed_page: Page, base_url: str) -> None:
+    """The lid switch paints /api/config's live `lid_keep_awake` block: hidden
+    on a PC with no lid, `mixed` with the reason when unreadable, never off.
+    Both /api/config and the POST are answered here, so no run can reach a
+    real power plan."""
+    lid = {"state": "unsupported", "reason": "This PC has no lid close setting."}
+    posts = []
+
+    def _config(route) -> None:
+        if route.request.method != "GET":
+            route.continue_()
+            return
+        body = route.fetch().json()
+        body["lid_keep_awake"] = dict(lid)
+        route.fulfill(json=body)
+
+    def _post(route) -> None:
+        posts.append(route.request.post_data_json)
+        if lid["state"] == "unknown":
+            route.fulfill(status=400, json={"detail": "Windows power settings refused the request."})
+            return
+        lid.update(state="on" if posts[-1]["enabled"] else "off", reason=None)
+        route.fulfill(json={"ok": True, "lid_keep_awake": dict(lid)})
+
+    authed_page.route("**/api/config", _config)
+    authed_page.route("**/api/settings/lid-keep-awake", _post)
+    authed_page.goto(base_url, wait_until="domcontentloaded")
+    open_settings(authed_page)
+    row = authed_page.locator("#lidKeepAwakeRow")
+    toggle = authed_page.locator("#lidKeepAwakeToggle")
+    expect(authed_page.locator("#remotePowerGuardToggle")).to_be_visible()
+    expect(row).to_be_hidden()
+
+    lid.update(state="off", reason=None)
+    authed_page.goto(base_url, wait_until="domcontentloaded")
+    open_settings(authed_page)
+    expect(row).to_be_visible()
+    expect(toggle).to_have_attribute("aria-checked", "false")
+    toggle.click()
+    expect(toggle).to_have_attribute("aria-checked", "true")
+    assert posts == [{"enabled": True}]
+    toggle.click()
+    expect(toggle).to_have_attribute("aria-checked", "false")
+    assert posts[-1] == {"enabled": False}
+
+    lid.update(state="unknown", reason="The lid close setting could not be read.")
+    authed_page.goto(base_url, wait_until="domcontentloaded")
+    open_settings(authed_page)
+    expect(toggle).to_have_attribute("aria-checked", "mixed")
+    expect(toggle.locator(".toggle-label")).to_have_text("UNKNOWN")
+    status = authed_page.locator("#lidKeepAwakeStatus")
+    expect(status).to_contain_text("could not be read")
+    toggle.click()
+    expect(status).to_have_text("Windows power settings refused the request.")
+    expect(toggle).to_have_attribute("aria-checked", "mixed")
 
 
 def _open_chief_sheet(page: Page, base_url: str) -> None:

@@ -233,6 +233,14 @@ Desktop; at the PC they stay. Changing it needs an elevated terminal, so the
 switch shows the one command to run. How it works, the deliberate-shutdown
 command and the undo: [docs/remote-power-guard.md](docs/remote-power-guard.md).
 
+## Awake with the lid closed
+
+The **Awake with lid closed** switch in **Settings** sets the active Windows
+power plan's lid close action to Do nothing on AC and on battery, and turning it
+off puts the prior values back. It never changes the plan until you flip it, and
+a PC with no lid does not show it. Details and the undo by hand:
+[docs/lid-keep-awake.md](docs/lid-keep-awake.md).
+
 ---
 
 ## Security notes
@@ -310,6 +318,7 @@ The gate also runs a static ratchet (new duplicate blocks and unused imports fai
 | [docs/inspiration-sources.md](docs/inspiration-sources.md) | Settings › Inspiration: the daily scan's source list, digest status and X login |
 | [docs/documents.md](docs/documents.md) | Settings › Documents: the fleet's repo documents rendered live, Mermaid included |
 | [docs/remote-power-guard.md](docs/remote-power-guard.md) | Settings › Hide shut down remotely: no power options over Remote Desktop |
+| [docs/lid-keep-awake.md](docs/lid-keep-awake.md) | Settings › Awake with lid closed: the power plan's lid close action |
 | [docs/installing-agent-clis.md](docs/installing-agent-clis.md) | Installing each coding agent's CLI |
 | [docs/run-troubleshooting.md](docs/run-troubleshooting.md) | Build identity, the watchdog, request logs |
 | [docs/restart-and-liveness.md](docs/restart-and-liveness.md) | Restarting and proving the new build is live |

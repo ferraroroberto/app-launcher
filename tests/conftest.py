@@ -383,6 +383,16 @@ def _isolated_chief_pointer(request, tmp_path, monkeypatch):
         owner_checks_mod, "MARKS_FILE", tmp_path / "owner-check-marks.json"
     )
     owner_checks_mod.reset_owner_cache()
+    # The lid keep-awake switch: its saved values go to tmp, and powercfg is
+    # a plan with no lid, so no test reads or changes a real power plan.
+    import subprocess as _subprocess
+
+    from src.desktop import lid_keep_awake as lid_keep_awake_mod
+    monkeypatch.setattr(lid_keep_awake_mod, "STATE_FILE", tmp_path / "lid-keep-awake.json")
+    monkeypatch.setattr(
+        lid_keep_awake_mod, "_run_powercfg",
+        lambda args: _subprocess.CompletedProcess(args, 0, stdout="", stderr=""),
+    )
 
     # A GitHub refresh starts the owner-check list; in a test it must never
     # reach the real CLI (and GitHub). Tests that read it fake _run_cli.

@@ -280,6 +280,74 @@ class TestRemotePowerGuard:
         assert "reading it back" in resp.json()["detail"]
 
 
+class TestLidKeepAwake:
+    """POST /api/settings/lid-keep-awake and its /api/config block, with
+    powercfg faked: no test changes a real power plan."""
+
+    PLAN = "381b4222-f694-41f0-9685-ff5bb260df2e"
+
+    @pytest.fixture
+    def powercfg(self, monkeypatch) -> dict:
+        import subprocess
+
+        import src.desktop.lid_keep_awake as lid_mod
+
+        fake = {"values": [1, 2], "lid": True, "fail": False}
+
+        def run(args):
+            args = list(args)
+            if fake["fail"]:
+                return subprocess.CompletedProcess(args, 1, stdout="", stderr="denied")
+            if args[0] == "/q":
+                if not fake["lid"]:
+                    return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+                ac, dc = fake["values"]
+                out = (f"Power Scheme GUID: {self.PLAN}  (Balanced)\n"
+                       f"  Current AC Power Setting Index: 0x{ac:08x}\n"
+                       f"  Current DC Power Setting Index: 0x{dc:08x}\n")
+                return subprocess.CompletedProcess(args, 0, stdout=out, stderr="")
+            if args[0] in ("/setacvalueindex", "/setdcvalueindex"):
+                fake["values"][0 if args[0] == "/setacvalueindex" else 1] = int(args[-1])
+            return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+        monkeypatch.setattr(lid_mod, "_run_powercfg", run)
+        return fake
+
+    def test_config_reports_the_live_state(self, webapp_client, powercfg):
+        client, _, _ = webapp_client
+        assert client.get("/api/config").json()["lid_keep_awake"] == {"state": "off", "reason": None}
+        powercfg["values"] = [0, 0]
+        assert client.get("/api/config").json()["lid_keep_awake"]["state"] == "on"
+        powercfg["lid"] = False
+        assert client.get("/api/config").json()["lid_keep_awake"]["state"] == "unsupported"
+        powercfg["fail"] = True
+        assert client.get("/api/config").json()["lid_keep_awake"]["state"] == "unknown"
+
+    def test_turning_on_then_off_round_trips_the_values(self, webapp_client, powercfg):
+        client, _, _ = webapp_client
+        resp = client.post("/api/settings/lid-keep-awake", json={"enabled": True})
+        assert resp.status_code == 200
+        assert resp.json()["lid_keep_awake"]["state"] == "on"
+        assert powercfg["values"] == [0, 0]
+        resp = client.post("/api/settings/lid-keep-awake", json={"enabled": False})
+        assert resp.json()["lid_keep_awake"]["state"] == "off"
+        assert powercfg["values"] == [1, 2]
+
+    def test_a_failure_is_a_400_with_the_plain_reason(self, webapp_client, powercfg):
+        client, _, _ = webapp_client
+        powercfg["fail"] = True
+        resp = client.post("/api/settings/lid-keep-awake", json={"enabled": True})
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "Windows power settings refused the request."
+
+    def test_a_pc_with_no_lid_is_a_400_not_a_silent_ok(self, webapp_client, powercfg):
+        client, _, _ = webapp_client
+        powercfg["lid"] = False
+        resp = client.post("/api/settings/lid-keep-awake", json={"enabled": True})
+        assert resp.status_code == 400
+        assert "no lid" in resp.json()["detail"]
+
+
 class TestOutboxScratchRoots:
     """Settings' Chat file folders (#1748): POST /api/config checks each
     folder on write; the loader stays lenient about one that has gone."""
