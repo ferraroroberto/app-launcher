@@ -1,0 +1,32 @@
+/* A plan row's note sheet (board/plan-note-sheet.js): the shared modal, sized
+   to its content: a title, one meta line and the note wrapped in full. */
+.plan-note-body { display: flex; flex-direction: column; gap: 8px; }
+.plan-note-title {
+  margin: 0;
+  font-size: var(--font-heading-md);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.plan-note-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+}
+.plan-note-text {
+  margin: 0;
+  font-size: var(--font-body);
+  /* The chief writes the note by hand: keep its line breaks, wrap long figures. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.plan-note-dialog .detail-actions[hidden] { display: none; }
+/* The glyph on a row that carries a note: quiet, before the status chip. */
+.board-plan-note-glyph { display: inline-flex; align-items: center; color: var(--muted); }
+.board-plan-note-glyph .icon { width: var(--icon-inline); height: var(--icon-inline); }
+/* It takes the free space the chip's own auto margin otherwise takes, so the
+   glyph and the chip sit together at the line's right end. */
+.board-plan-row .action-row-meta .board-plan-note-glyph { margin-left: auto; flex: none; }
+.board-plan-row .action-row-meta .board-plan-note-glyph + .chip { margin-left: 6px; }

@@ -15,6 +15,7 @@ import { boardRepoFilter, isChiefCard, matchesRepoFilter } from './board-dispatc
 import { DESKTOP_BOARD, renderBoard, setLaneException } from '../board.js';
 import { clearMergedButton, mergedCount } from './plan-prune.js';
 import { CLOSED, NOT_LOADED, bucketIndex, bucketName, groupPlanRows } from './plan-buckets.js';
+import { openPlanNoteSheet } from './plan-note-sheet.js';
 
 // The fleet chief records its lanes, its queue and what waits on Roberto in a
 // plan file (format v1, fleet-config's `chief_ops.py plan`); the server reads
@@ -230,8 +231,9 @@ function isParked(q) {
 }
 
 // A queue row: the issue title leads, the meta is `repo#N` (then the model),
-// and the chief's note is the row's hover text: free text with figures in it
-// (PR numbers, short hashes), so no ellipsis on the meta line may cut it.
+// and the chief's note is the row's hover text and, on a tap, its sheet:
+// free text with figures in it (PR numbers, short hashes), so no ellipsis on
+// the meta line may cut it and a phone, with no hover, must still read it.
 function queueRow(q) {
   const ref = q.ref && q.ref.charAt(0) === '#' && q.repo ? q.repo + q.ref : q.ref;
   const label = ref || q.repo;
@@ -264,9 +266,10 @@ function planLaneRow(l) {
 // card's rows are): line 1 the title, on its own so it reads in full; line 2
 // the meta pieces joined by " · " with the chief's optional model word
 // among them, the status chip at the right end of that line. A row with a
-// link (`url`, resolved by the reader from its `repo#N`) is a tap that opens
-// it and carries the trailing chevron that says so; a row without one reports
-// and does nothing.
+// note opens the note's sheet on a tap, which offers the link; a row with only
+// a link (`url`, resolved by the reader from its `repo#N`) opens it. Either
+// carries the trailing chevron that says so; a row with neither reports and
+// does nothing.
 function planRow(o) {
   const pieces = o.meta.slice();
   if (o.model) {
@@ -275,13 +278,24 @@ function planRow(o) {
     tag.textContent = o.model.charAt(0).toUpperCase() + o.model.slice(1);
     pieces.splice(Math.min(1, pieces.length), 0, tag);
   }
-  const open = o.url ? function () { window.open(o.url, '_blank', 'noopener'); } : null;
+  const name = o.ref || o.title;
+  let open = null;
+  if (o.note) {
+    open = function () {
+      openPlanNoteSheet({
+        title: o.title, ref: o.ref, model: o.model, status: o.status,
+        tone: PLAN_TONES[o.status], note: o.note, url: o.url,
+      });
+    };
+  } else if (o.url) {
+    open = function () { window.open(o.url, '_blank', 'noopener'); };
+  }
   const row = actionRow({
     className: 'board-item board-plan-row' + (open ? ' is-link' : ''),
     title: o.title,
     meta: pieces.length ? ' ' : '',
     chips: o.status ? [chip(o.status, PLAN_TONES[o.status] || 'neutral', 'board-plan-chip')] : [],
-    label: 'Open ' + (o.ref || o.title) + ' on GitHub' + (o.note ? ': ' + o.note : ''),
+    label: o.note ? 'Read the note on ' + name + ': ' + o.note : 'Open ' + name + ' on GitHub',
     onMain: open,
     inert: !open,
     trailing: open ? chevron('chevron-right', open) : null,
@@ -296,6 +310,13 @@ function planRow(o) {
       if (i) text.appendChild(document.createTextNode(' · '));
       text.appendChild(typeof p === 'string' ? document.createTextNode(p) : p);
     });
+    if (o.note) {
+      const glyph = document.createElement('span');
+      glyph.className = 'board-plan-note-glyph';
+      glyph.setAttribute('aria-hidden', 'true');
+      glyph.innerHTML = icon('file-text');
+      row.meta.insertBefore(glyph, text.nextSibling);
+    }
   }
   return row.li;
 }

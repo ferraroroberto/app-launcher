@@ -560,7 +560,10 @@ time_budget_s         = 1200
 # 2026-11-16: 655 -> 656, one node (one test, chromium only) for tests/e2e/code/test_launch_presets.py: a preset list served from a mocked /api/config,
 # managed in the Settings sheet and then picked in the Coding toolbar, which no existing Coding or Settings test shares; the add, rename, remove, hand-picked
 # model, Default and reload cases all ride that one node.
-test_budget = 656
+# 2026-11-16: 656 -> 658, two nodes (one test, both projections, iphone marker: the phone-width run the issue asks for) for tests/e2e/board/test_chief_plan.py:
+# a plan row's note sheet, with a noted lane/queue/parked payload and a window.open recorder no existing plan test shares; the glyph, both tap paths, the
+# sheet's contents and its three dismissals in light and dark all ride that one node.
+test_budget = 658
 
 # --- static assets under the webapp's static dir -> Chromium smoke ----------
 [[e2e.rule]]

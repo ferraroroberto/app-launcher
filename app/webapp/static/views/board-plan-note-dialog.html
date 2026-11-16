@@ -1,0 +1,18 @@
+    <!-- One plan row's chief note (board/plan-note-sheet.js): the row's title,
+         its ref, model and status, the note in full and, when the row links
+         to an issue, Open on GitHub as the one primary action. Filled when it
+         opens. -->
+    <dialog id="planNoteDialog" class="detail-dialog plan-note-dialog" data-track-view="sheet.board-plan-note" aria-labelledby="planNoteTitle">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2 id="planNoteTitle"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-file-text"></use></svg> <span>Chief's note</span></h2>
+          <button data-track="plan-note.close" type="button" id="planNoteClose" class="icon-button detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div id="planNoteBody" class="plan-note-body"></div>
+        <div id="planNoteActions" class="detail-actions" hidden>
+          <button data-track="plan-note.open" type="button" id="planNoteOpen" class="button-primary detail-save-btn">Open on GitHub</button>
+        </div>
+      </div>
+    </dialog>

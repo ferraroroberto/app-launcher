@@ -433,17 +433,18 @@ def test_plan_sections_split_queue_from_parked_and_rows_open_their_issue(
     assert geo["chevW"] >= 44, geo
     assert not geo["clipped"], f"a short queue title is clipped: {geo}"
 
-    # Taps: the row, then its chevron, open the issue; the lane opens its own;
-    # a parked row with no ref does nothing.
+    # Taps: a row with no note, then its chevron, open the issue; the lane
+    # opens its own; a parked row with no ref does nothing. A row with a note
+    # opens its sheet instead (test_a_noted_plan_row_opens_its_note_sheet).
     def opened() -> list:
         return authed_page.evaluate("() => window.__opened")
 
-    queue.first.locator(".action-row-main").click()
-    queue.first.locator(".board-plan-chevron").click()
+    queue.nth(1).locator(".action-row-main").click()
+    queue.nth(1).locator(".board-plan-chevron").click()
     plan_body.locator(".board-plan-group").nth(0).locator(".action-row-main").click()
     assert opened() == [
-        "https://github.com/octo/app-launcher/issues/1500",
-        "https://github.com/octo/app-launcher/issues/1500",
+        "https://github.com/octo/fleet-config/issues/12",
+        "https://github.com/octo/fleet-config/issues/12",
         "https://github.com/octo/app-launcher/issues/1578",
     ]
     inert = parked_rows.nth(1)
@@ -644,3 +645,118 @@ def test_questions_fold_with_their_answer_button_in_the_shared_heading(
     assert q_style[4] != f_style[4], "Questions keeps its attention colour"
     box = stable_read(questions.locator("summary").bounding_box)
     assert box and box["height"] >= 44, f"fold row is below a 44px target: {box}"
+
+
+def _check_note_sheet_dismissals(page: Page, row, sheet) -> None:
+    """The chevron opens the same sheet as the row; ✕, a backdrop tap and Escape close it."""
+    row.locator(".board-plan-chevron").click()
+    expect(sheet).to_be_visible()
+    sheet.locator("#planNoteClose").click()
+    expect(sheet).to_be_hidden()
+    row.locator(".action-row-main").click()
+    expect(sheet).to_be_visible()
+    page.mouse.click(2, 2)
+    expect(sheet).to_be_hidden()
+    row.locator(".action-row-main").click()
+    expect(sheet).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(sheet).to_be_hidden()
+
+
+def _check_parked_note_sheets(page: Page, parked_rows, sheet) -> None:
+    """A parked row opens its note; a row with a note and no link has no Open button."""
+    parked_rows.first.locator(".action-row-main").click()
+    expect(sheet.locator(".plan-note-text")).to_have_text("parked until the hub ships")
+    expect(sheet.locator("#planNoteOpen")).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(sheet).to_be_hidden()
+    parked_rows.nth(1).locator(".action-row-main").click()
+    expect(sheet.locator(".plan-note-text")).to_have_text("a note on a row with no issue")
+    expect(sheet.locator("#planNoteOpen")).to_be_hidden()
+    page.keyboard.press("Escape")
+    expect(sheet).to_be_hidden()
+
+
+@pytest.mark.iphone
+def test_a_noted_plan_row_opens_its_note_sheet(
+    authed_page: Page, base_url: str, tmp_path
+) -> None:
+    """#2439: a queue or parked row that carries the chief's note shows
+    the note glyph and opens a sheet with the note in full, never the issue;
+    the sheet's Open on GitHub opens the issue, and ✕, a backdrop tap and
+    Escape close it. A row without a note still opens GitHub on a tap. Both
+    paths, light and dark."""
+    authed_page.add_init_script(
+        "window.__opened = [];"
+        " window.open = function (u) { window.__opened.push(u); return null; };")
+    _mock_board(authed_page, _board_payload(with_chief=True))
+    note = "PR #276 merged as 70a6f93, waits on #249 <b>not html</b>"
+    f = tmp_path / "chief-plan.json"
+    f.write_text(_json.dumps({
+        "version": 1, "updated_at": "2026-09-27T09:00:00Z",
+        "lanes": [],
+        "queue": [
+            {"repo": "app-launcher", "ref": "#1500", "title": "Adopt the usage log",
+             "status": "queued", "model": "sonnet", "note": note},
+            {"repo": "fleet-config", "ref": "#12", "title": "Second in line", "status": "building"},
+            {"repo": "app-launcher", "ref": "#1400", "title": "Parked with a note",
+             "status": "parked", "note": "parked until the hub ships"},
+            {"repo": "automation", "ref": "", "title": "Noted, no link",
+             "status": "waiting-roberto", "note": "a note on a row with no issue"},
+        ],
+    }), encoding="utf-8")
+    _route_plan_from(authed_page, {"plan": chief_plan.read_chief_plan(f, "octo")})
+    _open_board(authed_page, base_url)
+
+    plan_body = authed_page.locator("#boardChiefPlan .board-plan-body")
+    expect(plan_body).to_have_attribute("data-state", "ok")
+    parked = plan_body.locator(".board-plan-parked")
+    if (authed_page.viewport_size or {"width": 0})["width"] < 700:
+        parked.locator("summary").click()
+    queue = plan_body.locator(".board-plan-group", has_text="Queue (2)").locator("li.board-plan-row")
+    parked_rows = parked.locator("li.board-plan-row")
+    sheet = authed_page.locator("#planNoteDialog")
+
+    def opened() -> list:
+        return authed_page.evaluate("() => window.__opened")
+
+    # Only the rows with a note carry the glyph.
+    expect(queue.first.locator(".board-plan-note-glyph")).to_have_count(1)
+    expect(queue.nth(1).locator(".board-plan-note-glyph")).to_have_count(0)
+    expect(parked_rows.locator(".board-plan-note-glyph")).to_have_count(2)
+
+    for theme in ("light", "dark"):
+        authed_page.emulate_media(color_scheme=theme)
+        authed_page.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
+
+        # A row without a note opens GitHub, as before.
+        queue.nth(1).locator(".action-row-main").click()
+        expect(sheet).to_be_hidden()
+        assert opened()[-1] == "https://github.com/octo/fleet-config/issues/12"
+        before = len(opened())
+
+        # A noted row opens the sheet: its title, ref, model, status and the note as text.
+        queue.first.locator(".action-row-main").click()
+        expect(sheet).to_be_visible()
+        assert len(opened()) == before
+        expect(sheet.locator(".plan-note-title")).to_have_text("Adopt the usage log")
+        expect(sheet.locator(".plan-note-meta")).to_contain_text("app-launcher#1500")
+        expect(sheet.locator(".plan-note-meta")).to_contain_text("Sonnet")
+        expect(sheet.locator(".plan-note-meta .board-plan-chip")).to_have_text("queued")
+        expect(sheet.locator(".plan-note-text")).to_have_text(note)
+        expect(sheet.locator(".plan-note-text b")).to_have_count(0)
+        box = stable_read(sheet.bounding_box)
+        viewport = authed_page.viewport_size or {"width": 0}
+        assert box and box["x"] >= 0 and box["x"] + box["width"] <= viewport["width"], box
+        action = sheet.locator("#planNoteOpen")
+        abox = stable_read(action.bounding_box)
+        assert abox and abox["height"] >= 44, f"Open on GitHub under the 44px floor: {abox}"
+
+        # Open on GitHub opens the issue and closes the sheet.
+        action.click()
+        expect(sheet).to_be_hidden()
+        assert opened()[-1] == "https://github.com/octo/app-launcher/issues/1500"
+
+        _check_note_sheet_dismissals(authed_page, queue.first, sheet)
+        _check_parked_note_sheets(authed_page, parked_rows, sheet)
+        assert opened()[-1] == "https://github.com/octo/app-launcher/issues/1500"
