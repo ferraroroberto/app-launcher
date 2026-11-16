@@ -1,9 +1,10 @@
 """The Code tab's session rows carry the Board's status and age (issue #1580).
 
-A row reads "folder · status · age", then "up uptime": the same words, from
-the same shared formatter (``glance.js::sessionStatusBits``), as the same
-session's Board row. On a phone the line stays one line, and "up uptime" is the
-first part dropped when it will not fit.
+A row reads "folder · status", then the figures "age" and "up uptime" in the
+vendored meta tail: the same words, from the same shared formatter
+(``glance.js::sessionStatusParts``), as the same session's Board row. On a
+phone the line stays one line and the figures stay whole: the folder, then the
+model, are what give way.
 
 Hermetic: the sessions poll and the Board are route-mocked before ``goto()``
 (#510), with fictional sessions.
@@ -94,21 +95,27 @@ def test_code_row_reads_the_boards_status_and_age(
 
     meta = {sid: _code_row(authed_page, sid).locator(".srow-meta-text")
             for sid in ("s-work", "s-done", "s-unknown")}
-    expect(meta["s-work"]).to_have_text("demo-garden · Opus · working · 9m · up 1d 3h")
-    expect(meta["s-done"]).to_have_text("demo-garden · Sonnet · finished · 19h · up 1d 3h")
+    expect(meta["s-work"]).to_have_text("demo-garden · Opus · working")
+    expect(meta["s-done"]).to_have_text("demo-garden · Sonnet · finished")
+    tails = {sid: _code_row(authed_page, sid).locator(".action-row-meta-tail")
+             for sid in ("s-work", "s-done", "s-unknown")}
+    expect(tails["s-work"]).to_have_text(["9m", "up 1d 3h"])
+    expect(tails["s-done"]).to_have_text(["19h", "up 1d 3h"])
     # No Board placement: no status and no age to guess at, just the uptime.
     # No model either: the segment is omitted, never a placeholder.
-    expect(meta["s-unknown"]).to_have_text("demo-garden · up 1d 3h")
+    expect(meta["s-unknown"]).to_have_text("demo-garden")
+    expect(tails["s-unknown"]).to_have_text(["up 1d 3h"])
 
     # The same session's Board row says the same thing after the folder.
     authed_page.locator("#tabBoard").click()
     board_meta = authed_page.locator(
         '#boardColumns li.board-item[data-session-id="s-work"] .board-card-meta')
-    expect(board_meta).to_have_text("demo-garden · working · 9m")
+    expect(board_meta.locator(".action-row-meta-text")).to_have_text("demo-garden · working")
+    expect(board_meta.locator(".action-row-meta-tail")).to_have_text("9m")
 
 
 @pytest.mark.iphone
-def test_code_row_meta_stays_one_line_and_drops_up_first_at_390px(
+def test_code_row_meta_stays_one_line_and_keeps_its_figures_whole_at_390px(
     authed_page: Page, base_url: str
 ) -> None:
     authed_page.set_viewport_size({"width": 390, "height": 844})
@@ -117,7 +124,7 @@ def test_code_row_meta_stays_one_line_and_drops_up_first_at_390px(
         _session("s-long", "demo-garden", "working", 540, model="Sonnet"),
         _session("s-tight", "demo-garden-planner", "working", 540, model="Sonnet"),
         # The folder is at its minimum width and the line still runs over by a
-        # figure or two: "up" must go, not be clipped (LAYOUT-09).
+        # figure or two: the model goes, a figure is never clipped (LAYOUT-09).
         _session("s-edge", "dem", "idle-finished", 68400, model="Opus"),
     ])
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
@@ -125,41 +132,37 @@ def test_code_row_meta_stays_one_line_and_drops_up_first_at_390px(
     read = """el => {
       if (!el.isConnected) return null;
       const meta = el.querySelector('.srow-meta');
-      const text = el.querySelector('.srow-meta-text');
-      const tail = el.querySelector('.srow-meta-tail');
-      if (!text.clientWidth) return null;
+      const rest = el.querySelector('.srow-meta-rest');
+      const tails = Array.from(el.querySelectorAll('.action-row-meta-tail'));
+      if (!meta.clientWidth) return null;
       const line = parseFloat(getComputedStyle(meta).lineHeight);
+      const edge = meta.getBoundingClientRect().right + 1;
       return {oneLine: meta.getBoundingClientRect().height <= line + 1,
-              cut: text.scrollWidth > text.clientWidth,
-              tailShown: !!tail && !tail.hidden};
+              restCut: rest ? rest.scrollWidth > rest.clientWidth : false,
+              tails: tails.length,
+              tailsWhole: tails.every(t => t.getBoundingClientRect().right <= edge
+                && t.scrollWidth <= t.clientWidth + 1)};
     }"""
-    # Room to spare: the whole line, "up" included.
+    # Room to spare: the whole line, figures included.
     expect(_code_row(authed_page, "s-short").locator(".srow-meta-text")).to_have_text(
-        "demo · idle · 9m · up 1d 3h")
+        "demo · idle")
+    expect(_code_row(authed_page, "s-short").locator(".action-row-meta-tail")).to_have_text(
+        ["9m", "up 1d 3h"])
     short = stable_eval(_code_row(authed_page, "s-short"), read)
-    assert short == {"oneLine": True, "cut": False, "tailShown": True}, short
+    assert short == {"oneLine": True, "restCut": False, "tails": 2, "tailsWhole": True}, short
 
-    edge = stable_eval(_code_row(authed_page, "s-edge"), read)
-    assert edge["cut"] is False and edge["oneLine"] is True, edge
+    # The figures stay whole on every row, whatever the folder and model do.
+    for sid in ("s-edge", "s-long", "s-tight"):
+        row = _code_row(authed_page, sid)
+        expect(row.locator(".action-row-meta-tail")).to_have_count(2)
+        got = stable_eval(row, read)
+        assert got["oneLine"] is True and got["tailsWhole"] is True, (sid, got)
+        assert got["restCut"] is False, (sid, got)
 
-    # No room: "up" goes first and the rest is whole, not ellipsized.
-    long_row = _code_row(authed_page, "s-long")
-    expect(long_row.locator(".srow-meta-tail")).to_be_hidden()
-    expect(long_row.locator(".srow-meta-text")).to_contain_text(
-        "demo-garden · Sonnet · working · 9m")
-    long = stable_eval(long_row, read)
-    assert long == {"oneLine": True, "cut": False, "tailShown": False}, long
-
-    # Still no room: only the folder is cut (ellipsized); the model, status and
-    # age stay whole.
+    # No room: only the folder is cut (ellipsized); the status stays whole.
     tight = _code_row(authed_page, "s-tight")
-    expect(tight.locator(".srow-meta-model")).to_be_visible()
-    expect(tight.locator(".srow-meta-text")).to_have_text(
-        "demo-garden-planner · Sonnet · working · 9m", use_inner_text=True)
-    tight_read = stable_eval(tight, read)
-    assert tight_read == {"oneLine": True, "cut": False, "tailShown": False}, tight_read
     head = stable_eval(tight, """el => {
       const h = el.querySelector('.srow-meta-head');
       return h.clientWidth ? h.scrollWidth > h.clientWidth : null;
     }""")
-    assert head is True, "the folder, not the status or age, is what a phone cuts"
+    assert head is True, "the folder, not the status or a figure, is what a phone cuts"

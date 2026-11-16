@@ -19,6 +19,10 @@ import { attachSwipe } from './swipe-row.js';
 //   metaSplit  -> the meta's words in the vendored `.action-row-meta-text`, so
 //                 they ellipsize on one line instead of wrapping to two (a
 //                 row whose height must not depend on its text)
+//   tail       -> a figure that ends the meta line (a count, a duration, a
+//                 status, a time): a string, or an array of them, each in the
+//                 vendored `.action-row-meta-tail` after the words, so an
+//                 ellipsis never cuts it. A tail splits the meta like `metaSplit`
 //   label      -> the main button's accessible name (what a tap does)
 //   onMain     -> the primary action; `disabled` + `hint` grey it out
 //   favorite   -> { on, onToggle } adds the leading star
@@ -70,7 +74,7 @@ export function actionRow(opts) {
   title.textContent = opts.title;
   title.title = opts.title;
   column.appendChild(title);
-  const meta = metaLine(opts.meta, opts.chips || [], opts.metaSplit);
+  const meta = metaLine(opts.meta, opts.chips || [], opts.metaSplit, opts.tail);
   if (meta) column.appendChild(meta);
   if (opts.inert) {
     // Nothing to name: the row's own text is what a reader hears.
@@ -135,16 +139,23 @@ function favoriteStar(favorite) {
 // The context line: the plain meta text, then any exception chips
 // (glance.js chip()) after it, so a chip never ellipsizes away. Null when
 // there is neither.
-function metaLine(text, chips, split) {
-  if (!text && !chips.length) return null;
+function metaLine(text, chips, split, tail) {
+  const tails = [].concat(tail || []).filter(Boolean);
+  if (!text && !chips.length && !tails.length) return null;
   const meta = document.createElement('span');
   meta.className = 'action-row-meta';
-  if (chips.length || split) {
+  if (chips.length || split || tails.length) {
     if (chips.length) meta.classList.add('has-chips');
     const span = document.createElement('span');
     span.className = 'action-row-meta-text';
     span.textContent = text || '';
     meta.appendChild(span);
+    tails.forEach(function (t) {
+      const el = document.createElement('span');
+      el.className = 'action-row-meta-tail';
+      el.textContent = t;
+      meta.appendChild(el);
+    });
     chips.forEach(function (c) { meta.appendChild(c); });
   } else {
     meta.textContent = text;

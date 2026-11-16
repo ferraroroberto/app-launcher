@@ -4,8 +4,8 @@
 two lines and one action. #1438 (step 6/7 of #1432) moved the row onto the
 shared action-row anatomy the other tabs use, so this pins the *new* contract:
 
-* a 60px row at 390px: job avatar, the name, **one** meta line ("in 6h · Daily
-  03:00"), chips for exceptions only (a healthy job has none), the seven-dot
+* a 60px row at 390px: job avatar, the name, **one** meta line ("Daily
+  03:00", then "in 6h" as its tail figure), chips for exceptions only (a healthy job has none), the seven-dot
   history as the trailing value, and one kebab;
 * no per-row Run button, no bell, no status dot, no countdown / cadence pills:
   Run now is the kebab's first item and the sheet's primary action, the bell
@@ -155,8 +155,9 @@ def test_row_is_avatar_name_one_meta_line_history_and_a_kebab_of_five_actions(
 
     expect(row.locator(".job-avatar")).to_have_attribute("data-badge", "none")
     expect(row.locator(".action-row-title")).to_have_text("Nightly reconciliation")
-    expect(row.locator("[data-role='job-meta']")).to_have_text(
-        re.compile(r"^in 6h · Daily 03:00$"))
+    expect(row.locator("[data-role='job-meta'] .action-row-meta-text")).to_have_text(
+        "Daily 03:00")
+    expect(row.locator("[data-role='job-meta'] .action-row-meta-tail")).to_have_text("in 6h")
     expect(row.locator("[data-role='sparkline'] .job-spark-dot")).to_have_count(7)
     # Chips are for exceptions only: a healthy job carries none.
     expect(row.locator(".chip")).to_have_count(0)
@@ -179,8 +180,10 @@ def test_row_is_avatar_name_one_meta_line_history_and_a_kebab_of_five_actions(
     busy = authed_page.locator("#jobsList li.job-row[data-id='busy']")
     expect(busy.locator(".job-avatar")).to_have_attribute("data-badge", "alive")
     expect(busy.locator(".job-avatar .avatar-badge[data-badge='alive']")).to_have_count(1)
-    expect(busy.locator("[data-role='job-meta']")).to_have_text(
-        re.compile(r"^running now · Daily 01:00$"))
+    expect(busy.locator("[data-role='job-meta'] .action-row-meta-text")).to_have_text(
+        "Daily 01:00")
+    expect(busy.locator("[data-role='job-meta'] .action-row-meta-tail")).to_have_text(
+        "running now")
     expect(busy.locator(".chip")).to_have_count(0)
     live = busy.locator(".job-spark-dot.live")
     unconfirmed = busy.locator(".job-spark-dot.unconfirmed")

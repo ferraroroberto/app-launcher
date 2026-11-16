@@ -3,7 +3,7 @@
 The Jobs list defaults to **Next run** order — ascending by the server-computed
 ``next_run_epoch`` — so imminent jobs float to the top and manual-only / paused
 jobs (no next fire) sink to the bottom. Each scheduled row's meta line leads
-with a relative countdown ("in 3h · Daily 12:00"; it was a "Next in" pill
+with a relative countdown ("Daily 12:00" with "in 3h" as its tail figure; it was a "Next in" pill
 before #1438); the sort-and-filter sheet (#1538) flips the order to A–Z.
 
 Hermetic: route-mock ``/api/jobs`` with three fixed jobs whose next-run order
@@ -107,12 +107,12 @@ def test_jobs_default_to_next_run_order_with_countdown(
 
     # The imminent job's meta line leads with a countdown; the manual job's
     # says "Manual only" and has none (the pill became the meta line, #1438).
-    expect(authed_page.locator(
-        "#jobsList li[data-id='zeta'] [data-role='job-meta']"
-    )).to_have_text("in 10m · Daily 06:00")
-    expect(authed_page.locator(
-        "#jobsList li[data-id='alpha'] [data-role='job-meta']"
-    )).to_have_text("in 2h · Daily 12:00")
+    zeta = authed_page.locator("#jobsList li[data-id='zeta'] [data-role='job-meta']")
+    expect(zeta.locator(".action-row-meta-text")).to_have_text("Daily 06:00")
+    expect(zeta.locator(".action-row-meta-tail")).to_have_text("in 10m")
+    alpha = authed_page.locator("#jobsList li[data-id='alpha'] [data-role='job-meta']")
+    expect(alpha.locator(".action-row-meta-text")).to_have_text("Daily 12:00")
+    expect(alpha.locator(".action-row-meta-tail")).to_have_text("in 2h")
     expect(authed_page.locator(
         "#jobsList li[data-id='mango'] [data-role='job-meta']"
     )).to_have_text("Manual only")
@@ -247,8 +247,10 @@ def test_external_schedule_and_manual_run_rows_say_what_they_allow(
     # countdown (the avatar's alive badge says it too); the *next scheduled
     # fire* stays a separate fact, the sheet's "Next run" row, beside the
     # "running now" last-run sentence (#1130).
-    expect(row.locator("[data-role='job-meta']")).to_have_text(
-        re.compile(r"^running now · Daily 06:15 12:00 18:00$"))
+    expect(row.locator("[data-role='job-meta'] .action-row-meta-text")).to_have_text(
+        "Daily 06:15 12:00 18:00")
+    expect(row.locator("[data-role='job-meta'] .action-row-meta-tail")).to_have_text(
+        "running now")
     expect(row.locator(".job-avatar")).to_have_attribute("data-badge", "alive")
     row.locator(".action-row-main").click()
     expect(authed_page.locator("#jobSheetTitle")).to_have_text("LI scrape")

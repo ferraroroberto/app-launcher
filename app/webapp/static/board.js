@@ -57,7 +57,7 @@ import { isOffBoard } from './channel-sessions.js';
 import { brandIconEl } from './dom-utils.js';
 import { channelSessionName, isChannelSession, isRelaySession } from './shared/session-kinds.js';
 import { agoText, fmtCardStamp, fmtDuration, plural } from './shared/format.js';
-import { avatar, chip, sessionStatusBits, sessionStatusMeta } from './glance.js';
+import { avatar, chip, sessionStatusMeta, sessionStatusParts } from './glance.js';
 import { shouldAutoRefreshGithub } from './board/github-refresh.js';
 import { ACTION_ROW_MENU, actionRow } from './action-rows.js';
 import { failedFetchState, setAsyncState } from './async-state.js';
@@ -186,9 +186,8 @@ function renderSessionCard(card, openItem) {
   if (isRelaySession(card)) chips.push(chip(card.label, 'neutral', 'session-relay-tag'));
   if (stalled) chips.push(chip('stalled', 'danger', 'board-stalled-chip'));
   if (card.kind === 'remote') chips.push(chip('detached', 'neutral', 'session-detached'));
-  const bits = [card.project || ''].concat(
-    sessionStatusBits(card.status, card.age_seconds, { chief: chief, hideStatus: stalled })
-  ).filter(Boolean);
+  const parts = sessionStatusParts(card.status, card.age_seconds, { chief: chief, hideStatus: stalled });
+  const bits = [card.project || '', parts.status].filter(Boolean);
   const known = state.agents.find(function (a) { return a.id === card.agent; });
   const agentId = String(card.agent || 'claude');
   const title = sessionLabel(card);
@@ -205,8 +204,9 @@ function renderSessionCard(card, openItem) {
     ),
     title: title,
     meta: bits.join(' · '),
+    tail: parts.age,
     chips: chips,
-    label: [title].concat(bits, chips.map(function (c) { return c.textContent; })).join(', '),
+    label: [title].concat(bits, parts.age, chips.map(function (c) { return c.textContent; })).join(', '),
     onMain: function () {
       state.boardExpanded =
         state.boardExpanded === card.session_id ? null : card.session_id;
@@ -454,8 +454,7 @@ function dismissCi(card, btn) {
 
 function renderJobCard(card) {
   const c = JOB_CHIPS[card.state] || [String(card.state || 'failed'), 'danger'];
-  const meta = ['job', card.age_seconds != null ? fmtDuration(card.age_seconds) : '']
-    .filter(Boolean).join(' · ');
+  const age = card.age_seconds != null ? fmtDuration(card.age_seconds) : '';
   const name = card.job_name || card.job_id || 'job';
   let dismiss = null;
   if (isDismissible(card)) {
@@ -471,7 +470,8 @@ function renderJobCard(card) {
   const row = actionRow({
     className: 'board-item board-item-job is-' + card.state,
     title: name,
-    meta: meta,
+    meta: 'job',
+    tail: age,
     chips: [chip(c[0], c[1], 'board-job-chip')],
     label: 'Open ' + name + ' in Jobs',
     onMain: function () { setTab('jobs'); },

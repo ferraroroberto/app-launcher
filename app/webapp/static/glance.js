@@ -111,10 +111,17 @@ export function sessionStatusMeta(status, chief) {
 // Code tab's placement could not be worked out) yields nothing: no word and
 // no age to guess at.
 export function sessionStatusBits(status, ageSeconds, opts) {
+  const p = sessionStatusParts(status, ageSeconds, opts);
+  return [p.status, p.age].filter(Boolean);
+}
+
+// The same two bits kept apart, for a row that puts the age (a figure) in
+// the meta tail and the word with the other words.
+export function sessionStatusParts(status, ageSeconds, opts) {
   const o = opts || {};
-  if (status == null) return [];
+  if (status == null) return { status: '', age: '' };
   const meta = sessionStatusMeta(status, !!o.chief);
-  return [o.hideStatus ? '' : meta.text, fmtDuration(ageSeconds)].filter(Boolean);
+  return { status: o.hideStatus ? '' : meta.text, age: fmtDuration(ageSeconds) };
 }
 
 // Hide each part whose `over()` says the line is too tight, in order, so a
@@ -143,8 +150,9 @@ function metaOverflows(metaText) {
 //       iconClass / titleClass / metaClass (the caller's own hooks),
 //       metaHead (optional leading text, the folder) and metaModel (optional,
 //       shown right after it and dropped second when the line is too narrow),
-//       metaTail (optional text that ends the meta line and is the first
-//       part dropped when the line is too narrow for it, e.g. "up 1d 4h").
+//       metaTail (optional figures that end the meta line: a string or an
+//       array, e.g. ["9m", "up 1d 4h"]), each in the vendored
+//       `.action-row-meta-tail`, so the line's ellipsis never cuts one.
 // Returns [avatarEl, textEl].
 export function sessionRowBody(opts) {
   const lead = avatar(
@@ -166,21 +174,21 @@ export function sessionRowBody(opts) {
   if (opts.title) title.title = opts.title;
   text.appendChild(title);
 
-  // One line: the plain meta ellipsizes, the chips after it never do, so an
-  // exception is never the part a phone cuts.
+  // One line: the plain meta ellipsizes, the figures and chips after it never
+  // do, so an exception or an age is never the part a phone cuts.
   const meta = document.createElement('span');
   meta.className = 'srow-meta' + (opts.metaClass ? ' ' + opts.metaClass : '');
   const metaText = document.createElement('span');
   metaText.className = 'srow-meta-text';
-  let tail = null;
-  if (opts.metaTail) {
-    tail = document.createElement('span');
-    tail.className = 'srow-meta-tail';
+  const tails = [].concat(opts.metaTail || []).filter(Boolean);
+  if (tails.length) {
+    meta.classList.add('action-row-meta');
+    metaText.classList.add('action-row-meta-text');
   }
   if (opts.metaHead && opts.metaModel) {
-    // Folder, model, status, age: a phone cuts the folder first (it ellipsizes,
-    // the rest stays whole), then drops "up N", then the model, so a long folder
-    // never costs the status or age.
+    // Folder, model, status: a phone cuts the folder first (it ellipsizes, the
+    // rest stays whole), then drops the model, so a long folder never costs
+    // the status.
     metaText.classList.add('srow-meta-text--split');
     const head = document.createElement('span');
     head.className = 'srow-meta-head';
@@ -192,30 +200,19 @@ export function sessionRowBody(opts) {
     model.textContent = ' · ' + opts.metaModel;
     rest.appendChild(model);
     rest.appendChild(document.createTextNode(opts.meta ? ' · ' + opts.meta : ''));
-    if (tail) {
-      tail.textContent = ' · ' + opts.metaTail;
-      rest.appendChild(tail);
-    }
     metaText.appendChild(head);
     metaText.appendChild(rest);
-    const steps = [{ part: model, over: function () { return metaOverflows(metaText); } }];
-    if (tail) {
-      // The folder is cut, or it already sits at its minimum width and the
-      // line still runs over (the uptime would be what the phone cuts).
-      steps.unshift({ part: tail, over: function () {
-        return head.scrollWidth > head.clientWidth || metaOverflows(metaText);
-      } });
-    }
-    fitMetaParts(metaText, steps);
+    fitMetaParts(metaText, [{ part: model, over: function () { return metaOverflows(metaText); } }]);
   } else {
     metaText.textContent = [opts.metaHead, opts.meta].filter(Boolean).join(' · ');
-    if (tail) {
-      tail.textContent = (metaText.textContent ? ' · ' : '') + opts.metaTail;
-      metaText.appendChild(tail);
-      fitMetaParts(metaText, [{ part: tail, over: function () { return metaOverflows(metaText); } }]);
-    }
   }
   meta.appendChild(metaText);
+  tails.forEach(function (t) {
+    const el = document.createElement('span');
+    el.className = 'action-row-meta-tail';
+    el.textContent = t;
+    meta.appendChild(el);
+  });
   (opts.chips || []).forEach(function (c) { meta.appendChild(c); });
   text.appendChild(meta);
 
