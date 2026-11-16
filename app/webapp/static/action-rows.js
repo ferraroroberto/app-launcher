@@ -11,6 +11,23 @@
 import { icon } from './_vendored/icons/icons.js';
 import { attachSwipe } from './swipe-row.js';
 
+// A snake_case token in a row title (an issue named after a module, a test)
+// is the system's word, so it is drawn as the `code-inline` chip, never as
+// ordinary text (COMP-11).
+const IDENTIFIER_RE = /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g;
+
+function appendTitleText(host, text) {
+  let last = 0;
+  for (const m of text.matchAll(IDENTIFIER_RE)) {
+    if (m.index > last) host.appendChild(document.createTextNode(text.slice(last, m.index)));
+    const code = document.createElement('code');
+    code.textContent = m[0];
+    host.appendChild(code);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) host.appendChild(document.createTextNode(text.slice(last)));
+}
+
 // opts:
 //   id         -> li[data-id]
 //   className  -> extra li classes (the list's hook: coding-item, …)
@@ -71,7 +88,7 @@ export function actionRow(opts) {
   }
   const title = document.createElement('span');
   title.className = 'action-row-title';
-  title.textContent = opts.title;
+  appendTitleText(title, String(opts.title == null ? '' : opts.title));
   title.title = opts.title;
   column.appendChild(title);
   const meta = metaLine(opts.meta, opts.chips || [], opts.metaSplit, opts.tail);
@@ -129,7 +146,7 @@ function favoriteStar(favorite) {
   // `star-btn` stays as the hook the e2e suite has always used.
   fav.className = 'icon-button action-row-fav star-btn';
   fav.setAttribute('aria-pressed', favorite.on ? 'true' : 'false');
-  fav.title = favorite.on ? 'Unstar' : 'Star';
+  fav.title = favorite.on ? 'Remove from favorites' : 'Add to favorites';
   fav.setAttribute('aria-label', fav.title);
   fav.innerHTML = icon('star', 'action-row-fav-off') + icon('star-fill', 'action-row-fav-on');
   fav.addEventListener('click', favorite.onToggle);

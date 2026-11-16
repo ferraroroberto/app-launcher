@@ -62,7 +62,7 @@ function openGithub(url) {
 export function doneActions(card) {
   const buttons = [];
   if (card.pr_url) {
-    buttons.push(actionButton('PR', 'Open PR #' + card.pr + ' on GitHub',
+    buttons.push(actionButton('Pull request', 'Open PR #' + card.pr + ' on GitHub',
       'neutral', 'board-done-pr', openGithub(card.pr_url), { track: 'board.done-pr' }));
   }
   if (card.proof === 'available') {

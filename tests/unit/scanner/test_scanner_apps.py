@@ -10,6 +10,7 @@ from src.scanner import (
     KIND_TUNNEL,
     KIND_WEBAPP,
     classify_bat,
+    pretty_folder_name,
     scan_app_bats,
 )
 
@@ -123,3 +124,11 @@ class TestScanAppBats:
         _write_bat(tmp_path / "a" / "run.bat", "streamlit run app.py")
         found = scan_app_bats(tmp_path)
         assert [p.parent.name for p, _ in found] == ["a", "b"]
+
+
+class TestPrettyFolderName:
+    def test_sentence_case_not_title_case(self):
+        assert pretty_folder_name(Path("mass-html_to-markdown")) == "Mass html to markdown"
+
+    def test_single_word_is_capitalised(self):
+        assert pretty_folder_name(Path("pvgis")) == "Pvgis"

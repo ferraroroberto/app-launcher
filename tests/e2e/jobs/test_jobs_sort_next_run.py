@@ -108,11 +108,11 @@ def test_jobs_default_to_next_run_order_with_countdown(
     # The imminent job's meta line leads with a countdown; the manual job's
     # says "Manual only" and has none (the pill became the meta line, #1438).
     zeta = authed_page.locator("#jobsList li[data-id='zeta'] [data-role='job-meta']")
-    expect(zeta.locator(".action-row-meta-text")).to_have_text("Daily 06:00")
-    expect(zeta.locator(".action-row-meta-tail")).to_have_text("in 10m")
+    expect(zeta.locator(".action-row-meta-text")).to_have_text("Daily")
+    expect(zeta.locator(".action-row-meta-tail")).to_have_text(["06:00", "in 10m"])
     alpha = authed_page.locator("#jobsList li[data-id='alpha'] [data-role='job-meta']")
-    expect(alpha.locator(".action-row-meta-text")).to_have_text("Daily 12:00")
-    expect(alpha.locator(".action-row-meta-tail")).to_have_text("in 2h")
+    expect(alpha.locator(".action-row-meta-text")).to_have_text("Daily")
+    expect(alpha.locator(".action-row-meta-tail")).to_have_text(["12:00", "in 2h"])
     expect(authed_page.locator(
         "#jobsList li[data-id='mango'] [data-role='job-meta']"
     )).to_have_text("Manual only")
@@ -248,9 +248,9 @@ def test_external_schedule_and_manual_run_rows_say_what_they_allow(
     # fire* stays a separate fact, the sheet's "Next run" row, beside the
     # "running now" last-run sentence (#1130).
     expect(row.locator("[data-role='job-meta'] .action-row-meta-text")).to_have_text(
-        "Daily 06:15 12:00 18:00")
+        "Daily")
     expect(row.locator("[data-role='job-meta'] .action-row-meta-tail")).to_have_text(
-        "running now")
+        ["06:15 12:00 18:00", "running now"])
     expect(row.locator(".job-avatar")).to_have_attribute("data-badge", "alive")
     row.locator(".action-row-main").click()
     expect(authed_page.locator("#jobSheetTitle")).to_have_text("LI scrape")

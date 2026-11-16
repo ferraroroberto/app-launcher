@@ -148,12 +148,12 @@ def test_zero_item_lists_render_the_canonical_empty_state(
     expect(page.locator("#jobsLoading")).to_be_hidden()
 
     # Every empty state offers its one next action (#1238 J-09): in the
-    # block, or (#1437) in the row or sheet action right beside it — Running's
-    # is the Other ports row under it, Other ports' is the sheet's Check again.
+    # block, or (#1437) in the row or sheet action right beside it — Other
+    # ports' is the sheet's Check again.
     for tab, empty_id, beside in (
         ("#tabClaude", "#sessionsEmpty", None),
         ("#tabClaude", "#claudeEmpty", None),
-        ("#tabApps", "#runningAppsEmpty", "#otherPortsRow"),
+        ("#tabApps", "#runningAppsEmpty", None),
         ("#tabApps", "#appsEmpty", None),
         ("#tabApps", "#registeredTraysEmpty", None),
         ("#tabApps", "#listenersEmpty", "#listenersCheckAgain"),

@@ -27,6 +27,7 @@ import { openRename, wireRenameDialog, wireScanDialog } from './apps/apps-dialog
 import { ACTION_ROW_MENU, actionRow } from './action-rows.js';
 import { listFilter } from './list-filter.js';
 import { nameLabel } from './shared/format.js';
+import { revealInCard } from './dom-utils.js';
 import {
   copyText, copyUrl, fetchListeners, renderOtherPortsRow, wireListeners,
 } from './apps/apps-listeners.js';
@@ -634,7 +635,7 @@ export async function fetchRunningApps() {
   // background interval doesn't hit the API for an invisible panel.
   if (state.tab !== 'apps') return;
   if (!runningReadAt) {
-    setAsyncState(els.runningAppsState, 'loading', { message: 'Reading running apps…' });
+    setAsyncState(els.runningAppsState, 'loading', { message: 'Reading running apps…', reserveAction: true });
   }
   try {
     const body = await jsonApi('/api/apps/running');
@@ -690,6 +691,13 @@ export function wireApps() {
     retryPerf();
   });
   wireWideApps();
+  // Nothing running: an app starts from the Apps list below.
+  const runningEmptyAction = document.getElementById('runningAppsEmptyAction');
+  if (runningEmptyAction) {
+    runningEmptyAction.addEventListener('click', function () {
+      revealInCard(document.querySelector('details.apps-list-card'));
+    });
+  }
   // Nothing running points at Other ports, the row right under the empty
   // state, which is where a restart's orphans show.
   wireListeners();

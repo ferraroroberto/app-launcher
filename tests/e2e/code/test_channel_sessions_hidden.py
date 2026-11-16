@@ -401,7 +401,7 @@ def test_popup_compact_sends_slash_compact_through_the_verified_route(
     expect(high.locator("svg")).to_have_count(1)
     name = dialog.locator(
         'li[data-session-id="s-tg-health"] .channel-list-name').inner_text()
-    expect(high).to_have_attribute("aria-label", f"Compact {name}")
+    expect(high).to_have_attribute("aria-label", f"Compact {name} (collapse context)")
     expect(high).to_have_attribute("data-high", "true")
     expect(low).not_to_have_attribute("data-high", "true")
     expect(high).to_have_css("border-top-width", "0px")

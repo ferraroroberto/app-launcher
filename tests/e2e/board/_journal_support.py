@@ -68,7 +68,8 @@ def assert_new_entries_then_clear_button(page: Page) -> None:
     expect(rows).to_have_count(2)
     expect(rows.nth(0).locator(".action-row-title")).to_have_text("merged: made-up change")
     expect(rows.nth(0).locator(".board-journal-kind")).to_have_text("merged")
-    expect(rows.nth(0).locator(".action-row-meta")).to_contain_text("min ago · demo-repo#12")
+    expect(rows.nth(0).locator(".action-row-meta-text")).to_have_text("demo-repo#12")
+    expect(rows.nth(0).locator(".action-row-meta-tail")).to_contain_text("min ago")
     expect(rows.nth(1).locator(".board-journal-kind")).to_have_text("asked")
     # A ref opens its issue; an entry with no ref reports and does nothing.
     expect(rows.nth(0)).to_have_class(re.compile(r"\bis-link\b"))

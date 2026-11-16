@@ -79,6 +79,10 @@ def test_section_renders_empty(authed_page: Page, base_url: str) -> None:
     expect(authed_page.locator("#runningAppsEmpty .empty-state-message")).to_have_text(
         "Nothing launched from here is running.")
     expect(authed_page.locator("#runningAppsNote")).to_be_visible()
+    # The block names its way forward: Show apps opens the Apps list.
+    authed_page.evaluate("document.querySelector('details.apps-list-card').open = false")
+    authed_page.locator("#runningAppsEmptyAction").click()
+    expect(authed_page.locator("details.apps-list-card")).to_have_attribute("open", "")
     authed_page.wait_for_timeout(300)
     assert errors == [], "JS errors:\n  - " + "\n  - ".join(errors)
 

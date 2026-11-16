@@ -66,8 +66,8 @@ def test_done_rows_show_proof_no_proof_or_nothing(
     expect(without.locator(".board-proof-chip")).to_have_count(0)
     expect(plain.locator(".board-proof-chip, .board-proof-none, .board-done-pr")).to_have_count(0)
     # PR once a merged PR is known, Proof only with a stored report; the issue is the row's tap.
-    expect(with_report.locator(".board-done-action .chip")).to_have_text(["PR", "Proof"])
-    expect(without.locator(".board-done-action .chip")).to_have_text(["PR"])
+    expect(with_report.locator(".board-done-action .chip")).to_have_text(["Pull request", "Proof"])
+    expect(without.locator(".board-done-action .chip")).to_have_text(["Pull request"])
     expect(plain.locator(".board-done-action")).to_have_count(0)
     # Reading the board fetched no report: it is read on tap only.
     assert fetched == []
