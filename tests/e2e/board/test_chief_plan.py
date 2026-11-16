@@ -311,6 +311,10 @@ def test_questions_are_one_line_rows_all_shown_then_one_answer(
          "question": f"Full question {i}?"}
         for i in range(1, 9)
     ]
+    # The first one is dated, so it sorts first and carries a date tail beside
+    # a ref too long for the row.
+    long_ref = "a-repository-name-" + "far-too-long-" * 6 + "for-one-line#1"
+    waiting[0].update(ref=long_ref, asked_at="2020-03-02")
     _mock_board(authed_page, _board_payload(with_chief=True))
     _route_plan_from(authed_page, {"plan": _plan_with(tmp_path, waiting)})
     _fake_clock.install(authed_page)
@@ -325,8 +329,19 @@ def test_questions_are_one_line_rows_all_shown_then_one_answer(
 
     first = rows.nth(0)
     expect(first).to_have_class(re.compile(r"\baction-row\b"))
-    expect(first.locator(".action-row-meta")).to_have_text("demo-repo#1")
+    expect(first.locator(".action-row-meta-text")).to_have_text(long_ref)
+    expect(first.locator(".action-row-meta-tail")).to_have_text("2 Mar 2020")
     expect(first.locator(".board-plan-chevron")).to_have_count(1)
+    # The long ref gives way; the date stays whole beside it (LAYOUT-09).
+    d = stable_eval(first.locator(".action-row-meta"), """el => {
+        const t = el.querySelector('.action-row-meta-tail').getBoundingClientRect();
+        const w = el.querySelector('.action-row-meta-text');
+        return { metaCut: el.scrollWidth > el.clientWidth + 1,
+                 tailInside: t.right <= el.getBoundingClientRect().right + 1,
+                 textCut: w.scrollWidth > w.clientWidth };
+    }""")
+    assert not d["metaCut"] and d["tailInside"], f"the date is cut: {d}"
+    assert d["textCut"], f"the long ref should be the part that ellipsizes: {d}"
     # No amber bar or stripe left on the row.
     expect(first).to_have_css("box-shadow", "none")
     # One line at the rows.md height, the text clipped by its ellipsis.
