@@ -35,6 +35,7 @@ from tests.e2e.fixtures.env import (
     GUARD_FAKE_TASK,
     GUARD_KEY_ENV,
     GUARD_TASK_ENV,
+    LID_ABSENT_ENV,
     REPO_ROOT,
     SESSION_HOST_PORT_ENV,
     SESSIONS_DIR,
@@ -278,6 +279,7 @@ def boot_webapp(iso: Isolation, servers: Servers, sh_port: int) -> str:
                 STARTUP_DIR_ENV: str(iso.startup_dir),
                 GUARD_TASK_ENV: GUARD_FAKE_TASK,
                 GUARD_KEY_ENV: GUARD_FAKE_KEY,
+                LID_ABSENT_ENV: "1",
                 AUDIT_DIR_ENV: str(iso.audit_dir),
                 **runtime_data_env(iso.runtime_data_dir),
                 # The Apps tab reads the perf ledger under the hooks state

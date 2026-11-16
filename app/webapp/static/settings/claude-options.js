@@ -22,6 +22,7 @@ import { setSwitch, switchEl } from '../_vendored/switch/switch.js';
 import { setUsageShows } from '../usage-meter.js';
 import { renderSettingsValues } from './settings-sheets.js';
 import { renderRemotePowerGuard } from './remote-power-guard.js';
+import { renderLidKeepAwake } from './lid-keep-awake.js';
 import { renderDictationAutoStop } from './dictation-autostop.js';
 
 // Shared model-picker controllers, created once the DOM exists.
@@ -233,6 +234,7 @@ export async function fetchConfig(shouldApply) {
     setSwitch(els.bootAutostartToggle, !!body.boot_autostart_enabled);
   }
   renderRemotePowerGuard(body);
+  renderLidKeepAwake(body);
   renderChiefAutoCompact(body);
   if (els.chiefDoorbellToggle) {
     setSwitch(els.chiefDoorbellToggle, body.chief_doorbell === true);

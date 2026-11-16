@@ -7,6 +7,7 @@ live terminal won't work on the current connection.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -19,6 +20,7 @@ from app.webapp.routers._helpers import (
 )
 from src import boot_autostart, password, remote_power_guard
 from src.agents import AGENTS, DEFAULT_AGENT, is_installed
+from src.desktop import lid_keep_awake
 from src.launching.flags import (
     build_antigravity_flags,
     build_claude_flags,
@@ -147,9 +149,17 @@ async def get_config(request: Request) -> Dict[str, Any]:
         # webapp_config.json — the Startup-folder wrapper bat's presence
         # *is* the state, so a stale cached bool can never drift from it.
         "boot_autostart_enabled": boot_autostart.is_enabled(),
-        # Remote power guard: live-queried from Task Scheduler and the
-        # registry each time, same reason as boot-autostart above.
+        **await _power_payloads(),
+    }
+
+
+async def _power_payloads() -> Dict[str, Any]:
+    """Settings > the PC's power switches, live-queried each time for the same
+    reason as boot-autostart above. powercfg is a subprocess, so it is read
+    off the event loop; a PC with no lid reports "unsupported"."""
+    return {
         "remote_power_guard": remote_power_guard.payload(),
+        "lid_keep_awake": await asyncio.to_thread(lid_keep_awake.payload),
     }
 
 
@@ -471,6 +481,20 @@ async def set_boot_autostart(request: Request) -> Dict[str, Any]:
     except OSError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return {"ok": True, "boot_autostart_enabled": boot_autostart.is_enabled()}
+
+
+@router.post("/api/settings/lid-keep-awake")
+async def set_lid_keep_awake(request: Request) -> Dict[str, Any]:
+    """Set the active power plan's lid close action to Do nothing, or restore
+    the values saved before. No elevation is needed, so a failure is a 400
+    carrying the plain reason."""
+    body = await maybe_json(request)
+    change = lid_keep_awake.enable if bool(body.get("enabled")) else lid_keep_awake.disable
+    try:
+        await asyncio.to_thread(change)
+    except lid_keep_awake.LidKeepAwakeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "lid_keep_awake": await asyncio.to_thread(lid_keep_awake.payload)}
 
 
 @router.post("/api/settings/remote-power-guard")
