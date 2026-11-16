@@ -354,7 +354,8 @@ function questionRow(plan, run, open, i, answered) {
   return actionRow({
     className: 'board-item board-plan-row board-plan-waiting' + (sent ? ' is-answered' : ''),
     title: title,
-    meta: [ref, shortDate(w.asked_at), sent ? 'answered, waiting for the chief' : ''].filter(Boolean).join(' · '),
+    meta: [ref, sent ? 'answered, waiting for the chief' : ''].filter(Boolean).join(' · '),
+    tail: shortDate(w.asked_at),
     density: 'one-line',
     label: 'Answer: ' + title,
     onMain: openSheet,
