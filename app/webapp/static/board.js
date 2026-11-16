@@ -151,11 +151,12 @@ export function sessionLabel(card) {
 // ellipsizes away. No leading glyph and no left-edge status border: the lane
 // says what kind of row it is, the chip what is wrong. With nothing to open
 // (`onMain` null) the row is inert rather than a dead button.
-function laneRow(cls, titleText, metaText, chips, label, onMain, trailing) {
+function laneRow(cls, titleText, metaText, tail, chips, label, onMain, trailing) {
   return actionRow({
     className: 'board-item ' + cls,
     title: titleText,
     meta: metaText,
+    tail: tail,
     chips: chips,
     label: label,
     onMain: onMain,
@@ -358,7 +359,8 @@ function renderIssueCard(card) {
   const row = actionRow({
     className: 'board-item board-item-issue' + (isInProgress ? ' is-in-progress' : ''),
     title: card.title || '',
-    meta: [card.repo, '#' + card.number].filter(Boolean).join(' ') + (stamp && !chips.length ? ' · ' + stamp : ''),
+    meta: [card.repo, '#' + card.number].filter(Boolean).join(' '),
+    tail: stamp && !chips.length ? stamp : '',
     chips: stamp && chips.length ? [stampEl(stamp)].concat(chips) : chips,
     label: 'Open issue #' + card.number + ' on GitHub',
     onMain: openUrl(card.url),
@@ -399,8 +401,7 @@ function renderIssueCard(card) {
 function renderPrCard(card) {
   const draft = card.is_draft ? ' · draft' : '';
   return laneRow('board-item-pr', card.title || '',
-    [[card.repo, 'PR #' + card.number].join(' ') + draft, fmtCardStamp(card.updated_at)]
-      .filter(Boolean).join(' · '), [],
+    [card.repo, 'PR #' + card.number].join(' ') + draft, fmtCardStamp(card.updated_at), [],
     'Open PR #' + card.number + ' on GitHub', openUrl(card.url)).li;
 }
 
@@ -489,8 +490,8 @@ export function renderDoneCard(card, stampRef) {
   // branch to render. Its PR / Proof actions ride the issue's row
   // (board/proof-chip.js).
   return laneRow('board-item-done', card.title || '',
-    [[card.repo, '#' + card.number].join(' '), card.state,
-      fmtCardStamp(card.closed_at || card.updated_at, stampRef)].filter(Boolean).join(' · '),
+    [[card.repo, '#' + card.number].join(' '), card.state].filter(Boolean).join(' · '),
+    fmtCardStamp(card.closed_at || card.updated_at, stampRef),
     proofGapChips(card),
     'Open issue #' + card.number + ' on GitHub', openUrl(card.url), doneActions(card)).li;
 }

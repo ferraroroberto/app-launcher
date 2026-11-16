@@ -219,7 +219,7 @@ function compactButton(s, pct) {
   if (contextAlert(pct)) btn.dataset.high = 'true';
   btn.disabled = compacting.has(sid);
   btn.title = 'Send /compact to this session';
-  btn.setAttribute('aria-label', 'Compact ' + channelSessionName(s));
+  btn.setAttribute('aria-label', 'Compact ' + channelSessionName(s) + ' (collapse context)');
   btn.innerHTML = icon(COMPACT_ACTION.glyph);
   btn.addEventListener('click', function () { compactSession(s); });
   return btn;

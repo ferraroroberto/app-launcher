@@ -83,10 +83,12 @@ class ProjectDir:
 
 
 def pretty_folder_name(folder: Path) -> str:
+    """A folder's name as a row label: sentence case, the one casing every
+    label of the app shares (``mass-html-to-markdown`` -> ``Mass html to markdown``)."""
     parts = [p for p in re.split(r"[_\-\s]+", folder.name) if p]
     if not parts:
         parts = [folder.name]
-    return " ".join(p.capitalize() for p in parts)
+    return " ".join([parts[0].capitalize()] + [p.lower() for p in parts[1:]])
 
 
 def slugify(value: str) -> str:

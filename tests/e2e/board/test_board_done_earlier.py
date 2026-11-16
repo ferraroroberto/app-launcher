@@ -130,9 +130,10 @@ def test_show_earlier_adds_one_day_per_tap_without_overflowing(
                         % (date.today() - timedelta(days=1)).isoformat())).to_have_text(
         ["day 1 second", "day 1 first"])
     # Under a day header the stamp is the clock time, not the date again.
-    expect(done.locator('.board-day[data-day="%s"] .action-row-meta'
-                        % (date.today() - timedelta(days=1)).isoformat()).first).to_have_text(
-        "app-launcher #102 · closed · 12:00")
+    day = '.board-day[data-day="%s"] ' % (date.today() - timedelta(days=1)).isoformat()
+    expect(done.locator(day + '.action-row-meta-text').first).to_have_text(
+        "app-launcher #102 · closed")
+    expect(done.locator(day + '.action-row-meta-tail').first).to_have_text("12:00")
     wait_until(authed_page, lambda: authed_page.evaluate(
         "() => document.documentElement.scrollWidth <= window.innerWidth"),
         "no horizontal page overflow at 390px")

@@ -32,7 +32,9 @@ export function staleMessage(fetchedAt) {
 }
 
 // host: the state element; name: one of the five states; opts: { message,
-// glyph, retry } (retry -> a Retry action, error only).
+// glyph, retry, reserveAction } (retry -> a Retry action, error only;
+// reserveAction -> an unseen action-sized gap under the message, so a list
+// whose empty state holds an action does not grow when its answer lands).
 export function setAsyncState(host, name, opts) {
   if (!host) return;
   const o = opts || {};
@@ -44,7 +46,8 @@ export function setAsyncState(host, name, opts) {
     return;
   }
   const retry = name === 'error' && o.retry;
-  const sig = [name, o.message || '', retry ? 'retry' : ''].join('|');
+  const reserve = !retry && !!o.reserveAction && name !== 'empty';
+  const sig = [name, o.message || '', retry ? 'retry' : '', reserve ? 'reserve' : ''].join('|');
   if (host.dataset.sig === sig) return;
   host.dataset.sig = sig;
   host.classList.toggle('empty-state', name !== 'stale');
@@ -66,6 +69,11 @@ export function setAsyncState(host, name, opts) {
     btn.textContent = 'Retry';
     btn.addEventListener('click', o.retry);
     host.appendChild(btn);
+  } else if (reserve) {
+    const gap = document.createElement('span');
+    gap.className = 'empty-state-action async-reserve';
+    gap.setAttribute('aria-hidden', 'true');
+    host.appendChild(gap);
   }
 }
 

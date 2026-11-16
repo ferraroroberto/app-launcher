@@ -126,7 +126,8 @@ def test_backlog_issue_tile_is_flat_row_with_one_verb_and_yolo_in_kebab(
     tile = authed_page.locator('.board-list[data-col="backlog"] li.board-item').first
     expect(tile).to_be_visible(timeout=15_000)
     expect(tile).to_have_class(re.compile(r"\bboard-item-issue\b"))
-    expect(tile.locator(".action-row-meta")).to_have_text(re.compile(r"^app-launcher #301 · \S"))
+    expect(tile.locator(".action-row-meta-text")).to_have_text("app-launcher #301")
+    expect(tile.locator(".action-row-meta-tail")).to_have_text(re.compile(r"\S"))
     expect(tile.locator(".action-row-title")).to_have_text(
         "Board tab 2/3: drill-down + reply"
     )

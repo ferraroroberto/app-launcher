@@ -239,14 +239,15 @@ def test_board_cards_carry_their_date_and_it_is_never_cut(
             f'.board-list[data-col="{col}"] li.board-item'
         ).nth(index).locator(".action-row-meta")
 
-    expect(meta_of("backlog")).to_have_text(
-        f"app-launcher #301 · {_local_stamp(earlier, today=False)}")
-    expect(meta_of("other")).to_have_text(
-        f"app-launcher PR #158 · {_local_stamp(now, today=True)}")
-    expect(meta_of("done", 0)).to_have_text(
-        f"voice-transcriber #87 · closed · {_local_stamp(closed_new, today=True)}")
-    expect(meta_of("done", 1)).to_have_text(
-        f"voice-transcriber #86 · closed · {_local_stamp(closed_old, today=True)}")
+    def expect_meta(col: str, index: int, words: str, stamp: str) -> None:
+        # The words truncate; the stamp is its own non-shrinking tail item.
+        expect(meta_of(col, index).locator(".action-row-meta-text")).to_have_text(words)
+        expect(meta_of(col, index).locator(".action-row-meta-tail")).to_have_text(stamp)
+
+    expect_meta("backlog", 0, "app-launcher #301", _local_stamp(earlier, today=False))
+    expect_meta("other", 0, "app-launcher PR #158", _local_stamp(now, today=True))
+    expect_meta("done", 0, "voice-transcriber #87 · closed", _local_stamp(closed_new, today=True))
+    expect_meta("done", 1, "voice-transcriber #86 · closed", _local_stamp(closed_old, today=True))
 
     # Whole, not clipped: the meta shows every line it has, and the stamp is
     # the tail of its text (so the repo name leads and nothing pushes it out).

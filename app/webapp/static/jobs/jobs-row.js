@@ -106,18 +106,34 @@ export function cadenceText(text) {
   return t ? t.charAt(0).toUpperCase() + t.slice(1) : '';
 }
 
-/* The row's one meta line, as `{ text, tail }`: how often is the words, when it
- * next fires is the tail, a figure the row's ellipsis must not cut. A running
+/* The clock times at the end of a cadence ("daily 06:15 12:00") are figures, so
+ * they leave the words and ride the tail, where the row's ellipsis cannot cut
+ * them. Returns `{ words, times }`; `times` is '' when the cadence has none. */
+function splitCadence(cadence) {
+  const m = /^(.*?)\s*((?:\d{1,2}:\d{2}\s*)+)$/.exec(cadence);
+  return m && m[1] ? { words: m[1], times: m[2].trim() } : { words: cadence, times: '' };
+}
+
+/* The row's one meta line, as `{ text, tail }`: how often is the words; the
+ * clock times and when it next fires are the tail, figures the row's ellipsis
+ * must not cut. A running
  * job says so in the tail instead of its countdown; a paused one says what its
  * schedule was ("Was daily 07:00"), and its paused chip carries the state. */
 export function jobMeta(job) {
   const cadence = (job.schedule_chip || '').trim();
-  if (job.running) return { text: cadence ? cadenceText(cadence) : '', tail: 'running now' };
-  if (job.paused) return { text: cadence ? 'Was ' + cadence : 'Paused', tail: '' };
+  const split = splitCadence(cadence);
+  if (job.running) {
+    return { text: cadence ? cadenceText(split.words) : '', tail: [split.times, 'running now'] };
+  }
+  if (job.paused) {
+    return cadence
+      ? { text: 'Was ' + split.words, tail: [split.times] }
+      : { text: 'Paused', tail: '' };
+  }
   if (!cadence) return { text: 'Manual only', tail: '' };
   return {
-    text: cadenceText(cadence),
-    tail: Number.isFinite(job.next_run_epoch) ? fmtUntil(job.next_run_epoch) : '',
+    text: cadenceText(split.words),
+    tail: [split.times, Number.isFinite(job.next_run_epoch) ? fmtUntil(job.next_run_epoch) : ''],
   };
 }
 

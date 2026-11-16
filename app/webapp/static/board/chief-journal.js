@@ -44,7 +44,8 @@ function journalRow(entry) {
   const row = actionRow({
     className: 'board-item board-journal-row' + (open ? ' is-link' : ''),
     title: entry.text || entry.ref || entry.kind,
-    meta: [agoText(entry.ts), entry.ref].filter(Boolean).join(' · '),
+    meta: entry.ref || '',
+    tail: agoText(entry.ts),
     chips: [chip(entry.kind, KIND_TONES[entry.kind] || 'neutral', 'board-journal-kind')],
     label: 'Open ' + (entry.ref || 'the entry') + ' on GitHub',
     onMain: open,

@@ -88,12 +88,29 @@
   margin: 8px 2px;
   line-height: 1.45;
 }
+/* Inline code is the `code-inline` chip: mono at 0.875em of the line around
+   it on `neutral-soft`, never caption-sized and never `--card-off` (true
+   black inside a dark card). */
 .opt-hint code {
-  background: var(--card-off);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 1px 5px;
-  font-size: var(--font-caption);
+  background: var(--neutral-soft);
+  border-radius: 6px;
+  padding: 1px 6px;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+}
+
+/* The loading block's unseen stand-in for an empty state's action (async-state.js). */
+.empty-state-action.async-reserve { visibility: hidden; }
+
+/* An identifier inside a row title (action-rows.js) is the same chip. */
+.action-row-title code {
+  background: var(--neutral-soft);
+  border-radius: 6px;
+  padding: 1px 6px;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 0.875em;
 }
 
 /* ---------- claude / antigravity option rows ---------- */

@@ -207,7 +207,7 @@ function buildAgenda(host, onAdd) {
     if (key !== currentKey) {
       currentKey = key;
       const h = document.createElement('h3');
-      h.className = 'jobs-agenda-day';
+      h.className = 'jobs-agenda-day overline';
       h.textContent = _dayHeader(o.fire_epoch);
       host.appendChild(h);
       list = document.createElement('ul');

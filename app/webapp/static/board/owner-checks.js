@@ -188,13 +188,14 @@ function labelled(cls, label, text) {
 function itemRow(item, onAnswer) {
   const expanded = expandedRef === item.ref;
   const title = item.title || item.ref;
-  const meta = [item.ref, unblocksText(item), markText(item) || sinceText(item.since)]
-    .filter(Boolean).join(' · ');
+  const meta = [item.ref, unblocksText(item)].filter(Boolean).join(' · ');
+  const tail = markText(item) || sinceText(item.since);
   const chips = item.block ? [] : [chip('details unknown', 'attention', 'board-owner-unknown')];
   const row = actionRow({
     className: 'board-item board-owner-row' + (waiting(item) ? '' : ' is-answered'),
     title: title,
     meta: meta,
+    tail: tail,
     chips: chips,
     label: (expanded ? 'Hide' : 'Show') + ' what ' + item.ref + ' needs',
     onMain: function () {

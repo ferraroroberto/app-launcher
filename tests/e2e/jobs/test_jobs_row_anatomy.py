@@ -156,8 +156,9 @@ def test_row_is_avatar_name_one_meta_line_history_and_a_kebab_of_five_actions(
     expect(row.locator(".job-avatar")).to_have_attribute("data-badge", "none")
     expect(row.locator(".action-row-title")).to_have_text("Nightly reconciliation")
     expect(row.locator("[data-role='job-meta'] .action-row-meta-text")).to_have_text(
-        "Daily 03:00")
-    expect(row.locator("[data-role='job-meta'] .action-row-meta-tail")).to_have_text("in 6h")
+        "Daily")
+    expect(row.locator("[data-role='job-meta'] .action-row-meta-tail")).to_have_text(
+        ["03:00", "in 6h"])
     expect(row.locator("[data-role='sparkline'] .job-spark-dot")).to_have_count(7)
     # Chips are for exceptions only: a healthy job carries none.
     expect(row.locator(".chip")).to_have_count(0)
@@ -181,9 +182,9 @@ def test_row_is_avatar_name_one_meta_line_history_and_a_kebab_of_five_actions(
     expect(busy.locator(".job-avatar")).to_have_attribute("data-badge", "alive")
     expect(busy.locator(".job-avatar .avatar-badge[data-badge='alive']")).to_have_count(1)
     expect(busy.locator("[data-role='job-meta'] .action-row-meta-text")).to_have_text(
-        "Daily 01:00")
+        "Daily")
     expect(busy.locator("[data-role='job-meta'] .action-row-meta-tail")).to_have_text(
-        "running now")
+        ["01:00", "running now"])
     expect(busy.locator(".chip")).to_have_count(0)
     live = busy.locator(".job-spark-dot.live")
     unconfirmed = busy.locator(".job-spark-dot.unconfirmed")

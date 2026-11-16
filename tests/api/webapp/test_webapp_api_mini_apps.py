@@ -36,9 +36,9 @@ def test_scan_lists_the_folders_bats_as_mini_rows(webapp_client, mini_folder: Pa
     client, _, _ = webapp_client
     new = client.post("/api/apps/scan").json()["new"]
     minis = {a["name"]: a for a in new if a["kind"] == "mini"}
-    assert set(minis) == {"Clip Helper", "Disk Watch"}
-    assert minis["Clip Helper"]["id"] == "mini-clip-helper"
-    assert minis["Clip Helper"]["bat_path"] == str(mini_folder / "clip_helper.bat")
+    assert set(minis) == {"Clip helper", "Disk watch"}
+    assert minis["Clip helper"]["id"] == "mini-clip-helper"
+    assert minis["Clip helper"]["bat_path"] == str(mini_folder / "clip_helper.bat")
     # A new row starts with autostart off.
     assert all(a["autostart"] is False for a in minis.values())
 
