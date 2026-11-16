@@ -81,9 +81,8 @@
   color: var(--muted);
   line-height: 1.45;
 }
-/* `.select-native` is the vendored component's — its `height` is
-   what iOS Safari honours on a <select>, where this rule's `min-height` is
-   ignored and the control renders stubby. Text inputs keep this recipe. */
+/* `.select-native` is the vendored component's: its own 44px box and
+   control-border ring. Text inputs keep this recipe. */
 /* A form field is a row, not an inline control: the 44px floor, not the
    36px control height (these measured 39px rendered). */
 .input-native {
@@ -113,17 +112,6 @@
   margin: 0;
   text-align: start;
 }
-/* The same, for a <select> standing in a stacked form row rather than in an
-   inline toolbar cluster. The vendored component's own 36px `height` is the
-   inline-control contract and stays for those. */
-/* Selects outline in the spec's control-border, like .input-native above
-   (3:1 vs the card); the vendored select-native still
-   draws the quieter card hairline. */
-.select-native { border-color: var(--control-border); }
-.stacked .select-native,
-.settings-sheet .select-native,
-.opt-row .select-native,
-.job-param-row .select-native { height: var(--row-sm); }
 /* The tiers' fill, border, size, weight and :disabled recipe come from
    _vendored/button/button.css; a tint's size is the vendored 16px / 700, so
    the one local rule is the full-width layout. */
@@ -189,10 +177,6 @@
    What follows is only what this app adds on top. */
 /* Titles carry a leading Lucide glyph. */
 .detail-header h2 { display: flex; align-items: center; gap: 8px; line-height: 1.2; }
-/* A field in a dialog is a row the user taps: the 44px floor, not
-   the component's 36px inline-control height. Text inputs already get it
-   from .input-native's min-height; a <select> needs `height` (iOS). */
-.detail-card .row .select-native { height: var(--row-sm); }
 /* A multi-line body can't share a line with its label: stack that one row. */
 .detail-card .row:has(> textarea) { flex-direction: column; align-items: stretch; }
 textarea.input-native { height: auto; }
