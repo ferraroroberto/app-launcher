@@ -5,14 +5,15 @@
  * per-app variation is markup and token values only. Normalized from
  * home-automation's shipped styles.css `.select-native`.
  *
- * Contract: a native <select> sized to `control` (36px) so a row of inline
- * controls (select / input / toggle) lines up on one line — canvas-subtle
- * fill, hairline border, rounded.md corners, label-size text.
+ * Contract: a native <select> whose visible control is `control` (36px) inside
+ * a 44px hit box, so a row of inline controls (select / input / toggle) lines
+ * up on one line — canvas-subtle fill, hairline border, rounded.md corners,
+ * label-size text.
  *
  * iOS gotcha (why this uses `height`, not `min-height`): iOS Safari IGNORES
  * `min-height` on a bare <select> and renders it at its stubby intrinsic
  * height. The height must come from an explicit `height` (respected) — never
- * `min-height`, and never a padding-derived height (that drifts off the 36px
+ * `min-height`, and never a padding-derived height (that drifts off the
  * `control` lockstep). This is the one place per-app selects kept rendering
  * stubby before the recipe was written down once here.
  *
@@ -26,23 +27,46 @@
  * file rather than re-declaring it.
  */
 
+/* The box is the 44px hit floor (design.md "Touch targets") on every pointer:
+ * a native <select> or <input> has no ::before to grow its hit area. The
+ * visible 36px control is the padding box inside a transparent vertical band,
+ * and the 1px boundary is an inset shadow. Explicit `height`, as above,
+ * because iOS ignores `min-height` on a select. The band is derived here from
+ * --hit-min and --control-h, so an adopter declares nothing extra. */
 .input-native,
 .select-native {
-  height: var(--control-h);
+  --native-inset: calc((var(--hit-min, 44px) - var(--control-h)) / 2);
+  box-sizing: border-box;
+  height: var(--hit-min, 44px);
   font: inherit;
   line-height: normal;
   font-size: var(--font-label);
   padding: 0 10px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--control-border);
-  background: var(--input-bg);
+  border-style: solid;
+  border-color: transparent;
+  border-width: var(--native-inset) 0;
+  border-radius: var(--radius-md) / calc(var(--radius-md) + var(--native-inset));
+  background: var(--input-bg) padding-box;
+  box-shadow: inset 0 0 0 1px var(--control-border);
   color: var(--ink);
 }
+.input-native:focus-visible,
+.select-native:focus-visible { outline-offset: calc(2px - var(--native-inset)); }
 
-/* On a touch device the select takes real 44px height (design.md "Touch
- * targets"): a native <select> has no ::before to grow its hit area. Explicit
- * `height`, as above, because iOS ignores `min-height` on one. */
-@media (pointer: coarse) {
-  .input-native,
-  .select-native { height: var(--row-sm, 44px); }
+/* WebKit renders a select with a transparent border band as its native
+ * rounded menulist and drops the author's box-shadow, so the boundary ring
+ * vanishes. `appearance: none` keeps the author's box in every engine (a
+ * touch device still opens its native picker), and the chevron is two
+ * token-coloured gradients, with room on the right so the label never runs
+ * under it. The `background` shorthand above resets these, so they follow it. */
+.select-native {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 34px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--ink) 50%),
+    linear-gradient(135deg, var(--ink) 50%, transparent 50%);
+  background-position: calc(100% - 19px) 50%, calc(100% - 14px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
 }
