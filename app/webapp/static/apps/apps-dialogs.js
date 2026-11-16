@@ -102,7 +102,7 @@ export function wireScanDialog() {
   // The Apps card's last row (moved here from Settings › Folders),
   // and the empty registries straight from their empty state.
   els.appsScanRow.addEventListener('click', runScan);
-  ['appsEmptyAction', 'registeredTraysEmptyAction'].forEach(function (id) {
+  ['appsEmptyAction', 'registeredTraysEmptyAction', 'miniAppsEmptyAction'].forEach(function (id) {
     const btn = document.getElementById(id);
     if (btn) btn.addEventListener('click', runScan);
   });

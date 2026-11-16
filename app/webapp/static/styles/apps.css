@@ -94,6 +94,7 @@
 }
 .projects-summary-meta[hidden],
 .trays-summary-meta[hidden] { display: none; }
+.mini-apps-card[hidden] { display: none; }
 .tone-dot {
   flex: none;
   width: 8px;

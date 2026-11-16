@@ -188,7 +188,7 @@ The annotated repo tree (entry point, `app/`, `src/`, `scripts/`, `config/`, `te
 
 ## Config
 
-Two committed JSON templates; real files are gitignored. `config/config.json`, `config/webapp_config.json`, the model catalogs, `config/apps.json` and the registered trays are documented in [docs/config.md](docs/config.md).
+Two committed JSON templates; real files are gitignored. `config/config.json`, `config/webapp_config.json`, the model catalogs, `config/apps.json` and the registered trays are documented in [docs/config.md](docs/config.md). Set `mini_apps_root` in `config/webapp_config.json` to a folder of small helper `.bat` files and a scan lists them in the Apps tab's **Mini apps** group (empty, the default, hides it).
 
 ---
 

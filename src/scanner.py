@@ -53,12 +53,15 @@ KIND_STREAMLIT = "streamlit"
 KIND_WEBAPP = "webapp"
 KIND_TUNNEL = "tunnel"
 KIND_TRAY = "tray"
+KIND_MINI = "mini"
 
 # ``claude-code`` rows are computed live (see registry.py's module
 # docstring) and never persisted in apps.json, so it is deliberately
 # excluded here — a stray/hand-edited row with that kind must be
 # rejected by :func:`src.registry.load_registry`, not silently kept.
-VALID_KINDS = frozenset({KIND_STREAMLIT, KIND_WEBAPP, KIND_TUNNEL, KIND_TRAY})
+VALID_KINDS = frozenset(
+    {KIND_STREAMLIT, KIND_WEBAPP, KIND_TUNNEL, KIND_TRAY, KIND_MINI}
+)
 
 
 @dataclass(frozen=True)
@@ -531,6 +534,32 @@ def scan_app_bats(scan_root: Path) -> List[Tuple[Path, str]]:
             if kind is not None:
                 found.append((bat, kind))
     found.sort(key=lambda pair: pair[0])
+    return found
+
+
+def scan_mini_bats(mini_root: Path) -> List[Path]:
+    """The ``*.bat`` files directly inside ``mini_root``, sorted by name.
+
+    Not recursive and not classified: a mini app is any bat the owner keeps in
+    that one folder, whatever it runs, so the body checks ``scan_app_bats``
+    applies to a tree of repos have no meaning here.
+    """
+    if not mini_root.is_dir():
+        logger.warning(f"⚠️ Mini apps folder does not exist: {mini_root}")
+        return []
+    found: List[Path] = []
+    try:
+        children = list(mini_root.iterdir())
+    except OSError as exc:
+        logger.warning(f"⚠️ Could not list the mini apps folder {mini_root}: {exc}")
+        return []
+    for child in children:
+        try:
+            if child.suffix.lower() == ".bat" and child.is_file():
+                found.append(child)
+        except OSError:  # broken link / permission error
+            continue
+    found.sort(key=lambda p: p.name.lower())
     return found
 
 

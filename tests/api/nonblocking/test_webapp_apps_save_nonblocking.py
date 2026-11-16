@@ -35,7 +35,7 @@ class _FakeRequest:
         self._payload = payload
         self.app = SimpleNamespace(
             state=SimpleNamespace(
-                webapp_config=SimpleNamespace(apps_scan_root="C:\\stub")
+                webapp_config=SimpleNamespace(apps_scan_root="C:\\stub", mini_apps_root="")
             )
         )
         # maybe_json() only parses a body when the content type says JSON.

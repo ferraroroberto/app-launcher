@@ -37,9 +37,11 @@ class ScanCommand(BaseCommand):
         scan_root = Path(webapp_cfg.apps_scan_root)
         registry = load_registry()
 
+        mini_raw = (webapp_cfg.mini_apps_root or "").strip()
         new = discover_new(
             scan_root=scan_root,
             existing=registry,
+            mini_root=Path(mini_raw) if mini_raw else None,
         )
 
         if not new:

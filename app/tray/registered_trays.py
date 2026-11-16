@@ -1,4 +1,4 @@
-"""Registered Trays sequential autostart boot sequence.
+"""Registered Trays and Mini apps sequential autostart boot sequence.
 
 Split off ``app/tray/tray.py`` (a single-file god-module flagged by
 ``/codebase-audit``). These are pure functions with no ``TrayApp`` state —
@@ -29,8 +29,9 @@ from pathlib import Path
 from typing import Optional
 
 from src import runtime_files
+from src.launching.bat_running import find_running_target
 from src.registry import RegistryReadError, load_registry
-from src.scanner import KIND_TRAY
+from src.scanner import KIND_MINI, KIND_TRAY
 from src.subprocess_flags import NO_WINDOW
 
 logger = logging.getLogger(__name__)
@@ -204,7 +205,9 @@ def launch_all() -> None:
             f"— giving up: {last_exc}"
         )
         return
-    trays = [a for a in registry.apps if a.kind == KIND_TRAY and a.autostart]
+    trays = [
+        a for a in registry.apps if a.kind in (KIND_TRAY, KIND_MINI) and a.autostart
+    ]
     if not trays:
         return
     logger.info(f"🧭 Registered Trays: launching {len(trays)} autostart entr{'y' if len(trays) == 1 else 'ies'}")
@@ -219,10 +222,16 @@ def launch_all() -> None:
             logger.warning(f"⚠️  Registered Trays: {entry.name} bat not found at {bat_path} — skipped")
             _log_breadcrumb(f"{entry.name}: bat not found at {bat_path} — skipped")
             continue
+        mini = entry.kind == KIND_MINI
+        if mini and _already_running(entry.name, bat_path):
+            continue
         try:
             logger.info(f"🚀 Registered Trays: launching {entry.name}")
             _log_breadcrumb(f"{entry.name}: launching {bat_path}")
             _spawn_tray_bat_detached(bat_path)
+            if mini:
+                # A mini app declares no port, so there is nothing to wait on.
+                continue
             ready = _wait_for_tray_ready(bat_path.parent)
             if ready:
                 logger.info(f"✅ Registered Trays: {entry.name} ready")
@@ -240,3 +249,23 @@ def launch_all() -> None:
             logger.warning(f"⚠️  Registered Trays: {entry.name} failed to launch: {exc}")
             _log_breadcrumb(f"{entry.name}: failed to launch: {exc}")
             continue
+
+
+def _already_running(name: str, bat_path: Path) -> bool:
+    """True when a mini app's target is up already, or cannot be ruled out.
+
+    An unreadable process table skips the launch: a missed autostart is one
+    tap on the row, a duplicate is a second copy of something that may hold a
+    port, a lock or a tray icon.
+    """
+    try:
+        pid = find_running_target(bat_path)
+    except RuntimeError as exc:
+        logger.warning(f"⚠️  Registered Trays: {name} not started, could not check it is not running: {exc}")
+        _log_breadcrumb(f"{name}: not started, could not check it is not running: {exc}")
+        return True
+    if pid is None:
+        return False
+    logger.info(f"ℹ️  Registered Trays: {name} already running (pid {pid}) — skipped")
+    _log_breadcrumb(f"{name}: already running (pid {pid}) — skipped")
+    return True

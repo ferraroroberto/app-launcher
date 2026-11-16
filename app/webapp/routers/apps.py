@@ -106,6 +106,12 @@ _LAUNCH_MODEL_CATALOG = {
 }
 
 
+def _mini_root(cfg: WebappConfig) -> Optional[Path]:
+    """The configured mini apps folder, or ``None`` when none is set."""
+    raw = (cfg.mini_apps_root or "").strip()
+    return Path(raw) if raw else None
+
+
 def _claude_code_entries(cfg: WebappConfig) -> List[AppEntry]:
     """Live claude-code rows from the configured projects directory."""
     return live_claude_code_entries(
@@ -149,6 +155,9 @@ async def get_apps(request: Request) -> Dict[str, Any]:
             d["refreshable"] = bool(bat) and not app_refresh.is_launcher_bat(Path(bat))
     return {
         "scan_root": registry.scan_root,
+        # The Mini apps fold shows while a folder is set; rows already in the
+        # registry keep it up after the folder is cleared.
+        "mini_apps_enabled": _mini_root(cfg) is not None,
         "apps": decorated,
     }
 
@@ -161,7 +170,10 @@ async def scan_apps(request: Request) -> Dict[str, Any]:
     # event loop so the /api/apps 4 s poll and any concurrent request
     # stays responsive while a scan runs.
     new = await asyncio.to_thread(
-        discover_new, scan_root=Path(cfg.apps_scan_root), existing=registry
+        discover_new,
+        scan_root=Path(cfg.apps_scan_root),
+        existing=registry,
+        mini_root=_mini_root(cfg),
     )
     return {"new": [decorate_for_api(a) for a in new]}
 
@@ -178,7 +190,10 @@ async def save_apps(request: Request) -> Dict[str, Any]:
     # Same apps_scan_root walk as scan_apps above — off the event loop for
     # the same reason.
     candidates = await asyncio.to_thread(
-        discover_new, scan_root=Path(cfg.apps_scan_root), existing=registry
+        discover_new,
+        scan_root=Path(cfg.apps_scan_root),
+        existing=registry,
+        mini_root=_mini_root(cfg),
     )
     keep = [c for c in candidates if c.id in selected_ids]
     added = persist_additions(registry, keep, Path(cfg.apps_scan_root))
@@ -187,9 +202,9 @@ async def save_apps(request: Request) -> Dict[str, Any]:
 
 @router.patch("/api/apps/{app_id}")
 async def patch_app(app_id: str, request: Request) -> Dict[str, Any]:
-    """Rename and/or flip the Registered Trays autostart flag.
+    """Rename and/or flip the autostart flag of a tray or mini app.
 
-    Each field is independent — a Registered Trays autostart toggle posts
+    Each field is independent — an autostart toggle posts
     ``{"autostart": bool}`` alone, with no ``name`` in the body at all.
     """
     body = await maybe_json(request)

@@ -48,6 +48,16 @@ _APPS = {
     ],
 }
 
+# The Mini apps group: shown while a folder is set or a mini row exists.
+_MINI_ROWS = [
+    {"id": "mini-clip-helper", "name": "Clip Helper", "kind": "mini",
+     "bat_path": "C:\\stub\\mini\\clip_helper.bat",
+     "added_at": "2026-01-01T00:00:00", "autostart": True},
+    {"id": "mini-disk-watch", "name": "Disk Watch", "kind": "mini",
+     "bat_path": "C:\\stub\\mini\\disk_watch.bat",
+     "added_at": "2026-01-01T00:00:00", "autostart": False},
+]
+
 _RUNNING = {"running": [
     {"app_id": "beta-web", "name": "Beta Web", "kind": "webapp", "pid": 4242,
      "started_at": 1736179200, "port": 8601,
@@ -165,6 +175,9 @@ def test_apps_list_is_open_with_live_badges_and_scan_row(authed_page: Page, base
     # Trays are not apps: four rows here.
     expect(page.locator("#appsList li.action-row")).to_have_count(4)
 
+    # No mini apps folder and no mini row: the group is not on the page.
+    expect(page.locator("#miniAppsCard")).to_be_hidden()
+
     # Kind avatars: Streamlit gauge, webapp globe, tunnel cloud.
     for app_id, glyph in (("alpha-dash", "#i-gauge"), ("beta-web", "#i-globe"),
                           ("gamma-tunnel", "#i-cloud")):
@@ -202,17 +215,103 @@ def test_apps_list_is_open_with_live_badges_and_scan_row(authed_page: Page, base
     sigma = page.locator('#registeredTraysList li.action-row[data-id="sigma-tray"]')
     expect(sigma.locator(".action-row-meta")).to_have_count(0)
 
+    _assert_mini_apps_group(page)
+
+
+def _assert_mini_apps_group(page: Page) -> None:
+    """Mini rows: their own group, launched hidden or visible, autostart saved.
+
+    The registry now holds two mini rows, so the group shows without a folder
+    flag; the scan itself runs against a real folder in
+    tests/api/webapp/test_webapp_api_mini_apps.py.
+    """
+    launches: list[dict] = []
+    patches: list[dict] = []
+    autostart = {"disk-watch": False}
+
+    def _launch(route):
+        launches.append(json.loads(route.request.post_data or "{}"))
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps({"launched": "mini-disk-watch", "kind": "mini"}))
+
+    def _patch(route):
+        if route.request.method != "PATCH":
+            route.fallback()
+            return
+        body = json.loads(route.request.post_data or "{}")
+        patches.append(body)
+        autostart["disk-watch"] = bool(body.get("autostart"))
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps({"app": {"id": "mini-disk-watch"}}))
+
+    def _apps(route):
+        rows = [dict(r) for r in _MINI_ROWS]
+        rows[1]["autostart"] = autostart["disk-watch"]
+        route.fulfill(status=200, content_type="application/json", body=json.dumps({
+            "scan_root": "C:\\stub", "mini_apps_enabled": True,
+            "apps": _APPS["apps"] + rows}))
+
+    page.route(re.compile(r".*/api/apps/mini-disk-watch/launch$"), _launch)
+    page.route(re.compile(r".*/api/apps/mini-disk-watch$"), _patch)
+    page.route(re.compile(r".*/api/apps$"), _apps)
+    page.reload(wait_until="domcontentloaded")
+    page.locator("#tabApps").click()
+
+    rows = page.locator("#miniAppsList li.action-row")
+    expect(rows).to_have_count(2, timeout=10_000)
+    expect(page.locator("#miniAppsSummaryMeta")).to_have_text("2 · 1 autostart")
+    expect(page.locator("#miniAppsEmpty")).to_be_hidden()
+    # Their own group: not in the Apps list, not counted as apps in the header.
+    expect(page.locator("#appsList")).not_to_contain_text("Clip Helper")
+    expect(page.locator("#appsHeadStatus")).to_have_text("1 down")
+    on, off = rows.nth(0), rows.nth(1)
+    expect(on.locator(".action-row-meta")).to_have_text("starts at log on")
+    expect(off.locator(".action-row-meta")).to_have_count(0)
+
+    # Tapping the row launches it hidden; the kebab offers the visible launch.
+    off.locator(".action-row-main").click()
+    wait_until(page, lambda: launches == [{"stealth": True}], "the hidden launch post")
+    off.locator(".action-row-kebab").click()
+    menu = open_row_menu(page)
+    expect(menu.locator("[data-item=app-rename-btn]")).to_be_visible()
+    expect(menu.locator("[data-item=app-remove-btn]")).to_be_visible()
+    menu.locator("[data-item=app-visible-btn]").click()
+    # A visible launch posts no flag at all.
+    wait_until(page, lambda: launches == [{"stealth": True}, {}], "the visible launch post")
+
+    # The leading switch is the autostart flag, saved through the same PATCH.
+    toggle = off.locator(".toggle")
+    expect(toggle).to_have_attribute("aria-checked", "false")
+    toggle.click()
+    expect(toggle).to_have_attribute("aria-checked", "true")
+    assert patches == [{"autostart": True}]
+
 
 def test_header_counts_apps_without_trays_when_nothing_is_down(
     authed_page: Page, base_url: str
 ) -> None:
-    apps = {"scan_root": "C:\\stub", "apps": [
+    page = authed_page
+    # A mini apps folder is set but nothing from it is registered yet.
+    apps = {"scan_root": "C:\\stub", "mini_apps_enabled": True, "apps": [
         a for a in _APPS["apps"] if a["id"] != "delta-tunnel"]}
-    _open_apps(authed_page, base_url, apps)
-    head = authed_page.locator("#appsHeadStatus")
+    _open_apps(page, base_url, apps)
+    head = page.locator("#appsHeadStatus")
     # Three apps (two trays excluded), one running.
     expect(head).to_have_text("3 apps · 1 running")
     expect(head.locator(".head-exception")).to_have_count(0)
+
+    # The folder alone shows the Mini apps group, with its scan in the empty state.
+    _json(page, r".*/api/apps/scan$", {"new": [dict(_MINI_ROWS[0], autostart=False)]})
+    expect(page.locator("#miniAppsCard")).to_be_visible()
+    expect(page.locator("#miniAppsEmpty")).to_be_visible()
+    expect(page.locator("#miniAppsSummaryMeta")).to_be_hidden()
+    page.locator("#miniAppsEmptyAction").click()
+    dialog = page.locator("#scanDialog")
+    expect(dialog.locator(".scan-section h3")).to_have_text("Mini")
+    expect(dialog.locator(".scan-row")).to_contain_text("Clip Helper")
+    # A scan result never saves itself: its switch starts off.
+    expect(dialog.locator(".scan-row .toggle")).to_have_attribute("aria-checked", "false")
+    page.locator("#scanCancel").click()
 
 
 @pytest.mark.iphone

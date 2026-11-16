@@ -169,30 +169,30 @@ class WebappConfig:
     coding_model_choice: str = DEFAULT_CODING_MODEL_CHOICE
     # Where the Apps tab scans recursively for launcher `.bat` files.
     apps_scan_root: str = field(default_factory=_default_projects_dir)
+    # Folder of helper `.bat` files the Apps tab lists as its Mini apps group;
+    # empty (the default) scans none and hides the group.
+    mini_apps_root: str = ""
     # Skill ids the user starred on the Life OS tab, treated as
     # `coding_favorites` treats Coding projects: sorted to the top.
     life_os_favorites: list = field(default_factory=list)
-    # Root of the life-os checkout the Life OS tab surfaces:
-    # skills at `.claude/skills`, identity at `identity`. Without the skills
-    # dir the tab shows disabled, as Coding does without `projects_dir`.
+    # Root of the life-os checkout the Life OS tab surfaces: skills at `.claude/skills`,
+    # identity at `identity`. Without the skills dir the tab shows disabled, as Coding
+    # does without `projects_dir`.
     life_os_dir: str = field(default_factory=_default_life_os_dir)
     # A resumed Life OS conversation re-reads its skill's instructions when
     # they changed since it last loaded them (src/life_os/skill_refresh.py).
     life_os_refresh_skill_instructions: bool = True
     dictation_auto_stop_seconds: int = DEFAULT_DICTATION_AUTO_STOP_SECONDS
-    # Root of the fleet-config checkout. The Board, sessions, Life OS
-    # conversations and the fleet-chief ensure path read their hooks, state
-    # and scripts from it.
+    # Root of the fleet-config checkout. The Board, sessions, Life OS conversations and
+    # the fleet-chief ensure path read their hooks, state and scripts from it.
     fleet_config_dir: str = field(default_factory=_default_fleet_config_dir)
     # --- Board tab -----------------------------------
-    # The sessions-state file written by fleet-config's session_state hook.
-    # The board reads it defensively — absent/corrupt/stale
-    # degrades to unknown session status, never an error.
+    # The sessions-state file written by fleet-config's session_state hook. The board
+    # reads it defensively: absent/corrupt/stale degrades to unknown, never an error.
     sessions_state_file: str = field(default_factory=_default_sessions_state_file)
-    # The rate-limits cache a fleet-config statusline writer maintains
-    # — 7d Claude usage % + reset time.
-    # Read defensively like sessions_state_file: absent/corrupt/stale hides
-    # the Board's usage badges, never an error.
+    # The rate-limits cache a fleet-config statusline writer maintains — 7d Claude usage % +
+    # reset time. Read defensively like sessions_state_file: absent/corrupt/stale hides the
+    # Board's usage badges, never an error.
     rate_limits_file: str = field(default_factory=_default_rate_limits_file)
     # The fleet chief's plan: lanes, queue, what waits on Roberto.
     # Read defensively like sessions_state_file: absent/corrupt/unsupported
