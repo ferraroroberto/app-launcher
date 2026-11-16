@@ -522,8 +522,11 @@ def test_questions_show_their_date_and_sort_newest_first(
     rows = authed_page.locator("#boardChiefPlan .board-plan-group-waiting li.board-plan-waiting")
     expect(rows).to_have_count(3)
     expect(rows.locator(".action-row-title")).to_have_text(["Newer", "Older", "Undated"])
-    expect(rows.locator(".action-row-meta")).to_have_text(
-        ["demo-repo#3 · 2 Mar 2020", "demo-repo#1 · 15 Jan 2020", "demo-repo#2"])
+    # The date is the non-shrinking tail beside the ref; an undated question
+    # has none, so its meta is the ref alone.
+    expect(rows.locator(".action-row-meta-text")).to_have_text(["demo-repo#3", "demo-repo#1"])
+    expect(rows.locator(".action-row-meta-tail")).to_have_text(["2 Mar 2020", "15 Jan 2020"])
+    expect(rows.nth(2).locator(".action-row-meta")).to_have_text("demo-repo#2")
 
 
 @pytest.mark.iphone
