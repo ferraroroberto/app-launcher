@@ -1,64 +1,18 @@
-/* The machine-health row: "is the box short of ports or memory?" at a glance,
- * beside the usage meter, and "which process?" one tap away.
+/* The machine rows of the PC load sheet: "which process is eating the ports?"
+ * one tap from the header's CPU reading.
  *
- * It draws the local-llm-hub's verdict (GET /api/system/health, read by
- * system-load.js on the page's one poll): the verdict word and the worse of
- * the ports and commit percents. Tone follows the verdict: ok, watch
- * (attention), act (danger). A verdict that could not be read is the words
- * "Not confirmed", never a 0%; before the first answer it reads "Reading…".
- *
- * Tapping the row opens the PC load sheet, whose Health section gains the
- * port and commit rows, the top port holders, the last exhaustion event and a
- * link to the hub (appendMachineRows). The hub does the judging and alerting.
- *
- * machineReading is pure and touches no DOM, so tests/js/machine_health.test.mjs
- * pins it under plain Node.
+ * The hub's verdict (GET /api/system/health, read by system-load.js on the
+ * page's one poll) reaches the header as a dot and the sheet's Health row
+ * there. This module adds what the hub measured under that row: the ports and
+ * commit percents, the top port holders, the last exhaustion event and a link
+ * to the hub (appendMachineRows). The hub does the judging and alerting.
  */
 
 import { el, sheetRow } from './dom-utils.js';
 import { agoFromSeconds, pctText, plural } from './shared/format.js';
 
-const VERDICT_WORDS = { ok: 'OK', watch: 'Watch', act: 'Needs action' };
-const VERDICT_TONES = { ok: 'ok', watch: 'attention', act: 'danger' };
-
 function isNum(v) {
   return typeof v === 'number' && !isNaN(v);
-}
-
-// The worse of the two measured percents, as { name, pct }; null when neither
-// was measured (a stale port block or a missing commit reading is not 0%).
-export function worstMetric(machine) {
-  const m = machine || {};
-  const found = [];
-  if (isNum(m.ports_percent)) found.push({ name: 'Ports', pct: m.ports_percent });
-  if (isNum(m.commit_percent)) found.push({ name: 'Commit', pct: m.commit_percent });
-  if (!found.length) return null;
-  return found.reduce(function (a, b) { return b.pct > a.pct ? b : a; });
-}
-
-// What the row shows for the page's last answer: undefined before the first
-// answer, null when the launcher itself could not be asked.
-export function machineReading(health) {
-  if (health === undefined) return { tone: 'none', value: 'Reading…' };
-  if (!health || !VERDICT_WORDS[health.verdict]) {
-    return { tone: 'none', value: 'Not confirmed' };
-  }
-  const word = VERDICT_WORDS[health.verdict];
-  const worst = worstMetric(health.machine);
-  return {
-    tone: VERDICT_TONES[health.verdict],
-    value: worst ? word + ' · ' + worst.name + ' ' + pctText(worst.pct) : word,
-  };
-}
-
-export function renderMachineRows(health) {
-  const r = machineReading(health);
-  document.querySelectorAll('.machine-health').forEach(function (btn) {
-    btn.dataset.tone = r.tone;
-    const value = btn.querySelector('.mh-value');
-    if (value) value.textContent = r.value;
-    btn.setAttribute('aria-label', 'Machine health: ' + r.value.toLowerCase() + '. Show details');
-  });
 }
 
 function holderText(h) {
