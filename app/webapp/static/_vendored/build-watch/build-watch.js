@@ -95,6 +95,9 @@ function buildPrompt(onReload, onDismiss) {
   const root = document.createElement('div');
   root.id = 'buildPrompt';
   root.className = 'toast build-prompt';
+  // The id the app's UX surface map lists, stamped here because the app has no
+  // call site for a banner this module builds.
+  root.dataset.surface = 'app.update-banner';
   root.setAttribute('role', 'status');
   root.setAttribute('aria-live', 'polite');
 
