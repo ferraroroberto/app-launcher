@@ -6,13 +6,14 @@ import json
 import logging
 import re
 import warnings
-from typing import Iterator, Optional
+from typing import Any, Iterator, Optional
 
 import pytest
 import requests
 import urllib3
-from playwright.sync_api import BrowserContext, Page
+from playwright.sync_api import Browser, BrowserContext, Page
 
+from tests.e2e._shared_context import PROPERTY, SharedContexts, install_taint_guard
 from tests.e2e._shot import CHROMIUM_CAPTURE_ARGS
 from tests.e2e.fixtures.env import TOKEN_KEY, autoboot_enabled
 from tests.e2e.fixtures.waits import DEFAULT_TIMEOUT_MS
@@ -66,6 +67,43 @@ def browser_type_launch_args(browser_type_launch_args: dict, browser_name: str) 
 # still in flight when its test's context closed raised `TargetClosedError`
 # into the next test's setup.
 _VERSION_BODY: dict = {}
+
+
+@pytest.fixture(scope="session")
+def _shared_contexts(browser: Browser) -> SharedContexts:
+    # Rebuilt per projection with `browser`; the contexts close with the browser.
+    install_taint_guard()
+    return SharedContexts(browser)
+
+
+@pytest.fixture
+def context(
+    request: pytest.FixtureRequest,
+    _shared_contexts: SharedContexts,
+    browser_context_args: dict,
+    _artifacts_recorder: Any,
+    base_url: str,
+    auth_token: str,
+) -> Iterator[BrowserContext]:
+    """The projection's shared context for this test's context arguments (``_shared_context``).
+
+    Replaces pytest-playwright's per-test context. The recorder calls keep
+    ``--tracing`` and ``--screenshot`` working per test on a context that outlives
+    it. The bearer token is seeded once per context, not per test, so a context
+    that is reused starts every page already holding it; a test that wants none
+    (``unauthed_page``) gets a context of its own.
+    """
+    marker = next(request.node.iter_markers("browser_context_args"), None)
+    args = {**browser_context_args, **(marker.kwargs if marker else {})}
+    seeded = bool(auth_token) and "unauthed_page" not in request.fixturenames
+    ctx, key, created = _shared_contexts.acquire(args, seed_token_init_script(auth_token) if seeded else None)
+    request.node.user_properties.append((PROPERTY, "created" if created else "reused"))
+    _artifacts_recorder.on_did_create_browser_context(ctx)
+    _shared_contexts.begin_test()
+    yield ctx
+    _artifacts_recorder.on_will_close_browser_context(ctx)
+    outcome = _shared_contexts.release(ctx, key, base_url)
+    request.node.user_properties.append((PROPERTY, outcome))
 
 
 @pytest.fixture(autouse=True)
@@ -161,11 +199,7 @@ def _restore_disposable_config(request: pytest.FixtureRequest) -> Iterator[None]
                            sorted(changed), exc)
 
 @pytest.fixture
-def authed_page(
-    context: BrowserContext, base_url: str, auth_token: str
-) -> Iterator[Page]:
-    if auth_token:
-        context.add_init_script(seed_token_init_script(auth_token))
+def authed_page(context: BrowserContext) -> Iterator[Page]:
     # The header's CPU reading (#1522) reads the real box, and the gate loads
     # it: a hot reading shows beside the header line and would make every
     # header-width test depend on the gate's own load. A quiet default; a
