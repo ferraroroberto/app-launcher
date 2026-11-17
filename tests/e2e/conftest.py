@@ -38,8 +38,15 @@ import requests
 from tests._credential_hygiene import disposable_token, register_secret
 from tests.e2e._browser_sweep import sweep_browser_helpers
 
+# Loopback sockets: a context outlives the test that asked for it
+# (`_shared_context`), and a failure that is the host's drained port pool says
+# so (`_port_pool`) instead of reading as a page defect.
+from tests.e2e._port_pool import pytest_runtest_makereport  # noqa: F401  (pytest hook)
+from tests.e2e._port_pool import write_summary as port_pool_summary
+
 # Tree-aware stop of the disposable servers + the stub-child reap (#1335).
 from tests.e2e._process_teardown import reap_stub_children
+from tests.e2e._shared_context import write_summary as shared_context_summary
 
 # Design-inventory capture (#1698): the vendored surface() hook's collection
 # filter, aliased because this file already defines its own hook below.
@@ -55,9 +62,11 @@ from tests.e2e.fixtures.pages import (
     _bound_default_timeouts,
     _cached_version_route,
     _restore_disposable_config,
+    _shared_contexts,
     authed_page,
     browser_context_args,
     browser_type_launch_args,
+    context,
     unauthed_page,
 )
 from tests.e2e.fixtures.sessions import (
@@ -71,11 +80,14 @@ __all__ = [
     "_bound_default_timeouts",
     "_cached_version_route",
     "_restore_disposable_config",
+    "_shared_contexts",
     "authed_page",
     "browser_context_args",
     "browser_type_launch_args",
+    "context",
     "launched_claude_pty_session",
     "launched_pty_session",
+    "pytest_runtest_makereport",
     "session_log_path",
     "unauthed_page",
     "wait_for_session_log",
@@ -152,6 +164,11 @@ def pytest_configure(config: pytest.Config) -> None:
     selected = config.option.browser
     if not selected:
         selected.extend(["chromium", "webkit"])
+
+
+def pytest_terminal_summary(terminalreporter) -> None:
+    shared_context_summary(terminalreporter)
+    port_pool_summary(terminalreporter)
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
