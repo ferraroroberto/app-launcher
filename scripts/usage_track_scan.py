@@ -523,6 +523,20 @@ def builder_body(toks: list[Tok], closes: dict[int, int], name: str) -> tuple[in
     return None
 
 
+def tokenize_js(text: str, path: str, line: int = 1) -> tuple[list[Tok], dict[int, int]]:
+    """(tokens of one JS source, each `{` index -> its `}` index); raises `NotConfirmed` when it does not close.
+
+    Shared with the UX surface ratchet, so both read strings, templates, comments and blocks the same way.
+    """
+    lexer = _Lexer(text, path, line)
+    return lexer.lex(), lexer.closes
+
+
+def is_exempt(rule: str, lines: list[str], line: int, end: int) -> bool:
+    """Does a reasoned `<rule>-exempt:` marker sit on lines `line`..`end` or in the comment block right above?"""
+    return _exempt(rule, _window(lines, line, end))
+
+
 def _scan_js(text: str, path: str, line: int, found: _Found, builders: frozenset[str],
              own_builders: tuple[str, ...]) -> None:
     lexer = _Lexer(text, path, line)

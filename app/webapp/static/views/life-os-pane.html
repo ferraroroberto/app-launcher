@@ -1,4 +1,4 @@
-    <section id="paneLifeOS" class="pane" role="tabpanel" aria-labelledby="tabLifeOS" hidden>
+    <section id="paneLifeOS" class="pane" data-surface="lifeos.tab" role="tabpanel" aria-labelledby="tabLifeOS" hidden>
       <!-- Page header (#1131): every pane opens with the vendored home-head —
            the tab's name, one context line, the theme toggle and the gear. -->
       <div class="card home-head page-head">
@@ -23,7 +23,7 @@
            skill conversations. Telegram has no card here; a skill a bot is
            linked to wears a send glyph and starts or opens that bot from its
            kebab, and setup lives in Settings › Telegram. -->
-      <details class="card card--collapsible action-list lifeos-list-card" open>
+      <details data-surface="lifeos.skills" class="card card--collapsible action-list lifeos-list-card" open>
         <summary data-track="life-os.fold-skills" class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-library-big"></use></svg>
@@ -70,7 +70,7 @@
              conversation sheet below. Its sort is the labelled segmented
              control; Relevance (the server's rank) shows only while
              searching. -->
-        <section id="lifeOsConvoGroup" class="lifeos-convo-group" aria-labelledby="lifeOsConvoHead" hidden>
+        <section id="lifeOsConvoGroup" class="lifeos-convo-group" data-surface="lifeos.conversations" aria-labelledby="lifeOsConvoHead" hidden>
           <div class="lifeos-group-bar">
             <h4 id="lifeOsConvoHead" class="lifeos-group-head">Conversations <span id="lifeOsConvoCount" class="lifeos-group-count"></span></h4>
             <!-- #1588: while the group shows (a skill's list, or a search
@@ -92,7 +92,7 @@
                skill's list) covers: never mixed into the list above,
                collapsed until asked for, absent when there is none. A row
                opens the reader with Restore as its one primary. -->
-          <details id="lifeOsArchived" class="lifeos-archived" hidden>
+          <details id="lifeOsArchived" class="lifeos-archived" data-surface="lifeos.archived" hidden>
             <summary class="lifeos-group-bar lifeos-archived-summary" data-track="life-archived-toggle">
               <span class="lifeos-group-head">Archived <span id="lifeOsArchivedCount" class="lifeos-group-count"></span></span>
               <span class="lifeos-archived-chevron" aria-hidden="true"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg></span>
@@ -103,7 +103,7 @@
                same quiet disclosure as Archived, absent when there are none.
                A row opens the reader alone (a bot chat is never resumed
                from here). -->
-          <details id="lifeOsSystem" class="lifeos-archived lifeos-system" hidden>
+          <details id="lifeOsSystem" class="lifeos-archived lifeos-system" data-surface="lifeos.system" hidden>
             <summary class="lifeos-group-bar lifeos-system-summary" data-track="life-system-toggle">
               <span class="lifeos-group-head">System <span id="lifeOsSystemCount" class="lifeos-group-count"></span></span>
               <span class="lifeos-archived-chevron" aria-hidden="true"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg></span>
@@ -118,7 +118,7 @@
            the last run, an exception chip when it is due or a draft is
            ready, and ▶ to review it with the Skills toolbar's model and
            Detached switch. Hidden while Life OS is unavailable. -->
-      <section id="lifeOsRecap" class="card action-list lifeos-recap-card" aria-label="Weekly recap" hidden>
+      <section id="lifeOsRecap" class="card action-list lifeos-recap-card" data-surface="lifeos.recap" aria-label="Weekly recap" hidden>
         <ul id="lifeOsRecapList" class="card-list action-rows" aria-label="Weekly recap"></ul>
       </section>
     </section>

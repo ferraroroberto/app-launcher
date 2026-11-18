@@ -1,4 +1,4 @@
-    <section id="paneBoard" class="pane" role="tabpanel" aria-labelledby="tabBoard" hidden>
+    <section id="paneBoard" class="pane" data-surface="board.tab" role="tabpanel" aria-labelledby="tabBoard" hidden>
       <!-- Page header (#1131): every pane opens with the vendored home-head —
            the tab's name, one context line, the theme toggle and the gear. -->
       <div class="card home-head page-head">
@@ -33,7 +33,7 @@
           <button type="button" id="boardDispatchRepoClear" data-track="board.dispatch-repo-clear"
                   class="icon-button board-repo-clear" title="Clear" aria-label="Clear project filter" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></button>
           <input type="hidden" id="boardDispatchRepo">
-          <ul id="boardDispatchRepoList" class="board-repo-list" role="listbox" hidden></ul>
+          <ul id="boardDispatchRepoList" class="board-repo-list" data-surface="board.repo-list" role="listbox" hidden></ul>
         </div>
         <button id="boardRefresh" data-track="board-refresh" type="button" class="button-surface board-refresh"
                 title="Refresh GitHub issues / PRs / done-today (runs gh)"
@@ -61,7 +61,7 @@
            folded lane's exception, are text, not controls, so they may sit
            in the summary. -->
       <div id="boardColumns" class="board-columns">
-        <details id="boardColBacklog" class="card card--collapsible board-col" data-col="backlog">
+        <details id="boardColBacklog" class="card card--collapsible board-col" data-surface="board.backlog" data-col="backlog">
           <summary data-track="board.fold-backlog" class="collapse-summary">
             <span class="collapse-main">
               <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-git-branch"></use></svg>
@@ -82,7 +82,7 @@
                 <button data-track="board.start-model" type="button" class="model-combo-trigger" aria-label="Start with model"
                         aria-haspopup="listbox" aria-expanded="false" aria-controls="boardDispatchModelMenu"
                         title="Model for the Backlog rows' Start and YOLO (the chief's own model is in its settings)">Claude · Sonnet</button>
-                <span id="boardDispatchModelMenu" class="model-combo-menu" role="listbox"
+                <span id="boardDispatchModelMenu" class="model-combo-menu" data-surface="board.model-menu" role="listbox"
                       aria-label="Start with model" hidden>
                   <button data-track="board.start-model-option" type="button" role="option" data-value="claude:sonnet"
                           aria-selected="true">Claude · Sonnet</button>
@@ -101,7 +101,7 @@
           <!-- Since you last looked (board/chief-journal.js): what the chief's
                journal recorded after your last Board message or answer.
                Hidden until the chief has written a journal. -->
-          <details id="boardJournal" class="card card--collapsible board-journal" open hidden>
+          <details id="boardJournal" class="card card--collapsible board-journal" data-surface="board.journal" open hidden>
             <summary data-track="board.fold-journal" class="collapse-summary">
               <span class="collapse-main">
                 <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"></use></svg>
@@ -114,7 +114,7 @@
               <div class="board-journal-body"></div>
             </div>
           </details>
-          <details id="boardChiefPlan" class="card card--collapsible board-chief-plan" open>
+          <details id="boardChiefPlan" class="card card--collapsible board-chief-plan" data-surface="board.chief-plan" open>
             <summary data-track="board.fold-chief-plan" class="collapse-summary">
               <span class="collapse-main">
                 <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-crown"></use></svg>
@@ -127,7 +127,7 @@
               <div class="board-plan-body"></div>
             </div>
           </details>
-          <details id="boardColClaude" class="card card--collapsible board-col" data-col="claude_turn" open>
+          <details id="boardColClaude" class="card card--collapsible board-col" data-surface="board.claude-turn" data-col="claude_turn" open>
             <summary data-track="board.fold-claude-turn" class="collapse-summary">
               <span class="collapse-main">
                 <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-hourglass"></use></svg>
@@ -143,7 +143,7 @@
           </details>
           <!-- Ideas (board/ideas-card.js): the inspiration scan's kept ideas and
                what became of each. Hidden until the scan has written any. -->
-          <details id="boardIdeas" class="card card--collapsible board-ideas" open hidden>
+          <details id="boardIdeas" class="card card--collapsible board-ideas" data-surface="board.ideas" open hidden>
             <summary data-track="board.fold-ideas" class="collapse-summary">
               <span class="collapse-main">
                 <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sprout"></use></svg>
@@ -163,7 +163,7 @@
             </div>
           </details>
         </div>
-        <details id="boardColYours" class="card card--collapsible board-col" data-col="your_turn" open>
+        <details id="boardColYours" class="card card--collapsible board-col" data-surface="board.your-turn" data-col="your_turn" open>
           <summary data-track="board.fold-your-turn" class="collapse-summary">
             <span class="collapse-main">
               <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bell"></use></svg>
@@ -180,7 +180,7 @@
             <div class="board-owner"></div>
           </div>
         </details>
-        <details id="boardColOther" class="card card--collapsible board-col" data-col="other">
+        <details id="boardColOther" class="card card--collapsible board-col" data-surface="board.prs-jobs" data-col="other">
           <summary data-track="board.fold-prs-jobs" class="collapse-summary">
             <span class="collapse-main">
               <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-git-pull-request"></use></svg>
@@ -195,7 +195,7 @@
             <div class="board-empty" data-col="other" hidden></div>
           </div>
         </details>
-        <details id="boardColDone" class="card card--collapsible board-col" data-col="done">
+        <details id="boardColDone" class="card card--collapsible board-col" data-surface="board.done" data-col="done">
           <summary data-track="board.fold-done-today" class="collapse-summary">
             <span class="collapse-main">
               <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-circle-check"></use></svg>

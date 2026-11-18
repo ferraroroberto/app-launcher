@@ -651,7 +651,7 @@
        installed iOS PWA can capture a fixed nav nested inside a momentum/
        content scroller and anchor it to that scroller's content instead of
        the physical viewport (home-automation#232). -->
-  <nav class="tabs" role="tablist" aria-label="Primary navigation" data-active-tab="claude">
+  <nav class="tabs" data-surface="chrome.nav" role="tablist" aria-label="Primary navigation" data-active-tab="claude">
     <button id="tabBoard" type="button" class="tab" data-tab="board"
             role="tab" aria-selected="false" aria-controls="paneBoard" tabindex="-1">
       <svg class="tab-icon" aria-hidden="true" focusable="false"><use href="#i-square-kanban"></use></svg>
@@ -730,7 +730,7 @@
        descendant of the .app content wrapper can get trapped/clipped behind
        the equally body-level floating nav bar on real iOS WebKit instead of
        escaping to the physical viewport. -->
-  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <div id="toast" class="toast" data-surface="chrome.toast" role="status" aria-live="polite" hidden></div>
 
   <!-- @include views/detail-empty-panes.html -->
 

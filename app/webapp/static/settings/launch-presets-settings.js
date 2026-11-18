@@ -134,7 +134,7 @@ function renderRow(preset, all) {
     onTap: function () {
       save(all.filter(function (p) { return p.id !== preset.id; }), 'Preset removed.');
     },
-  }]);
+  }]).dataset.surface = 'settings.preset-menu';
   li.append(text, kebab);
   return li;
 }

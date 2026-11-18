@@ -113,6 +113,7 @@ function render() {
   box.innerHTML = '';
   if (card.dismissed) return;
   const root = el('section', 'tr-ask tr-resume-card');
+  root.dataset.surface = 'chat.resume-card';
   root.setAttribute('aria-label', 'Resume a session');
 
   const head = el('div', 'tr-ask-head tr-resume-head');

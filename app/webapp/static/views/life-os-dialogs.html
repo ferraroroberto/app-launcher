@@ -8,7 +8,7 @@
          primary (on the conversation's own model, #1503), then the link rows
          for everything else, Delete last in danger. A Resume that cannot run
          stays, disabled, and the note under the summary says why. -->
-    <dialog id="lifeOsConvoSheet" class="detail-dialog lifeos-convo-sheet" data-track-view="sheet.life-os-convo" aria-labelledby="lifeOsConvoSheetTitle">
+    <dialog id="lifeOsConvoSheet" class="detail-dialog lifeos-convo-sheet" data-surface="lifeos.convo-sheet" data-track-view="sheet.life-os-convo" aria-labelledby="lifeOsConvoSheetTitle">
       <div class="detail-card">
         <div class="detail-header">
           <h2 id="lifeOsConvoSheetTitle" class="lifeos-sheet-title" tabindex="-1" autofocus>Conversation</h2>
@@ -63,7 +63,7 @@
          row, over it. A pick lives only while that sheet is open. Vendored
          modal: header ✕, one full-width primary. life-os-convo-model.js
          fills the list. -->
-    <dialog id="lifeOsConvoModelSheet" class="detail-dialog model-switch-sheet" data-track-view="sheet.life-os-convo-model" aria-labelledby="lifeOsConvoModelTitle">
+    <dialog id="lifeOsConvoModelSheet" class="detail-dialog model-switch-sheet" data-surface="lifeos.resume-model-sheet" data-track-view="sheet.life-os-convo-model" aria-labelledby="lifeOsConvoModelTitle">
       <div class="detail-card">
         <div class="detail-header">
           <h2 id="lifeOsConvoModelTitle" class="lifeos-sheet-title" tabindex="-1" autofocus>Model for this resume</h2>
@@ -83,7 +83,7 @@
          search spans every skill: a tap on a skill starts a fresh conversation
          in it (the kebab's path) and closes the sheet. Vendored modal: header
          ✕, one full-width primary. life-os.js fills the list. -->
-    <dialog id="lifeOsStartPicker" class="detail-dialog lifeos-start-picker" data-track-view="sheet.life-os-start-picker" aria-labelledby="lifeOsStartPickerTitle">
+    <dialog id="lifeOsStartPicker" class="detail-dialog lifeos-start-picker" data-surface="lifeos.start-picker" data-track-view="sheet.life-os-start-picker" aria-labelledby="lifeOsStartPickerTitle">
       <div class="detail-card">
         <div class="detail-header">
           <h2 id="lifeOsStartPickerTitle" class="lifeos-sheet-title" tabindex="-1" autofocus>Start new in…</h2>
@@ -103,7 +103,7 @@
          server-side (/api/life-os/file/transcript): one transcript surface,
          two mounts (#979). A tall sheet over the conversation sheet (#1504),
          which holds every action; deliberately no composer. -->
-    <dialog id="lifeOsConvoViewer" class="detail-dialog lifeos-reader-sheet" data-track-view="sheet.life-os-convo-viewer" aria-labelledby="lifeOsViewerTitle">
+    <dialog id="lifeOsConvoViewer" class="detail-dialog lifeos-reader-sheet" data-surface="lifeos.convo-viewer" data-track-view="sheet.life-os-convo-viewer" aria-labelledby="lifeOsViewerTitle">
       <div class="detail-card">
         <div class="detail-header">
           <h2 id="lifeOsViewerTitle" class="lifeos-sheet-title" tabindex="-1" autofocus>Conversation</h2>
@@ -128,7 +128,7 @@
 
     <!-- Browse (#102): one skill's readable files, a tap opening the document
          sheet over this one. -->
-    <dialog id="lifeOsBrowser" class="detail-dialog lifeos-reader-sheet" data-track-view="sheet.life-os-browser" aria-labelledby="lifeOsBrowserTitle">
+    <dialog id="lifeOsBrowser" class="detail-dialog lifeos-reader-sheet" data-surface="lifeos.browser" data-track-view="sheet.life-os-browser" aria-labelledby="lifeOsBrowserTitle">
       <div class="detail-card">
         <div class="detail-header">
           <h2 id="lifeOsBrowserTitle" class="lifeos-sheet-title" tabindex="-1" autofocus>Skill</h2>
@@ -146,7 +146,7 @@
     <!-- One file, read-only: a Browse file, or a capture opened raw from the
          conversation sheet. A conversation log can be renamed or deleted here
          (rows under the text); every other file only reads. -->
-    <dialog id="lifeOsDoc" class="detail-dialog lifeos-reader-sheet" data-track-view="sheet.life-os-doc" aria-labelledby="lifeOsDocTitle">
+    <dialog id="lifeOsDoc" class="detail-dialog lifeos-reader-sheet" data-surface="lifeos.doc" data-track-view="sheet.life-os-doc" aria-labelledby="lifeOsDocTitle">
       <div class="detail-card">
         <div class="detail-header">
           <h2 id="lifeOsDocTitle" class="lifeos-sheet-title" tabindex="-1" autofocus>File</h2>

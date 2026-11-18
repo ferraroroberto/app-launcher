@@ -394,7 +394,7 @@ function renderIssueCard(card) {
       hidden: !card.url,
       onTap: function () { copyLink(card.url); },
     },
-  ]);
+  ]).dataset.surface = 'board.issue-menu';
   return row.li;
 }
 

@@ -46,6 +46,8 @@
 /scripts/structure_ratchet.py
 /scripts/usage_track_ratchet.py
 /scripts/usage_track_scan.py
+/scripts/ux_surface_map.py
+/scripts/ux_surface_ratchet.py
 /src/build_info.py
 /src/compression.py
 /src/login_alert.py

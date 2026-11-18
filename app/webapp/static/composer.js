@@ -593,7 +593,7 @@ function mountImageMenu(c) {
       dataset: { item: 'composer-menu-large' },
       onTap: function () { el.largeInput.click(); },
     },
-  ]);
+  ]).dataset.surface = 'terminal.attach-menu';
   labelImage(c, _TITLE_ATTACH);
 }
 

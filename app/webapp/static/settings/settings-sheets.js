@@ -340,7 +340,7 @@ function renderOutboxRoots(roots) {
       onTap: function () {
         saveOutboxRoots(roots.filter(function (r) { return r !== root; }), 'Chat file folder removed.');
       },
-    }]);
+    }]).dataset.surface = 'settings.outbox-menu';
     li.append(path, kebab);
     list.appendChild(li);
   });

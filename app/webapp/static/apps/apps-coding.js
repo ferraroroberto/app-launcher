@@ -74,6 +74,7 @@ export const codingLaunch = mountLaunchToolbar(document.getElementById('codingLa
   // Sync all and the git refresh ride the model row, pinned right.
   trailing: document.getElementById('gitToolbarActions'),
 });
+document.getElementById('codingModelMenu').dataset.surface = 'code.model-menu';
 
 // The ⋯ menu shared by every Coding row; drops below the row and survives
 // the ~4 s apps re-render.
@@ -299,7 +300,7 @@ export function renderCodingList(host, items) {
     // Stored `vscode` hide values from the old per-button key land on this; inert now.
     row.kebab.dataset.agent = VSCODE_BUTTON_ID;
 
-    projectMenu.attach(a.id, row.kebab, projectMenuItems(a, gs, agents, favoriteId, hidden));
+    projectMenu.attach(a.id, row.kebab, projectMenuItems(a, gs, agents, favoriteId, hidden)).dataset.surface = 'code.project-menu';
     host.appendChild(row.li);
   });
   // An open menu whose row is gone drops its state; a reopened one keeps it.

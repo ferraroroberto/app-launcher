@@ -2,7 +2,7 @@
          the Conversations one (#1528) — the sort as range tabs, each applying
          as it is tapped, Clear beside Done. Jobs has no filter of its own, so
          the sheet carries the one Sort row. -->
-    <dialog id="jobsSortSheet" class="detail-dialog jobs-sort-sheet" data-track-view="sheet.jobs-sort" aria-labelledby="jobsSortSheetTitle">
+    <dialog id="jobsSortSheet" class="detail-dialog jobs-sort-sheet" data-surface="jobs.sort-sheet" data-track-view="sheet.jobs-sort" aria-labelledby="jobsSortSheetTitle">
       <div class="detail-card">
         <div class="detail-header">
           <h2 id="jobsSortSheetTitle" tabindex="-1" autofocus>Sort and filter</h2>
@@ -27,7 +27,7 @@
     <!-- The session transcript (#953) is no longer its own overlay: it is
          the Chat pane of #terminalOverlay below (#982). -->
 
-    <dialog id="jobDialog" class="detail-dialog" data-track-view="sheet.job-edit">
+    <dialog id="jobDialog" class="detail-dialog" data-surface="jobs.job-dialog" data-track-view="sheet.job-edit">
       <form id="jobForm" class="detail-card">
         <div class="detail-header">
           <h2 id="jobDialogTitle">Add job</h2>
@@ -222,7 +222,7 @@
       </form>
     </dialog>
 
-    <dialog id="jobRunDialog" class="detail-dialog" data-track-view="sheet.job-run">
+    <dialog id="jobRunDialog" class="detail-dialog" data-surface="jobs.run-dialog" data-track-view="sheet.job-run">
       <form id="jobRunForm" class="detail-card">
         <div class="detail-header">
           <h2 id="jobRunDialogTitle">Run job</h2>

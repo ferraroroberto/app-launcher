@@ -92,7 +92,7 @@ function drawKind(kind) {
     rowMenu.attach(kind + ':' + entry.index, row.kebab, [
       { label: 'Edit', glyph: 'pencil', onTap: function () { openForm(kind, entry); } },
       { label: 'Remove', glyph: 'trash-2', danger: true, onTap: function () { remove(kind, entry, noun); } },
-    ]);
+    ]).dataset.surface = 'settings.inspiration-menu';
     list.appendChild(row.li);
   });
   rowMenu.endRender();

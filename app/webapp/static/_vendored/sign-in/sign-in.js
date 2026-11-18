@@ -80,6 +80,9 @@ function buildDialog() {
   const el = document.createElement('dialog');
   el.className = 'detail-dialog sign-in';
   el.setAttribute('data-track-view', 'sign-in');
+  // The id every app's UX surface map lists, stamped here because the app has no
+  // call site for a sheet this module builds.
+  el.dataset.surface = 'shared.login';
   el.setAttribute('aria-labelledby', 'signInTitle');
   el.innerHTML = MARKUP;
   el.querySelector('.sign-in-title span').textContent = TITLE;
