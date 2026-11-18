@@ -4,7 +4,7 @@
     <!-- Screen time (#1678): read-only, so its one primary is Done. The
          period picks the window; screen-time.js draws the total, the daily
          bars by device and the list by section from GET /api/usage/time. -->
-    <dialog data-surface="settings.screen-time" id="screenTimeSheet" class="detail-dialog settings-sheet" data-track-view="sheet.screen-time" aria-labelledby="screenTimeSheetTitle">
+    <dialog id="screenTimeSheet" class="detail-dialog settings-sheet" data-surface="settings.screen-time" data-track-view="sheet.screen-time" aria-labelledby="screenTimeSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
           <button data-track="screen-time.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
@@ -51,7 +51,7 @@
     <!-- Remote power guard: the webapp is not elevated, so a switch tap that
          Windows refuses opens this sheet with the one command to run in an
          elevated terminal. remote-power-guard.js fills the command. -->
-    <dialog data-surface="settings.remote-power-guard" id="remotePowerGuardSheet" class="detail-dialog settings-sheet" data-track-view="sheet.remote-power-guard" aria-labelledby="remotePowerGuardSheetTitle">
+    <dialog id="remotePowerGuardSheet" class="detail-dialog settings-sheet" data-surface="settings.remote-power-guard" data-track-view="sheet.remote-power-guard" aria-labelledby="remotePowerGuardSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
           <button data-track="remote-power-guard.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
@@ -73,7 +73,7 @@
       </div>
     </dialog>
 
-    <dialog data-surface="settings.usage-shows" id="usageShowsSheet" class="detail-dialog settings-sheet" data-track-view="sheet.usage-shows" aria-labelledby="usageShowsSheetTitle">
+    <dialog id="usageShowsSheet" class="detail-dialog settings-sheet" data-surface="settings.usage-shows" data-track-view="sheet.usage-shows" aria-labelledby="usageShowsSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
           <button data-track="usage-shows.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
@@ -105,7 +105,7 @@
       </div>
     </dialog>
 
-    <dialog data-surface="settings.launch-defaults" id="launchDefaultsSheet" class="detail-dialog settings-sheet" data-track-view="sheet.launch-defaults" aria-labelledby="launchDefaultsSheetTitle">
+    <dialog id="launchDefaultsSheet" class="detail-dialog settings-sheet" data-surface="settings.launch-defaults" data-track-view="sheet.launch-defaults" aria-labelledby="launchDefaultsSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
           <button data-track="launch-defaults.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
@@ -205,7 +205,7 @@
 
     <!-- One agent's launch defaults (#1435): the Launch defaults sheet's
          rows open it with only that agent's group shown. -->
-    <dialog data-surface="settings.agent" id="agentSheet" class="detail-dialog settings-sheet" data-track-view="sheet.agent" aria-labelledby="agentSheetTitle">
+    <dialog id="agentSheet" class="detail-dialog settings-sheet" data-surface="settings.agent" data-track-view="sheet.agent" aria-labelledby="agentSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
           <button data-track="agent.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Launch defaults" title="Back to Launch defaults"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
@@ -319,7 +319,7 @@
          dialog (PUT /api/board/chief/settings, passkey-gated), the
          auto-compact threshold (#1298) and the doorbell switch
          (fleet-config#1457, #1645's chief_doorbell), both POST /api/config. -->
-    <dialog data-surface="settings.chief" id="chiefSheet" class="detail-dialog settings-sheet" data-track-view="sheet.chief" aria-labelledby="chiefSheetTitle">
+    <dialog id="chiefSheet" class="detail-dialog settings-sheet" data-surface="settings.chief" data-track-view="sheet.chief" aria-labelledby="chiefSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
           <button data-track="chief.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
@@ -420,7 +420,7 @@
          profile or a profile problem is reported. telegram-setup.js renders
          it from GET /api/life-os/channels; it only reports booleans and
          names — never a path, a token or a file's content. -->
-    <dialog data-surface="settings.channels" id="channelsSheet" class="detail-dialog settings-sheet" data-track-view="sheet.channels" aria-labelledby="channelsSheetTitle">
+    <dialog id="channelsSheet" class="detail-dialog settings-sheet" data-surface="settings.channels" data-track-view="sheet.channels" aria-labelledby="channelsSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
           <button data-track="channels.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
@@ -494,7 +494,7 @@
          telegram-bots.js fills it from the same GET /api/life-os/channels
          payload and saves each field through PATCH /api/life-os/channels/{id}.
          Names and booleans only: never a path or a token. -->
-    <dialog data-surface="settings.channel-bot" id="channelBotSheet" class="detail-dialog settings-sheet" data-track-view="sheet.channel-bot" aria-labelledby="channelBotSheetTitle">
+    <dialog id="channelBotSheet" class="detail-dialog settings-sheet" data-surface="settings.channel-bot" data-track-view="sheet.channel-bot" aria-labelledby="channelBotSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
           <button data-track="channel-bot.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Telegram" title="Back to Telegram"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
@@ -568,7 +568,7 @@
     <!-- Context filter (issue #713) — the fleet's PreToolUse token-reduction
          hook (fleet-config#392/#541/#544). context-filter.js owns this
          sheet's contents; #1435 only moved them out of a card. -->
-    <dialog data-surface="settings.context-filter" id="contextFilterSheet" class="detail-dialog settings-sheet" data-track-view="sheet.context-filter" aria-labelledby="contextFilterSheetTitle">
+    <dialog id="contextFilterSheet" class="detail-dialog settings-sheet" data-surface="settings.context-filter" data-track-view="sheet.context-filter" aria-labelledby="contextFilterSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
           <button data-track="context-filter.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
@@ -603,7 +603,7 @@
          fills the title and body from GET /api/documents/{id}; the body is the
          same `.tr-md` box the Changed files Preview renders into, and
          shared/mermaid-render.js draws its diagrams. -->
-    <dialog data-surface="settings.document" id="documentSheet" class="detail-dialog settings-sheet document-sheet" data-track-view="sheet.document" aria-labelledby="documentSheetTitle">
+    <dialog id="documentSheet" class="detail-dialog settings-sheet document-sheet" data-surface="settings.document" data-track-view="sheet.document" aria-labelledby="documentSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
           <button data-track="document.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
@@ -634,7 +634,7 @@
     <!-- Fleet scope: which repos the fleet-wide runs include. fleet-scope.js
          draws the rows from GET /api/fleet/scope; fleet-config's own writer
          does the edit. -->
-    <dialog data-surface="settings.fleet-scope" id="fleetScopeSheet" class="detail-dialog settings-sheet" data-track-view="sheet.fleet-scope" aria-labelledby="fleetScopeSheetTitle">
+    <dialog id="fleetScopeSheet" class="detail-dialog settings-sheet" data-surface="settings.fleet-scope" data-track-view="sheet.fleet-scope" aria-labelledby="fleetScopeSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
           <button data-track="fleet-scope.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
@@ -668,7 +668,7 @@
       </div>
     </dialog>
 
-    <dialog data-surface="settings.tokens" id="tokensSheet" class="detail-dialog settings-sheet" data-track-view="sheet.tokens" aria-labelledby="tokensSheetTitle">
+    <dialog id="tokensSheet" class="detail-dialog settings-sheet" data-surface="settings.tokens" data-track-view="sheet.tokens" aria-labelledby="tokensSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
           <button data-track="tokens.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
@@ -727,7 +727,7 @@
       </div>
     </dialog>
 
-    <dialog data-surface="settings.folders" id="foldersSheet" class="detail-dialog settings-sheet" data-track-view="sheet.folders" aria-labelledby="foldersSheetTitle">
+    <dialog id="foldersSheet" class="detail-dialog settings-sheet" data-surface="settings.folders" data-track-view="sheet.folders" aria-labelledby="foldersSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
           <button data-track="folders.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
@@ -779,7 +779,7 @@
       </div>
     </dialog>
 
-    <dialog data-surface="settings.passkeys" id="passkeysSheet" class="detail-dialog settings-sheet" data-track-view="sheet.passkeys" aria-labelledby="passkeysSheetTitle">
+    <dialog id="passkeysSheet" class="detail-dialog settings-sheet" data-surface="settings.passkeys" data-track-view="sheet.passkeys" aria-labelledby="passkeysSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
           <button data-track="passkeys.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
@@ -806,7 +806,7 @@
       </div>
     </dialog>
 
-    <dialog data-surface="settings.pc-load" id="pcLoadSheet" class="detail-dialog settings-sheet" data-track-view="sheet.pc-load" aria-labelledby="pcLoadSheetTitle">
+    <dialog id="pcLoadSheet" class="detail-dialog settings-sheet" data-surface="settings.pc-load" data-track-view="sheet.pc-load" aria-labelledby="pcLoadSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
           <button data-track="pc-load.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
@@ -836,7 +836,7 @@
       </div>
     </dialog>
 
-    <dialog data-surface="settings.terminal" id="terminalSheet" class="detail-dialog settings-sheet" data-track-view="sheet.terminal" aria-labelledby="terminalSheetTitle">
+    <dialog id="terminalSheet" class="detail-dialog settings-sheet" data-surface="settings.terminal" data-track-view="sheet.terminal" aria-labelledby="terminalSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
           <button data-track="terminal.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>

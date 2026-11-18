@@ -2,7 +2,7 @@
          the week elapsed, Codex's state and the context filter's savings.
          usage-meter.js fills the rows each time it opens (and on each poll
          while it is open). -->
-    <dialog data-surface="code.usage-sheet" id="usageSheet" class="detail-dialog" data-track-view="sheet.usage" aria-labelledby="usageSheetTitle">
+    <dialog id="usageSheet" class="detail-dialog" data-surface="code.usage-sheet" data-track-view="sheet.usage" aria-labelledby="usageSheetTitle">
       <div class="detail-card">
         <div class="detail-header">
           <h2 id="usageSheetTitle"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-activity"></use></svg> Usage</h2>
@@ -20,7 +20,7 @@
     <!-- The CPU sheet (#1522), behind every page header's CPU reading: total
          CPU, memory and the busiest processes (names only). system-load.js
          fills it on open and on each poll while it is open. -->
-    <dialog data-surface="chrome.cpu-sheet" id="cpuSheet" class="detail-dialog" data-track-view="sheet.cpu" aria-labelledby="cpuSheetTitle">
+    <dialog id="cpuSheet" class="detail-dialog" data-surface="chrome.cpu-sheet" data-track-view="sheet.cpu" aria-labelledby="cpuSheetTitle">
       <div class="detail-card">
         <div class="detail-header">
           <h2 id="cpuSheetTitle"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-monitor"></use></svg> PC load</h2>

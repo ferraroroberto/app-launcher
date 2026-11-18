@@ -1,4 +1,4 @@
-    <section data-surface="apps.tab" id="paneApps" class="pane" role="tabpanel" aria-labelledby="tabApps" hidden>
+    <section id="paneApps" class="pane" data-surface="apps.tab" role="tabpanel" aria-labelledby="tabApps" hidden>
       <!-- Page header (#1131): every pane opens with the vendored home-head —
            the tab's name, one context line, the theme toggle and the gear. -->
       <div class="card home-head page-head">
@@ -67,7 +67,7 @@
            sheet's own list (#listenersBody) moves in here at that query and
            back into the sheet below it, so both are the same rows and the
            same confirmed stop. -->
-      <details data-surface="apps.other-ports" id="otherPortsCard" class="card card--collapsible action-list other-ports-card" open>
+      <details id="otherPortsCard" class="card card--collapsible action-list other-ports-card" data-surface="apps.other-ports" open>
         <summary data-track="apps.fold-other-ports" class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plug"></use></svg>
@@ -146,7 +146,7 @@
 
       <!-- Mini apps: the *.bat files of the mini_apps_root folder. Hidden until
            a folder is configured (apps.js), then the same rows as Trays. -->
-      <details data-surface="apps.mini-apps" id="miniAppsCard" class="card card--collapsible action-list mini-apps-card" open hidden>
+      <details id="miniAppsCard" class="card card--collapsible action-list mini-apps-card" data-surface="apps.mini-apps" open hidden>
         <summary data-track="apps.fold-mini" class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-package"></use></svg>

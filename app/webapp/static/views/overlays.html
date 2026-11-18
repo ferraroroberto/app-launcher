@@ -4,7 +4,7 @@
        cards (#chatPane). The bar is shared: ‹ Back · title · context ring ·
        Terminal⇄Chat · ⋮. Mode routing lives in session-overlay.js; the terminal pane in
        terminal.js, the chat pane in session-transcript.js. -->
-  <div data-surface="terminal.overlay" id="terminalOverlay" class="terminal-overlay" hidden>
+  <div id="terminalOverlay" class="terminal-overlay" data-surface="terminal.overlay" hidden>
     <div class="terminal-bar">
       <button data-track="session.back" id="terminalBack" type="button" class="icon-button term-btn" title="Back to sessions" aria-label="Back to sessions"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
       <span id="terminalTitle" class="terminal-title">session</span>
@@ -38,7 +38,7 @@
          composer docks at the bottom for every session kind (#983).
          Visible only while data-mode="chat" (CSS).
          Driven by session-transcript.js. -->
-    <div data-surface="chat.overlay" id="chatPane" class="chat-pane">
+    <div id="chatPane" class="chat-pane" data-surface="chat.overlay">
       <!-- The frame anchors the shared ↓ Latest pill (#1140, latest-pill.js)
            to the scroller's visible bottom edge, above the note and the
            composer, so it can never cover their buttons. -->
@@ -107,7 +107,7 @@
        diff (GitHub "Files changed" shape, phone-first). Opened from the
        row's ⋯ project menu or by tapping a red / yellow tile name. Same
        overlay chrome as the transcript. Driven by changes-overlay.js. -->
-  <div data-surface="code.changes-overlay" id="changesOverlay" class="terminal-overlay changes-overlay" hidden>
+  <div id="changesOverlay" class="terminal-overlay changes-overlay" data-surface="code.changes-overlay" hidden>
     <div class="terminal-bar">
       <span id="changesTitle" class="terminal-title">changes</span>
       <div class="terminal-bar-actions">
@@ -137,7 +137,7 @@
 
   <!-- Image lightbox (#173, reused for #1265): a transcript thumbnail
        opens full-screen for pan/zoom; tap anywhere (or ✕) to dismiss. -->
-  <div data-surface="chat.lightbox" id="imageLightbox" class="image-lightbox" hidden>
+  <div id="imageLightbox" class="image-lightbox" data-surface="chat.lightbox" hidden>
     <button data-track="lightbox.close" id="imageLightboxClose" type="button" class="image-lightbox-close" title="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></button>
     <img id="imageLightboxImage" class="image-lightbox-img" alt="">
   </div>
@@ -146,7 +146,7 @@
        checked. A tap switches the live session through the agent's own
        /model; the chip changes only once the agent reports it. Header ✕ plus
        one full-width Close (modal contract). terminal/model-chip.js fills it. -->
-  <dialog data-surface="terminal.model-sheet" id="modelSwitchSheet" class="detail-dialog model-switch-sheet" data-track-view="sheet.model-switch" aria-labelledby="modelSwitchSheetTitle">
+  <dialog id="modelSwitchSheet" class="detail-dialog model-switch-sheet" data-surface="terminal.model-sheet" data-track-view="sheet.model-switch" aria-labelledby="modelSwitchSheetTitle">
     <div class="detail-card">
       <div class="detail-header">
         <h2 id="modelSwitchSheetTitle" tabindex="-1" autofocus>Switch model</h2>
@@ -167,7 +167,7 @@
        contract). lightbox.js puts a fresh frame in the body on each open (an
        empty sandbox: an opaque origin, no script) and owns Esc, the backdrop
        and the back gesture. -->
-  <dialog data-surface="chat.html-viewer" id="htmlViewer" class="detail-dialog html-viewer" data-track-view="sheet.html-viewer" aria-labelledby="htmlViewerTitle">
+  <dialog id="htmlViewer" class="detail-dialog html-viewer" data-surface="chat.html-viewer" data-track-view="sheet.html-viewer" aria-labelledby="htmlViewerTitle">
     <div class="detail-card">
       <div class="detail-header">
         <h2 id="htmlViewerTitle"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-code-xml"></use></svg> <span id="htmlViewerName" class="html-viewer-name"></span></h2>

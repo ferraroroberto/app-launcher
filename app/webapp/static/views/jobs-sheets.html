@@ -4,7 +4,7 @@
          while running), artifacts and the webhook payload. Run now is its
          one primary action. On the wide desktop layout it docks as the
          detail pane beside the list instead (jobs.js, styles/wide.css). -->
-    <dialog data-surface="jobs.job-sheet" id="jobSheet" class="detail-dialog job-sheet" data-track-view="sheet.job" aria-labelledby="jobSheetTitle">
+    <dialog id="jobSheet" class="detail-dialog job-sheet" data-surface="jobs.job-sheet" data-track-view="sheet.job" aria-labelledby="jobSheetTitle">
       <div class="detail-card">
         <div class="detail-header">
           <h2 id="jobSheetTitle" class="job-sheet-title" tabindex="-1" autofocus></h2>
@@ -22,7 +22,7 @@
     <!-- The 7-day agenda (#230, a sheet since #1438): day groups of upcoming
          fires, then the frequent jobs that would flood it. Opened from the
          Next up card's header; a fire opens its job's sheet. -->
-    <dialog data-surface="jobs.agenda-sheet" id="jobsAgendaSheet" class="detail-dialog jobs-agenda-sheet" data-track-view="sheet.jobs-agenda" aria-labelledby="jobsAgendaSheetTitle">
+    <dialog id="jobsAgendaSheet" class="detail-dialog jobs-agenda-sheet" data-surface="jobs.agenda-sheet" data-track-view="sheet.jobs-agenda" aria-labelledby="jobsAgendaSheetTitle">
       <div class="detail-card">
         <div class="detail-header">
           <h2 id="jobsAgendaSheetTitle" tabindex="-1" autofocus><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-calendar-days"></use></svg> Schedule</h2>

@@ -1,4 +1,4 @@
-    <section data-surface="jobs.tab" id="paneJobs" class="pane" role="tabpanel" aria-labelledby="tabJobs" hidden>
+    <section id="paneJobs" class="pane" data-surface="jobs.tab" role="tabpanel" aria-labelledby="tabJobs" hidden>
       <!-- Page header (#1131): every pane opens with the vendored home-head —
            the tab's name, one context line, the theme toggle and the gear. -->
       <div class="card home-head page-head">
@@ -23,7 +23,7 @@
            without a tap, each opening its job's sheet. The header opens the
            whole 7-day agenda in a sheet. jobs-agenda.js fetches it once per
            visit to the tab. -->
-      <section data-surface="jobs.next-up" id="jobsNextUpCard" class="card jobs-next-card" data-state="loading" aria-labelledby="jobsNextUpTitle">
+      <section id="jobsNextUpCard" class="card jobs-next-card" data-surface="jobs.next-up" data-state="loading" aria-labelledby="jobsNextUpTitle">
         <h3 id="jobsNextUpTitle" class="card-title jobs-next-title">
           <button type="button" id="jobsAgendaOpen" data-track="jobs-agenda" class="jobs-next-head" aria-haspopup="dialog"
                   aria-label="Next up, open the 7-day schedule">
