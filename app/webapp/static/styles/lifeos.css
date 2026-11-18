@@ -100,27 +100,6 @@
   .swipe-pane-btn .icon { transition: none; }
 }
 
-/* Full-bleed Skills rows on the phone (an experiment the owner asked
-   for, one switch to revert on its own): the Skills card runs to the
-   screen's edges so a row and its swipe panes are edge to edge, with
-   hairlines between rows. Its header, toolbar, filter and the rows' text
-   keep the inset they had inside the card. The wide layout keeps the card. */
-@media (max-width: 520px) {
-  .lifeos-list-card {
-    margin-inline: calc(-1 * var(--gap));
-    border-inline-width: 0;
-    border-radius: 0;
-  }
-  .lifeos-list-card > .collapse-summary { padding-inline: calc(14px + var(--gap)); }
-  /* Beats `.card.action-list > .collapse-body > :not(.action-rows)`. */
-  .card.action-list.lifeos-list-card > .collapse-body > :not(.action-rows) {
-    margin-inline: calc(14px + var(--gap));
-  }
-  #lifeOsList > .action-row:not(.has-swipe),
-  #lifeOsList .swipe-surface { padding-inline: calc(4px + var(--gap)); }
-  #lifeOsList .drill-row { padding-left: calc(14px + var(--gap)); }
-}
-
 /* ---------- Life OS: one field for skills and conversations ---------- */
 .lifeos-toolbar .launch-toolbar-slot { flex: 1; min-width: 0; }
 /* The placeholder ellipsizes rather than clipping mid-word when the scope
@@ -162,8 +141,8 @@
 .lifeos-list-card.is-convo-scoped #lifeOsList,
 .lifeos-list-card.is-convo-on #lifeOsFilterEmpty { display: none; }
 /* The two groups the field's results show as. The Conversations group runs
-   its rows to the card's edges like the skill rows above it; its head, sort
-   and state keep the card's text inset. */
+   its rows to the card's own edges like the skill rows above it; its head,
+   sort and state keep the card's text inset. */
 .card.action-list.lifeos-list-card > .collapse-body > .lifeos-convo-group { margin-inline: 0; }
 .lifeos-convo-group { margin-top: 12px; }
 .lifeos-convo-group > :not(.action-rows) { margin-inline: 14px; }
@@ -173,14 +152,6 @@
 .lifeos-convo-sort { margin-bottom: 8px; }
 @media (min-width: 521px) {
   .lifeos-convo-sort { max-width: 360px; }
-}
-@media (max-width: 520px) {
-  .lifeos-convo-group > :not(.action-rows) { margin-inline: calc(14px + var(--gap)); }
-  #lifeOsConvoList > .action-row,
-  #lifeOsArchivedList > .action-row,
-  #lifeOsSystemList > .action-row { padding-inline: calc(4px + var(--gap)); }
-  .lifeos-convo-group .lifeos-archived-summary,
-  .lifeos-convo-group .lifeos-system-summary { margin-inline: calc(14px + var(--gap)); }
 }
 .lifeos-group-count { font-weight: 400; }
 /* The Conversations head with the search's Start new at its end. */
@@ -308,7 +279,7 @@
 .lifeos-convo-list { margin: 0; }
 /* The Archived and System groups: a quiet caption-size disclosure under the
    list, its chevron turning as the Board's parked group does. */
-/* Rows run full-bleed like the list above; only the header is inset. */
+/* Rows span the card like the list above; only the header is inset. */
 .lifeos-convo-group > .lifeos-archived { margin: var(--space-sm) 0 0; }
 .lifeos-archived[hidden] { display: none; }
 .lifeos-archived-summary,
