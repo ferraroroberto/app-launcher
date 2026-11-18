@@ -133,13 +133,16 @@ surfaces:
     links:
       - to: screen.view
         via: Screen
+      - to: chrome.confirm
+        via: Restart on a flagged process
 
   - id: chrome.confirm
     area: chrome
     title: Confirm dialog
     root: data-surface
     reach:
-      - any destructive or sensitive action asks through it (stop a session, remove an app, delete a conversation, run a job that requires confirmation)
+      - "a destructive or sensitive action asks through it: removing an app, a job, a passkey or an inspiration entry, stopping a running app or a listener, killing a stuck run, deleting a conversation or a log, restarting a process, a bot or the chief, running a job that requires confirmation, pulling before launching on a repo that is behind, sending a message that is already queued"
+      - stopping an ordinary session does not ask; only the chief and a Telegram session do
     holds:
       - a title and message worded for the action
       - an optional text field when the action needs a typed phrase
@@ -328,7 +331,9 @@ surfaces:
       - Rename
       - Stop, last, behind a divider
     does:
-      - Stop asks the confirm dialog, then kills the session
+      - Stop asks the agent to quit cleanly, then force-terminates as a fallback, with no confirm for an ordinary session
+    states:
+      - a Telegram session asks to confirm, and while Telegram sessions are hidden it cannot be stopped from here
     links:
       - to: terminal.overlay
         via: Terminal and Chat
@@ -338,8 +343,6 @@ surfaces:
         via: Links
       - to: terminal.rename-dialog
         via: Rename
-      - to: chrome.confirm
-        via: Stop
 
   - id: code.chief-menu
     area: code
@@ -351,9 +354,13 @@ surfaces:
       - Restart, only while the chief runs
       - Chief settings
       - the session menu's own items
+    does:
+      - Restart and Stop ask the confirm dialog, since the chief is the one session a mis-tap should not take down
     links:
       - to: settings.chief
         via: Chief settings
+      - to: chrome.confirm
+        via: Restart or Stop
 
   - id: code.channel-list
     area: code
@@ -394,6 +401,8 @@ surfaces:
         via: row kebab
       - to: code.git-sync-sheet
         via: Sync all
+      - to: chrome.confirm
+        via: launching on a repo that is behind
       - to: settings.folders
         via: Open Settings
 
@@ -462,9 +471,9 @@ surfaces:
       - Session menu › Changed files
     holds:
       - a bar with the title, Refresh and Close
-      - a search field and a switch between the working tree and the session's own edits
+      - a search field
       - the changed and untracked files with A, M and D badges and added and removed counts
-      - each file opens into its diff
+      - each file opens into its diff, with a switch between the diff and the whole file
     states:
       - empty and error states are lines in the body, not a separate screen
     links:
@@ -572,6 +581,8 @@ surfaces:
         via: tap an HTML file
       - to: readback.summary-modal
         via: Summarize and read
+      - to: chrome.confirm
+        via: sending a message that is already queued
 
   - id: terminal.session-menu
     area: terminal
@@ -588,7 +599,7 @@ surfaces:
       - Stop and kill, last, behind a divider
     does:
       - Compact sends /compact through the same verified route as Send
-      - Stop and kill asks the confirm dialog
+      - Stop and kill ends the session at once and closes the view, asking the confirm dialog only for the chief and for a Telegram session
     links:
       - to: terminal.rename-dialog
         via: Rename
@@ -601,7 +612,7 @@ surfaces:
       - to: readback.summary-modal
         via: Summarize and read
       - to: chrome.confirm
-        via: Stop and kill
+        via: Stop and kill on the chief or a Telegram session
 
   - id: terminal.rename-dialog
     area: terminal
@@ -967,7 +978,8 @@ surfaces:
     reach:
       - the Chief's plan card on the Board
     holds:
-      - the plan as lanes, queue and parked groups of issue rows
+      - a notice when the chief is not running and how old the plan is
+      - the plan as Questions, Lanes, Queued, In progress and Parked groups of issue rows, each foldable
       - the questions the chief waits on you for, counted in the Board header and the nav badge
     does:
       - tap a row's note glyph opens its plan note
@@ -1060,14 +1072,16 @@ surfaces:
       - the owner checks waiting on you
     does:
       - tap a session opens its drawer
-      - tap an owner check opens its detail
+      - an owner check folds open to say what it needs
+      - each owner group has a button that opens its answer sheet
     states:
       - "empty: a line saying nothing needs you"
+    why: the owner checks are grouped as Before start, Validate to close and Try what shipped
     links:
       - to: board.drawer
         via: tap a session
       - to: board.answer-sheet
-        via: an owner check
+        via: an owner group's answer button
 
   - id: board.prs-jobs
     area: board
@@ -1104,15 +1118,16 @@ surfaces:
     holds:
       - the last exchange of the session
       - the same composer as the session view, without the keys
-      - actions and a kebab
+      - Chat and Terminal buttons and a kebab
     does:
       - Reply sends through the composer
+      - Chat and Terminal open the session view in that mode; a button is disabled with its reason when the session cannot show it
       - the drawer opens inline under its row and survives the Board's refresh
     links:
       - to: board.drawer-menu
         via: kebab
       - to: terminal.overlay
-        via: Open
+        via: Chat or Terminal
 
   - id: board.drawer-menu
     area: board
@@ -1229,10 +1244,9 @@ surfaces:
     reach:
       - the sort button in the Jobs card
     holds:
-      - Next run and A to Z
-      - filters
+      - "a Sort switch: Next run and A to Z"
     does:
-      - Clear resets both
+      - Clear resets the sort
       - Done closes
 
   - id: jobs.job-menu
@@ -1279,6 +1293,8 @@ surfaces:
       - Run now runs the job, or opens the run dialog when it takes parameters
     desktop: docks beside the list instead of covering it
     links:
+      - to: chrome.confirm
+        via: Kill stuck run
       - to: jobs.run-dialog
         via: Run now with parameters
       - to: jobs.confirm-run
@@ -1372,6 +1388,9 @@ surfaces:
       - the pid as a header line
       - Copy URL
       - Stop, last
+    links:
+      - to: chrome.confirm
+        via: Stop
 
   - id: apps.other-ports
     area: apps
@@ -1587,7 +1606,8 @@ surfaces:
     holds:
       - Resume last conversation, with its reason as the header when there is none
       - Start new conversation
-      - Pick a session
+      - Pick a session, which opens Claude's own session picker for the skill
+      - Pin to top or Unpin
       - Restart Telegram session, when one is due
       - Read
       - Conversations
@@ -1596,8 +1616,8 @@ surfaces:
         via: Read
       - to: lifeos.conversations
         via: Conversations
-      - to: lifeos.start-picker
-        via: Pick a session
+      - to: chrome.confirm
+        via: Restart Telegram session
 
   - id: lifeos.conversations
     area: lifeos
@@ -1622,7 +1642,7 @@ surfaces:
       - to: lifeos.system
         via: System
       - to: lifeos.start-picker
-        via: Start new conversation
+        via: Start new conversation with no skill in scope
 
   - id: lifeos.archived
     area: lifeos
@@ -1685,11 +1705,11 @@ surfaces:
     title: Start new in
     root: data-surface
     reach:
-      - Pick a session in the skill menu
-      - Start new conversation when more than one session could take it
+      - Start new conversation in the Conversations group when no skill is in scope
     holds:
-      - the running sessions a new conversation can start in
+      - every skill as a row with its avatar
     does:
+      - a row starts a new conversation with that skill, on the toolbar's model
       - Done closes
 
   - id: lifeos.convo-viewer
@@ -1732,6 +1752,9 @@ surfaces:
       - Rename log and Delete log, for a log
     does:
       - Delete log asks the confirm dialog
+    links:
+      - to: chrome.confirm
+        via: Delete log
 
   - id: lifeos.recap
     area: lifeos
@@ -1974,6 +1997,9 @@ surfaces:
     holds:
       - Edit
       - Remove
+    links:
+      - to: chrome.confirm
+        via: Remove
 
   - id: settings.tokens
     area: settings

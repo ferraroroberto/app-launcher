@@ -310,6 +310,7 @@ The gate also runs a static ratchet (new duplicate blocks and unused imports fai
 |---|---|
 | [docs/features.md](docs/features.md) | Tab-by-tab feature reference |
 | [docs/session-view.md](docs/session-view.md) | The Terminal ⇄ Chat session overlay |
+| [docs/ux-surface-map.md](docs/ux-surface-map.md) | Every screen, sheet, menu and gesture, generated from `docs/ux-surfaces.yaml` |
 | [docs/interactive-terminal.md](docs/interactive-terminal.md) | The live terminal, key bar, composer and its security model |
 | [docs/screen-view.md](docs/screen-view.md) | Viewing and controlling the PC screen |
 | [docs/jobs-tab.md](docs/jobs-tab.md) | Jobs: schedules, run history, health |

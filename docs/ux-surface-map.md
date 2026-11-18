@@ -66,13 +66,20 @@ flowchart LR
   s65(["Jobs tab · Jobs tab"])
   s103(["Settings pane · Settings"])
   s43(["Screen view · Screen view"])
-  s14(["Session row menu · Code tab"])
+  s15(["Chief row menu · Code tab"])
+  s17(["Projects card · Code tab"])
+  s27(["Chat mode · Session view"])
   s28(["Session actions menu · Session view"])
   s64(["Drawer menu · Board tab"])
   s71(["Job row menu · Jobs tab"])
+  s73(["Job sheet · Jobs tab"])
+  s78(["Running app menu · Apps tab"])
   s81(["Listener menu · Apps tab"])
   s83(["App row menu · Apps tab"])
+  s92(["Skill row menu · Life tab"])
   s96(["Conversation sheet · Life tab"])
+  s101(["File viewer · Life tab"])
+  s116(["Inspiration entry menu · Settings"])
   s0 -->|"Board"| s48
   s0 -->|"Code"| s8
   s0 -->|"Life"| s89
@@ -81,13 +88,21 @@ flowchart LR
   s1 -->|"CPU reading"| s2
   s1 -->|"gear"| s103
   s2 -->|"Screen"| s43
-  s14 -->|"Stop"| s3
-  s28 -->|"Stop and kill"| s3
+  s2 -->|"Restart on a flagged process"| s3
+  s15 -->|"Restart or Stop"| s3
+  s17 -->|"launching on a repo that is behind"| s3
+  s27 -->|"sending a message that is already queued"| s3
+  s28 -->|"Stop and kill on the chief or a Telegram session"| s3
   s64 -->|"Stop"| s3
   s71 -->|"Remove"| s3
+  s73 -->|"Kill stuck run"| s3
+  s78 -->|"Stop"| s3
   s81 -->|"Stop process"| s3
   s83 -->|"Remove"| s3
+  s92 -->|"Restart Telegram session"| s3
   s96 -->|"Delete"| s3
+  s101 -->|"Delete log"| s3
+  s116 -->|"Remove"| s3
 ```
 
 ### `chrome.nav` Nav
@@ -140,12 +155,16 @@ flowchart LR
   - the Screen button opens the Screen view of the PC
   - Done closes
 - **States:** a dash instead of a number when the server could not take a sample
-- **Leads to:** [Screen view](#screenview-screen-view) (Screen)
+- **Leads to:**
+  - [Screen view](#screenview-screen-view) (Screen)
+  - [Confirm dialog](#chromeconfirm-confirm-dialog) (Restart on a flagged process)
 
 ### `chrome.confirm` Confirm dialog
 
 - **Root:** `data-surface`
-- **Reach:** any destructive or sensitive action asks through it (stop a session, remove an app, delete a conversation, run a job that requires confirmation)
+- **Reach:**
+  - a destructive or sensitive action asks through it: removing an app, a job, a passkey or an inspiration entry, stopping a running app or a listener, killing a stuck run, deleting a conversation or a log, restarting a process, a bot or the chief, running a job that requires confirmation, pulling before launching on a repo that is behind, sending a message that is already queued
+  - stopping an ordinary session does not ask; only the chief and a Telegram session do
 - **Holds:**
   - a title and message worded for the action
   - an optional text field when the action needs a typed phrase
@@ -216,8 +235,8 @@ flowchart LR
   s31(["Background tasks sheet · Session view"])
   s32(["Links sheet · Session view"])
   s29(["Rename session · Session view"])
-  s3(["Confirm dialog · Chrome"])
   s110(["Chief sheet · Settings"])
+  s3(["Confirm dialog · Chrome"])
   s118(["Folders sheet · Settings"])
   s107(["Launch defaults sheet · Settings"])
   s28(["Session actions menu · Session view"])
@@ -239,11 +258,12 @@ flowchart LR
   s14 -->|"Background tasks"| s31
   s14 -->|"Links"| s32
   s14 -->|"Rename"| s29
-  s14 -->|"Stop"| s3
   s15 -->|"Chief settings"| s110
+  s15 -->|"Restart or Stop"| s3
   s17 -->|"model picker"| s18
   s17 -->|"row kebab"| s20
   s17 -->|"Sync all"| s21
+  s17 -->|"launching on a repo that is behind"| s3
   s17 -->|"Open Settings"| s118
   s18 -->|"preset picker"| s19
   s18 -->|"models and presets come from here"| s107
@@ -355,13 +375,13 @@ flowchart LR
   - Copy path
   - Rename
   - Stop, last, behind a divider
-- **Does:** Stop asks the confirm dialog, then kills the session
+- **Does:** Stop asks the agent to quit cleanly, then force-terminates as a fallback, with no confirm for an ordinary session
+- **States:** a Telegram session asks to confirm, and while Telegram sessions are hidden it cannot be stopped from here
 - **Leads to:**
   - [Session view](#terminaloverlay-session-view) (Terminal and Chat)
   - [Background tasks sheet](#terminalbg-tasks-sheet-background-tasks-sheet) (Background tasks)
   - [Links sheet](#terminallinks-sheet-links-sheet) (Links)
   - [Rename session](#terminalrename-dialog-rename-session) (Rename)
-  - [Confirm dialog](#chromeconfirm-confirm-dialog) (Stop)
 
 ### `code.chief-menu` Chief row menu
 
@@ -371,7 +391,10 @@ flowchart LR
   - Restart, only while the chief runs
   - Chief settings
   - the session menu's own items
-- **Leads to:** [Chief sheet](#settingschief-chief-sheet) (Chief settings)
+- **Does:** Restart and Stop ask the confirm dialog, since the chief is the one session a mis-tap should not take down
+- **Leads to:**
+  - [Chief sheet](#settingschief-chief-sheet) (Chief settings)
+  - [Confirm dialog](#chromeconfirm-confirm-dialog) (Restart or Stop)
 
 ### `code.channel-list` Telegram sessions list
 
@@ -402,6 +425,7 @@ flowchart LR
   - [Launch model menu](#codemodel-menu-launch-model-menu) (model picker)
   - [Project row menu](#codeproject-menu-project-row-menu) (row kebab)
   - [Sync all sheet](#codegit-sync-sheet-sync-all-sheet) (Sync all)
+  - [Confirm dialog](#chromeconfirm-confirm-dialog) (launching on a repo that is behind)
   - [Folders sheet](#settingsfolders-folders-sheet) (Open Settings)
 
 ### `code.model-menu` Launch model menu
@@ -450,9 +474,9 @@ flowchart LR
   - Session menu › Changed files
 - **Holds:**
   - a bar with the title, Refresh and Close
-  - a search field and a switch between the working tree and the session's own edits
+  - a search field
   - the changed and untracked files with A, M and D badges and added and removed counts
-  - each file opens into its diff
+  - each file opens into its diff, with a switch between the diff and the whole file
 - **States:** empty and error states are lines in the body, not a separate screen
 - **Leads to:**
   - [Changed files, nothing to show](#codechanges-empty-changed-files-nothing-to-show) (nothing changed)
@@ -506,8 +530,8 @@ flowchart LR
   s42["Reply summary"]
   s13(["Sessions card · Code tab"])
   s14(["Session row menu · Code tab"])
-  s22(["Changed files overlay · Code tab"])
   s3(["Confirm dialog · Chrome"])
+  s22(["Changed files overlay · Code tab"])
   s63(["Session drawer · Board tab"])
   s13 -->|"tap a row"| s26
   s14 -->|"Terminal and Chat"| s26
@@ -526,14 +550,15 @@ flowchart LR
   s27 -->|"tap an image"| s40
   s27 -->|"tap an HTML file"| s41
   s27 -->|"Summarize and read"| s42
+  s27 -->|"sending a message that is already queued"| s3
   s28 -->|"Rename"| s29
   s28 -->|"Changed files"| s22
   s28 -->|"Background tasks"| s31
   s28 -->|"Links"| s32
   s28 -->|"Summarize and read"| s42
-  s28 -->|"Stop and kill"| s3
+  s28 -->|"Stop and kill on the chief or a Telegram session"| s3
   s36 -->|"a plan waiting for you"| s37
-  s63 -->|"Open"| s26
+  s63 -->|"Chat or Terminal"| s26
 ```
 
 ### `terminal.overlay` Session view
@@ -589,6 +614,7 @@ flowchart LR
   - [Image lightbox](#chatlightbox-image-lightbox) (tap an image)
   - [HTML viewer](#chathtml-viewer-html-viewer) (tap an HTML file)
   - [Reply summary](#readbacksummary-modal-reply-summary) (Summarize and read)
+  - [Confirm dialog](#chromeconfirm-confirm-dialog) (sending a message that is already queued)
 
 ### `terminal.session-menu` Session actions menu
 
@@ -603,14 +629,14 @@ flowchart LR
   - Stop and kill, last, behind a divider
 - **Does:**
   - Compact sends /compact through the same verified route as Send
-  - Stop and kill asks the confirm dialog
+  - Stop and kill ends the session at once and closes the view, asking the confirm dialog only for the chief and for a Telegram session
 - **Leads to:**
   - [Rename session](#terminalrename-dialog-rename-session) (Rename)
   - [Changed files overlay](#codechanges-overlay-changed-files-overlay) (Changed files)
   - [Background tasks sheet](#terminalbg-tasks-sheet-background-tasks-sheet) (Background tasks)
   - [Links sheet](#terminallinks-sheet-links-sheet) (Links)
   - [Reply summary](#readbacksummary-modal-reply-summary) (Summarize and read)
-  - [Confirm dialog](#chromeconfirm-confirm-dialog) (Stop and kill)
+  - [Confirm dialog](#chromeconfirm-confirm-dialog) (Stop and kill on the chief or a Telegram session)
 
 ### `terminal.rename-dialog` Rename session
 
@@ -859,10 +885,10 @@ flowchart LR
   s57 -->|"tap a session"| s63
   s58 -->|"tap an idea"| s59
   s60 -->|"tap a session"| s63
-  s60 -->|"an owner check"| s56
+  s60 -->|"an owner group's answer button"| s56
   s61 -->|"a job run"| s73
   s63 -->|"kebab"| s64
-  s63 -->|"Open"| s26
+  s63 -->|"Chat or Terminal"| s26
   s64 -->|"Stop"| s3
 ```
 
@@ -943,7 +969,8 @@ flowchart LR
 - **Root:** `data-surface`
 - **Reach:** the Chief's plan card on the Board
 - **Holds:**
-  - the plan as lanes, queue and parked groups of issue rows
+  - a notice when the chief is not running and how old the plan is
+  - the plan as Questions, Lanes, Queued, In progress and Parked groups of issue rows, each foldable
   - the questions the chief waits on you for, counted in the Board header and the nav badge
 - **Does:**
   - tap a row's note glyph opens its plan note
@@ -1011,11 +1038,13 @@ flowchart LR
   - the owner checks waiting on you
 - **Does:**
   - tap a session opens its drawer
-  - tap an owner check opens its detail
+  - an owner check folds open to say what it needs
+  - each owner group has a button that opens its answer sheet
 - **States:** empty: a line saying nothing needs you
+- **Why:** the owner checks are grouped as Before start, Validate to close and Try what shipped
 - **Leads to:**
   - [Session drawer](#boarddrawer-session-drawer) (tap a session)
-  - [Chief answer sheet](#boardanswer-sheet-chief-answer-sheet) (an owner check)
+  - [Chief answer sheet](#boardanswer-sheet-chief-answer-sheet) (an owner group's answer button)
 
 ### `board.prs-jobs` PRs and jobs card
 
@@ -1041,13 +1070,14 @@ flowchart LR
 - **Holds:**
   - the last exchange of the session
   - the same composer as the session view, without the keys
-  - actions and a kebab
+  - Chat and Terminal buttons and a kebab
 - **Does:**
   - Reply sends through the composer
+  - Chat and Terminal open the session view in that mode; a button is disabled with its reason when the session cannot show it
   - the drawer opens inline under its row and survives the Board's refresh
 - **Leads to:**
   - [Drawer menu](#boarddrawer-menu-drawer-menu) (kebab)
-  - [Session view](#terminaloverlay-session-view) (Open)
+  - [Session view](#terminaloverlay-session-view) (Chat or Terminal)
 
 ### `board.drawer-menu` Drawer menu
 
@@ -1091,6 +1121,7 @@ flowchart LR
   s71 -->|"Run now on a job that needs confirmation"| s72
   s71 -->|"Edit"| s75
   s71 -->|"Remove"| s3
+  s73 -->|"Kill stuck run"| s3
   s73 -->|"Run now with parameters"| s74
   s73 -->|"Run now on a confirm job"| s72
 ```
@@ -1168,11 +1199,9 @@ flowchart LR
 
 - **Root:** `data-surface`
 - **Reach:** the sort button in the Jobs card
-- **Holds:**
-  - Next run and A to Z
-  - filters
+- **Holds:** a Sort switch: Next run and A to Z
 - **Does:**
-  - Clear resets both
+  - Clear resets the sort
   - Done closes
 
 ### `jobs.job-menu` Job row menu
@@ -1207,6 +1236,7 @@ flowchart LR
 - **Does:** Run now runs the job, or opens the run dialog when it takes parameters
 - **Desktop:** docks beside the list instead of covering it
 - **Leads to:**
+  - [Confirm dialog](#chromeconfirm-confirm-dialog) (Kill stuck run)
   - [Run job dialog](#jobsrun-dialog-run-job-dialog) (Run now with parameters)
   - [Confirm a job run](#jobsconfirm-run-confirm-a-job-run) (Run now on a confirm job)
 
@@ -1264,6 +1294,7 @@ flowchart LR
   s76 -->|"Performance"| s88
   s77 -->|"row kebab"| s78
   s77 -->|"Other ports row"| s80
+  s78 -->|"Stop"| s3
   s80 -->|"row kebab"| s81
   s81 -->|"Stop process"| s3
   s82 -->|"row kebab"| s83
@@ -1316,6 +1347,7 @@ flowchart LR
   - the pid as a header line
   - Copy URL
   - Stop, last
+- **Leads to:** [Confirm dialog](#chromeconfirm-confirm-dialog) (Stop)
 
 ### `apps.other-ports` Other ports card
 
@@ -1455,17 +1487,18 @@ flowchart LR
   s90 -->|"Open Settings"| s118
   s92 -->|"Read"| s100
   s92 -->|"Conversations"| s93
-  s92 -->|"Pick a session"| s98
+  s92 -->|"Restart Telegram session"| s3
   s93 -->|"a row"| s96
   s93 -->|"Archived"| s94
   s93 -->|"System"| s95
-  s93 -->|"Start new conversation"| s98
+  s93 -->|"Start new conversation with no skill in scope"| s98
   s96 -->|"Read"| s99
   s96 -->|"model row"| s97
   s96 -->|"Open raw"| s101
   s96 -->|"Delete"| s3
   s99 -->|"close returns to the sheet it opened under"| s96
   s100 -->|"a file"| s101
+  s101 -->|"Delete log"| s3
 ```
 
 ### `lifeos.tab` Life tab
@@ -1518,14 +1551,15 @@ flowchart LR
 - **Holds:**
   - Resume last conversation, with its reason as the header when there is none
   - Start new conversation
-  - Pick a session
+  - Pick a session, which opens Claude's own session picker for the skill
+  - Pin to top or Unpin
   - Restart Telegram session, when one is due
   - Read
   - Conversations
 - **Leads to:**
   - [Skill browser](#lifeosbrowser-skill-browser) (Read)
   - [Conversations group](#lifeosconversations-conversations-group) (Conversations)
-  - [Start new in](#lifeosstart-picker-start-new-in) (Pick a session)
+  - [Confirm dialog](#chromeconfirm-confirm-dialog) (Restart Telegram session)
 
 ### `lifeos.conversations` Conversations group
 
@@ -1542,7 +1576,7 @@ flowchart LR
   - [Conversation sheet](#lifeosconvo-sheet-conversation-sheet) (a row)
   - [Archived conversations](#lifeosarchived-archived-conversations) (Archived)
   - [System conversations](#lifeossystem-system-conversations) (System)
-  - [Start new in](#lifeosstart-picker-start-new-in) (Start new conversation)
+  - [Start new in](#lifeosstart-picker-start-new-in) (Start new conversation with no skill in scope)
 
 ### `lifeos.archived` Archived conversations
 
@@ -1587,11 +1621,11 @@ flowchart LR
 ### `lifeos.start-picker` Start new in
 
 - **Root:** `data-surface`
-- **Reach:**
-  - Pick a session in the skill menu
-  - Start new conversation when more than one session could take it
-- **Holds:** the running sessions a new conversation can start in
-- **Does:** Done closes
+- **Reach:** Start new conversation in the Conversations group when no skill is in scope
+- **Holds:** every skill as a row with its avatar
+- **Does:**
+  - a row starts a new conversation with that skill, on the toolbar's model
+  - Done closes
 
 ### `lifeos.convo-viewer` Conversation viewer
 
@@ -1622,6 +1656,7 @@ flowchart LR
   - the file's contents
   - Rename log and Delete log, for a log
 - **Does:** Delete log asks the confirm dialog
+- **Leads to:** [Confirm dialog](#chromeconfirm-confirm-dialog) (Delete log)
 
 ### `lifeos.recap` Weekly recap card
 
@@ -1661,6 +1696,7 @@ flowchart LR
   s17(["Projects card · Code tab"])
   s18(["Launch model menu · Code tab"])
   s90(["Skills card · Life tab"])
+  s3(["Confirm dialog · Chrome"])
   s1 -->|"gear"| s103
   s15 -->|"Chief settings"| s110
   s17 -->|"Open Settings"| s118
@@ -1685,6 +1721,7 @@ flowchart LR
   s107 -->|"preset kebab"| s108
   s111 -->|"a bot"| s112
   s115 -->|"entry kebab"| s116
+  s116 -->|"Remove"| s3
   s122 -->|"switch on"| s123
 ```
 
@@ -1854,6 +1891,7 @@ flowchart LR
 - **Holds:**
   - Edit
   - Remove
+- **Leads to:** [Confirm dialog](#chromeconfirm-confirm-dialog) (Remove)
 
 ### `settings.tokens` API tokens sheet
 
@@ -1996,6 +2034,7 @@ flowchart LR
 | [Page header](#chromepage-head-page-header) | CPU reading | [PC load sheet](#chromecpu-sheet-pc-load-sheet) |
 | [Page header](#chromepage-head-page-header) | gear | [Settings pane](#settingspane-settings-pane) |
 | [PC load sheet](#chromecpu-sheet-pc-load-sheet) | Screen | [Screen view](#screenview-screen-view) |
+| [PC load sheet](#chromecpu-sheet-pc-load-sheet) | Restart on a flagged process | [Confirm dialog](#chromeconfirm-confirm-dialog) |
 | [Code tab](#codetab-code-tab) | Usage card | [Usage card](#codeusage-usage-card) |
 | [Code tab](#codetab-code-tab) | Sessions card | [Sessions card](#codesessions-sessions-card) |
 | [Code tab](#codetab-code-tab) | Projects card | [Projects card](#codeprojects-projects-card) |
@@ -2013,11 +2052,12 @@ flowchart LR
 | [Session row menu](#codesession-menu-session-row-menu) | Background tasks | [Background tasks sheet](#terminalbg-tasks-sheet-background-tasks-sheet) |
 | [Session row menu](#codesession-menu-session-row-menu) | Links | [Links sheet](#terminallinks-sheet-links-sheet) |
 | [Session row menu](#codesession-menu-session-row-menu) | Rename | [Rename session](#terminalrename-dialog-rename-session) |
-| [Session row menu](#codesession-menu-session-row-menu) | Stop | [Confirm dialog](#chromeconfirm-confirm-dialog) |
 | [Chief row menu](#codechief-menu-chief-row-menu) | Chief settings | [Chief sheet](#settingschief-chief-sheet) |
+| [Chief row menu](#codechief-menu-chief-row-menu) | Restart or Stop | [Confirm dialog](#chromeconfirm-confirm-dialog) |
 | [Projects card](#codeprojects-projects-card) | model picker | [Launch model menu](#codemodel-menu-launch-model-menu) |
 | [Projects card](#codeprojects-projects-card) | row kebab | [Project row menu](#codeproject-menu-project-row-menu) |
 | [Projects card](#codeprojects-projects-card) | Sync all | [Sync all sheet](#codegit-sync-sheet-sync-all-sheet) |
+| [Projects card](#codeprojects-projects-card) | launching on a repo that is behind | [Confirm dialog](#chromeconfirm-confirm-dialog) |
 | [Projects card](#codeprojects-projects-card) | Open Settings | [Folders sheet](#settingsfolders-folders-sheet) |
 | [Launch model menu](#codemodel-menu-launch-model-menu) | preset picker | [Launch preset menu](#codepreset-menu-launch-preset-menu) |
 | [Launch model menu](#codemodel-menu-launch-model-menu) | models and presets come from here | [Launch defaults sheet](#settingslaunch-defaults-launch-defaults-sheet) |
@@ -2036,12 +2076,13 @@ flowchart LR
 | [Chat mode](#chatoverlay-chat-mode) | tap an image | [Image lightbox](#chatlightbox-image-lightbox) |
 | [Chat mode](#chatoverlay-chat-mode) | tap an HTML file | [HTML viewer](#chathtml-viewer-html-viewer) |
 | [Chat mode](#chatoverlay-chat-mode) | Summarize and read | [Reply summary](#readbacksummary-modal-reply-summary) |
+| [Chat mode](#chatoverlay-chat-mode) | sending a message that is already queued | [Confirm dialog](#chromeconfirm-confirm-dialog) |
 | [Session actions menu](#terminalsession-menu-session-actions-menu) | Rename | [Rename session](#terminalrename-dialog-rename-session) |
 | [Session actions menu](#terminalsession-menu-session-actions-menu) | Changed files | [Changed files overlay](#codechanges-overlay-changed-files-overlay) |
 | [Session actions menu](#terminalsession-menu-session-actions-menu) | Background tasks | [Background tasks sheet](#terminalbg-tasks-sheet-background-tasks-sheet) |
 | [Session actions menu](#terminalsession-menu-session-actions-menu) | Links | [Links sheet](#terminallinks-sheet-links-sheet) |
 | [Session actions menu](#terminalsession-menu-session-actions-menu) | Summarize and read | [Reply summary](#readbacksummary-modal-reply-summary) |
-| [Session actions menu](#terminalsession-menu-session-actions-menu) | Stop and kill | [Confirm dialog](#chromeconfirm-confirm-dialog) |
+| [Session actions menu](#terminalsession-menu-session-actions-menu) | Stop and kill on the chief or a Telegram session | [Confirm dialog](#chromeconfirm-confirm-dialog) |
 | [Plan card](#chatplan-card-plan-card) | a plan waiting for you | [Waiting plan panel](#chatplan-panel-waiting-plan-panel) |
 | [Screen view](#screenview-screen-view) | keyboard | [Screen keys](#screenkeys-screen-keys) |
 | [Screen view](#screenview-screen-view) | quality | [Quality sheet](#screenquality-sheet-quality-sheet) |
@@ -2064,10 +2105,10 @@ flowchart LR
 | [Claude's turn card](#boardclaude-turn-claudes-turn-card) | tap a session | [Session drawer](#boarddrawer-session-drawer) |
 | [Ideas card](#boardideas-ideas-card) | tap an idea | [Idea sheet](#boardidea-sheet-idea-sheet) |
 | [Your turn card](#boardyour-turn-your-turn-card) | tap a session | [Session drawer](#boarddrawer-session-drawer) |
-| [Your turn card](#boardyour-turn-your-turn-card) | an owner check | [Chief answer sheet](#boardanswer-sheet-chief-answer-sheet) |
+| [Your turn card](#boardyour-turn-your-turn-card) | an owner group's answer button | [Chief answer sheet](#boardanswer-sheet-chief-answer-sheet) |
 | [PRs and jobs card](#boardprs-jobs-prs-and-jobs-card) | a job run | [Job sheet](#jobsjob-sheet-job-sheet) |
 | [Session drawer](#boarddrawer-session-drawer) | kebab | [Drawer menu](#boarddrawer-menu-drawer-menu) |
-| [Session drawer](#boarddrawer-session-drawer) | Open | [Session view](#terminaloverlay-session-view) |
+| [Session drawer](#boarddrawer-session-drawer) | Chat or Terminal | [Session view](#terminaloverlay-session-view) |
 | [Drawer menu](#boarddrawer-menu-drawer-menu) | Stop | [Confirm dialog](#chromeconfirm-confirm-dialog) |
 | [Jobs tab](#jobstab-jobs-tab) | Next up | [Next up card](#jobsnext-up-next-up-card) |
 | [Jobs tab](#jobstab-jobs-tab) | Jobs | [Jobs card](#jobslist-jobs-card) |
@@ -2082,6 +2123,7 @@ flowchart LR
 | [Job row menu](#jobsjob-menu-job-row-menu) | Run now on a job that needs confirmation | [Confirm a job run](#jobsconfirm-run-confirm-a-job-run) |
 | [Job row menu](#jobsjob-menu-job-row-menu) | Edit | [Add or edit job](#jobsjob-dialog-add-or-edit-job) |
 | [Job row menu](#jobsjob-menu-job-row-menu) | Remove | [Confirm dialog](#chromeconfirm-confirm-dialog) |
+| [Job sheet](#jobsjob-sheet-job-sheet) | Kill stuck run | [Confirm dialog](#chromeconfirm-confirm-dialog) |
 | [Job sheet](#jobsjob-sheet-job-sheet) | Run now with parameters | [Run job dialog](#jobsrun-dialog-run-job-dialog) |
 | [Job sheet](#jobsjob-sheet-job-sheet) | Run now on a confirm job | [Confirm a job run](#jobsconfirm-run-confirm-a-job-run) |
 | [Apps tab](#appstab-apps-tab) | Running | [Running card](#appsrunning-running-card) |
@@ -2092,6 +2134,7 @@ flowchart LR
 | [Apps tab](#appstab-apps-tab) | Performance | [Performance card](#appsperf-performance-card) |
 | [Running card](#appsrunning-running-card) | row kebab | [Running app menu](#appsrunning-menu-running-app-menu) |
 | [Running card](#appsrunning-running-card) | Other ports row | [Other ports sheet](#appsother-ports-sheet-other-ports-sheet) |
+| [Running app menu](#appsrunning-menu-running-app-menu) | Stop | [Confirm dialog](#chromeconfirm-confirm-dialog) |
 | [Other ports sheet](#appsother-ports-sheet-other-ports-sheet) | row kebab | [Listener menu](#appslistener-menu-listener-menu) |
 | [Listener menu](#appslistener-menu-listener-menu) | Stop process | [Confirm dialog](#chromeconfirm-confirm-dialog) |
 | [Apps card](#appsapps-apps-card) | row kebab | [App row menu](#appsapp-menu-app-row-menu) |
@@ -2110,17 +2153,18 @@ flowchart LR
 | [Skills card](#lifeosskills-skills-card) | Open Settings | [Folders sheet](#settingsfolders-folders-sheet) |
 | [Skill row menu](#lifeosskill-menu-skill-row-menu) | Read | [Skill browser](#lifeosbrowser-skill-browser) |
 | [Skill row menu](#lifeosskill-menu-skill-row-menu) | Conversations | [Conversations group](#lifeosconversations-conversations-group) |
-| [Skill row menu](#lifeosskill-menu-skill-row-menu) | Pick a session | [Start new in](#lifeosstart-picker-start-new-in) |
+| [Skill row menu](#lifeosskill-menu-skill-row-menu) | Restart Telegram session | [Confirm dialog](#chromeconfirm-confirm-dialog) |
 | [Conversations group](#lifeosconversations-conversations-group) | a row | [Conversation sheet](#lifeosconvo-sheet-conversation-sheet) |
 | [Conversations group](#lifeosconversations-conversations-group) | Archived | [Archived conversations](#lifeosarchived-archived-conversations) |
 | [Conversations group](#lifeosconversations-conversations-group) | System | [System conversations](#lifeossystem-system-conversations) |
-| [Conversations group](#lifeosconversations-conversations-group) | Start new conversation | [Start new in](#lifeosstart-picker-start-new-in) |
+| [Conversations group](#lifeosconversations-conversations-group) | Start new conversation with no skill in scope | [Start new in](#lifeosstart-picker-start-new-in) |
 | [Conversation sheet](#lifeosconvo-sheet-conversation-sheet) | Read | [Conversation viewer](#lifeosconvo-viewer-conversation-viewer) |
 | [Conversation sheet](#lifeosconvo-sheet-conversation-sheet) | model row | [Model for this resume](#lifeosresume-model-sheet-model-for-this-resume) |
 | [Conversation sheet](#lifeosconvo-sheet-conversation-sheet) | Open raw | [File viewer](#lifeosdoc-file-viewer) |
 | [Conversation sheet](#lifeosconvo-sheet-conversation-sheet) | Delete | [Confirm dialog](#chromeconfirm-confirm-dialog) |
 | [Conversation viewer](#lifeosconvo-viewer-conversation-viewer) | close returns to the sheet it opened under | [Conversation sheet](#lifeosconvo-sheet-conversation-sheet) |
 | [Skill browser](#lifeosbrowser-skill-browser) | a file | [File viewer](#lifeosdoc-file-viewer) |
+| [File viewer](#lifeosdoc-file-viewer) | Delete log | [Confirm dialog](#chromeconfirm-confirm-dialog) |
 | [Settings pane](#settingspane-settings-pane) | Screen time | [Screen time sheet](#settingsscreen-time-screen-time-sheet) |
 | [Settings pane](#settingspane-settings-pane) | a document | [Document sheet](#settingsdocument-document-sheet) |
 | [Settings pane](#settingspane-settings-pane) | Usage meter | [Usage meter sheet](#settingsusage-shows-usage-meter-sheet) |
@@ -2140,4 +2184,5 @@ flowchart LR
 | [Launch defaults sheet](#settingslaunch-defaults-launch-defaults-sheet) | preset kebab | [Launch preset menu](#settingspreset-menu-launch-preset-menu) |
 | [Telegram sheet](#settingschannels-telegram-sheet) | a bot | [Bot sheet](#settingschannel-bot-bot-sheet) |
 | [Inspiration sheet](#settingsinspiration-inspiration-sheet) | entry kebab | [Inspiration entry menu](#settingsinspiration-menu-inspiration-entry-menu) |
+| [Inspiration entry menu](#settingsinspiration-menu-inspiration-entry-menu) | Remove | [Confirm dialog](#chromeconfirm-confirm-dialog) |
 | [PC load sheet](#settingspc-load-pc-load-sheet) | switch on | [PC load, night restart on](#settingspc-load-on-pc-load-night-restart-on) |
