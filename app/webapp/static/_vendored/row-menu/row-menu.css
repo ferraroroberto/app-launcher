@@ -27,9 +27,8 @@
   min-width: 200px;
   max-width: calc(100vw - 16px);
   padding: 4px;
-  /* The fleet menu surface (owner's decision 2026-10-13): one elevation
-   * step above the card it opens over, so it reads as a layer in both themes.
-   * An app without the token keeps the card surface. */
+  /* One elevation step above the card the menu opens over, so it reads as a
+   * layer in both themes. An app without the token keeps the card surface. */
   background: var(--card-2, var(--card));
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
