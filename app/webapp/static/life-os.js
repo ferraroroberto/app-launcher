@@ -12,8 +12,7 @@
  * leads with an avatar and says when the skill was last used; pinned skills
  * come first, then the most recently used, and skills not used lately fold
  * under one row. A swipe right (or the kebab) resumes the newest
- * conversation on its own model, a swipe left starts a new one; on the phone
- * the rows run edge to edge to give the swipe room. A skill a Telegram profile is bound to says so
+ * conversation on its own model, a swipe left starts a new one. A skill a Telegram profile is bound to says so
  * in its meta, wears the green badge while that bot runs, and starts or opens
  * the bot from its kebab; there is no Telegram card. The skills
  * field searches the conversations too (life-os-convos.js): matches

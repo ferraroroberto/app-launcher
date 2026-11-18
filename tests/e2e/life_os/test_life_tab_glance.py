@@ -179,50 +179,44 @@ def _assert_channels_skill_chip_is_code(page: Page) -> None:
     assert parent_px == 16, f"the chips' line is {parent_px}px, not the 16px body"
 
 
-def _assert_skill_rows_run_full_bleed_on_the_phone_only(page: Page) -> None:
-    """The experiment the owner asked for: on the phone the Skills card runs
-    edge to edge, so a row and its panes span the screen, while its header,
-    toolbar and the rows' text keep the inset they had. Wide, it stays a
-    card."""
+def _assert_skills_card_is_inset_on_the_phone(page: Page) -> None:
+    """The fleet's inset-list rule: the Skills card sits inside the page
+    gutter with its rounded corners, the rows span the card (not the screen),
+    and nothing overflows sideways. The same on a wide screen."""
     measure = """el => {
       if (!el.isConnected) return null;
       const box = (n) => n.getBoundingClientRect();
       const card = el.closest('.lifeos-list-card');
       const row = el.querySelector("li[data-id='garden-notes']");
       const app = el.closest('.app');
+      const root = document.documentElement;
       return {
         // The content edge, without the desktop scrollbar a narrow window keeps.
         edge: box(app).left + app.clientWidth,
         card: box(card), row: box(row),
         radius: getComputedStyle(card).borderTopLeftRadius,
-        head: box(card.querySelector('.collapse-main')),
-        filter: box(card.querySelector('.action-row-filter')),
-        avatar: box(row.querySelector('.avatar')),
+        overflow: root.scrollWidth - root.clientWidth,
       };
     }"""
-    page.set_viewport_size({"width": 390, "height": 844})
-    phone = stable_eval(page.locator("#lifeOsList"), measure)
-    assert round(phone["row"]["left"]) == 0, phone
-    assert abs(phone["row"]["right"] - phone["edge"]) <= 1, phone
-    assert phone["radius"] == "0px", phone
-    # The text keeps its inset (the gutter plus the card's 14px): header,
-    # filter and avatar line up, off the edge.
-    assert phone["filter"]["left"] >= 24, phone
-    for part in ("avatar", "head"):
-        assert abs(phone[part]["left"] - phone["filter"]["left"]) <= 2, (part, phone)
-    page.set_viewport_size({"width": 1024, "height": 800})
-    wide = stable_eval(page.locator("#lifeOsList"), measure)
-    assert wide["card"]["left"] > 0 and wide["radius"] != "0px", wide
+    for width, height in ((390, 844), (390, 664), (1024, 800)):
+        page.set_viewport_size({"width": width, "height": height})
+        m = stable_eval(page.locator("#lifeOsList"), measure)
+        assert m["card"]["left"] >= 8, m
+        assert m["card"]["right"] <= m["edge"] - 8, m
+        assert m["radius"] != "0px", m
+        assert m["row"]["left"] >= m["card"]["left"] - 1, m
+        assert m["row"]["right"] <= m["card"]["right"] + 1, m
+        assert m["overflow"] <= 0, m
 
 
 @pytest.mark.iphone
-def test_a_linked_skill_says_telegram_its_rows_run_full_bleed_and_its_chip_is_code(
+def test_a_linked_skill_says_telegram_its_card_is_inset_and_its_chip_is_code(
     life,
 ) -> None:
     """The bot is a plain fact in the meta, never a chip; the avatar's green
     badge only while that bot runs. Every row is a two-line row (rows.lg),
     its avatar on the leading edge and its kebab on the trailing one. Then,
-    on the same load, the phone's full-bleed rows and Settings' code chip."""
+    on the same load, the inset Skills card and Settings' code chip."""
     page = life()
     garden, reading, trip = (_row(page, i) for i in ("garden-notes", "reading-list", "trip-planner"))
     expect(garden.locator(".action-row-meta-text")).to_have_text("Telegram")
@@ -255,7 +249,7 @@ def test_a_linked_skill_says_telegram_its_rows_run_full_bleed_and_its_chip_is_co
     assert title["right"] <= kebab["left"], (title, kebab)
     assert kebab["width"] >= 44 and kebab["height"] >= 44, kebab
 
-    _assert_skill_rows_run_full_bleed_on_the_phone_only(page)
+    _assert_skills_card_is_inset_on_the_phone(page)
     _assert_channels_skill_chip_is_code(page)
 
 
