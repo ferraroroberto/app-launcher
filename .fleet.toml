@@ -54,7 +54,7 @@ text-size = { src = "app/webapp/static/_vendored/text-size", sha = "5d460bd1d9d4
 segmented = { src = "app/webapp/static/_vendored/segmented", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/segmented" }
 base = { src = "app/webapp/static/_vendored/base", sha = "7577aece617ad366e7df8ef522d511184b445144", dest = "app/webapp/static/_vendored/base" }
 action-row = { src = "app/webapp/static/_vendored/action-row", sha = "8f15c49560adbc076d24a8a63dd671868ffa7a4e", dest = "app/webapp/static/_vendored/action-row" }
-row-menu = { src = "app/webapp/static/_vendored/row-menu", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "app/webapp/static/_vendored/row-menu" }
+row-menu = { src = "app/webapp/static/_vendored/row-menu", sha = "a04abc7b3af872cbac974401dd0945587eac6cef", dest = "app/webapp/static/_vendored/row-menu" }
 # Every vendored web component above is byte-identical to the scaffold and declared;
 # tests/unit/repo/test_vendored_manifest.py pins that. icons joined on 2026-10-15 (the owner's
 # decision, project-scaffolding#390): the 16 app-launcher-only glyphs were upstreamed
