@@ -270,7 +270,7 @@ export function renderJobRow(job, handlers) {
       label: 'Remove', ariaLabel: 'Remove ' + job.name,
       onTap: function () { handlers.onRemove(job); },
     },
-  ]);
+  ]).dataset.surface = 'jobs.job-menu';
   return row.li;
 }
 

@@ -19,5 +19,5 @@ export function wireUsageMenu() {
       dataset: { item: 'usage-history-btn', track: 'coding.usage-history' },
       glyph: 'clock', label: 'History', onTap: openProgressSheet,
     },
-  ]);
+  ]).dataset.surface = 'code.usage-menu';
 }

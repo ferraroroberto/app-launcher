@@ -1,7 +1,7 @@
     <!-- The Screen view (#1520): the PC's desktop, live, full screen. Opened
          from the PC load sheet's Screen row; on a desktop browser the same
          view runs in its own pop-out window. screen-view.js drives it. -->
-    <dialog id="screenView" class="screen-view" data-track-view="sheet.screen" aria-labelledby="screenViewTitle">
+    <dialog data-surface="screen.view" id="screenView" class="screen-view" data-track-view="sheet.screen" aria-labelledby="screenViewTitle">
       <!-- The bar and the tools row, as one block (#1601): in the flow as ever,
            except on a phone held sideways, where the handle below brings them
            up as an overlay (screen-view.js, styles/apps.css). -->
@@ -53,7 +53,7 @@
         <!-- The live readout (#1721): fps, kB/s, frame size and ack-to-frame
              time from the client, the PC's stage times from the server.
              screen-view.js fills it; it never takes a touch. -->
-        <div id="screenReadout" class="screen-readout" aria-hidden="true" hidden></div>
+        <div data-surface="screen.readout" id="screenReadout" class="screen-readout" aria-hidden="true" hidden></div>
       </div>
       <!-- The handle (#1601): shown only on a phone in landscape, where the bar
            and the tools row are hidden. It names the mode (View / Control) so a
@@ -71,7 +71,7 @@
            The last row of each page (#1719) sends the phone's clipboard text
            to the PC: Paste to PC sets the PC's clipboard, Paste + Ctrl+V sets
            it and then presses Ctrl+V. -->
-      <div id="screenKeys" class="screen-keys" role="group" aria-label="Keys" hidden>
+      <div data-surface="screen.keys" id="screenKeys" class="screen-keys" role="group" aria-label="Keys" hidden>
         <div class="screen-keys-page" data-keys-page="main">
           <button data-track="screen.esc" type="button" class="key-btn" data-key="esc">Esc</button>
           <button data-track="screen.tab" type="button" class="key-btn" data-key="tab">Tab</button>
@@ -120,7 +120,7 @@
     <!-- Paste to PC by hand (#1719): shown only when the phone refuses to let
          the page read its clipboard. Header ✕ plus one full-width action (modal
          contract, #545). Whatever is pasted here goes to the PC the same way. -->
-    <dialog id="screenPasteSheet" class="detail-dialog" data-track-view="sheet.screen-paste" aria-labelledby="screenPasteTitle">
+    <dialog data-surface="screen.paste-sheet" id="screenPasteSheet" class="detail-dialog" data-track-view="sheet.screen-paste" aria-labelledby="screenPasteTitle">
       <form id="screenPasteForm" class="detail-card">
         <div class="detail-header">
           <h2 id="screenPasteTitle"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard"></use></svg> Paste to PC</h2>
@@ -139,7 +139,7 @@
     <!-- Quality and readout (#1721): three presets, remembered per device (a
          pick reconnects), and the readout switch. Header close plus one
          full-width Done (modal contract, #545). screen-view.js drives it. -->
-    <dialog id="screenQualitySheet" class="detail-dialog" data-track-view="sheet.screen-quality" aria-labelledby="screenQualityTitle">
+    <dialog data-surface="screen.quality-sheet" id="screenQualitySheet" class="detail-dialog" data-track-view="sheet.screen-quality" aria-labelledby="screenQualityTitle">
       <div class="detail-card">
         <div class="detail-header">
           <h2 id="screenQualityTitle"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sliders-horizontal"></use></svg> Quality</h2>
@@ -164,7 +164,7 @@
          run_in_background or Monitor, Running first, then Finished. A row opens
          the task's output tail. Read-only, so its one action is Done. Driven by
          background-tasks/background-tasks-sheet.js. -->
-    <dialog id="bgTasksSheet" class="detail-dialog bg-tasks-sheet" data-track-view="sheet.bg-tasks" aria-labelledby="bgTasksTitle">
+    <dialog data-surface="terminal.bg-tasks-sheet" id="bgTasksSheet" class="detail-dialog bg-tasks-sheet" data-track-view="sheet.bg-tasks" aria-labelledby="bgTasksTitle">
       <div class="detail-card">
         <div class="detail-header">
           <h2 id="bgTasksTitle" tabindex="-1" autofocus><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard-list"></use></svg> Background tasks</h2>
@@ -184,7 +184,7 @@
          mentioned, grouped, newest first. A row opens in a new tab; its button
          copies. Read-only, so its one action is Done. Driven by
          links/links-sheet.js. -->
-    <dialog id="linksSheet" class="detail-dialog links-sheet" data-track-view="sheet.links" aria-labelledby="linksTitle">
+    <dialog data-surface="terminal.links-sheet" id="linksSheet" class="detail-dialog links-sheet" data-track-view="sheet.links" aria-labelledby="linksTitle">
       <div class="detail-card">
         <div class="detail-header">
           <h2 id="linksTitle" tabindex="-1" autofocus><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-link"></use></svg> Links</h2>
@@ -214,7 +214,7 @@
     <!-- Sync all's report (Projects toolbar): one line per repo, pulled with
          its commit count, up to date, or skipped with the reason. Read-only,
          so its one action is Done. Driven by apps/git-sync.js. -->
-    <dialog id="gitSyncSheet" class="detail-dialog" data-track-view="sheet.git-sync" aria-labelledby="gitSyncTitle">
+    <dialog data-surface="code.git-sync-sheet" id="gitSyncSheet" class="detail-dialog" data-track-view="sheet.git-sync" aria-labelledby="gitSyncTitle">
       <div class="detail-card">
         <div class="detail-header">
           <h2 id="gitSyncTitle" tabindex="-1" autofocus><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-download"></use></svg> Sync all</h2>
@@ -230,7 +230,7 @@
       </div>
     </dialog>
 
-    <dialog id="sessionRenameDialog" class="detail-dialog" data-track-view="sheet.session-rename">
+    <dialog data-surface="terminal.rename-dialog" id="sessionRenameDialog" class="detail-dialog" data-track-view="sheet.session-rename">
       <form id="sessionRenameForm" class="detail-card">
         <div class="detail-header">
           <h2><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg> <span id="sessionRenameHeading">Rename session</span></h2>

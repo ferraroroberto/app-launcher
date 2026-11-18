@@ -160,7 +160,7 @@ if not password.check_password(presented, legacy=cfg.auth_password):
 
 ## Usage log
 
-The sheet is `data-track-view="sign-in"` and its primary is `data-track="sign-in-submit"`, so the usage log records each open, its time on screen and each submit. The password, the hint and the server reply are never recorded.
+The sheet is `data-surface="shared.login"` for the app's [UX surface map](../../../../../docs/ux-surface-map.md) (a fixed id the component stamps itself; no app-side code sets it, and the app lists `shared.login` in its map with `root: data-surface`), `data-track-view="sign-in"` and its primary is `data-track="sign-in-submit"`, so the usage log records each open, its time on screen and each submit. The password, the hint and the server reply are never recorded.
 
 ## Required design tokens
 

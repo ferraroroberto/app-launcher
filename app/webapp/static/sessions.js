@@ -224,7 +224,7 @@ function stoppedChiefRow() {
   kebab.title = 'Chief actions';
   kebab.setAttribute('aria-label', 'Chief actions');
   actions.appendChild(kebab);
-  sessionMenu.attach('chief:stopped', kebab, chiefMenuItems(kebab, false));
+  sessionMenu.attach('chief:stopped', kebab, chiefMenuItems(kebab, false)).dataset.surface = 'code.chief-menu';
   li.appendChild(actions);
   return li;
 }
@@ -315,7 +315,7 @@ function sessionRow(s) {
   kebab.setAttribute('aria-label', 'Session actions');
   const items = sessionMenuItems(s, kebab, isChief, remote);
   actions.appendChild(kebab);
-  sessionMenu.attach(s.session_id, kebab, items);
+  sessionMenu.attach(s.session_id, kebab, items).dataset.surface = 'code.session-menu';
 
   li.appendChild(actions);
 

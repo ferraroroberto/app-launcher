@@ -67,6 +67,7 @@ function pickerMarkup(key) {
   trigger.title = 'Launch preset: a model with the effort it runs at';
   const menu = el('span', 'model-combo-menu');
   menu.id = key + 'PresetMenu';
+  menu.dataset.surface = 'code.preset-menu';
   menu.setAttribute('role', 'listbox');
   menu.setAttribute('aria-label', 'Launch preset');
   menu.hidden = true;

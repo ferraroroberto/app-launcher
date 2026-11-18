@@ -255,7 +255,7 @@ function renderList(host, items, running) {
         label: 'Remove', ariaLabel: 'Remove ' + a.name,
         onTap: function () { removeApp(a); },
       },
-    ], { header: kindLabel(a.kind) });
+    ], { header: kindLabel(a.kind) }).dataset.surface = 'apps.app-menu';
     host.appendChild(row.li);
   });
 }
@@ -596,7 +596,7 @@ export function renderRunningApps() {
         label: 'Stop', ariaLabel: 'Stop ' + r.name,
         onTap: function () { stopAppInstance(r); },
       },
-    ], { header: 'pid ' + r.pid });
+    ], { header: 'pid ' + r.pid }).dataset.surface = 'apps.running-menu';
     host.appendChild(row.li);
   });
   runningMenu.endRender();

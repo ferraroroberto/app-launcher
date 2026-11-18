@@ -229,7 +229,7 @@ export function wireTerminalMenu() {
         if (s) stopSession(s);
       },
     },
-  ]);
+  ]).dataset.surface = 'terminal.session-menu';
 
   latestPill = createLatestPill(els.terminalLatest, {
     isAway: function () {

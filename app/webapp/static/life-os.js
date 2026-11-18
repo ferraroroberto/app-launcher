@@ -81,6 +81,7 @@ const lifeLaunch = mountLaunchToolbar(document.getElementById('lifeOsLaunchToolb
   menuHint: 'The model is for new conversations; a resumed one keeps its own. ' +
     'Resume: a tap opens the session picker.',
 });
+document.getElementById('lifeOsModelMenu').dataset.surface = 'lifeos.model-menu';
 
 // Exported: life-os-convos.js's resumeConversation reads it too.
 export function launchDetached() { return !!(lifeLaunch && lifeLaunch.isDetached()); }
@@ -478,7 +479,7 @@ export function renderSkills() {
       // A phone has no hover to explain a disabled Resume, so its reason is
       // the menu's first line (the Conversations rows' rule).
       header: s.has_conversations ? '' : 'No conversation yet',
-    });
+    }).dataset.surface = 'lifeos.skill-menu';
     host.appendChild(row.li);
   }
 

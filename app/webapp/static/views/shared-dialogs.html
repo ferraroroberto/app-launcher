@@ -1,7 +1,7 @@
     <!-- The confirm sheet (#1437): the vendored modal in place of native
          confirm() before a Stop or a Remove. confirm-dialog.js fills the
          title, the line and the action's text. -->
-    <dialog id="confirmDialog" class="detail-dialog confirm-dialog" data-track-view="sheet.confirm" aria-labelledby="confirmDialogTitle" aria-describedby="confirmDialogMessage">
+    <dialog data-surface="chrome.confirm" id="confirmDialog" class="detail-dialog confirm-dialog" data-track-view="sheet.confirm" aria-labelledby="confirmDialogTitle" aria-describedby="confirmDialogMessage">
       <div class="detail-card">
         <div class="detail-header">
           <h2 id="confirmDialogTitle" tabindex="-1" autofocus></h2>
@@ -20,7 +20,7 @@
     <!-- Queued messages: what a session holds that the agent has not taken
          yet, each discardable where the session-host can remove it.
          Filled by chat/chat-pending.js. -->
-    <dialog id="pendingInputDialog" class="detail-dialog pending-dialog" data-track-view="sheet.pending-input" aria-labelledby="pendingInputTitle">
+    <dialog data-surface="chat.pending-sheet" id="pendingInputDialog" class="detail-dialog pending-dialog" data-track-view="sheet.pending-input" aria-labelledby="pendingInputTitle">
       <div class="detail-card">
         <div class="detail-header">
           <h2 id="pendingInputTitle" tabindex="-1" autofocus>Queued messages</h2>
@@ -37,7 +37,7 @@
       </div>
     </dialog>
 
-    <dialog id="renameDialog" class="detail-dialog" data-track-view="sheet.rename">
+    <dialog data-surface="apps.rename-dialog" id="renameDialog" class="detail-dialog" data-track-view="sheet.rename">
       <form id="renameForm" class="detail-card">
         <div class="detail-header">
           <h2><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg> Rename</h2>

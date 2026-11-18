@@ -150,6 +150,7 @@ function drawerKebab() {
 export function buildDrawer(card) {
   const drawer = document.createElement('div');
   drawer.className = 'board-drawer';
+  drawer.dataset.surface = 'board.drawer';
   drawer.id = drawerId(card);
 
   const exchange = document.createElement('div');
@@ -240,7 +241,7 @@ export function buildDrawer(card) {
         setTimeout(function () { fetchBoard().catch(function () {}); }, 1500);
       },
     },
-  ]);
+  ]).dataset.surface = 'board.drawer-menu';
   drawer.appendChild(actions);
   return drawer;
 }

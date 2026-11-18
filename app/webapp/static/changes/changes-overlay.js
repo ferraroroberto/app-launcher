@@ -494,7 +494,7 @@ function sessionFileBody(file, body) {
       hidden: function () { return !onThePc(); },
       onTap: function () { openOnPc(file); },
     },
-  ]);
+  ]).dataset.surface = 'code.changes-file-menu';
   tools.appendChild(acts);
   body.appendChild(tools);
   if (full) body.appendChild(fullPathLine(full));

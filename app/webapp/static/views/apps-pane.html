@@ -1,4 +1,4 @@
-    <section id="paneApps" class="pane" role="tabpanel" aria-labelledby="tabApps" hidden>
+    <section data-surface="apps.tab" id="paneApps" class="pane" role="tabpanel" aria-labelledby="tabApps" hidden>
       <!-- Page header (#1131): every pane opens with the vendored home-head —
            the tab's name, one context line, the theme toggle and the gear. -->
       <div class="card home-head page-head">
@@ -29,7 +29,7 @@
            here, each with its kind avatar and the alive badge, then "Other
            ports", which opens the listener sheet (the Port listeners card
            merged in). The note shows only when nothing is running. -->
-      <details class="card card--collapsible action-list running-apps-card" open>
+      <details data-surface="apps.running" class="card card--collapsible action-list running-apps-card" open>
         <summary data-track="apps.fold-running" class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-play"></use></svg>
@@ -67,7 +67,7 @@
            sheet's own list (#listenersBody) moves in here at that query and
            back into the sheet below it, so both are the same rows and the
            same confirmed stop. -->
-      <details id="otherPortsCard" class="card card--collapsible action-list other-ports-card" open>
+      <details data-surface="apps.other-ports" id="otherPortsCard" class="card card--collapsible action-list other-ports-card" open>
         <summary data-track="apps.fold-other-ports" class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plug"></use></svg>
@@ -79,7 +79,7 @@
       </details>
       </div>
 
-      <details class="card card--collapsible action-list apps-list-card" open>
+      <details data-surface="apps.apps" class="card card--collapsible action-list apps-list-card" open>
         <summary data-track="apps.fold-apps" class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-package"></use></svg>
@@ -123,7 +123,7 @@
       <!-- Collapsed by default — a setup-once panel, not the tab's working
            set (issue #456 part 2/2). The summary says how many and how many
            start at log on (#1437). -->
-      <details class="card card--collapsible action-list registered-trays-card">
+      <details data-surface="apps.trays" class="card card--collapsible action-list registered-trays-card">
         <summary data-track="apps.fold-trays" class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-package"></use></svg>
@@ -146,7 +146,7 @@
 
       <!-- Mini apps: the *.bat files of the mini_apps_root folder. Hidden until
            a folder is configured (apps.js), then the same rows as Trays. -->
-      <details id="miniAppsCard" class="card card--collapsible action-list mini-apps-card" open hidden>
+      <details data-surface="apps.mini-apps" id="miniAppsCard" class="card card--collapsible action-list mini-apps-card" open hidden>
         <summary data-track="apps.fold-mini" class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-package"></use></svg>
@@ -170,7 +170,7 @@
            (apps/apps-perf.js), in place of a line on each app's row. Collapsed:
            its summary already says how many are measured and whether one is over
            budget. -->
-      <details class="card card--collapsible action-list apps-perf-card">
+      <details data-surface="apps.perf" class="card card--collapsible action-list apps-perf-card">
         <summary data-track="apps.fold-perf" class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-gauge"></use></svg>

@@ -221,7 +221,7 @@ function buildListenerRow(l, isChild, hasChildren) {
       label: 'Stop process', ariaLabel: 'Stop ' + label + ' (pid ' + l.pid + ')',
       onTap: function () { killListener(l, label); },
     },
-  ]);
+  ]).dataset.surface = 'apps.listener-menu';
   return row.li;
 }
 

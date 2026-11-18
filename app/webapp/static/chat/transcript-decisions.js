@@ -102,6 +102,7 @@ function typedPart(q, answer) {
 export function renderQuestion(e, toolErrors, answering) {
   const li = document.createElement('li');
   li.className = 'tr-ask-item';
+  li.dataset.surface = 'chat.question-card';
   li._trAsk = e;
   li._trAnswering = answering || null;
   if (e.call_id) li.dataset.callId = e.call_id;
@@ -528,6 +529,7 @@ const PLAN_STATUS = {
 export function renderPlan(e, toolErrors, answering) {
   const li = document.createElement('li');
   li.className = 'tr-plan-item';
+  li.dataset.surface = 'chat.plan-card';
   li._trPlan = e;
   li._trAnswering = answering || null;
   if (e.call_id) li.dataset.callId = e.call_id;
@@ -684,6 +686,7 @@ export function clearPicker() {
 function renderPicker(p) {
   const card = document.createElement('div');
   card.className = 'tr-ask tr-plan tr-plan-live-card';
+  card.dataset.surface = 'chat.plan-panel';
   const head = document.createElement('div');
   head.className = 'tr-ask-head';
   head.innerHTML = icon('file-text');
