@@ -48,16 +48,17 @@ The rules (each one quotes its global-instruction line in docs/conventions-ratch
     the file(s) the repo declares as the one home for that job. The repo lists one
     `[[conventions_ratchet.must_use]]` table per helper (`call`, `helper`, `why`,
     optional `paths`); listing an entry is what turns the rule on. The name is
-    resolved through the module's imports (`import x as y`, `from x import f`), the
-    way `secret-compare` and `git-wrapper` resolve theirs. Those two are the same
-    check with the call set built in and the helper read from `secret_helpers` /
-    `git_wrappers`. A method on an instance (`conn.replace`) is not seen;
+    resolved through the module's imports (`import x as y`, `from x import f`), the way
+    `secret-compare` and `git-wrapper` resolve theirs: the same check with the call set
+    built in and the helper read from `secret_helpers` / `git_wrappers`. A method on an
+    instance (`conn.replace`) is not seen;
+  * `browser-per-iteration` -- a Playwright browser or context opened inside a loop body;
   * `state-literal`, `state-set-repeat`, `state-write` -- implicit-state-machine suspects in
     Python and JS/TS, read by `conventions_state.py`; a module `[[state_machines]]` declares is
     never reported.
 
 Test modules (and every file under a `tests/` or `test/` folder) are skipped by
-every rule except `no-window`. A single call keeps its exception with a
+every rule except `no-window` and `browser-per-iteration`. A single call keeps its exception with a
 `# <rule>-exempt: <reason>` comment on its own lines or in the comment block
 right above it (in a web file the comment is `<!-- ... -->`, `// ...` or
 `/* ... */`); a marker with no reason exempts nothing.
@@ -143,7 +144,6 @@ is_cli_path: Callable[[str], bool] = _readers.is_cli_path
 _dotted: Callable[[ast.expr], str] = _readers._dotted
 _program: Callable[[ast.Call], str] = _readers._program
 _is_login_route: Callable[[ast.expr], bool] = _readers._is_login_route
-_calls_retry_after: Callable[[ast.FunctionDef | ast.AsyncFunctionDef], bool] = _readers._calls_retry_after
 _writes_to_a_file: Callable[[ast.Call], bool] = _readers._writes_to_a_file
 _exempt: Callable[..., bool] = _readers._exempt
 _window: Callable[[ast.AST, list[str]], list[str]] = _readers.window
@@ -166,9 +166,9 @@ GIT_TIMEOUT_S = 120
 
 RULES = ("no-window", "logging-not-print", "no-drive-path", "secret-compare", "git-wrapper",
          "password-input-vendored", "nav-standalone-head", "login-lockout", "no-pwsh-stub",
-         "must-use", "subprocess-timeout", "state-literal", "state-set-repeat", "state-write")
+         "must-use", "subprocess-timeout", "browser-per-iteration", "state-literal", "state-set-repeat", "state-write")
 #: The rules a test module is held to; fixtures legitimately spell drive paths, raw compares and raw git.
-TEST_RULES = frozenset({"no-window"})
+TEST_RULES = frozenset({"no-window", "browser-per-iteration"})
 #: The rules read from web files rather than Python source.
 WEB_RULES = frozenset({"password-input-vendored", "nav-standalone-head"})
 WEB_SUFFIXES = (".html", ".htm", ".js", ".mjs", ".cjs", ".ts", ".jsx", ".tsx", ".vue", ".svelte",
@@ -200,7 +200,7 @@ _DRIVE_ROOT = re.compile(r"[A-Za-z]:[\\/]?\Z")
 _CLI_MODULES = frozenset({"argparse", "click", "typer", "fire", "optparse"})
 _GIT_PROGRAMS = frozenset({"git", "git.exe"})
 #: The vendored lock-out module's name, wherever the app copied it.
-LOCKOUT_MODULE = "login_lockout"
+LOCKOUT_MODULE: str = _readers.LOCKOUT_MODULE
 
 EXIT_PASS, EXIT_RISE, EXIT_CONFIG, EXIT_NOT_CONFIRMED = 0, 1, 2, 3
 
@@ -464,19 +464,6 @@ def entries_for(path: str, cfg: Config) -> tuple[MustUse, ...]:
 
 # ---------------------------------------------------------------- scanning
 
-def _login_lockout_hits(scanner: _Scanner) -> list[tuple[ast.AST, str, str]]:
-    """A login route with no lock-out: the module never imports it, or the handler never checks it."""
-    found: list[tuple[ast.AST, str, str]] = []
-    for decorator, handler in scanner.login_routes:
-        if not scanner.imports_lockout:
-            message = f"login route `{handler.name}` in a module that does not import {LOCKOUT_MODULE}"
-        elif not _calls_retry_after(handler):
-            message = f"login route `{handler.name}` never calls retry_after() before the password check"
-        else:
-            continue
-        found.append((decorator, "login-lockout", message))
-    return found
-
 
 def _entry_policy(entry: MustUse) -> _Policy:
     homes = ", ".join(entry.helper)
@@ -636,7 +623,8 @@ def scan_source(source: bytes | str, path: str, rules: frozenset[str],
     scanner = _Scanner(path, rules, _docstring_ids(tree), entries)
     scanner.visit(tree)
     hits = []
-    for node, rule, message in [*scanner.hits, *_login_lockout_hits(scanner)]:
+    for node, rule, message in [*scanner.hits, *_readers.login_lockout_hits(scanner.login_routes, scanner.imports_lockout),
+                               *_readers.browser_loop_hits(tree, rules)]:
         if rule == "logging-not-print" and (scanner.print_shadowed or scanner.cli or is_cli_path(path)):
             continue
         if not _exempt(rule, _window(node, lines)):
