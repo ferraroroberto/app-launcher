@@ -29,7 +29,10 @@
  * not the theme the user picked, so a dark app theme on a light OS drew native
  * popups on a light background. The explicit theme wins; `light dark` stays
  * only as the fallback before `data-theme` is stamped. `:root[...]` (0,2,0)
- * beats an app's bare `:root { color-scheme }` whatever the load order. */
+ * beats an app's bare `:root { color-scheme }` whatever the load order.
+ * The source of these three rules is `color-scheme/color-scheme.css`; this
+ * block repeats it byte for byte (tests/vendored/test_color_scheme_source.py)
+ * so an app that vendors `base` needs no second link. */
 :root { color-scheme: light dark; }
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
