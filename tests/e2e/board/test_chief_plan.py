@@ -103,6 +103,28 @@ def test_answer_button_shows_only_with_questions(
     box = stable_read(button.bounding_box)
     assert box and box["height"] >= 44, f"answer button under the 44px tap floor: {box}"
 
+    # A chief with nothing queued is when it asks what to work on: the question
+    # still shows with its options, and the answer sheet opens from it.
+    f = tmp_path / "chief-plan.json"
+    f.write_text(_json.dumps({
+        "version": 1, "updated_at": "2026-09-27T09:00:00Z", "lanes": [], "queue": [],
+        "waiting_on_roberto": [{
+            "id": "t1", "text": "What next?", "question": "What should I work on?",
+            "options": [{"label": "alpha", "value": "alpha"}, {"label": "beta", "value": "beta"}],
+        }],
+    }), encoding="utf-8")
+    current["plan"] = chief_plan.read_chief_plan(f, "octo")
+    authed_page.locator("#boardRefresh").click()
+    expect(plan_body).to_have_attribute("data-state", "ok")
+    expect(plan_body.locator("li.board-plan-waiting")).to_have_count(1)
+    expect(button).to_have_text("Answer 1 question")
+    plan_body.locator("li.board-plan-waiting .action-row-main").click()
+    dialog = authed_page.locator("#chiefAnswersDialog")
+    expect(dialog).to_be_visible()
+    expect(dialog.locator('.chief-answer[data-key="t1"] .tr-ask-question')).to_have_text(
+        "What should I work on?")
+    expect(dialog.locator('.chief-answer[data-key="t1"]')).to_contain_text("alpha")
+
 
 def _mock_repo_filter_board(page: Page, tmp_path) -> list:
     """Mock the apps, board, plan, ensure and input routes for the repo-filter test; return the input posts."""

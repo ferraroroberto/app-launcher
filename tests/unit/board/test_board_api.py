@@ -117,7 +117,7 @@ def test_chief_plan_reader_is_tolerant(tmp_path: Path):
         }],
     }
 
-    f.write_text(json.dumps({"version": 1, "queue": [], "lanes": _PLAN_V1["lanes"]}), encoding="utf-8")
+    f.write_text(json.dumps({"version": 1, "queue": [], "lanes": [], "waiting_on_roberto": []}), encoding="utf-8")
     assert chief_plan.read_chief_plan(f) == {"state": "empty"}
     for bad in ("{", "", "[]", json.dumps({**_PLAN_V1, "version": 2}), json.dumps({"queue": _PLAN_V1["queue"]})):
         f.write_text(bad, encoding="utf-8")
@@ -182,6 +182,33 @@ def test_chief_plan_questions_read_the_additive_fields_field_by_field(tmp_path: 
     assert third["id"] == "" and third["multi"] is True
     assert third["ref_url"] == "https://github.com/octo/life-os/issues/12"
     assert [o["label"] for o in third["options"]] == ["A", "B"]
+
+
+def test_chief_plan_with_only_questions_or_lanes_is_ok_not_empty(tmp_path: Path):
+    """A chief with an empty queue asks what to work on; its question must
+    reach the Board, and a lane alone still reads as a plan."""
+    f = tmp_path / "chief-plan.json"
+    ask = {"id": "t1", "text": "Test?", "options": [{"label": "a", "value": "a"}]}
+    f.write_text(json.dumps({"version": 1, "queue": [], "lanes": [], "waiting_on_roberto": [ask]}),
+                 encoding="utf-8")
+    plan = chief_plan.read_chief_plan(f)
+    assert plan["state"] == "ok" and plan["queue"] == [] and plan["lanes"] == []
+    assert [q["id"] for q in plan["waiting_on_roberto"]] == ["t1"]
+
+    f.write_text(json.dumps({"version": 1, "queue": [], "lanes": _PLAN_V1["lanes"]}), encoding="utf-8")
+    plan = chief_plan.read_chief_plan(f)
+    assert plan["state"] == "ok" and len(plan["lanes"]) == 1
+
+
+def test_api_board_chief_plan_answers_a_questions_only_plan(webapp_client):
+    client, app, _overrides = webapp_client
+    plan_file = Path(app.state.webapp_config.chief_plan_file)
+    plan_file.write_text(json.dumps({
+        "version": 1, "updated_at": "2026-10-11T08:00:00Z", "queue": [], "lanes": [],
+        "waiting_on_roberto": [{"id": "t1", "text": "Test?"}],
+    }), encoding="utf-8")
+    body = client.get("/api/board/chief-plan").json()
+    assert body["state"] == "ok" and [q["id"] for q in body["waiting_on_roberto"]] == ["t1"]
 
 
 def test_api_board_chief_plan_reads_the_configured_file_behind_board_auth(webapp_client):
