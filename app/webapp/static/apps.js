@@ -15,7 +15,7 @@ import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
 import { renderHomeHead } from './home-head.js';
 import { fmtAgo } from './sessions.js';
 import { applyLaunchSizePayload } from './shared/launch-size.js';
-import { presetEffortFor } from './shared/launch-presets.js';
+import { presetContextFor, presetEffortFor } from './shared/launch-presets.js';
 import { handleLaunchResponse } from './terminal.js';
 import { SensitiveOutcome, runSensitiveAction } from './shared/sensitive-action.js';
 import { switchEl } from './_vendored/switch/switch.js';
@@ -297,10 +297,12 @@ async function refreshApp(a) {
   if (verdict.outcome !== SensitiveOutcome.DROPPED) fetchRunningApps().catch(function () {});
 }
 
-// A launch preset in force for the payload's model adds its effort.
+// A launch preset in force for the payload's model adds its effort and context tier.
 function addPresetEffort(payload) {
   const effort = payload.model ? presetEffortFor('coding', payload.model) : '';
   if (effort) payload.effort = effort;
+  const context = payload.model ? presetContextFor('coding', payload.model) : '';
+  if (context) payload.context = context;
 }
 
 // The launch toast's tag: the agent's label for any non-default agent,

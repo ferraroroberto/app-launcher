@@ -2,8 +2,9 @@
 
 A preset is a shortcut the Coding and Life OS launch dropdowns offer next to
 "Default". It lives in ``webapp_config.json`` as a list of
-``{id, name, agent, model, effort}`` rows; the model and effort come from the
-shared catalog, never from a list of ids kept here. Only agents that take a
+``{id, name, agent, model, effort}`` rows, plus a ``context`` tier on a model
+that offers one (Codex); the model, effort and tier come from the shared
+catalog, never from a list of ids kept here. Only agents that take a
 per-launch model carry one (Claude and Codex).
 
 Two readers, two disciplines: :func:`load_launch_presets` reads a saved file
@@ -39,6 +40,12 @@ def efforts_for(agent: str, model: str) -> Tuple[str, ...]:
     return tuple(specs.get(model, {}).get("efforts", ()))
 
 
+def contexts_for(agent: str, model: str) -> Tuple[str, ...]:
+    """The context tiers ``agent``'s ``model`` offers beyond its default window."""
+    specs = PRESET_AGENTS.get(agent, {})
+    return tuple(specs.get(model, {}).get("contexts", ()))
+
+
 def load_launch_presets(raw: Dict[str, Any]) -> List[Dict[str, str]]:
     """The saved presets: every row with all five text fields, others dropped."""
     value = raw.get("launch_presets")
@@ -50,7 +57,11 @@ def load_launch_presets(raw: Dict[str, Any]) -> List[Dict[str, str]]:
             continue
         row = {key: item.get(key) for key in ("id", "name", "agent", "model", "effort")}
         if all(isinstance(text, str) and text for text in row.values()):
-            rows.append({key: str(text) for key, text in row.items()})
+            clean = {key: str(text) for key, text in row.items()}
+            context = item.get("context")
+            if isinstance(context, str) and context:
+                clean["context"] = context
+            rows.append(clean)
     return rows
 
 
@@ -94,13 +105,23 @@ def _checked_preset(item: Dict[str, Any]) -> Dict[str, str]:
         raise ValueError(
             f"{name}: effort {effort!r} is not offered by {model}; allowed: {', '.join(offered)}"
         )
-    return {
+    row = {
         "id": str(item.get("id") or "") or uuid.uuid4().hex[:8],
         "name": name,
         "agent": agent,
         "model": model,
         "effort": effort,
     }
+    context = str(item.get("context") or "")
+    if context:
+        tiers = contexts_for(agent, model)
+        if context not in tiers:
+            allowed = ", ".join(tiers) if tiers else "none"
+            raise ValueError(
+                f"{name}: context {context!r} is not offered by {model}; allowed: {allowed}"
+            )
+        row["context"] = context
+    return row
 
 
 def _require_unique(rows: List[Dict[str, str]], key: str, message: str) -> None:

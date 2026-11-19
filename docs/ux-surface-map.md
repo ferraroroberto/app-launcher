@@ -1799,7 +1799,7 @@ flowchart LR
   - Favorite agent, the one that keeps its own launch button on every project row
   - Visible agents, a switch per agent
   - Models in the dropdowns, a switch per catalog model
-  - Launch presets, with a model and an effort for a new one and a kebab on each saved one
+  - Launch presets, with a model, an effort and (for a model with context tiers) a context for a new one and a kebab on each saved one
   - Per agent, a row that opens that agent's sheet
 - **Leads to:**
   - [Agent sheet](#settingsagent-agent-sheet) (an agent)

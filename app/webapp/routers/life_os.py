@@ -59,7 +59,11 @@ from app.webapp.routers import (
     life_os_relay,
     life_os_search,
 )
-from app.webapp.routers._helpers import maybe_json, requested_launch_effort
+from app.webapp.routers._helpers import (
+    maybe_json,
+    requested_launch_context,
+    requested_launch_effort,
+)
 from app.webapp.routers.life_os_conversations import (
     _SESSION_ID_RE,
     _launch_conversation,
@@ -294,6 +298,7 @@ async def launch_recap(request: Request) -> Dict[str, Any]:
     mode = str(body.get("mode") or "pty").strip().lower()
     agent, model = _resolve_launch_choice(body)
     effort = requested_launch_effort(body, agent, model)
+    context = requested_launch_context(body, agent, model)
 
     if agent == "claude":
         flags = (
@@ -303,7 +308,7 @@ async def launch_recap(request: Request) -> Dict[str, Any]:
     else:
         prompt = _codex_skill_prompt(".claude/skills/_recap", _RECAP_COMMAND)
         flags = (
-            f"{build_codex_flags(cfg, model_override=model, effort_override=effort)}"
+            f"{build_codex_flags(cfg, model_override=model, effort_override=effort, context_override=context)}"
             f" {prompt}"
         )
     kind = "remote" if mode == "remote" else "pty"
@@ -351,6 +356,7 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
     mode = str(body.get("mode") or "pty").strip().lower()
     agent, model = _resolve_launch_choice(body)
     effort = requested_launch_effort(body, agent, model)
+    context = requested_launch_context(body, agent, model)
     resume_sid = str(body.get("resume_sid") or "").strip()
     if resume_sid and not _SESSION_ID_RE.match(resume_sid):
         raise HTTPException(
@@ -377,7 +383,8 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
         )
     elif resume:
         flags = build_resume_flags(
-            cfg, agent, model_override=model, effort_override=effort
+            cfg, agent, model_override=model, effort_override=effort,
+            context_override=context,
         )
     elif agent == "claude":
         flags = (
@@ -389,7 +396,7 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
             f".claude/skills/{skill.id}", skill.command
         )
         flags = (
-            f"{build_codex_flags(cfg, model_override=model, effort_override=effort)}"
+            f"{build_codex_flags(cfg, model_override=model, effort_override=effort, context_override=context)}"
             f" {prompt}"
         )
     name = skill.name

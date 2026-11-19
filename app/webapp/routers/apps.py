@@ -22,6 +22,7 @@ from app.webapp.routers._helpers import (
     audit_session_start_and_maybe_mirror,
     client_ip,
     maybe_json,
+    requested_launch_context,
     requested_launch_effort,
     safe_int,
     spawn_launcher_session,
@@ -360,7 +361,7 @@ async def _launch_coding(entry: AppEntry, cfg: WebappConfig, request: Request) -
     await _refuse_if_behind(entry, body)
     model_value = _validated_launch_model(agent, requested_model)
     effort = requested_launch_effort(body, agent, model_value)
-    flags = _coding_flags(cfg, agent, resume, model_value, effort)
+    flags = _coding_flags(cfg, agent, resume, model_value, effort, requested_launch_context(body, agent, model_value))
 
     if mode == "remote":
         session = await spawn_session_or_400(
@@ -470,17 +471,19 @@ def _validated_launch_model(agent: str, requested_model: str) -> str:
 
 def _coding_flags(
     cfg: WebappConfig, agent: str, resume: bool, model_value: str,
-    effort: Optional[str] = None,
+    effort: Optional[str] = None, context: Optional[str] = None,
 ) -> List[str]:
     """The agent's CLI flags for a Coding launch, or its resume invocation.
 
-    ``effort`` is a launch preset's, already checked against the model."""
+    ``effort`` and ``context`` are a launch preset's, already checked against
+    the model."""
     if resume:
         # Swap the normal flags for the agent's resume invocation; the
         # requested `mode` decides where its picker renders — a detached
         # console (mode="remote") or a streamed PTY.
         return build_resume_flags(
-            cfg, agent, model_override=model_value or None, effort_override=effort
+            cfg, agent, model_override=model_value or None, effort_override=effort,
+            context_override=context,
         )
     if agent == "claude":
         return build_claude_flags(
@@ -488,7 +491,8 @@ def _coding_flags(
         )
     if agent == "codex":
         return build_codex_flags(
-            cfg, model_override=model_value or None, effort_override=effort
+            cfg, model_override=model_value or None, effort_override=effort,
+            context_override=context,
         )
     return _NO_MODEL_FLAG_BUILDERS[agent](cfg)
 

@@ -36,7 +36,7 @@ import { avatar, chip } from './glance.js';
 import { confirmDialog } from './confirm-dialog.js';
 import { failedFetchState, setAsyncState } from './async-state.js';
 import { mountLaunchToolbar } from './launch-toolbar.js';
-import { presetEffortFor, presetNameFor } from './shared/launch-presets.js';
+import { presetContextFor, presetEffortFor, presetNameFor } from './shared/launch-presets.js';
 import { listFilter } from './list-filter.js';
 import { openSettingsAt } from './tabs.js';
 import { renderChannelSetup } from './settings/telegram-setup.js';
@@ -123,10 +123,14 @@ export function setLifeOsModel(value) {
 }
 
 // What a launch of `model` adds to its payload and toast for the launch
-// preset in force: the effort to send, and " (<preset name>)" for the toast.
+// preset in force: the effort and context tier to send, and
+// " (<preset name>)" for the toast.
 function presetLaunch(model) {
   const effort = presetEffortFor('life', model);
-  return { effort: effort, tag: effort ? ' (' + presetNameFor('life', model) + ')' : '' };
+  return {
+    effort: effort, context: presetContextFor('life', model),
+    tag: effort ? ' (' + presetNameFor('life', model) + ')' : '',
+  };
 }
 
 // ----------------------------------------------------------- skills list
@@ -636,6 +640,7 @@ async function launchRecap() {
   const payload = { mode: mode, model: model };
   const preset = presetLaunch(model);
   if (preset.effort) payload.effort = preset.effort;
+  if (preset.context) payload.context = preset.context;
   // A desktop browser launch gets a dedicated PC Edge --app window; the phone carries its real
   // terminal size so the PTY spawns at
   // the width the overlay will fit() to. Remote
@@ -678,6 +683,7 @@ export async function launchSkill(s, opts) {
   const payload = { mode: mode, model: model, resume: picker };
   const preset = presetLaunch(model);
   if (preset.effort) payload.effort = preset.effort;
+  if (preset.context) payload.context = preset.context;
   // Same size contract as launchRecap. Remote
   // launches have no terminal/mirror, so it only matters for pty.
   if (mode !== 'remote') applyLaunchSizePayload(payload);

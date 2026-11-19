@@ -2,13 +2,15 @@
  *
  * The editor for the named model + effort presets the Coding and Life OS
  * launch dropdowns offer (launch-presets.js). Each saved preset is a row: its
- * name (edit it in place, saved when the field loses focus), the model and
- * effort it launches with, and a kebab holding Remove. Under the list, a
- * name, a model and an effort add a new one.
+ * name (edit it in place, saved when the field loses focus), the model, effort
+ * and context tier it launches with, and a kebab holding Remove. Under the
+ * list, a name, a model, an effort and (for a model that has tiers) a context
+ * add a new one.
  *
  * Every change posts the whole list to /api/config and the rows are redrawn
  * from the server's answer, as the chat-folder list does, so a refused entry
- * never lingers. Models and their efforts come from the config's catalog.
+ * never lingers. Models, their efforts and their context tiers come from the
+ * config's catalog.
  */
 
 import { el } from '../dom-utils.js';
@@ -35,7 +37,7 @@ function config() {
   return state.config || {};
 }
 
-// [{ agent, model, value, label, efforts, defaultEffort }] for the model select.
+// [{ agent, model, value, label, efforts, defaultEffort, contexts }] for the model select.
 function presetModels() {
   const cfg = config();
   const catalog = cfg.model_catalog || {};
@@ -49,6 +51,7 @@ function presetModels() {
         agent: group.agent, model: choice.id, value: choice.value,
         label: group.label + ' · ' + choice.label,
         efforts: entry.efforts, defaultEffort: entry.default_effort || entry.efforts[0],
+        contexts: entry.contexts || [],
       });
     });
   });
@@ -58,6 +61,14 @@ function presetModels() {
 function modelLabel(preset) {
   const row = presetModels().find(function (m) { return m.value === preset.agent + ':' + preset.model; });
   return row ? row.label : preset.agent + ' · ' + preset.model;
+}
+
+// The label of `preset`'s context tier, '' when it runs the model's own window.
+function contextLabel(preset) {
+  if (!preset.context) return '';
+  const row = presetModels().find(function (m) { return m.value === preset.agent + ':' + preset.model; });
+  const tier = row && row.contexts.find(function (c) { return c.value === preset.context; });
+  return tier ? tier.label : preset.context;
 }
 
 function effortLabel(value) {
@@ -77,6 +88,30 @@ function fillEffortSelect() {
     effortSelect.appendChild(option);
   });
   if (row) effortSelect.value = row.efforts.includes(keep) ? keep : row.defaultEffort;
+  fillContextSelect();
+}
+
+// The context row shows only for a model that has tiers; "Default" keeps the
+// model's own window.
+function fillContextSelect() {
+  const modelSelect = document.getElementById('launchPresetModel');
+  const contextSelect = document.getElementById('launchPresetContext');
+  if (!modelSelect || !contextSelect) return;
+  const row = presetModels().find(function (m) { return m.value === modelSelect.value; });
+  const keep = contextSelect.value;
+  const tiers = (row && row.contexts) || [];
+  contextSelect.replaceChildren();
+  const none = el('option', null, 'Default');
+  none.value = '';
+  contextSelect.appendChild(none);
+  tiers.forEach(function (tier) {
+    const option = el('option', null, tier.label);
+    option.value = tier.value;
+    contextSelect.appendChild(option);
+  });
+  contextSelect.value = tiers.some(function (t) { return t.value === keep; }) ? keep : '';
+  const host = contextSelect.closest('.opt-row');
+  if (host) host.hidden = !tiers.length;
 }
 
 // The model select is refilled only when the catalog behind it changes, so a
@@ -121,7 +156,8 @@ function renderRow(preset, all) {
     save(all.map(function (p) { return p.id === preset.id ? Object.assign({}, p, { name: next }) : p; }),
       'Preset renamed.');
   });
-  text.append(name, el('span', 'launch-preset-meta', modelLabel(preset) + ' · ' + effortLabel(preset.effort)));
+  const meta = [modelLabel(preset), effortLabel(preset.effort), contextLabel(preset)].filter(Boolean);
+  text.append(name, el('span', 'launch-preset-meta', meta.join(' · ')));
   const kebab = el('button', 'icon-button action-row-kebab');
   kebab.dataset.track = 'launch-presets.menu';
   kebab.type = 'button';
@@ -175,7 +211,10 @@ export function wireLaunchPresets(patchConfig) {
       return;
     }
     const effort = document.getElementById('launchPresetEffort').value;
-    const next = presetList().concat({ name: name, agent: row.agent, model: row.model, effort: effort });
+    const created = { name: name, agent: row.agent, model: row.model, effort: effort };
+    const contextSelect = document.getElementById('launchPresetContext');
+    if (contextSelect && contextSelect.value) created.context = contextSelect.value;
+    const next = presetList().concat(created);
     if (await patchConfig({ launch_presets: next })) {
       nameInput.value = '';
       toast('Preset added.', 'good');

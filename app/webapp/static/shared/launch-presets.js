@@ -1,6 +1,7 @@
 /* Launch presets in the launch toolbars (Coding and Life OS).
  *
- * A preset is a named model + effort set in Settings › Launch defaults. Each
+ * A preset is a named model + effort (+ a context tier, where the model has
+ * one) set in Settings › Launch defaults. Each
  * surface gets a second dropdown beside its model one: "Default" (today's
  * behaviour: the model dropdown's pick, the saved effort) and one row per
  * preset. Picking a preset sets the surface's model through the surface's own
@@ -137,7 +138,7 @@ export function syncLaunchPresets(config, specs) {
     ensurePicker(state, spec);
     if (!state.picker) return;
     const options = [{ value: DEFAULT_VALUE, label: 'Default' }].concat(
-      state.presets.map(function (p) { return { value: p.id, label: p.name, title: p.name + ' · ' + p.effort }; })
+      state.presets.map(function (p) { return { value: p.id, label: p.name, title: p.name + ' · ' + p.effort + (p.context ? ' · ' + p.context : '') }; })
     );
     // Rebuilt only when the list changed: setOptions closes an open menu, and the
     // config is re-read after every save.
@@ -164,6 +165,15 @@ export function presetEffortFor(key, modelValue) {
   if (!state || !state.picker) return '';
   const preset = state.presets.find(function (p) { return p.id === state.activeId; });
   return preset && presetModel(preset) === modelValue ? preset.effort : '';
+}
+
+// The context tier a launch of `modelValue` from surface `key` sends, '' when
+// no preset is in force for that model or it keeps the model's own window.
+export function presetContextFor(key, modelValue) {
+  const state = surfaces.get(key);
+  if (!presetEffortFor(key, modelValue)) return '';
+  const preset = state.presets.find(function (p) { return p.id === state.activeId; });
+  return (preset && preset.context) || '';
 }
 
 // The preset's name for a launch of `modelValue` from surface `key`, for a
