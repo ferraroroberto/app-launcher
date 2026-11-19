@@ -1,10 +1,12 @@
-"""Launch presets: the config list, and a launch's per-launch ``effort``."""
+"""Launch presets: the config list, and a launch's per-launch ``effort`` and ``context``."""
 
 from __future__ import annotations
 
 import pytest
 
 PRESET = {"name": "Opus deep", "agent": "claude", "model": "opus", "effort": "xhigh"}
+CODEX_PRESET = {"name": "Luna wide", "agent": "codex", "model": "gpt-6-luna",
+                "effort": "high", "context": "extended"}
 
 
 @pytest.fixture
@@ -85,6 +87,70 @@ class TestPresetConfig:
         reloaded = wc.load_webapp_config(wc.save_webapp_config(app.state.webapp_config))
         assert reloaded.launch_presets == app.state.webapp_config.launch_presets
         assert presets.load_launch_presets({"launch_presets": [{"id": "a", "name": "n"}]}) == []
+
+
+class TestPresetContext:
+    def test_catalog_offers_a_tier_only_where_the_model_has_one(self, webapp_client):
+        client, _, _ = webapp_client
+        catalog = client.get("/api/config").json()["model_catalog"]
+        assert all("contexts" not in model for model in catalog["claude"])
+        assert all(model["contexts"][0]["value"] == "extended" for model in catalog["codex"])
+
+    def test_a_context_round_trips(self, webapp_client):
+        client, _, _ = webapp_client
+        assert client.post("/api/config", json={"launch_presets": [CODEX_PRESET]}).status_code == 200
+        saved = client.get("/api/config").json()["launch_presets"]
+        assert saved[0]["context"] == "extended"
+
+    def test_no_context_leaves_the_row_without_the_key(self, webapp_client):
+        client, _, _ = webapp_client
+        client.post("/api/config", json={"launch_presets": [dict(CODEX_PRESET, context="")]})
+        assert "context" not in client.get("/api/config").json()["launch_presets"][0]
+
+    @pytest.mark.parametrize("bad", [
+        dict(PRESET, context="extended"),
+        dict(CODEX_PRESET, context="huge"),
+    ])
+    def test_refuses_a_tier_the_model_does_not_offer(self, webapp_client, bad):
+        client, app, _ = webapp_client
+        resp = client.post("/api/config", json={"launch_presets": [bad]})
+        assert resp.status_code == 400, resp.text
+        assert "context" in resp.json()["detail"]
+        assert app.state.webapp_config.launch_presets == []
+
+
+class TestCodingLaunchContext:
+    def test_the_tier_reaches_the_codex_flags(self, project, spawn_args):
+        resp = project.post("/api/apps/live-proj/launch",
+                            json={"agent": "codex", "model": "codex:gpt-6-luna",
+                                  "effort": "high", "context": "extended"})
+        assert resp.status_code == 200, resp.text
+        assert "-c model_context_window=872000" in spawn_args["flags"]
+        assert "model_reasoning_effort=high" in spawn_args["flags"]
+
+    def test_resume_carries_the_tier(self, project, spawn_args):
+        resp = project.post("/api/apps/live-proj/launch",
+                            json={"agent": "codex", "model": "codex:gpt-6-luna",
+                                  "context": "extended", "resume": True})
+        assert resp.status_code == 200, resp.text
+        assert "model_context_window=872000" in spawn_args["flags"]
+
+    def test_default_launch_sends_no_window(self, project, spawn_args):
+        resp = project.post("/api/apps/live-proj/launch",
+                            json={"agent": "codex", "model": "codex:gpt-6-luna"})
+        assert resp.status_code == 200, resp.text
+        assert "model_context_window" not in spawn_args["flags"]
+
+    @pytest.mark.parametrize("body", [
+        {"agent": "claude", "model": "claude:opus", "context": "extended"},
+        {"agent": "codex", "model": "codex:gpt-6-luna", "context": "huge"},
+        {"agent": "codex", "context": "extended"},
+        {"agent": "codex", "model": "codex:gpt-6-luna", "context": 3},
+    ])
+    def test_a_tier_the_model_cannot_take_is_a_400(self, project, spawn_args, body):
+        resp = project.post("/api/apps/live-proj/launch", json=body)
+        assert resp.status_code == 400, resp.text
+        assert "flags" not in spawn_args
 
 
 class TestCodingLaunchEffort:
@@ -184,3 +250,19 @@ class TestLifeOsLaunchEffort:
         assert resp.status_code == 200, resp.text
         assert "effort" not in resp.json()
         assert "--model opus" in captured["flags"]
+
+    def test_codex_recap_launch_applies_the_context_tier(self, life_os_client, monkeypatch):
+        client, _, _ = life_os_client
+        captured = self._spawn(monkeypatch)
+        resp = client.post("/api/life-os/recap/launch",
+                           json={"mode": "pty", "model": "codex:gpt-6-luna", "context": "extended"})
+        assert resp.status_code == 200, resp.text
+        assert "model_context_window=872000" in captured["flags"]
+
+    def test_refuses_a_tier_on_a_claude_model(self, life_os_client, monkeypatch):
+        client, _, _ = life_os_client
+        captured = self._spawn(monkeypatch)
+        resp = client.post("/api/life-os/recap/launch",
+                           json={"mode": "pty", "model": "claude:opus", "context": "extended"})
+        assert resp.status_code == 400, resp.text
+        assert "flags" not in captured

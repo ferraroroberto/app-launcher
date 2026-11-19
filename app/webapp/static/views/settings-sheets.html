@@ -136,7 +136,7 @@
         </div>
         <div class="opt-group">
           <h3 class="opt-group-title">Launch presets</h3>
-          <p class="opt-hint">A named model with the effort it runs at, such as Opus at Extra high. The Coding and Life OS launch dropdowns offer each one beside Default; picking one sets the model and launches at its effort. Default keeps the model dropdown&rsquo;s pick and the saved effort.</p>
+          <p class="opt-hint">A named model with the effort it runs at, such as Opus at Extra high, and for a model with a larger context window (Codex), the window it opens with. The Coding and Life OS launch dropdowns offer each one beside Default; picking one sets the model and launches at its effort. Default keeps the model dropdown&rsquo;s pick and the saved effort.</p>
           <ul id="launchPresetList" class="card-list launch-presets" aria-label="Launch presets"></ul>
           <div class="opt-row">
             <span class="opt-name">Name</span>
@@ -150,6 +150,10 @@
           <div class="opt-row">
             <span class="opt-name">Effort</span>
             <select data-track="launch-presets.effort" id="launchPresetEffort" class="select-native" aria-label="New preset effort"></select>
+          </div>
+          <div class="opt-row" hidden>
+            <span class="opt-name">Context</span>
+            <select data-track="launch-presets.context" id="launchPresetContext" class="select-native" aria-label="New preset context"></select>
           </div>
           <div class="row launch-preset-add">
             <button data-track="launch-presets.add" id="launchPresetAdd" type="button" class="button-tint">Add preset</button>

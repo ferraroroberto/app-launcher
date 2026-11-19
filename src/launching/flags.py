@@ -34,6 +34,7 @@ from src.launching.model_catalog import (
     CODEX_MODEL_SPECS,
     LEGACY_CLAUDE_DEFAULT_EFFORTS,
     PI_MODEL_SPECS,
+    context_tokens,
 )
 from src.webapp_config import (
     ALWAYS_ON_CLAUDE_FLAGS,
@@ -175,7 +176,7 @@ def build_antigravity_flags(cfg: WebappConfig) -> str:
 
 def build_codex_flags(
     cfg: WebappConfig, model_override: Optional[str] = None,
-    *, effort_override: Optional[str] = None,
+    *, effort_override: Optional[str] = None, context_override: Optional[str] = None,
 ) -> str:
     """Compose the `codex` CLI flags from the persisted Codex knobs.
 
@@ -184,6 +185,10 @@ def build_codex_flags(
     against the model, else the persisted per-model effort). The reasoning value is sent bare: it isn't valid TOML, so
     Codex's `-c` parser falls back to the raw string — which also dodges
     Windows ``cmd`` quote-stripping that a quoted value would suffer.
+
+    ``context_override`` is one launch's context tier (a launch preset's),
+    already checked against the model: it adds ``-c model_context_window=<n>``
+    for the tier's window. ``None`` leaves the model's own default window.
     """
     parts: list[str] = []
     model = model_override if model_override is not None else cfg.codex_model
@@ -198,7 +203,15 @@ def build_codex_flags(
     if model in VALID_CODEX_MODELS:
         effort = effort_override or effective_effort("codex", model, cfg)
         parts.extend(["-c", f"model_reasoning_effort={effort}"])
+    window = _context_window(model, context_override)
+    if window:
+        parts.extend(["-c", f"model_context_window={window}"])
     return " ".join(parts)
+
+
+def _context_window(model: str, tier: Optional[str]) -> Optional[int]:
+    """The token window of Codex ``model``'s context ``tier``, ``None`` for none."""
+    return context_tokens(CODEX_MODEL_SPECS, model, tier) if tier else None
 
 
 def build_copilot_flags(cfg: WebappConfig) -> str:
@@ -316,6 +329,7 @@ def build_resume_flags(
     cfg: WebappConfig, agent_id: str, model_override: Optional[str] = None,
     session_id: Optional[str] = None, *, keep_model: bool = False,
     effort_model: Optional[str] = None, effort_override: Optional[str] = None,
+    context_override: Optional[str] = None,
 ) -> str:
     """Compose the full flags string for a *Resume* launch.
 
@@ -358,6 +372,9 @@ def build_resume_flags(
     ``effort_override`` is one launch's effort (a launch preset's), already
     checked against the model; Claude and Codex carry it, ``None`` keeps the
     saved per-model effort.
+
+    ``context_override`` is one launch's context tier (a launch preset's),
+    already checked against the model; only Codex carries one.
     """
     token = resume_command_for(agent_id)
     if session_id:
@@ -372,6 +389,9 @@ def build_resume_flags(
         if model in VALID_CODEX_MODELS:
             effort = effort_override or effective_effort("codex", model, cfg)
             parts.extend(["-c", f"model_reasoning_effort={effort}"])
+        window = _context_window(model, context_override)
+        if window:
+            parts.extend(["-c", f"model_context_window={window}"])
         return " ".join(parts).strip()
     if agent_id == "claude":
         base = build_claude_flags(

@@ -45,24 +45,34 @@ CLAUDE_SESSION_MODEL_SPECS: Dict[str, Dict[str, Any]] = {
     **LEGACY_CLAUDE_MODEL_SPECS, **CLAUDE_MODEL_SPECS,
 }
 
+# Codex's context tiers: the standard window is the model's own default (272k
+# in ``codex debug models``); a tier raises it through ``-c
+# model_context_window=<tokens>``. Probed on CLI 0.169.0: the override is
+# honoured and clamped to the model's ``max_context_window`` (872k), so a tier
+# above that would silently run at 872k. Claude has none: every current model
+# already runs a 1M window and its ``[1m]`` suffix changes nothing.
+_CODEX_CONTEXTS: Dict[str, Dict[str, Any]] = {
+    "extended": {"label": "Extended (872k)", "tokens": 872000},
+}
+
 # Ids from ``codex debug models`` (CLI 0.164.0). Luna 6.0 replaced Luna 5.6;
 # ``RENAMED_CODEX_MODELS`` below carries a saved id over.
 CODEX_MODEL_SPECS: Dict[str, Dict[str, Any]] = {
     "gpt-6-luna": {
         "label": "Luna", "efforts": ("low", "medium", "high", "xhigh", "max"),
-        "default_effort": "xhigh", "available": True,
+        "default_effort": "xhigh", "available": True, "contexts": _CODEX_CONTEXTS,
     },
     "gpt-5.6-terra": {
         "label": "Terra", "efforts": ("low", "medium", "high", "xhigh", "max", "ultra"),
-        "default_effort": "medium", "available": True,
+        "default_effort": "medium", "available": True, "contexts": _CODEX_CONTEXTS,
     },
     "gpt-5.6-sol": {
         "label": "Sol", "efforts": ("low", "medium", "high", "xhigh", "max", "ultra"),
-        "default_effort": "low", "available": True,
+        "default_effort": "low", "available": True, "contexts": _CODEX_CONTEXTS,
     },
     "gpt-6-astra": {
         "label": "Astra", "efforts": ("low", "medium", "high", "xhigh", "max"),
-        "default_effort": "medium", "available": True,
+        "default_effort": "medium", "available": True, "contexts": _CODEX_CONTEXTS,
     },
 }
 
@@ -134,6 +144,14 @@ def available_values(specs: Dict[str, Dict[str, Any]]) -> Tuple[str, ...]:
     return tuple(value for value, spec in specs.items() if spec.get("available"))
 
 
+def context_tokens(
+    specs: Dict[str, Dict[str, Any]], model: str, tier: str
+) -> Optional[int]:
+    """The window ``tier`` sets on ``model``, ``None`` for a pair the catalog lacks."""
+    row = specs.get(model, {}).get("contexts", {}).get(tier)
+    return int(row["tokens"]) if row else None
+
+
 def catalog_payload(specs: Dict[str, Dict[str, Any]]) -> list[Dict[str, Any]]:
     """Return JSON-safe model metadata for selectors."""
     return [
@@ -143,6 +161,10 @@ def catalog_payload(specs: Dict[str, Dict[str, Any]]) -> list[Dict[str, Any]]:
             "available": bool(spec.get("available")),
             "efforts": list(spec.get("efforts", ())),
             **({"default_effort": spec["default_effort"]} if spec.get("default_effort") else {}),
+            **(
+                {"contexts": [{"value": tier, "label": row["label"]} for tier, row in spec["contexts"].items()]}
+                if spec.get("contexts") else {}
+            ),
             **({"unavailable_reason": spec["unavailable_reason"]} if spec.get("unavailable_reason") else {}),
         }
         for value, spec in specs.items()

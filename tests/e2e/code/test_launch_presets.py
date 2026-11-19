@@ -2,7 +2,7 @@
 
 One flow: Settings › Launch defaults › Launch presets adds, renames and removes
 presets, the Coding toolbar then offers the one left beside "Default", and a
-launch posts the preset's model and effort. Picking a model by hand afterwards
+launch posts the preset's model, effort and (Codex) context tier. Picking a model by hand afterwards
 drops the effort, so it never outlives the model it was chosen for; the pick is
 remembered on the device; with no preset nothing is drawn.
 
@@ -23,9 +23,13 @@ from tests.e2e.fixtures.ui import close_settings_sheets, open_settings_sheet
 pytestmark = pytest.mark.smoke
 
 
-def _mock(page: Page) -> list:
-    """Serve an in-memory preset list from /api/config; a POST carrying one edits it."""
+def _mock(page: Page) -> tuple[list, list]:
+    """Serve an in-memory preset list from /api/config; a POST carrying one edits it.
+
+    Also returns a one-item list holding the favorite agent the projects' launch
+    button runs, which a test changes to launch another agent."""
     store: list = []
+    favorite = ["claude"]
 
     def config(route):
         request = route.request
@@ -40,12 +44,15 @@ def _mock(page: Page) -> list:
         response = route.fetch()
         payload = response.json()
         payload["launch_presets"] = list(store)
+        payload["coding_favorite_agent"] = favorite[0]
         route.fulfill(response=response, body=json.dumps(payload))
 
     page.route("**/api/config", config)
     page.route("**/api/agents", lambda route: route.fulfill(
         status=200, content_type="application/json",
-        body=json.dumps({"agents": [{"id": "claude", "label": "Claude Code", "available": True}]})))
+        body=json.dumps({"agents": [
+            {"id": "claude", "label": "Claude Code", "available": True},
+            {"id": "codex", "label": "Codex", "available": True}]})))
     page.route("**/api/apps", lambda route: route.fulfill(
         status=200, content_type="application/json",
         body=json.dumps({"scan_root": "X", "apps": [
@@ -54,22 +61,22 @@ def _mock(page: Page) -> list:
         status=200, content_type="application/json",
         body=json.dumps({"launched": "demo", "name": "demo", "kind": "claude-code",
                          "agent": "claude", "mode": "pty", "session": None})))
-    return store
+    return store, favorite
 
 
-def _open_coding(page: Page, base_url: str) -> None:
+def _open_coding(page: Page, base_url: str, agent: str = "claude") -> None:
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
     page.locator("details.projects-card").evaluate("el => { el.open = true; }")
     page.wait_for_selector(
-        '#claudeList .coding-item[data-id="demo"] button.action-row-main[data-agent="claude"]',
+        f'#claudeList .coding-item[data-id="demo"] button.action-row-main[data-agent="{agent}"]',
         timeout=5_000,
     )
 
 
-def _launch(page: Page) -> dict:
+def _launch(page: Page, agent: str = "claude") -> dict:
     with page.expect_request("**/api/apps/*/launch") as info:
         page.locator(
-            '#claudeList .coding-item[data-id="demo"] button.action-row-main[data-agent="claude"]'
+            f'#claudeList .coding-item[data-id="demo"] button.action-row-main[data-agent="{agent}"]'
         ).click()
     return info.value.post_data_json
 
@@ -90,7 +97,7 @@ def _add_preset(page: Page, name: str, model: str, effort: str) -> None:
 def test_presets_are_managed_in_settings_and_launch_with_their_effort(
     authed_page: Page, base_url: str
 ) -> None:
-    store = _mock(authed_page)
+    store, favorite = _mock(authed_page)
     _open_coding(authed_page, base_url)
     expect(authed_page.locator("#codingModelBtn")).to_be_visible()
     expect(authed_page.locator("#codingPresetCombo")).to_have_count(0)
@@ -142,3 +149,23 @@ def test_presets_are_managed_in_settings_and_launch_with_their_effort(
     authed_page.locator("details.projects-card").evaluate("el => { el.open = true; }")
     expect(authed_page.locator("#codingPresetBtn")).to_have_text("Opus deep")
     assert _launch(authed_page)["effort"] == "xhigh"
+
+    # A model with context tiers adds a Context row to the editor (Claude's have
+    # none), and the launch posts the tier its preset holds.
+    open_settings_sheet(authed_page, "launchDefaultsSheet")
+    context = authed_page.locator("#launchPresetContext")
+    authed_page.locator("#launchPresetModel").select_option("claude:opus")
+    expect(context).to_be_hidden()
+    authed_page.locator("#launchPresetModel").select_option("codex:gpt-6-luna")
+    expect(context).to_be_visible()
+    context.select_option("extended")
+    _add_preset(authed_page, "Luna wide", "codex:gpt-6-luna", "high")
+    expect(authed_page.locator("#launchPresetList li").nth(1).locator(".launch-preset-meta")).to_contain_text("Extended")
+    close_settings_sheets(authed_page)
+    assert store[1]["context"] == "extended"
+
+    favorite[0] = "codex"
+    _open_coding(authed_page, base_url, "codex")
+    _pick(authed_page, "codingPreset", store[1]["id"])
+    payload = _launch(authed_page, "codex")
+    assert (payload["model"], payload["effort"], payload["context"]) == ("codex:gpt-6-luna", "high", "extended")
