@@ -44,7 +44,7 @@ export function markSent(plan, keys) {
 }
 
 // The plan's open questions, fleet-wide: a number for a plan the
-// Board read (0 when it has nothing queued), null when it could not read it
+// Board read (0 when it holds nothing), null when it could not read it
 // (unreadable, or the webapp did not answer) — unknown, never zero.
 export function openQuestionCount(plan) {
   if (!plan) return null;

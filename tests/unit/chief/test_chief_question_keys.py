@@ -85,6 +85,16 @@ def test_sessions_poll_counts_open_questions_fleet_wide(webapp_client):
     assert client.get("/api/claude-code/sessions").json()["chief_questions"] == 1
 
 
+def test_sessions_poll_counts_questions_while_the_queue_is_empty(webapp_client):
+    client, app, overrides = webapp_client
+    overrides["session"].list_sessions.return_value = []
+    Path(app.state.webapp_config.chief_plan_file).write_text(json.dumps({
+        "version": 1, "updated_at": "2026-10-11T08:00:00Z", "lanes": [], "queue": [],
+        "waiting_on_roberto": [{"id": "q-one", "text": "What next?"}],
+    }), encoding="utf-8")
+    assert client.get("/api/claude-code/sessions").json()["chief_questions"] == 1
+
+
 def test_sessions_poll_says_unknown_for_an_unreadable_plan(webapp_client):
     client, app, overrides = webapp_client
     overrides["session"].list_sessions.return_value = []

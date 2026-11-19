@@ -4,8 +4,8 @@ The chief records its lanes, its queue and what waits on Roberto in
 ``~/.claude/hooks/state/chief-plan.json`` (format v1, written only through
 fleet-config's ``chief_ops.py plan`` helper). This module is the app's reader,
 and it is tolerant by contract: unknown fields are dropped, a missing file or
-an empty queue is ``empty``, and anything it cannot trust is ``unreadable`` —
-never an exception, never an error toast. Status values pass through
+a plan with no queue rows, lanes or questions is ``empty``, and anything it
+cannot trust is ``unreadable`` — never an exception, never an error toast. Status values pass through
 unvalidated; the card shows an unknown one as a neutral chip.
 
 A ``waiting_on_roberto`` item is one of the chief's questions for the Board's
@@ -154,18 +154,21 @@ def read_chief_plan(path: Path, github_owner: str = "") -> Dict[str, Any]:
     ``{"state": "unreadable"}``. ``github_owner`` resolves question and
     queue-row refs to links; without it they stay plain text.
 
-    ``empty``: no file, or a queue with no rows. ``unreadable``: see
+    ``empty``: no file, or no queue rows, lanes or questions. ``unreadable``: see
     :func:`_load_plan`.
     """
     data = _load_plan(path)
     if isinstance(data, str):
         return {"state": data}
     queue = _rows(data.get("queue"), _QUEUE_FIELDS)
-    if not queue:
+    lanes = _rows(data.get("lanes"), _LANE_FIELDS)
+    waiting = _waiting(data.get("waiting_on_roberto"), github_owner)
+    # A chief with nothing queued is exactly when it asks what to work on, so
+    # a question or a lane alone keeps the plan readable.
+    if not (queue or lanes or waiting):
         return {"state": "empty"}
     for row in queue:
         row["ref_url"] = ref_url(row["ref"], row["repo"], github_owner)
-    lanes = _rows(data.get("lanes"), _LANE_FIELDS)
     for lane in lanes:
         lane["ref_url"] = ref_url(lane["item"], lane["repo"], github_owner)
     return {
@@ -173,15 +176,15 @@ def read_chief_plan(path: Path, github_owner: str = "") -> Dict[str, Any]:
         "updated_at": _text(data.get("updated_at")),
         "lanes": lanes,
         "queue": queue,
-        "waiting_on_roberto": _waiting(data.get("waiting_on_roberto"), github_owner),
+        "waiting_on_roberto": waiting,
     }
 
 
 def read_plan_index(path: Path) -> Dict[str, Any]:
     """The plan's lanes, queue and question refs for the backlog buckets.
 
-    Unlike :func:`read_chief_plan` an empty queue still returns the lanes,
-    since a lane alone puts an issue in progress. ``state`` is ``ok``
+    Unlike :func:`read_chief_plan` it never reports ``empty``: an empty plan
+    is ``ok`` with empty lists. ``state`` is ``ok``
     (a readable plan, missing file included: no plan is a known answer),
     or ``unreadable``, which the buckets show as unknown.
     """

@@ -133,7 +133,7 @@ def unanswered_count(plan: Mapping[str, Any]) -> Optional[int]:
     """How many of the plan's questions no device has answered yet, fleet-wide.
 
     ``None`` when the plan can't be read: unknown, never zero. A plan with
-    nothing queued (``empty``) has no questions.
+    nothing in it (``empty``) has no questions.
     """
     state = plan.get("state")
     if state == "empty":
