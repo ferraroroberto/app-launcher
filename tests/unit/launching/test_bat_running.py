@@ -40,6 +40,7 @@ def _bat(tmp_path: Path, body: str, name: str = "mini.bat") -> Path:
     return bat
 
 
+@pytest.mark.windows_only
 def test_target_paths_resolve_dp0_relative_and_skip_interpreters(tmp_path: Path):
     bat = _bat(
         tmp_path,

@@ -114,6 +114,7 @@ def test_synthetic_no_go_lets_the_walk_open_a_board_session_card() -> None:
     assert chat["synthetic"] is True and chat["clicks"][0] == ".board-item[data-session-id] .board-card"
 
 
+@pytest.mark.windows_only
 def test_launcher_contract_end_to_end() -> None:
     proc = subprocess.Popen([sys.executable, "scripts/design_review_synthetic.py"], cwd=REPO_ROOT,
                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,

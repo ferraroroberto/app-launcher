@@ -7,7 +7,9 @@ spawn / tray-restart helpers replaced: no real process starts or stops.
 from __future__ import annotations
 
 import subprocess
+import tempfile
 from datetime import datetime
+from pathlib import Path
 from typing import Iterator, List
 
 import pytest
@@ -17,12 +19,19 @@ from src.launching import app_refresh
 from src.registry import AppEntry, Registry, save_registry
 from tests.api.webapp.test_webapp_api_apps_running import FakeProc, FakePsutil
 
+# Absolute paths that exist on every OS and sit outside this checkout: a
+# drive-letter literal is one relative filename on macOS and Linux, which
+# resolves into the working directory, i.e. this repo's own folder.
+_STUB = Path(tempfile.gettempdir()) / "stub"
+_VT_BAT = str(_STUB / "vt" / "run.bat")
+_SISTER_BAT = str(_STUB / "sister" / "tray.bat")
+
 
 def _seed(path, *entries: AppEntry) -> None:
-    save_registry(Registry(scan_root="C:\\stub", apps=list(entries)), path=path)
+    save_registry(Registry(scan_root=str(_STUB), apps=list(entries)), path=path)
 
 
-def _app(app_id="vt", kind="webapp", bat="C:\\stub\\vt\\run.bat") -> AppEntry:
+def _app(app_id="vt", kind="webapp", bat=_VT_BAT) -> AppEntry:
     return AppEntry(
         id=app_id, name="Voice", kind=kind, bat_path=bat,
         added_at=datetime.now().isoformat(),
@@ -97,8 +106,8 @@ class TestRefresh:
             {"pid": 102, "stopped": True},
         ]
         assert body["launched"] == {"stealth": True}
-        assert spawned == [("C:\\stub\\vt\\run.bat", True)]
-        # The old instances are gone and the new one is tracked.
+        assert spawned == [(_VT_BAT, True)]
+        #The old instances are gone and the new one is tracked.
         assert sorted(i.pid for i in app_runtime.list_running() if i.app_id == "vt") == [7001]
 
     def test_nothing_running_just_launches(self, webapp_client, fake_psutil, spawned):
@@ -107,7 +116,7 @@ class TestRefresh:
         resp = client.post("/api/apps/vt/refresh")
         assert resp.status_code == 200
         assert resp.json()["stops"] == []
-        assert spawned == [("C:\\stub\\vt\\run.bat", True)]
+        assert spawned == [(_VT_BAT, True)]
 
     def test_failed_stop_is_named_and_skips_the_relaunch(
         self, webapp_client, fake_psutil, spawned
@@ -131,7 +140,7 @@ class TestRefresh:
 
         client, _, overrides = webapp_client
         _seed(overrides["tmp_registry_path"],
-              _app("sister-tray", "tray", "C:\\stub\\sister\\tray.bat"))
+              _app("sister-tray", "tray", _SISTER_BAT))
         ran: List[str] = []
         monkeypatch.setattr(
             apps_router, "restart_tray_bat", lambda bat: ran.append(str(bat)) or 0
@@ -141,7 +150,7 @@ class TestRefresh:
 
         assert resp.status_code == 200
         assert resp.json()["restart"] == {"exit_code": 0}
-        assert ran == ["C:\\stub\\sister\\tray.bat"]
+        assert ran == [_SISTER_BAT]
         assert spawned == []  # no plain launch: the tray's own recipe is the restart
 
     @pytest.mark.parametrize(
@@ -155,7 +164,7 @@ class TestRefresh:
 
         client, _, overrides = webapp_client
         _seed(overrides["tmp_registry_path"],
-              _app("sister-tray", "tray", "C:\\stub\\sister\\tray.bat"))
+              _app("sister-tray", "tray", _SISTER_BAT))
 
         def fake_restart(bat):
             if isinstance(outcome, Exception):

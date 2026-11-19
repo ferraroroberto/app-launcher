@@ -355,6 +355,7 @@ class TestOutboxScratchRoots:
     def _post(self, client, roots):
         return client.post("/api/config", json={"outbox_scratch_roots": roots})
 
+    @pytest.mark.windows_only
     def test_round_trips_as_typed_and_reaches_disk(self, webapp_client, tmp_path, monkeypatch):
         from src.webapp_config import load_webapp_config
 
@@ -406,6 +407,7 @@ class TestOutboxScratchRoots:
         assert message in resp.json()["detail"]
         assert app.state.webapp_config.outbox_scratch_roots == [str(good)]
 
+    @pytest.mark.windows_only
     def test_a_duplicate_is_refused_by_case_and_separator(self, webapp_client, tmp_path):
         client, app, _ = webapp_client
         folder = tmp_path / "Dup"

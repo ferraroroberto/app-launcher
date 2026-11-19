@@ -84,7 +84,7 @@ def test_reads_one_as_chat_entries(archive):
     (f"not-a-day/{SKILL}/{FERRY}", 400),
     (f"{DAY}/%2e%2e/{FERRY}", 400),
     (f"{DAY}/{SKILL}/%2e%2e", 400),
-    (f"{DAY}/{SKILL}/C:", 400),
+    pytest.param(f"{DAY}/{SKILL}/C:", 400, marks=pytest.mark.windows_only),
     (f"{DAY}/{SKILL}/nope.md", 404),
     (f"{DAY}/other-skill/{FERRY}", 404),
     (f"2026-01-01/{SKILL}/{FERRY}", 404),

@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 from src.session_host import agent_child_env
 
 # The full block captured off the polluted live session-host, with the two
@@ -78,6 +80,7 @@ def test_pty_terminal_type_overrides_ambient_dumb_terminal(monkeypatch):
     assert env["TERM"] == "xterm-256color"
 
 
+@pytest.mark.windows_only
 def test_user_scope_settings_survive(monkeypatch):
     """settings.json vars are meant for every agent run — don't scrub them."""
     monkeypatch.setenv("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE", "70")

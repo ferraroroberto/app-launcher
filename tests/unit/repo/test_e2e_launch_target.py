@@ -199,6 +199,7 @@ def _state_file(tmp_path: Path, payload: object) -> Path:
     return path
 
 
+@pytest.mark.windows_only
 def test_trust_is_read_across_separator_and_case_differences(
     tmp_path: Path, monkeypatch
 ) -> None:

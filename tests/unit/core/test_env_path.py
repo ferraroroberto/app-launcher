@@ -31,6 +31,7 @@ def _no_cache():
 
 
 class TestMerge:
+    @pytest.mark.windows_only
     def test_registry_entries_are_appended_after_inherited(self):
         merged = env_path._merge("C:\\a", "C:\\b", "C:\\c").split(os.pathsep)
         # Inherited first: Windows resolves left to right, so anything this
@@ -41,10 +42,12 @@ class TestMerge:
         merged = env_path._merge("C:\\Tools", "c:\\tools", "C:\\Tools\\")
         assert merged == "C:\\Tools"
 
+    @pytest.mark.windows_only
     def test_blank_and_whitespace_entries_are_dropped(self):
         merged = env_path._merge("C:\\a;;   ;C:\\b")
         assert merged == "C:\\a;C:\\b"
 
+    @pytest.mark.windows_only
     def test_drive_root_keeps_its_separator(self):
         """``C:\\`` is the root directory; ``C:`` is "the current directory on
         drive C:" — stripping the separator would silently change the lookup."""
@@ -111,6 +114,7 @@ class TestEffectivePath:
 
 
 class TestDetectionUsesEffectivePath:
+    @pytest.mark.windows_only
     def test_is_installed_resolves_against_the_effective_path(
         self, monkeypatch, tmp_path
     ):

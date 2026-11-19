@@ -125,6 +125,31 @@ def _fingerprint_test_sources() -> dict[Path, int]:
     return prints
 
 
+# --- windows_only: what runs where ---------------------------------------------
+#
+# The session-host spawns its terminals through ConPTY (pywinpty), so a test that
+# launches a PTY session cannot start anywhere else. Those tests are marked by
+# the fixtures they request rather than by hand, so a new one is covered the day
+# it is written. On any other host every `windows_only` test is deselected, the
+# same as `-m "not windows_only"`: the Mac nightly's e2e leg has no marker
+# expression of its own. Windows runs all of them.
+_PTY_SESSION_FIXTURES = frozenset({"launched_pty_session", "launched_claude_pty_session"})
+
+
+def pytest_collection_modifyitems(config, items) -> None:
+    for item in items:
+        if _PTY_SESSION_FIXTURES.intersection(getattr(item, "fixturenames", ())):
+            item.add_marker(pytest.mark.windows_only)
+    if sys.platform == "win32":
+        return
+    kept, dropped = [], []
+    for item in items:
+        (dropped if item.get_closest_marker("windows_only") else kept).append(item)
+    if dropped:
+        config.hook.pytest_deselected(items=dropped)
+        items[:] = kept
+
+
 def pytest_sessionstart(session) -> None:
     _source_fingerprints.update(_fingerprint_test_sources())
 
@@ -245,6 +270,19 @@ def fake_clipboard(monkeypatch):
     monkeypatch.setattr(desktop_clipboard, "get_clipboard", lambda: recorder)
     monkeypatch.setattr(desktop_clipboard, "_clipboard", recorder)
     return recorder
+
+
+@pytest.fixture(autouse=True)
+def _isolated_startup_dir(tmp_path, monkeypatch):
+    """Point the boot-autostart Startup folder at a per-test folder.
+
+    The real one lives under ``%APPDATA%``, which a non-Windows host does not
+    have, so ``GET /api/config`` raised there. Function-scoped on purpose: the
+    e2e autoboot fixture, which snapshots the real folder, runs outside it.
+    """
+    from src import boot_autostart
+
+    monkeypatch.setenv(boot_autostart.STARTUP_DIR_ENV, str(tmp_path / "startup"))
 
 
 @pytest.fixture(autouse=True)

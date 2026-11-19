@@ -197,7 +197,9 @@ def test_first_sweep_never_backfills_then_new_failure_publishes_once(tmp_path, f
     fleet.runs["beta"] = [_run(20, "startup_failure", workflow="Lint", wid=2)]
     _sweep(fleet, cfg)
     events = _events(cfg)
-    assert [(e["repo"], e["run_id"]) for e in events] == [("alpha", 11), ("beta", 20)]
+    # Two events from one sweep can share a millisecond, and the inbox names a
+    # file by that millisecond, so their order is not part of the contract.
+    assert sorted((e["repo"], e["run_id"]) for e in events) == [("alpha", 11), ("beta", 20)]
     event = next(e for e in events if e["repo"] == "beta")
     assert event["kind"] == "ci-failed" and event["v"] == 2
     assert event["workflow"] == "Lint" and event["conclusion"] == "startup_failure"
