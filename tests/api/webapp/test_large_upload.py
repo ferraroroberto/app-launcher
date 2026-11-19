@@ -110,6 +110,7 @@ def test_empty_body_is_refused_and_leaves_no_file(host: TestClient, project: Pat
     assert not list(_large_dir(project).glob("*"))
 
 
+@pytest.mark.windows_only
 def test_name_is_sanitised_like_an_ordinary_upload(host: TestClient, project: Path) -> None:
     resp = host.post(
         f"/sessions/{_SID}/large-file",

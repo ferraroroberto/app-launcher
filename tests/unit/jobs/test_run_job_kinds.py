@@ -42,6 +42,7 @@ def _fire(job: Job) -> int:
 
 
 class TestInlineShellExecutor:
+    @pytest.mark.windows_only
     def test_inline_bat_body_runs_and_writes_run_dir(self, isolated_jobs, monkeypatch):
         _silence_notifier(monkeypatch)
         job = Job(

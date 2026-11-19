@@ -65,7 +65,7 @@ def test_row_for_archived_file_resolves_through_archive(tree):
 
 @pytest.mark.parametrize("rel, reason", [
     (f"{BASE}/../../other/conversations/a.md", history.REFUSAL_PARENT_DIR),
-    ("C:/Windows/win.md", history.REFUSAL_OUTSIDE),
+    pytest.param("C:/Windows/win.md", history.REFUSAL_OUTSIDE, marks=pytest.mark.windows_only),
     ("/etc/passwd", history.REFUSAL_OUTSIDE),
     (".claude/skills/other/conversations/a.md", history.REFUSAL_WRONG_FOLDER),
     (f"{BASE}/archive/deeper/2026-01-01-0900-deep.md", history.REFUSAL_WRONG_FOLDER),

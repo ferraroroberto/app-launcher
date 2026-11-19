@@ -178,6 +178,7 @@ def test_a_hidden_cursor_sends_no_position_or_shape():
     assert not_showing.to_message() == off_monitor.to_message() == {"type": "cursor", "visible": False}
 
 
+@pytest.mark.windows_only
 def test_the_reader_reads_position_shape_and_showing_flag(monkeypatch):
     _fake_cursor_win32(monkeypatch, [
         (1, 1, 32513 + 1000, 959, 539),   # an I-beam, showing

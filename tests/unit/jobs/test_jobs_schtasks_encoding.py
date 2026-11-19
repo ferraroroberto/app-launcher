@@ -25,6 +25,8 @@ import sys
 import textwrap
 from types import SimpleNamespace
 
+import pytest
+
 from src.jobs import schtasks as jobs_schtasks
 from src.subprocess_flags import NO_WINDOW
 
@@ -34,6 +36,7 @@ OEM_ONLY_BYTE = b"\xe9"
 
 
 class TestRunSchtasksContract:
+    @pytest.mark.windows_only
     def test_decoding_is_pinned_not_inherited_from_the_locale(self, monkeypatch):
         seen = {}
 

@@ -26,6 +26,7 @@ from __future__ import annotations
 import logging
 import re
 import subprocess
+import sys
 import time
 from threading import Lock
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -68,7 +69,10 @@ _MAX_DAILY_TIMES_VARIANTS = 24
 #: fleet-wide, for weeks. ``errors="replace"`` keeps one odd byte
 #: from costing the whole query — a mangled character in a task name is
 #: recoverable, a dead scheduler view is not.
-SCHTASKS_ENCODING = "oem"
+#: ``oem`` is a Windows-only codec name; elsewhere there is no schtasks to
+#: decode, and the lookup of an unknown codec would raise before the missing
+#: executable could be reported as such.
+SCHTASKS_ENCODING = "oem" if sys.platform == "win32" else "utf-8"
 SCHTASKS_ENCODING_ERRORS = "replace"
 
 #: One schtasks call (query, create, delete, or the PowerShell power-policy
@@ -79,6 +83,8 @@ SCHTASKS_TIMEOUT_S = 60
 #: The conventional "timed out" exit status (GNU ``timeout``), so a log reader
 #: can tell it from a real schtasks failure code.
 SCHTASKS_TIMEOUT_RC = 124
+#: The shell's "command not found" status, for a host with no schtasks.
+SCHTASKS_NOT_FOUND_RC = 127
 
 
 def _run_schtasks(argv: List[str]) -> subprocess.CompletedProcess:
@@ -101,6 +107,12 @@ def _run_schtasks(argv: List[str]) -> subprocess.CompletedProcess:
         message = f"schtasks timed out after {SCHTASKS_TIMEOUT_S}s"
         logger.warning("⚠️  %s: %s", message, " ".join(argv[:3]))
         return subprocess.CompletedProcess(argv, SCHTASKS_TIMEOUT_RC, stdout="", stderr=message)
+    except FileNotFoundError:
+        # No Task Scheduler on this host (anything but Windows): a failed call
+        # like any other, so every caller reports the query as unknown.
+        message = "schtasks is not available on this host"
+        logger.warning("⚠️  %s", message)
+        return subprocess.CompletedProcess(argv, SCHTASKS_NOT_FOUND_RC, stdout="", stderr=message)
 
 
 #: Absolute Windows PowerShell 5.1 — never the bare ``pwsh`` execution-alias

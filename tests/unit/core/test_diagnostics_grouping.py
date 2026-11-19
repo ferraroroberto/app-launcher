@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Dict
 
+import pytest
+
 from src.diagnostics import PortOwner, _assign_parents
 
 
@@ -97,6 +99,7 @@ def test_cwd_fallback_separate_dirs_not_grouped() -> None:
     assert b.parent_pid is None
 
 
+@pytest.mark.windows_only
 def test_cwd_normalized_case_and_separators() -> None:
     # Windows: case-insensitive, separator-insensitive cwd comparison.
     hub = PortOwner(pid=100, port=8000, cwd=r"E:\automation\local-llm-hub")

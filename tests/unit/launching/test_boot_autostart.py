@@ -120,6 +120,7 @@ def test_disable_when_never_enabled_is_a_noop(tmp_path: Path):
 
 def test_startup_dir_requires_appdata_env(monkeypatch):
     monkeypatch.delenv("APPDATA", raising=False)
+    monkeypatch.delenv(boot_autostart.STARTUP_DIR_ENV, raising=False)
     try:
         boot_autostart._startup_dir()
     except RuntimeError as exc:

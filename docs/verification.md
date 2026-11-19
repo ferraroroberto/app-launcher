@@ -60,6 +60,14 @@ Byte-loss at the PTY write boundary itself has a dedicated **non-browser** guard
 
 **The disposable servers die with their worker.** A worker that pytest-timeout ends with `os._exit` never runs its teardown, so its webapp and session-host would outlive the gate. `tests/e2e/_owned_processes.py` starts each server suspended inside a per-worker Windows Job Object with kill-on-close and only then lets it run, so the server and everything it spawns die when the worker's process does, however it ends. As a backstop the gate records each server's pid and creation time in `webapp/e2e-autoboot-pids.jsonl` and, after the browser phase, stops whichever recorded process is still that same process, never a process matched by name or command line. It prints `ORPHANS=reaped:<n>` (normally 0); a recorded server that survives the kill (`ORPHANS=stuck`) or a ledger it cannot read (`ORPHANS=unknown`) fails the gate. `tests/unit/repo/test_e2e_owned_processes.py` kills a stand-in worker hard and asserts its server tree exits.
 
+## The Mac nightly
+
+The fleet's Mac Mini runs this repo every night from a fresh `.venv`, on the real WebKit engine: the unit suite, then the e2e suite with `--e2e-autoboot`. Its settings are the `[ci.nightly]` table in `.fleet.toml`. It checks what landed on `main`; the Windows pre-ship gate above stays the contract and runs everything.
+
+A test that needs Windows carries `@pytest.mark.windows_only`: the ConPTY terminal sessions, the Task Scheduler, `cmd.exe`, drive-letter and UNC path rules, `%VAR%` expansion, and the desktop APIs. Off Windows `tests/conftest.py` deselects every one of them, so a Mac run reports them as deselected rather than skipped or passed. Any test that requests `launched_pty_session` or `launched_claude_pty_session` is marked automatically, because the session-host cannot start a terminal without pywinpty. Prefer making a test portable (a `tmp_path` or `tempfile` path in place of a `C:\` literal) over marking it, and mark only the parametrized case that is Windows-specific.
+
+To see what the Mac would run, deselect the marker on a Windows box: `.venv\Scripts\python.exe -m pytest tests --ignore=tests/e2e -m "not windows_only"`, and `-m windows_only` lists what it leaves to the gate. The simulator smoke is not declared: it boots the synthetic instance below, which launches a stub terminal session.
+
 ## Design review on synthetic data
 
 fleet-config's `/design-review app-launcher --synthetic` measures the session overlay's Chat and Terminal views, which the live walk must never open because it would attach to a real session. It walks a throwaway instance booted by `scripts/design_review_synthetic.py`, declared in `.fleet.toml`'s `[design.review.synthetic]`:

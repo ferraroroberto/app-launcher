@@ -334,8 +334,12 @@ class _SharedPlanServer:
 # test_voice_dictation.py's single-shot mock does.
 _RECORDER_MOCK = """
 (() => {
-  navigator.mediaDevices = navigator.mediaDevices || {};
-  navigator.mediaDevices.getUserMedia = async () => ({ getTracks: () => [{ stop: () => {} }] });
+  // A property on `navigator` itself, not an assignment onto the engine's own
+  // MediaDevices object: WebKit builds differ in whether that object is the one
+  // the page sees later, and a stub that is not there is refused as "denied".
+  const fakeDevices = Object.create(navigator.mediaDevices || Object.prototype);
+  fakeDevices.getUserMedia = async () => ({ getTracks: () => [{ stop: () => {} }] });
+  Object.defineProperty(navigator, 'mediaDevices', { configurable: true, get: () => fakeDevices });
 """ + RECORDER_BASE_JS + """  FakeRecorder.isTypeSupported = () => true;
   window.MediaRecorder = FakeRecorder;
 })()

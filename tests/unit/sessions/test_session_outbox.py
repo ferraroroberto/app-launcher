@@ -102,6 +102,7 @@ def test_a_symlink_inside_the_folder_pointing_out_is_out_of_root(tmp_path: Path,
     assert _refusal(link, proj, _roots(proj)) == "out_of_root"
 
 
+@pytest.mark.windows_only
 def test_a_declared_scratch_root_admits_its_files_with_env_vars_expanded(
     tmp_path: Path, proj: Path, monkeypatch
 ):
@@ -130,6 +131,7 @@ def _default_roots(proj: Path) -> List[Path]:
     return session_outbox.allowed_roots(str(proj), WebappConfig().outbox_scratch_roots)
 
 
+@pytest.mark.windows_only
 def test_claudes_scratch_base_is_a_scratch_root_by_default(temp_base: Path, proj: Path):
     # Any session's scratch folder, not only the asking session's own.
     other = temp_base / "claude" / "E--some-project" / "session-b" / "scratchpad"
@@ -316,10 +318,11 @@ def test_missing_paths_and_folders_are_refused(proj: Path):
 
 
 @pytest.mark.parametrize("path", [
-    r"\\203.0.113.9\share\x.png",          # TEST-NET-3: never a real host
+    # A backslash is only a separator on Windows, so these three are Windows-only.
+    pytest.param(r"\\203.0.113.9\share\x.png", marks=pytest.mark.windows_only),  # TEST-NET-3: never a real host
     "//203.0.113.9/share/x.png",
-    r"\\?\C:\invented\x.png",
-    r"\\.\pipe\invented",
+    pytest.param(r"\\?\C:\invented\x.png", marks=pytest.mark.windows_only),
+    pytest.param(r"\\.\pipe\invented", marks=pytest.mark.windows_only),
 ])
 def test_network_and_device_paths_are_refused_before_any_filesystem_call(
     proj: Path, monkeypatch, path: str
@@ -754,6 +757,7 @@ def test_a_sibling_sharing_a_prefix_is_not_inside_an_added_folder(tmp_path: Path
     assert _refusal(evil / "x.txt", proj, roots) == "out_of_root"
 
 
+@pytest.mark.windows_only
 def test_check_root_accepts_a_folder_and_expands_variables(tmp_path: Path, monkeypatch):
     (tmp_path / "ok").mkdir()
     monkeypatch.setenv("OUTBOX_TEST_BASE", str(tmp_path))

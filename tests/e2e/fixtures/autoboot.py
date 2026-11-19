@@ -72,7 +72,7 @@ class Isolation:
     cfg_copy: Path
     real_cfg_bytes: Optional[bytes]
     startup_dir: Path
-    real_wrapper_bat: Path
+    real_wrapper_bat: Optional[Path]
     real_wrapper_bytes: Optional[bytes]
     audit_dir: Path
     uploads_root: Path
@@ -117,10 +117,19 @@ def gate_webapp_config(
     return cfg
 
 
-def prepare_isolation(tmp_path_factory: pytest.TempPathFactory, auth_token: str) -> Isolation:
-    """Give the run private config, Startup, audit, upload and runtime-data folders."""
+def _real_wrapper_bat() -> Optional[Path]:
+    """The real per-user autostart wrapper, or None on a host with no Startup folder."""
     from src import boot_autostart
 
+    try:
+        return boot_autostart.wrapper_bat_path()
+    except RuntimeError:
+        # Anything but Windows: there is no real wrapper to protect.
+        return None
+
+
+def prepare_isolation(tmp_path_factory: pytest.TempPathFactory, auth_token: str) -> Isolation:
+    """Give the run private config, Startup, audit, upload and runtime-data folders."""
     # Config isolation (issue #441): the disposable webapp gets its own temp
     # config, so any e2e test that Saves settings mutates only that one.
     # Snapshot the real file's bytes so the isolation can be *asserted* after
@@ -158,8 +167,12 @@ def prepare_isolation(tmp_path_factory: pytest.TempPathFactory, auth_token: str)
     # real wrapper bat (existence + bytes) so the isolation can be *asserted*
     # after the run, not just assumed — mirrors the webapp-config check below.
     startup_dir = tmp_path_factory.mktemp("startup-dir")
-    real_wrapper_bat = boot_autostart.wrapper_bat_path()
-    real_wrapper_bytes = real_wrapper_bat.read_bytes() if real_wrapper_bat.is_file() else None
+    real_wrapper_bat = _real_wrapper_bat()
+    real_wrapper_bytes = (
+        real_wrapper_bat.read_bytes()
+        if real_wrapper_bat is not None and real_wrapper_bat.is_file()
+        else None
+    )
 
     # Session-file isolation (issue #913): src/audit.py resolves its directory
     # from `__file__`, so both disposable processes — spawned from this very
@@ -355,6 +368,8 @@ def _assert_startup_untouched(iso: Isolation) -> None:
     # mismatch means some path wrote to the real Startup folder during
     # the gate instead of the temp startup_dir — the owner boots the
     # launcher from this file.
+    if iso.real_wrapper_bat is None:
+        return
     current_wrapper_bytes = (
         iso.real_wrapper_bat.read_bytes() if iso.real_wrapper_bat.is_file() else None
     )
