@@ -361,8 +361,7 @@ async def _launch_coding(entry: AppEntry, cfg: WebappConfig, request: Request) -
     await _refuse_if_behind(entry, body)
     model_value = _validated_launch_model(agent, requested_model)
     effort = requested_launch_effort(body, agent, model_value)
-    context = requested_launch_context(body, agent, model_value)
-    flags = _coding_flags(cfg, agent, resume, model_value, effort, context)
+    flags = _coding_flags(cfg, agent, resume, model_value, effort, requested_launch_context(body, agent, model_value))
 
     if mode == "remote":
         session = await spawn_session_or_400(
