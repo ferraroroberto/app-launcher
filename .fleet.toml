@@ -1185,7 +1185,7 @@ record = "https://github.com/ferraroroberto/app-launcher/issues/2349"
 [[state_machines]]
 name   = "board-card-status"
 module = "src/board/card_status.py"
-type   = "CardStatus"
+type   = "CardState"
 
 [[state_machines]]
 name   = "job-run-status"

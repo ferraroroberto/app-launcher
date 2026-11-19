@@ -1,9 +1,10 @@
 """The Board session card's status set, declared once.
 
-A card's ``status`` is exactly one of the nine values below. Every grouping a
-consumer needs (the Your-turn lane, the chief's resting label, the doorbell's
-safe-to-type set, the plan-picker screen check) is derived from the
-properties declared here, so a status is added or regrouped in one place.
+A card's ``status`` is exactly one of the nine :class:`CardState` values.
+Every grouping a consumer needs (the Your-turn lane, the chief's resting
+label, the doorbell's safe-to-type set, the plan-picker screen check) is
+derived from the properties declared here, so a status is added or regrouped
+in one place.
 ``app/webapp/static/glance.js`` keeps its own label table and chief set;
 ``tests/unit/board/test_card_status_contract.py`` fails when either drifts
 from this declaration.
@@ -15,17 +16,42 @@ The hook writer stamps a smaller raw vocabulary (:data:`HOOK_STAMPS`). Its
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Dict, FrozenSet
 
-WORKING = "working"
-UNKNOWN = "unknown"
-IDLE = "idle"
-WAITING_ON_TASK = "waiting-on-task"
-STALLED = "stalled"
-AWAITING_DECISION = "awaiting-decision"
-TOOL_PENDING = "tool-pending"
-IDLE_FINISHED = "idle-finished"
-AWAITING_INPUT = "awaiting-input"
+
+class CardState(StrEnum):
+    """The closed set of card values; :class:`CardStatus` refuses any other."""
+
+    #: A turn is in flight.
+    WORKING = "working"
+    #: No evidence either way.
+    UNKNOWN = "unknown"
+    #: At the prompt, nothing pending.
+    IDLE = "idle"
+    #: The turn ended on the session's own background task.
+    WAITING_ON_TASK = "waiting-on-task"
+    #: A dispatch outlived the stall threshold.
+    STALLED = "stalled"
+    #: A decision picker is on screen.
+    AWAITING_DECISION = "awaiting-decision"
+    #: An ordinary tool call is pending.
+    TOOL_PENDING = "tool-pending"
+    #: A clean stop with nothing running or pending.
+    IDLE_FINISHED = "idle-finished"
+    #: A clean stop in a repo with an open issue workflow.
+    AWAITING_INPUT = "awaiting-input"
+
+
+WORKING = CardState.WORKING.value
+UNKNOWN = CardState.UNKNOWN.value
+IDLE = CardState.IDLE.value
+WAITING_ON_TASK = CardState.WAITING_ON_TASK.value
+STALLED = CardState.STALLED.value
+AWAITING_DECISION = CardState.AWAITING_DECISION.value
+TOOL_PENDING = CardState.TOOL_PENDING.value
+IDLE_FINISHED = CardState.IDLE_FINISHED.value
+AWAITING_INPUT = CardState.AWAITING_INPUT.value
 
 #: The raw hook stamp that the needs-you split turns into a card value.
 NEEDS_YOU_STAMP = "needs-you"
@@ -82,6 +108,9 @@ class CardStatus:
     screen_checked: bool = False
     turn_ended: bool = False
     quit_safe: bool = False
+
+    def __post_init__(self) -> None:
+        CardState(self.value)
 
     @property
     def lane(self) -> str:

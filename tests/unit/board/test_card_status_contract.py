@@ -9,9 +9,13 @@ property, written again in JS.
 from __future__ import annotations
 
 import re
+from datetime import timedelta
 from pathlib import Path
 
-from src.board import card_status
+import pytest
+
+from src.board import card_status, sessions
+from tests.unit.board._support import NOW
 
 _GLANCE = Path(__file__).resolve().parents[3] / "app" / "webapp" / "static" / "glance.js"
 
@@ -61,3 +65,26 @@ def test_declared_groupings_are_the_ones_consumers_routed_by():
     assert {s.lane for s in card_status.CARD_STATUSES.values()} == {
         card_status.LANE_YOUR_TURN, card_status.LANE_CLAUDE_TURN,
     }
+
+
+def test_a_card_value_outside_the_declared_set_is_refused():
+    """A value outside the nine card values, the hook's ``needs-you`` stamp included, cannot be declared.
+
+    state-machine-proof: board-card-status
+    """
+    for illegal in (card_status.NEEDS_YOU_STAMP, "bogus", ""):
+        with pytest.raises(ValueError):
+            card_status.CardStatus(illegal)
+    assert set(card_status.CARD_STATUSES) == {s.value for s in card_status.CardState}
+
+
+def test_a_raw_stamp_outside_the_hook_vocabulary_derives_unknown():
+    """A card value written as a raw stamp is no hook stamp, so it derives ``unknown``, never itself.
+
+    state-machine-proof: board-card-status
+    """
+    for raw in ("awaiting-decision", "stalled", "bogus"):
+        status, _ = sessions.derive_card_status(
+            {"status": raw}, NOW - timedelta(minutes=5), now=NOW, project="p", active_repos=frozenset(),
+        )
+        assert status == card_status.UNKNOWN, raw
