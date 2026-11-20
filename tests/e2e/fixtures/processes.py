@@ -80,18 +80,27 @@ def _owns_listener(proc: subprocess.Popen, port: int) -> bool:
     A descendant counts because the venv's ``python.exe`` is a launcher stub
     that runs the real interpreter as its child. Anything else holding the
     port — another worker's server that won the race for it — does not.
+
+    Each family member is asked for its own sockets: the machine-wide
+    ``psutil.net_connections`` needs root on macOS, while a process the user
+    owns always answers for itself.
     """
     try:
-        family = {proc.pid} | {
-            child.pid for child in psutil.Process(proc.pid).children(recursive=True)
-        }
+        family = [psutil.Process(proc.pid)]
+        family += family[0].children(recursive=True)
     except psutil.Error:
         return False
-    return any(
-        conn.status == psutil.CONN_LISTEN and conn.laddr and conn.laddr.port == port
-        and conn.pid in family
-        for conn in psutil.net_connections(kind="tcp")
-    )
+    for member in family:
+        try:
+            conns = member.net_connections(kind="tcp")
+        except psutil.Error:
+            continue
+        if any(
+            c.status == psutil.CONN_LISTEN and c.laddr and c.laddr.port == port
+            for c in conns
+        ):
+            return True
+    return False
 
 
 def boot_on_free_port(

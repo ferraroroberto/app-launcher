@@ -79,8 +79,8 @@ def listener_pids(port: int) -> Optional[List[int]]:
     try:
         connections = psutil.net_connections(kind="inet")
     except (psutil.AccessDenied, PermissionError, OSError) as exc:
-        logger.debug(f"listener_pids denied ({exc})")
-        return None
+        logger.debug(f"listener_pids denied ({exc}); asking each process instead")
+        return _listener_pids_per_process(port)
     return sorted({
         int(c.pid)
         for c in connections
@@ -89,6 +89,34 @@ def listener_pids(port: int) -> Optional[List[int]]:
         and c.laddr.port == port
         and c.pid
     })
+
+
+def _listener_pids_per_process(port: int) -> Optional[List[int]]:
+    """:func:`listener_pids` for a caller that may not read the whole socket table.
+
+    macOS (and a non-root Linux user) refuse the machine-wide scan but still
+    answer for the caller's own processes. A listener found that way is a fact;
+    an empty result is only ``[]`` when no process refused to answer, otherwise
+    it is ``None`` because an unreadable process could be the one listening.
+    """
+    found: set[int] = set()
+    unreadable = False
+    for proc in psutil.process_iter():
+        try:
+            conns = proc.net_connections(kind="inet")
+        except psutil.NoSuchProcess:
+            continue
+        except (psutil.AccessDenied, PermissionError, OSError):
+            unreadable = True
+            continue
+        if any(
+            c.status == psutil.CONN_LISTEN and c.laddr and c.laddr.port == port
+            for c in conns
+        ):
+            found.add(proc.pid)
+    if found:
+        return sorted(found)
+    return None if unreadable else []
 
 
 def listening_port_for_pid_tree(root_pid: int) -> Optional[int]:
