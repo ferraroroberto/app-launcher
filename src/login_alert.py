@@ -34,7 +34,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections.abc import Callable
-from typing import Protocol
+from typing import Optional, Protocol
 
 from src.login_lockout import LockoutAlert
 
@@ -51,7 +51,7 @@ class AlertNotifier(Protocol):
         ...
 
 
-NotifierSource = Callable[[], AlertNotifier | None]
+NotifierSource = Callable[[], Optional[AlertNotifier]]  # noqa: UP007, UP045 -- Python 3.9 evaluates this alias at import, where `X | Y` raises
 
 
 def alert_text(app_name: str, alert: LockoutAlert) -> str:

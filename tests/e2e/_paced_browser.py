@@ -44,7 +44,7 @@ import sys
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, Optional
 
 from playwright.sync_api import Browser, BrowserContext, Page, sync_playwright
 from playwright.sync_api import Error as PlaywrightError
@@ -59,7 +59,7 @@ NETSTAT_TIMEOUT_S = 30
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 #: Reads the TIME_WAIT count for a port; `None` means it could not be established.
-Counter = Callable[[int], int | None]
+Counter = Callable[[int], Optional[int]]  # noqa: UP007, UP045 -- Python 3.9 evaluates this alias at import, where `X | Y` raises
 
 
 class PortPoolBusy(RuntimeError):
