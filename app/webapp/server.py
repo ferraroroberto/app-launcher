@@ -1,57 +1,8 @@
 """FastAPI webapp — phone-first launcher hub.
 
-Routes are split across `app/webapp/routers/`; see each module for the
-full per-family surface.  Top-level families:
-
-    misc         GET  /                         → static/index.html
-                 GET  /static/{file}            → CSS / JS / icons (static mount)
-                 GET  /healthz                  → liveness probe
-                 GET  /api/version              → git_sha + asset_hash
-                 GET  /api/agents               → registered coding agents
-                 GET  /api/system/load          → header CPU reading (cached)
-                 GET  /api/system/health        → hub's PC health verdict (cached)
-                 POST /api/system/restart/{id}  → restart one allowlisted process
-
-    auth         POST /api/login                → swap password for token
-
-    config       GET  /api/config               → host/port + scan + agent flags
-                 POST /api/config               → patch + persist
-                 GET  /api/status               → tunnel?, cert?, scan roots
-                 GET  /api/ports/probe          → psutil snapshot
-                 POST /api/ports/{port}/kill    → kill PID owning that port
-
-    apps         GET  /api/apps                 → unified registry
-                 POST /api/apps/scan            → walk scan_root
-                 POST /api/apps/save            → persist selected
-                 PATCH  /api/apps/{id}          → rename
-                 DELETE /api/apps/{id}          → remove
-                 POST /api/apps/{id}/launch     → spawn bat or coding-agent session
-
-    sessions     GET  /api/claude-code/sessions           → running sessions
-                 POST /api/claude-code/sessions/{sid}/stop
-                 POST /api/claude-code/sessions/{sid}/image
-                 POST /api/claude-code/sessions/{sid}/large-file → streamed, not read
-                 WS   /api/claude-code/sessions/{sid}/ws
-                 POST /api/transcribe                     → one-shot audio → text
-                 POST /api/transcribe/sessions            → start streaming dictation
-                 POST /api/transcribe/sessions/{id}/chunk → append audio chunk
-                 POST /api/transcribe/sessions/{id}/finish
-                 GET  /api/ocr                            → screenshot OCR
-
-    claude_code  GET  /api/claude-code/git-status         → per-project branch+dirty+ahead/behind
-                 POST /api/claude-code/git-fetch          → fetch every repo's origin
-                 POST /api/claude-code/pull/{id}          → fast-forward one repo
-                 POST /api/claude-code/sync-all           → fast-forward every safe repo
-                 POST /api/claude-code/vscode/{id}        → open in VS Code
-                 GET  /api/claude-code/changes/{id}       → working-tree file list
-                 GET  /api/claude-code/changes/{id}/diff  → one file's unified diff
-                 POST /api/claude-code/folder/{id}        → open in Explorer
-
-    jobs         /api/jobs/*                   → Jobs tab (~30 routes)
-
-    life_os      /api/life-os/*                → Life OS tab
-
-    webauthn     /api/webauthn/*               → passkey ceremonies
+Routes are split across `app/webapp/routers/`, one module per family; read
+the module for its surface. `docs/architecture.mmd` names every mounted router
+(a test keeps that list current), so this docstring keeps no route table of its own.
 """
 
 from __future__ import annotations
