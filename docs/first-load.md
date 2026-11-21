@@ -4,7 +4,7 @@ Opening the app, the session list and the Board must feel instant, on a slow PC 
 
 ## Last-known lists draw first
 
-`app/webapp/static/boot-snapshot.js` keeps the last session list and the last Board (with the chief's plan) this device received, one `localStorage` entry each. `boot()` in `main.js` draws both from there before any request goes out, so the lists show as soon as the scripts have run, whatever the server is doing. The live reads then replace them.
+`app/webapp/static/shared/boot-snapshot.js` keeps the last session list and the last Board (with the chief's plan) this device received, one `localStorage` entry each. `boot()` in `main.js` draws both from there before any request goes out, so the lists show as soon as the scripts have run, whatever the server is doing. The live reads then replace them.
 
 - A snapshot older than 24 hours is ignored; the list then shows its usual loading line.
 - If the live read fails, the list keeps the snapshot under the usual stale line, `Last updated 14:05 · live data unavailable`, with the snapshot's time.

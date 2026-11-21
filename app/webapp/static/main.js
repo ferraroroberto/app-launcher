@@ -214,34 +214,57 @@ async function fetchConfigForBoot() {
 // the first boot: a login in between re-runs boot() after the param is gone.
 let screenWindow = null;
 
+// Each boot fetch past the config fills one panel — none is load-bearing for
+// the rest of the app, so a single failure must not abort boot() and take the
+// deep-link branch down with it: the PC mirror window's title marker +
+// terminal connect depend on reaching it.
+function safe(fn) {
+  return fn().catch(function (exc) {
+    console.warn('boot: non-critical fetch failed', exc);
+  });
+}
+
+// The session list and the Board never wait on the config round trip: they
+// draw what this device last saw at once, and their live reads go out beside
+// the config's. Both render safely before the config lands (hidden channels
+// stay hidden until it says otherwise). The Board and Jobs fetches self-gate
+// to their tab; without them a reload on either tab waited for its first poll.
+function startListReads() {
+  paintLastKnownSessions();
+  paintLastKnownBoard();
+  return {
+    agents: safe(fetchAgents),
+    sessions: fetchSessions(),
+    board: safe(fetchBoard),
+    jobs: safe(fetchJobs),
+  };
+}
+
+// Once the config is in: redraw under the real hidden-channels setting, read
+// again a first session list that failed (not on the next poll), and fetch
+// the project list after the agents its rows draw icons from.
+function listsAfterConfig(early) {
+  redrawSessions();
+  renderBoard();
+  const sessions = early.sessions.then(function (ok) {
+    return ok ? null : safe(fetchSessions);
+  });
+  return early.agents.then(function () {
+    // Session rows carry agent icons too, and the early read may have won.
+    redrawSessions();
+    return Promise.all([safe(fetchApps), sessions]);
+  }).then(function () {
+    // A Board opened before the project list landed drew its issue actions
+    // without it (they key on the registered projects). git-status used to
+    // redraw it by coming last in the serial chain; now nothing else would.
+    if (state.tab === 'board') renderBoard();
+  });
+}
+
 async function boot() {
   if (screenWindow === null) screenWindow = consumeUrlParam('screen') !== null;
   const { mirrorSid, sharedSessionSid } = consumeSessionParams();
-  // Each boot fetch past the config fills one panel — none is load-bearing
-  // for the rest of the app, so a single failure must not abort boot() and
-  // take the deep-link branch below down with it: the PC mirror window's
-  // title marker + terminal connect depend on reaching it.
-  const safe = function (fn) { return fn().catch(function (exc) {
-    console.warn('boot: non-critical fetch failed', exc);
-  }); };
-
-  // The session list and the Board never wait on the config round trip:
-  // they draw what this device last saw at once, and their live reads go
-  // out beside the config's. Both render safely before the config lands
-  // (hidden channels stay hidden until it says otherwise) and redraw after.
-  // The Board and Jobs fetches self-gate to their tab; without them a
-  // reload on either tab waited for its first 5 s poll.
-  let early = null;
-  if (!screenWindow) {
-    paintLastKnownSessions();
-    paintLastKnownBoard();
-    early = {
-      agents: safe(fetchAgents),
-      sessions: fetchSessions(),
-      board: safe(fetchBoard),
-      jobs: safe(fetchJobs),
-    };
-  }
+  const early = screenWindow ? null : startListReads();
 
   if (!(await fetchConfigForBoot())) return;
 
@@ -269,26 +292,7 @@ async function boot() {
   // (last in line) painted. Only real reads are chained. The session and
   // project lists render agent icons from state.agents, and fetchAgents
   // re-renders neither, so both wait for it.
-  // A list that rendered before the config could only guess its hidden
-  // channels; draw both again under the real setting.
-  redrawSessions();
-  renderBoard();
-  // A first session read that failed (the config's own retries cover a
-  // dropped connection) is read again now, not on the next poll.
-  const sessions = early.sessions.then(function (ok) {
-    return ok ? null : safe(fetchSessions);
-  });
-  const lists = early.agents.then(function () {
-    // Session rows carry agent icons from state.agents, which the early
-    // session read may have beaten.
-    redrawSessions();
-    return Promise.all([safe(fetchApps), sessions]);
-  }).then(function () {
-    // A Board opened before the project list landed drew its issue actions
-    // without it (they key on the registered projects). git-status used to
-    // redraw it by coming last in the serial chain; now nothing else would.
-    if (state.tab === 'board') renderBoard();
-  });
+  const lists = listsAfterConfig(early);
   // ?convo=<skill>/<file>: a copied Life OS conversation link
   // reopens that capture in the viewer, over the Life OS tab. It needs only
   // the skills, so it opens as soon as they land, never behind the rest of

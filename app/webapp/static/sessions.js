@@ -28,7 +28,7 @@ import {
 } from './api.js';
 import { terminalJsonApi } from './webauthn.js';
 import { renderHomeHead } from './home-head.js';
-import { readSnapshot, saveSnapshot } from './boot-snapshot.js';
+import { readSnapshot, saveSnapshot } from './shared/boot-snapshot.js';
 import { isHiddenChannel, isOffBoard, renderChannelSummaries } from './channel-sessions.js';
 // The session overlay's two modes. Circular with this module by
 // design (session-overlay.js → terminal.js / session-transcript.js → here

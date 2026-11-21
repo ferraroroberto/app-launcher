@@ -1,7 +1,7 @@
 """First load never waits on a slow source.
 
 The session list and the Board paint what this device last saw before any
-request goes out (``static/boot-snapshot.js``), so a server whose every read
+request goes out (``static/shared/boot-snapshot.js``), so a server whose every read
 hangs still shows both lists. And a reload on the Board tab reads the Board at
 boot rather than on its first 5 s poll.
 """

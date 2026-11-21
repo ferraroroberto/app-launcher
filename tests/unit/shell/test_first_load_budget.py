@@ -54,7 +54,7 @@ def test_module_graph_is_walked() -> None:
     # A walker that silently found nothing would pass every budget below.
     assert len(graph) > 50
     assert STATIC_DIR / "sessions.js" in graph
-    assert STATIC_DIR / "boot-snapshot.js" in graph
+    assert STATIC_DIR / "shared" / "boot-snapshot.js" in graph
 
 
 def test_served_shell_is_under_budget() -> None:
