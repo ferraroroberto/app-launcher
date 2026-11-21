@@ -45,7 +45,8 @@ import { wireChanges } from './changes/changes-overlay.js';
 import { wireBackgroundTasks } from './background-tasks/background-tasks-sheet.js';
 import { wireLinks } from './links/links-sheet.js';
 import { markMirrorWindowEarly } from './terminal/terminal-mirror.js';
-import { preloadXtermWhenIdle } from './terminal/xterm-loader.js';
+import { loadXterm } from './terminal/xterm-loader.js';
+import { warmTimeFormat } from './chat/transcript-text.js';
 import { fetchWebauthnStatus, wireWebauthn, writeTerminalToken } from './webauthn.js';
 import { renderSettingsHead } from './home-head.js';
 import { isWideLayout } from './layout.js';
@@ -297,10 +298,23 @@ async function boot() {
   // boot fetch has settled.
   await Promise.all([lists, skills, status, webauthn, git, usage, listeners, running, load].concat(others));
   perfTiming.bootDone();
-  // A terminal this origin cannot reach never opens, so it needs no stack.
-  if (!(state.status && state.status.terminal && state.status.terminal.reachable === false)) {
-    preloadXtermWhenIdle();
-  }
+  warmSessionOpen();
+}
+
+// Once boot has settled, pay in idle time for what opening a session would
+// otherwise pay for on the tap: the chat's time formatter and the terminal
+// stack (~95 KB gzipped, ~200 ms on a phone link, plus its parse). A terminal
+// this origin cannot reach never opens, so it gets no stack. A failed load is
+// left for the terminal open to retry.
+function warmSessionOpen() {
+  const unreachable = !!(state.status && state.status.terminal &&
+    state.status.terminal.reachable === false);
+  const run = function () {
+    warmTimeFormat();
+    if (!unreachable) loadXterm().catch(function () {});
+  };
+  if (window.requestIdleCallback) window.requestIdleCallback(run, { timeout: 5000 });
+  else window.setTimeout(run, 1000);
 }
 
 // Cache the URL's tokens and read its session links: ?terminal=<sid> (the

@@ -86,15 +86,3 @@ export function loadXterm() {
   }
   return _loading;
 }
-
-/**
- * Load the stack in the background once the browser is idle, so the first
- * terminal open does not wait on the download (~95 KB gzipped, ~200 ms on a
- * phone link) and its parse. Called after boot has settled, so it never
- * competes with the launch itself. A failure is left for the open to retry.
- */
-export function preloadXtermWhenIdle() {
-  const run = function () { loadXterm().catch(function () {}); };
-  if (window.requestIdleCallback) window.requestIdleCallback(run, { timeout: 5000 });
-  else window.setTimeout(run, 1000);
-}
