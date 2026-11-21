@@ -166,7 +166,14 @@ def test_commit_names_the_memory_holders_as_offenders(tmp_path):
     assert [o["name"] for o in event["offenders"]] == ["llama-server.exe"]
 
 
-@pytest.mark.parametrize("metric", ["tcpip_4231", "udp_percent", "ephemeral_ports_percent", "commit_percent"])
+def test_disk_load_names_no_offenders_not_the_port_holders(tmp_path):
+    cfg = _cfg(tmp_path)
+    _observe(cfg, _reading("disk_load"))
+    (event,) = _events(cfg)
+    assert event["metric"] == "disk_load" and event["offenders"] == []
+
+
+@pytest.mark.parametrize("metric", ["tcpip_4231", "udp_percent", "ephemeral_ports_percent", "commit_percent", "disk_load"])
 def test_the_hub_findings_that_count_as_critical(metric):
     assert hub_health.is_critical_metric(metric)
 

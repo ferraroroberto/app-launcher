@@ -124,6 +124,7 @@ surfaces:
     holds:
       - the PC's private IP address
       - total CPU and memory used
+      - one row per physical disk the hub measures, labelled by drive letter, with busy percent, queue and read and write latency, amber when the hub says watch and red when it says alert
       - the three busiest groups of processes by name and cores used, an Everything else row so the rows add up, and a Restart action on a flagged process
       - a toast area for the result of a restart or a copy
     does:
@@ -132,6 +133,7 @@ surfaces:
       - Done closes
     states:
       - a dash instead of a number when the server could not take a sample
+      - no disk rows when the hub sends none, and Not confirmed on a disk the hub could not judge, never a healthy-looking row
       - Unknown instead of an address, with Copy disabled, when the PC's address could not be read
     links:
       - to: screen.view

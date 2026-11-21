@@ -4,8 +4,8 @@
  * The hub's verdict (GET /api/system/health, read by system-load.js on the
  * page's one poll) reaches the header as a dot and the sheet's Health row
  * there. This module adds what the hub measured under that row: the ports and
- * commit percents, the top port holders, the last exhaustion event and a link
- * to the hub (appendMachineRows). The hub does the judging and alerting.
+ * commit percents, the load on each physical disk, the top port holders, the
+ * last exhaustion event and a link to the hub (appendMachineRows). The hub does the judging and alerting.
  */
 
 import { el, sheetRow } from './dom-utils.js';
@@ -26,13 +26,44 @@ function holderLabel(h) {
   return (h.name || 'Unknown') + (isNum(h.pid) ? ' · ' + h.pid : '');
 }
 
-// The sheet's rows under the verdict: the percents, the top port holders, the
-// last exhaustion event the hub logged, and the hub link on the PC itself.
+// A disk's state as a value tone; ok and unknown carry none, and a disk the
+// hub could not judge says so in words rather than reading as healthy.
+const DISK_TONES = { watch: 'attention', alert: 'danger' };
+
+function msText(v) {
+  return (v < 10 ? Math.round(v * 10) / 10 : Math.round(v)) + ' ms';
+}
+
+function diskLabel(d) {
+  return (d.drives && d.drives.length ? d.drives.join(', ') : d.disk) || 'Disk';
+}
+
+function diskText(d) {
+  if (d.state === 'unknown') return 'Not confirmed';
+  const parts = [];
+  if (isNum(d.busy_percent)) parts.push(pctText(d.busy_percent) + ' busy');
+  if (isNum(d.queue)) parts.push('queue ' + (Math.round(d.queue * 10) / 10));
+  if (isNum(d.read_ms)) parts.push('read ' + msText(d.read_ms));
+  if (isNum(d.write_ms)) parts.push('write ' + msText(d.write_ms));
+  return parts.join(' · ') || 'Not confirmed';
+}
+
+// The sheet's rows under the verdict: the percents, one row per disk, the top
+// port holders, the last exhaustion event the hub logged, and the hub link on
+// the PC itself.
 export function appendMachineRows(body, health, nowMs) {
   const m = health && health.machine;
   if (!m) return;
   if (isNum(m.ports_percent)) body.appendChild(sheetRow('Ports in use', pctText(m.ports_percent), 'ports'));
   if (isNum(m.commit_percent)) body.appendChild(sheetRow('Commit', pctText(m.commit_percent), 'commit'));
+  if (m.disks && m.disks.length) {
+    body.appendChild(el('p', 'cpu-sheet-caption', 'Disk load'));
+    m.disks.forEach(function (d, i) {
+      const row = sheetRow(diskLabel(d), diskText(d), 'disk-' + i);
+      if (DISK_TONES[d.state]) row.lastChild.dataset.tone = DISK_TONES[d.state];
+      body.appendChild(row);
+    });
+  }
   if (m.holders && m.holders.length) {
     body.appendChild(el('p', 'cpu-sheet-caption', 'Top port holders'));
     m.holders.forEach(function (h, i) {

@@ -397,3 +397,48 @@ def test_the_sheet_reads_each_verdict_the_hub_sends(authed_page: Page, base_url:
         expect(note).to_have_text("Restarted automatically at 02:14 · Elgato Wave Link" + tail)
 
     _assert_the_dot_rides_every_tab_and_the_sheet_lists_the_port_holders(page, state)
+    _assert_the_sheet_shows_each_disk_and_an_older_hub_shows_none(page, state)
+
+
+def _assert_the_sheet_shows_each_disk_and_an_older_hub_shows_none(page: Page, state: dict) -> None:
+    """One row per disk, labelled by drive letter, with busy percent, queue and
+    latency, toned by the hub's state; a disk the hub could not judge says so,
+    and a hub that sends no disks leaves the sheet as it was."""
+    disks = [
+        {"disk": "d2", "drives": ["C:"], "state": "alert", "busy_percent": 98.0,
+         "queue": 7.5, "read_ms": 120.4, "write_ms": 310.0},
+        {"disk": "d0", "drives": ["D:", "F:"], "state": "watch", "busy_percent": 82.0,
+         "queue": 2.0, "read_ms": None, "write_ms": 40.0},
+        {"disk": "d1", "drives": ["E:"], "state": "unknown", "busy_percent": None,
+         "queue": None, "read_ms": None, "write_ms": None},
+    ]
+    machine = {**_machine(3.2, 40.0), "disks": disks}
+    state.update(status=200, body={
+        "verdict": "act", "why": None, "reason": "Disk C: is overloaded", "fix": None,
+        "machine": machine, "hub_url": None,
+    })
+    _refetch_health(page)
+    page.locator("#paneBoard > .home-head .cpu-reading").click()
+    body = page.locator("#cpuSheetBody")
+    first = body.locator("[data-row='disk-0']")
+    expect(first).to_contain_text("C:")
+    expect(first).to_contain_text("98% busy")
+    expect(first).to_contain_text("queue 7.5")
+    expect(first).to_contain_text("read 120 ms")
+    expect(first).to_contain_text("write 310 ms")
+    expect(first.locator("strong")).to_have_attribute("data-tone", "danger")
+    second = body.locator("[data-row='disk-1']")
+    expect(second).to_contain_text("D:, F:")
+    expect(second).not_to_contain_text("read")
+    expect(second.locator("strong")).to_have_attribute("data-tone", "attention")
+    third = body.locator("[data-row='disk-2']")
+    expect(third).to_contain_text("Not confirmed")
+    expect(third.locator("strong")).not_to_have_attribute("data-tone", re.compile("."))
+    state.update(status=200, body={
+        "verdict": "ok", "why": None, "reason": None, "fix": None,
+        "machine": _machine(3.2, 40.0), "hub_url": None,
+    })
+    _refetch_health(page)
+    expect(body.locator("[data-row^='disk-']")).to_have_count(0)
+    expect(body.locator("[data-row='ports']")).to_be_visible()
+    page.locator("#cpuSheetDone").click()
