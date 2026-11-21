@@ -16,7 +16,7 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, Request
 
-from app.webapp.routers.life_os_spawn import _resolve_skill
+from app.webapp.routers.life_os_spawn import resolve_skill
 from src.session_view.conversation_model import recorded_model
 
 router = APIRouter()
@@ -26,7 +26,7 @@ router = APIRouter()
 async def conversation_model(skill_id: str, request: Request, agent: str = "", sid: str = "") -> Dict[str, Any]:
     """``""`` is "not known" (no transcript, or an id that is not a canonical UUID):
     the reader only builds a file name from a validated id."""
-    _resolve_skill(request.app.state.webapp_config, skill_id)
+    resolve_skill(request.app.state.webapp_config, skill_id)
     known = agent if agent in ("claude", "codex") else ""
     model = await asyncio.to_thread(recorded_model, known, sid) if known else ""
     return {"agent": known, "model": model}

@@ -3,7 +3,7 @@
 This module owns the parts of the Board's launch path that are reused across
 *both* route modules (``board.py`` and ``board_chief.py``):
 
-* :func:`_read_live_sessions` — the degradation-safe live-session read,
+* :func:`read_live_sessions` — the degradation-safe live-session read,
   carrying its unknown state so no caller reads a failed list as empty.
 * :func:`_resolve_repo_entry` — bare repo name → live projects-folder entry.
 * :func:`_agent_and_flags` — the Board's per-launch model selector.
@@ -59,7 +59,7 @@ SESSION_HOST_UNREACHABLE = "session_host_unreachable"
 _session_host_down = False
 
 
-def _read_live_sessions(port: int) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+def read_live_sessions(port: int) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     """``(sessions, error)`` — ``error`` set means the list is *unknown*.
 
     The Board must keep rendering GitHub + jobs cards when the session-host is

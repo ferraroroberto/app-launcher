@@ -40,9 +40,9 @@ from app.webapp.routers import (
 )
 from app.webapp.routers._helpers import known_run_dir, maybe_json
 from app.webapp.routers.jobs_run import (
-    _admit_and_spawn,
     _dry_run_check,
     _dry_run_execute,
+    admit_and_spawn_http,
 )
 from src import jobs as jobs_mod
 from src.diagnostics import kill_process_tree
@@ -585,7 +585,7 @@ async def run_job(job_id: str, request: Request) -> Dict[str, Any]:
         if token_label:
             provenance["trigger_token_label"] = token_label
 
-    return await _admit_and_spawn(
+    return await admit_and_spawn_http(
         job, cfg, raw_params, "manual", extra_run_meta=provenance
     )
 

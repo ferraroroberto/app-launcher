@@ -53,7 +53,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, Optional
 
 from app.webapp.routers import board_chief
-from app.webapp.routers.board_spawn import _read_live_sessions
+from app.webapp.routers.board_spawn import read_live_sessions
 from src import board
 from src.board import card_status
 from src.clients import session as session_client
@@ -189,7 +189,7 @@ async def observe(cfg: Any) -> Observation:
     if not pending:
         return Observation(pending=pending)
     (live, host_error), state = await asyncio.gather(
-        asyncio.to_thread(_read_live_sessions, cfg.session_host_port),
+        asyncio.to_thread(read_live_sessions, cfg.session_host_port),
         asyncio.to_thread(board.read_sessions_state, Path(cfg.sessions_state_file)),
     )
     if host_error is not None:

@@ -62,8 +62,8 @@ from app.webapp.routers._helpers import (
 )
 from app.webapp.routers.life_os_spawn import (
     _resolve_launch_choice,
-    _resolve_skill,
     _spawn_skill_session,
+    resolve_skill,
 )
 from src import audit
 from src.clients import session as session_client
@@ -393,7 +393,7 @@ def _profile_skill(cfg: WebappConfig, profile: ChannelProfile) -> tuple[Path, Sk
             status_code=400,
             detail=f"life_os_dir does not exist: {cfg.life_os_dir}",
         )
-    return life_os_dir, _resolve_skill(cfg, profile.skill)
+    return life_os_dir, resolve_skill(cfg, profile.skill)
 
 
 async def _live_or_503(

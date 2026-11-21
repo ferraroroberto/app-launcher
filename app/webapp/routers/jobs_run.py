@@ -6,7 +6,7 @@ the run path that are reused across triggers:
 
 * :func:`_dry_run_check` / :func:`_dry_run_execute` — the two dry-run
   modes, used only by the manual ``POST /run`` route.
-* :func:`_admit_and_spawn` — the cooldown gate plus the HTTP framing of
+* :func:`admit_and_spawn_http` — the cooldown gate plus the HTTP framing of
   :func:`src.jobs.queue.admit_and_spawn` (the mutex admission itself,
   shared with the chain dispatcher and the executor).
   The shared tail of every *real* fire, used by both the manual
@@ -132,7 +132,7 @@ async def _dry_run_execute(job: Job, raw_params: Dict[str, Any]) -> Dict[str, An
     return {"run_id": run_dir.name, "job_id": job.id, "dry_run": True}
 
 
-async def _admit_and_spawn(
+async def admit_and_spawn_http(
     job: Job,
     cfg: JobsConfig,
     raw_params: Dict[str, Any],

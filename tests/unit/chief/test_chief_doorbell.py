@@ -497,7 +497,7 @@ def _setup(tmp_path, monkeypatch, *, status="needs-you", chief_extra=None,
         reads.append(port)
         return (sessions if host_error is None else []), host_error
 
-    monkeypatch.setattr(bell_mod, "_read_live_sessions", fake_read_live)
+    monkeypatch.setattr(bell_mod, "read_live_sessions", fake_read_live)
     cfg = SimpleNamespace(
         chief_doorbell=True,
         chief_inbox_dir=str(inbox),

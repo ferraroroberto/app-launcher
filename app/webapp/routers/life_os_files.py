@@ -9,7 +9,7 @@
 Split off ``app/webapp/routers/life_os.py`` and mounted on ``life_os.router`` via
 ``include_router``, so ``app/webapp/server.py`` still registers one
 ``life_os.router``. A leaf: it imports no other Life OS module. ``life_os.py``
-lists a skill's tree through :func:`_walk_files`, and the conversations router
+lists a skill's tree through :func:`walk_files`, and the conversations router
 jails its capture paths through :func:`resolve_within`.
 
 The content endpoints surface private, gitignored knowledge
@@ -330,7 +330,7 @@ def _is_conversation_file(life_os_dir: Path, resolved: Path) -> bool:
 # --------------------------------------------------------------- walk
 
 
-def _walk_files(
+def walk_files(
     root: Path, life_os_root: Path, category: Optional[str]
 ) -> List[Dict[str, str]]:
     """List text files under ``root`` as ``{path, name, category}`` dicts.

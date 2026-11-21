@@ -70,11 +70,11 @@ from app.webapp.routers.life_os_conversations import (
     _require_history_access,
     skill_last_used,
 )
-from app.webapp.routers.life_os_files import _walk_files
+from app.webapp.routers.life_os_files import walk_files
 from app.webapp.routers.life_os_spawn import (
     _resolve_launch_choice,
-    _resolve_skill,
     _spawn_skill_session,
+    resolve_skill,
 )
 from src.launching.flags import (
     build_claude_flags,
@@ -350,7 +350,7 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
             status_code=400,
             detail=f"life_os_dir does not exist: {cfg.life_os_dir}",
         )
-    skill = _resolve_skill(cfg, skill_id)
+    skill = resolve_skill(cfg, skill_id)
 
     body = await maybe_json(request)
     mode = str(body.get("mode") or "pty").strip().lower()
@@ -429,12 +429,12 @@ async def list_skill_files(skill_id: str, request: Request) -> Dict[str, Any]:
         life_os_root = life_os_dir.resolve()
     except (OSError, ValueError):
         raise HTTPException(status_code=400, detail="life_os_dir invalid")
-    skill = _resolve_skill(cfg, skill_id)
+    skill = resolve_skill(cfg, skill_id)
 
     files: List[Dict[str, str]] = []
-    files.extend(_walk_files(skill.skill_dir, life_os_root, category=None))
+    files.extend(walk_files(skill.skill_dir, life_os_root, category=None))
     files.extend(
-        _walk_files(life_os_dir / "identity", life_os_root, category="identity")
+        walk_files(life_os_dir / "identity", life_os_root, category="identity")
     )
     return {
         "skill": _skill_to_api(skill, life_os_root),

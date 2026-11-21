@@ -42,7 +42,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from fastapi import HTTPException
 
 from app.webapp.routers import life_os_relay
-from app.webapp.routers.life_os_spawn import _resolve_skill
+from app.webapp.routers.life_os_spawn import resolve_skill
 from src import audit
 from src.clients import session as session_client
 from src.launching.channel_profiles import (
@@ -111,7 +111,7 @@ async def _close_profile(cfg: Any, profile: ChannelProfile, sessions: List[Dict[
     if not held:
         return
     try:
-        skill = _resolve_skill(cfg, profile.skill)
+        skill = resolve_skill(cfg, profile.skill)
     except HTTPException:
         logger.warning(f"⚠️ relay {profile.id} idle close: skill {profile.skill!r} not "
                        "found; nothing closed")
