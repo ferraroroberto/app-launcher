@@ -112,8 +112,7 @@ function renderHealthMark() {
 }
 
 // The hub's verdict first: the dot on the header's reading points here.
-function appendHealthRows(body) {
-  const h = healthView();
+function appendHealthRows(body, h) {
   const row = sheetRow('Health', h.verdict === 'pending' ? 'Reading…' : HEALTH_WORDS[h.verdict], 'health');
   if (HEALTH_TONES[h.verdict]) row.lastChild.dataset.tone = HEALTH_TONES[h.verdict];
   body.appendChild(row);
@@ -131,10 +130,6 @@ function appendHealthRows(body) {
     btn.addEventListener('click', function () { restartOwner(h); });
     body.appendChild(btn);
   }
-  // Above the port and holder rows: the address is read at a glance, and
-  // those lists push everything under them past the phone's fold.
-  appendIpRow(body);
-  if (h.verdict !== 'unknown') appendMachineRows(body, h);
 }
 
 // "Restarted automatically at 02:14": the night restart's own line. A process
@@ -171,19 +166,36 @@ async function restartOwner(h) {
   await fetchHealth();
 }
 
+function currentIp() {
+  return (state.status && state.status.private_ip) || null;
+}
+
 // The PC's private IP and a Copy that puts exactly that string on the clipboard.
-function appendIpRow(body) {
-  const ip = state.status && state.status.private_ip;
-  const row = sheetRow('IP', ip || 'Unknown', 'ip');
-  const btn = el('button', 'button-ghost', 'Copy');
-  btn.type = 'button';
-  btn.dataset.track = 'cpu.copy-ip';
-  btn.disabled = !ip;
-  btn.addEventListener('click', function () {
-    copyText(ip, 'IP address', { host: document.getElementById('cpuSheetToast') });
-  });
-  row.appendChild(btn);
-  body.appendChild(row);
+// One node for the sheet's life, updated in place: a poll rebuilds the other
+// rows, and a button replaced between press and release never gets its click.
+let ipRow = null;
+
+function ipRowUpdated() {
+  if (!ipRow) {
+    ipRow = sheetRow('IP', 'Unknown', 'ip');
+    const btn = el('button', 'button-ghost', 'Copy');
+    btn.type = 'button';
+    btn.dataset.track = 'cpu.copy-ip';
+    btn.addEventListener('click', function () {
+      const ip = currentIp();
+      if (!ip) return;
+      copyText(ip, 'IP address', {
+        host: document.getElementById('cpuSheetToast'),
+        noun: 'IP address',
+        byHand: 'Select it and copy by hand.',
+      });
+    });
+    ipRow.appendChild(btn);
+  }
+  const ip = currentIp();
+  ipRow.querySelector('.usage-sheet-value').textContent = ip || 'Unknown';
+  ipRow.querySelector('button').disabled = !ip;
+  return ipRow;
 }
 
 // Re-read the address when the sheet opens, so a changed one shows without a
@@ -202,8 +214,25 @@ async function refreshIp() {
 function renderSheet() {
   const body = document.getElementById('cpuSheetBody');
   if (!body) return;
-  body.replaceChildren();
-  appendHealthRows(body);
+  // The address row sits above the port and holder rows: it is read at a
+  // glance, and those lists push everything under them past the phone's fold.
+  // Everything else is rebuilt around the one IP node.
+  const ip = ipRowUpdated();
+  Array.from(body.children).forEach(function (child) {
+    if (child !== ip) child.remove();
+  });
+  const h = healthView();
+  const head = document.createDocumentFragment();
+  appendHealthRows(head, h);
+  const rest = document.createDocumentFragment();
+  if (h.verdict !== 'unknown') appendMachineRows(rest, h);
+  appendReadingRows(rest);
+  if (ip.parentNode !== body) body.appendChild(ip);
+  body.insertBefore(head, ip);
+  body.appendChild(rest);
+}
+
+function appendReadingRows(body) {
   if (!readingKnown(reading)) {
     body.appendChild(sheetRow('CPU', unknownText(reading), 'cpu'));
     return;

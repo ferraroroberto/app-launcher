@@ -596,7 +596,10 @@ time_budget_s         = 1200
 # 2026-11-16: 656 -> 658, two nodes (one test, both projections, iphone marker: the phone-width run the issue asks for) for tests/e2e/board/test_chief_plan.py:
 # a plan row's note sheet, with a noted lane/queue/parked payload and a window.open recorder no existing plan test shares; the glyph, both tap paths, the
 # sheet's contents and its three dismissals in light and dark all ride that one node.
-test_budget = 658
+# 2026-11-21: 658 -> 659, one node (one test, chromium only) for tests/e2e/shell/test_pc_sheet_ip_copy.py: the real clipboard read back from the PC load
+# sheet's IP Copy, which every existing sheet test mocks; both viewports, the poll rebuild between press and release, a refused writeText, a page with no
+# clipboard API and a failed copy all ride that one node.
+test_budget = 659
 
 # --- static assets under the webapp's static dir -> Chromium smoke ----------
 [[e2e.rule]]
