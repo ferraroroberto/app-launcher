@@ -660,7 +660,10 @@ async def proxy_session_ws(websocket: WebSocket, sid: str) -> None:
     # The phone drives the PTY size; the loopback PC mirror window
     # connects as role=pc and never resizes it (see session-host).
     role = "pc" if client_host in LOOPBACK_HOSTS else "phone"
-    upstream_url = session_client.ws_url(cfg.session_host_port, sid, role)
+    upstream_url = session_client.ws_url(
+        cfg.session_host_port, sid, role,
+        order=websocket.query_params.get("order") or "",
+    )
     try:
         async with ws_connect(upstream_url) as upstream:
             # Off the event loop via audit_off_loop — and gating first

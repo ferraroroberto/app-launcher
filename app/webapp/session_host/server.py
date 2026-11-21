@@ -64,6 +64,7 @@ from src.session_host_input import (
     INPUT_DROPPED,
     INPUT_NOT_INGESTED,
 )
+from src.session_hosting import replay_order
 from src.session_hosting.channel_claims import DuplicateChannelSession
 
 logger = logging.getLogger(__name__)
@@ -476,7 +477,18 @@ async def session_ws(websocket: WebSocket, sid: str) -> None:
             # backgrounded). Same _CLEAR_FRAME the fullscreen branch
             # sends; prepended into the same frame so wipe + replay
             # render atomically.
-            await websocket.send_text(_CLEAR_FRAME + snapshot)
+            if websocket.query_params.get("order") == replay_order.SCREEN_FIRST:
+                frames = replay_order.replay_frames(
+                    snapshot, session.rows, _CLEAR_FRAME
+                )
+                logger.info(
+                    f"🔌 WS replay {sid[:8]} screen-first frames={len(frames)} "
+                    f"screen_chars={len(frames[0])}"
+                )
+            else:
+                frames = [_CLEAR_FRAME + snapshot]
+            for frame in frames:
+                await websocket.send_text(frame)
         await asyncio.gather(
             _pump_to_client(websocket, queue),
             _pump_from_client(websocket, session, role),

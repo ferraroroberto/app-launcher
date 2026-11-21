@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, AsyncIterator, Dict, List, Optional
+from urllib.parse import quote
 
 import httpx
 import requests
@@ -56,8 +57,11 @@ def base_url(port: int) -> str:
     return f"http://127.0.0.1:{port}"
 
 
-def ws_url(port: int, session_id: str, role: str = "phone") -> str:
-    return f"ws://127.0.0.1:{port}/sessions/{session_id}/ws?role={role}"
+def ws_url(port: int, session_id: str, role: str = "phone", order: str = "") -> str:
+    """Session-host terminal socket URL. ``order`` passes the browser's
+    replay order through; a host that predates it ignores the parameter."""
+    url = f"ws://127.0.0.1:{port}/sessions/{session_id}/ws?role={role}"
+    return f"{url}&order={quote(order, safe='')}" if order else url
 
 
 class SessionHostError(_loopback_http.LoopbackError):
