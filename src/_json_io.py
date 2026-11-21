@@ -14,7 +14,7 @@ import logging
 import os
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, Optional, TypeVar
 
 from src import runtime_files
 
@@ -24,6 +24,37 @@ except ImportError:  # pragma: no cover - non-Windows fallback
     msvcrt = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
+
+
+def read_json_or(
+    path: Path,
+    default: _T,
+    label: str,
+    *,
+    expect: Optional[type] = None,
+) -> Any:
+    """Read the JSON document at ``path``, or ``default`` when it can't be had.
+
+    The tolerant reader for runtime state a restart must survive: a missing
+    file is the normal first-run case and returns ``default`` silently; an
+    unreadable or corrupt file logs a warning naming ``label`` (never the
+    exception text, which can carry a path) and returns ``default``. With
+    ``expect`` (``dict`` or ``list``) a document of any other shape also
+    returns ``default``. A caller that must tell "nothing saved" from "could
+    not read it" does not use this.
+    """
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return default
+    except (OSError, ValueError) as exc:
+        logger.warning("⚠️ %s unreadable: %s", label, exc.__class__.__name__)
+        return default
+    if expect is not None and not isinstance(raw, expect):
+        return default
+    return raw
 
 
 def atomic_write_json(target: Path, payload: Any, *, indent: int = 2) -> None:

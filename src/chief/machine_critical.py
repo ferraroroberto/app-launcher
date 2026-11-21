@@ -24,7 +24,6 @@ Best-effort: every failure is logged and swallowed.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import re
 import threading
@@ -36,7 +35,7 @@ from typing import Any, Callable, Dict, List, Optional
 import psutil
 
 from src import instance_role, runtime_files, system_load
-from src._json_io import atomic_write_json
+from src._json_io import atomic_write_json, read_json_or
 from src.chief_session_end import EVENT_VERSION
 from src.chief_session_end import publish as publish_event
 from src.clients import hub_health
@@ -76,15 +75,7 @@ def read_open(path: Optional[Path] = None) -> Dict[str, str]:
     """The open incidents as ``{"<host>/<metric>": first_seen}``; ``{}`` when
     nothing readable is on file."""
     target = Path(path or STATE_FILE)
-    try:
-        raw = json.loads(target.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return {}
-    except (OSError, ValueError) as exc:
-        logger.warning("⚠️ machine-critical open incidents unreadable: %s", exc.__class__.__name__)
-        return {}
-    if not isinstance(raw, dict):
-        return {}
+    raw = read_json_or(target, {}, "machine-critical open incidents", expect=dict)
     return {str(k): v for k, v in raw.items() if isinstance(v, str)}
 
 

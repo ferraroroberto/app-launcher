@@ -16,7 +16,6 @@ Best-effort: every failure is logged and swallowed.
 
 from __future__ import annotations
 
-import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -24,7 +23,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 from src import instance_role, runtime_files
-from src._json_io import atomic_write_json
+from src._json_io import atomic_write_json, read_json_or
 from src.chief import job_failed
 from src.chief_session_end import EVENT_VERSION
 from src.chief_session_end import publish as publish_event
@@ -44,15 +43,7 @@ def seen_path() -> Path:
 
 
 def _read_seen(path: Path) -> Dict[str, str]:
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return {}
-    except (OSError, ValueError) as exc:
-        logger.warning("⚠️ script-missing seen days unreadable: %s", exc.__class__.__name__)
-        return {}
-    if not isinstance(raw, dict):
-        return {}
+    raw = read_json_or(path, {}, "script-missing seen days", expect=dict)
     return {str(k): str(v) for k, v in raw.items() if isinstance(v, str)}
 
 

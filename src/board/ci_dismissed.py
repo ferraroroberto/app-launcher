@@ -25,14 +25,13 @@ dismissed. A failed write raises :class:`OSError` to the route.
 
 from __future__ import annotations
 
-import json
 import logging
 import threading
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from src import runtime_files
-from src._json_io import atomic_write_json
+from src._json_io import atomic_write_json, read_json_or
 
 logger = logging.getLogger(__name__)
 
@@ -76,13 +75,7 @@ def _clean(raw: object) -> Dismissed:
 def read_dismissed(path: Optional[Path] = None) -> Dismissed:
     """The dismissed run ids per repo and workflow; ``{}`` when nothing (readable) is on file."""
     target = Path(path or CI_DISMISSED_FILE)
-    try:
-        raw = json.loads(target.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return {}
-    except (OSError, ValueError) as exc:
-        logger.warning("⚠️ dismissed CI runs unreadable: %s", exc.__class__.__name__)
-        return {}
+    raw = read_json_or(target, {}, "dismissed CI runs", expect=dict)
     return _clean(raw)
 
 

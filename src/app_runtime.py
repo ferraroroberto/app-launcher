@@ -20,7 +20,6 @@ only. This stays a plain module-level structure.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import threading
@@ -30,7 +29,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from src import runtime_files
-from src._json_io import atomic_write_json
+from src._json_io import atomic_write_json, read_json_or
 from src.audit import AUDIT_DIR_ENV
 from src.diagnostics import is_pid_alive
 
@@ -121,15 +120,9 @@ def _save_locked() -> None:
 
 
 def _read_state() -> List[SpawnedInstance]:
-    try:
-        raw = json.loads(STATE_FILE.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return []
-    except (OSError, ValueError) as exc:
-        logger.warning(f"⚠️ launched-app records at {STATE_FILE} unreadable, starting empty: {exc}")
-        return []
+    raw = read_json_or(STATE_FILE, [], "launched-app records", expect=list)
     records: List[SpawnedInstance] = []
-    for row in raw if isinstance(raw, list) else []:
+    for row in raw:
         try:
             records.append(SpawnedInstance(
                 app_id=str(row["app_id"]), name=str(row["name"]), kind=str(row["kind"]),

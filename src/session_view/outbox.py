@@ -40,7 +40,6 @@ Webapp-only: not on the session-host import closure (CLAUDE.md
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import re
@@ -53,7 +52,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from src import runtime_files
-from src._json_io import atomic_write_json
+from src._json_io import atomic_write_json, read_json_or
 from src.audit import AUDIT_DIR_ENV, PROJECT_ROOT
 from src.session_view.image_sniff import IMAGE_MAGIC, sniff_image
 
@@ -324,15 +323,11 @@ def _session_dir(sid: str) -> Path:
 
 
 def _read_index(folder: Path) -> Dict[str, Any]:
-    try:
-        raw = json.loads((folder / "index.json").read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return {"rev": 0, "entries": []}
-    except (OSError, ValueError) as exc:
-        logger.warning("⚠️ outbox index unreadable for %s: %s", folder.name[:8], exc.__class__.__name__)
-        return {"rev": 0, "entries": []}
-    entries = raw.get("entries") if isinstance(raw, dict) else None
-    rev = raw.get("rev") if isinstance(raw, dict) else None
+    raw = read_json_or(
+        folder / "index.json", {}, f"outbox index for {folder.name[:8]}", expect=dict
+    )
+    entries = raw.get("entries")
+    rev = raw.get("rev")
     return {
         "rev": rev if isinstance(rev, int) else 0,
         "entries": [e for e in entries or [] if isinstance(e, dict)],

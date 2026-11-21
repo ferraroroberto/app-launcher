@@ -109,6 +109,25 @@ def _codex_skill_prompt(skill_path: str, skill_name: str) -> str:
     return f'"Use the {skill_name} skill from {skill_path}/SKILL.md."'
 
 
+def _skill_flags(
+    cfg: WebappConfig, agent: str, skill_dir: str, command: str,
+    model: str, effort: Optional[str], context: Optional[str],
+) -> str:
+    """Launch flags that open ``agent`` straight into the skill ``command``.
+
+    Claude takes the bare ``/<command>`` as its positional prompt; Codex has no
+    slash commands, so it gets a prompt naming the skill's ``SKILL.md`` under
+    ``skill_dir``.
+    """
+    if agent == "claude":
+        base = build_claude_flags(cfg, model_override=model, effort_override=effort)
+        return f"{base} /{command}"
+    base = build_codex_flags(
+        cfg, model_override=model, effort_override=effort, context_override=context
+    )
+    return f"{base} {_codex_skill_prompt(skill_dir, command)}"
+
+
 _RECAP_COMMAND = "weekly-recap"
 # The ledger is (re)written only when the user promotes a recap in review, so
 # its mtime is "when the memory was last curated" — exactly the staleness clock.
@@ -300,17 +319,9 @@ async def launch_recap(request: Request) -> Dict[str, Any]:
     effort = requested_launch_effort(body, agent, model)
     context = requested_launch_context(body, agent, model)
 
-    if agent == "claude":
-        flags = (
-            f"{build_claude_flags(cfg, model_override=model, effort_override=effort)}"
-            f" /{_RECAP_COMMAND}"
-        )
-    else:
-        prompt = _codex_skill_prompt(".claude/skills/_recap", _RECAP_COMMAND)
-        flags = (
-            f"{build_codex_flags(cfg, model_override=model, effort_override=effort, context_override=context)}"
-            f" {prompt}"
-        )
+    flags = _skill_flags(
+        cfg, agent, ".claude/skills/_recap", _RECAP_COMMAND, model, effort, context
+    )
     kind = "remote" if mode == "remote" else "pty"
     result = await _spawn_skill_session(
         cfg, request, life_os_dir,
@@ -386,18 +397,9 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
             cfg, agent, model_override=model, effort_override=effort,
             context_override=context,
         )
-    elif agent == "claude":
-        flags = (
-            f"{build_claude_flags(cfg, model_override=model, effort_override=effort)}"
-            f" /{skill.command}"
-        )
     else:
-        prompt = _codex_skill_prompt(
-            f".claude/skills/{skill.id}", skill.command
-        )
-        flags = (
-            f"{build_codex_flags(cfg, model_override=model, effort_override=effort, context_override=context)}"
-            f" {prompt}"
+        flags = _skill_flags(
+            cfg, agent, f".claude/skills/{skill.id}", skill.command, model, effort, context
         )
     name = skill.name
 

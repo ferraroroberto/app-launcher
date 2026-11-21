@@ -32,13 +32,12 @@ makes ``stop`` refuse (``not_relay_owned``), never act. A failed write raises
 
 from __future__ import annotations
 
-import json
 import logging
 import threading
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
-from src._json_io import atomic_write_json
+from src._json_io import atomic_write_json, read_json_or
 from src.runtime_data import runtime_data_dir
 
 logger = logging.getLogger(__name__)
@@ -59,15 +58,7 @@ def registry_path() -> Path:
 
 
 def _read(path: Path) -> Dict[str, List[Dict[str, Any]]]:
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        raw = {}
-    except (OSError, ValueError) as exc:
-        logger.warning(f"⚠️ relay registry unreadable ({exc.__class__.__name__}); read as empty")
-        raw = {}
-    if not isinstance(raw, dict):
-        raw = {}
+    raw = read_json_or(path, {}, "relay registry", expect=dict)
     return {key: [row for row in raw.get(key) or [] if isinstance(row, dict)]
             for key in ("entries", "stops")}
 

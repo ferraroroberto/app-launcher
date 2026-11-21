@@ -38,7 +38,6 @@ never usage rows.
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 import math
 import sqlite3
@@ -50,7 +49,7 @@ from typing import Any, Dict, List, Mapping, Optional
 import requests
 
 from src import runtime_files
-from src._json_io import atomic_write_json
+from src._json_io import atomic_write_json, read_json_or
 from src.clients import _loopback_http
 from src.runtime_data import runtime_data_dir, runtime_db_path
 from src.usage_log import foreground_time, open_read_only
@@ -507,14 +506,7 @@ def _now_iso() -> str:
 
 
 def _read_raw(path: Path) -> Dict[str, Any]:
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        raw = {}
-    except (OSError, ValueError) as exc:
-        logger.info("ℹ️ screen time export: unreadable status file %s (%s)", path, exc)
-        raw = {}
-    return raw if isinstance(raw, dict) else {}
+    return read_json_or(path, {}, "screen time export status file", expect=dict)
 
 
 def read_status(status_path: Optional[Path] = None) -> Dict[str, Any]:
