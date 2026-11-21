@@ -69,9 +69,17 @@ export function startWatch(sent, entries, working, now) {
 // 'picked-up' once there is evidence, 'waiting' while the window is open,
 // 'not-picked-up' once it has closed without any. Busy only counts when it is
 // news: an agent already working at send time says nothing about this message.
+// A message sent into a working agent is 'queued': the agent holds it until the
+// running tool call returns, which can outlast any window, so it is not judged
+// while the agent is still busy. Each look that finds it busy restarts the
+// window, leaving the grace for the transcript to flush once it goes idle.
 export function judgeWatch(watch, entries, working, now) {
   if (countMatchingTurns(entries, watch.sent) > watch.seen) return 'picked-up';
   if (working && !watch.wasWorking) return 'picked-up';
+  if (working) {
+    watch.deadline = now + CONFIRM_WINDOW_MS;
+    return 'queued';
+  }
   return now >= watch.deadline ? 'not-picked-up' : 'waiting';
 }
 

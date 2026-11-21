@@ -74,11 +74,29 @@ w = startWatch('yes', said, false, T0);
 assert.equal(judgeWatch(w, said, false, T0 + CONFIRM_WINDOW_MS), 'not-picked-up');
 assert.equal(judgeWatch(w, [...said, user('yes')], false, T0 + 3000), 'picked-up');
 
-// An agent already working at send time says nothing about this message.
+// An agent already working at send time says nothing about this message, and
+// a message sent into a long tool call sits queued for as long as it runs:
+// busy at send plus no turn past the window is 'queued', never a verdict.
 w = startWatch('next', before, true, T0);
-assert.equal(judgeWatch(w, before, true, T0 + 3000), 'waiting');
-assert.equal(judgeWatch(w, before, true, T0 + CONFIRM_WINDOW_MS), 'not-picked-up');
+assert.equal(judgeWatch(w, before, true, T0 + 3000), 'queued');
+assert.equal(judgeWatch(w, before, true, T0 + CONFIRM_WINDOW_MS), 'queued');
+assert.equal(judgeWatch(w, before, true, T0 + 5 * CONFIRM_WINDOW_MS), 'queued');
 assert.equal(judgeWatch(w, [...before, user('next')], true, T0 + 3000), 'picked-up');
+
+// The tool call ends and the agent goes idle without taking it: only now does
+// the window run out, counted from the last look that still found it busy.
+w = startWatch('next', before, true, T0);
+const lastBusy = T0 + 70_000;
+assert.equal(judgeWatch(w, before, true, lastBusy), 'queued');
+assert.equal(judgeWatch(w, before, false, lastBusy + 1000), 'waiting');
+assert.equal(judgeWatch(w, before, false, lastBusy + CONFIRM_WINDOW_MS - 1), 'waiting');
+assert.equal(judgeWatch(w, before, false, lastBusy + CONFIRM_WINDOW_MS), 'not-picked-up');
+// Taken once the tool call returns, mid-grace: picked up.
+assert.equal(judgeWatch(w, [...before, user('next')], false, lastBusy + 4000), 'picked-up');
+
+// An idle agent at send time that never takes it is judged as before.
+w = startWatch('next', before, false, T0);
+assert.equal(judgeWatch(w, before, false, T0 + CONFIRM_WINDOW_MS), 'not-picked-up');
 
 // --- messages still pending ----------------------------------------------
 

@@ -83,6 +83,8 @@ export async function sendFromChat(text) {
     return false;
   }
   const outcome = sendOutcome(verdict, { watch: hasTranscriptReader(target.session) });
+  // Typed into a working agent, an unconfirmed send is queued, not yet sent.
+  if (outcome.watch && watch.wasWorking) outcome.text = 'Queued: the agent is busy, it takes this once it settles';
   toast(outcome.text, outcome.kind, { icon: 'send-horizontal' });
   // A message to the chief is a look at the Board's journal (not an error verdict).
   if (outcome.kind !== 'error' && isChiefSession(target.session)) markLooked();
@@ -127,9 +129,19 @@ export function checkSendWatch(target) {
     watch, target.entries || [], target.activity && target.activity.working, Date.now()
   );
   if (verdict === 'waiting') return;
+  if (verdict === 'queued') {
+    // The window restarted while the agent is busy: move the closing read with it.
+    window.clearTimeout(target.watchTimer);
+    target.watchTimer = window.setTimeout(function () { closeSendWatch(target); }, CONFIRM_WINDOW_MS);
+    return;
+  }
   target.sendWatch = null;
   window.clearTimeout(target.watchTimer);
-  if (verdict !== 'not-picked-up') return;
+  if (verdict === 'picked-up') {
+    // The queued toast promised a "Sent" once the agent takes the message.
+    if (watch.wasWorking) toast('Sent', 'good', { icon: 'send-horizontal' });
+    return;
+  }
   toast(NOT_PICKED_UP.text, NOT_PICKED_UP.kind, { icon: 'send-horizontal' });
   if (chatComposer) chatComposer.restoreDraft(watch.sent);
 }
