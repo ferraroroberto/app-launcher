@@ -310,7 +310,11 @@ async def agents() -> Dict[str, Any]:
     editor, not a PTY session, so it has no entry in ``src.agents``. One
     already-polled endpoint beats a second fetch for a single boolean.
     """
-    return {"agents": detect_agents(), "vscode_available": is_vscode_installed()}
+    # A PATH walk per agent (~35 ms here, far more on a slow PC): run off the
+    # event loop so it never holds up the other boot requests.
+    agents_found, vscode = await asyncio.gather(
+        asyncio.to_thread(detect_agents), asyncio.to_thread(is_vscode_installed))
+    return {"agents": agents_found, "vscode_available": vscode}
 
 
 @router.get("/healthz")

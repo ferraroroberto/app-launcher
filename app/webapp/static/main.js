@@ -14,7 +14,7 @@ import { initBuildWatch } from './_vendored/build-watch/build-watch.js';
 import { bindTextSize } from './_vendored/text-size/text-size.js';
 import { buildReadoutText } from './_vendored/page-foot/page-foot.js';
 import { fetchConfig, wireClaudeOptions, wireConfigSwitch } from './settings/claude-options.js';
-import { fetchRateLimits, fetchSessions, renderSessions, wireSessions } from './sessions.js';
+import { fetchRateLimits, fetchSessions, paintLastKnownSessions, redrawSessions, renderSessions, wireSessions } from './sessions.js';
 import { wireChannelSessions } from './channel-sessions.js';
 import { fetchContextFilter } from './settings/context-filter.js';
 import { wireUsageMeter } from './usage-meter.js';
@@ -26,7 +26,7 @@ import { refreshGitStatus } from './apps/apps-coding.js';
 import { fetchListeners } from './apps/apps-listeners.js';
 import { fetchJobs, wireJobs } from './jobs.js';
 import { fetchChannels, fetchSkills, openConvoByLink, wireLifeOs } from './life-os.js';
-import { fetchBoard, openBoardCard, renderBoard, wireBoard } from './board.js';
+import { fetchBoard, openBoardCard, paintLastKnownBoard, renderBoard, wireBoard } from './board.js';
 import { wireHtmlViewer, wireImageLightbox } from './lightbox.js';
 import { openScreenWindow, wireScreenView } from './screen/screen-view.js';
 import { wireTokens } from './settings/tokens.js';
@@ -217,15 +217,33 @@ let screenWindow = null;
 async function boot() {
   if (screenWindow === null) screenWindow = consumeUrlParam('screen') !== null;
   const { mirrorSid, sharedSessionSid } = consumeSessionParams();
-
-  if (!(await fetchConfigForBoot())) return;
-  // Each remaining boot fetch fills one panel — none is load-bearing for
-  // the rest of the app, so a single failure must not abort boot() and take
-  // the deep-link branch below down with it: the PC mirror window's title
-  // marker + terminal connect depend on reaching it.
+  // Each boot fetch past the config fills one panel — none is load-bearing
+  // for the rest of the app, so a single failure must not abort boot() and
+  // take the deep-link branch below down with it: the PC mirror window's
+  // title marker + terminal connect depend on reaching it.
   const safe = function (fn) { return fn().catch(function (exc) {
     console.warn('boot: non-critical fetch failed', exc);
   }); };
+
+  // The session list and the Board never wait on the config round trip:
+  // they draw what this device last saw at once, and their live reads go
+  // out beside the config's. Both render safely before the config lands
+  // (hidden channels stay hidden until it says otherwise) and redraw after.
+  // The Board and Jobs fetches self-gate to their tab; without them a
+  // reload on either tab waited for its first 5 s poll.
+  let early = null;
+  if (!screenWindow) {
+    paintLastKnownSessions();
+    paintLastKnownBoard();
+    early = {
+      agents: safe(fetchAgents),
+      sessions: fetchSessions(),
+      board: safe(fetchBoard),
+      jobs: safe(fetchJobs),
+    };
+  }
+
+  if (!(await fetchConfigForBoot())) return;
 
   // The pop-out is the viewer alone: it needs the passkey gate's state
   // (reachability + whether a passkey is set up) and nothing else, so none of
@@ -251,8 +269,20 @@ async function boot() {
   // (last in line) painted. Only real reads are chained. The session and
   // project lists render agent icons from state.agents, and fetchAgents
   // re-renders neither, so both wait for it.
-  const lists = safe(fetchAgents).then(function () {
-    return Promise.all([safe(fetchApps), safe(fetchSessions)]);
+  // A list that rendered before the config could only guess its hidden
+  // channels; draw both again under the real setting.
+  redrawSessions();
+  renderBoard();
+  // A first session read that failed (the config's own retries cover a
+  // dropped connection) is read again now, not on the next poll.
+  const sessions = early.sessions.then(function (ok) {
+    return ok ? null : safe(fetchSessions);
+  });
+  const lists = early.agents.then(function () {
+    // Session rows carry agent icons from state.agents, which the early
+    // session read may have beaten.
+    redrawSessions();
+    return Promise.all([safe(fetchApps), sessions]);
   }).then(function () {
     // A Board opened before the project list landed drew its issue actions
     // without it (they key on the registered projects). git-status used to
@@ -296,7 +326,8 @@ async function boot() {
   }
   // safe() never rejects, so neither does this: boot() resolves once every
   // boot fetch has settled.
-  await Promise.all([lists, skills, status, webauthn, git, usage, listeners, running, load].concat(others));
+  await Promise.all([lists, skills, status, webauthn, git, usage, listeners, running, load,
+    early.board, early.jobs].concat(others));
   perfTiming.bootDone();
   warmSessionOpen();
 }

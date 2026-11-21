@@ -61,6 +61,7 @@ import { avatar, chip, sessionStatusMeta, sessionStatusParts } from './glance.js
 import { shouldAutoRefreshGithub } from './board/github-refresh.js';
 import { ACTION_ROW_MENU, actionRow } from './action-rows.js';
 import { failedFetchState, setAsyncState } from './async-state.js';
+import { readSnapshot, saveSnapshot } from './boot-snapshot.js';
 import { renderBoardBadge, renderFittedHeadStatus } from './home-head.js';
 import { createRowMenu } from './_vendored/row-menu/row-menu.js';
 import {
@@ -826,15 +827,33 @@ export async function fetchBoard() {
   }
   // Read before a rename landed: it would put the old title back.
   if (editSeq !== boardEditSeq) return;
-  setAsyncState(els.boardFetchState, 'ready');
-  if (els.boardColumns) els.boardColumns.hidden = false;
-  state.board = board;
-  state.boardFetchedAt = Date.now();
-  state.chiefPlan = plan;
-  renderBoard();
+  boardLive = true;
+  showBoard(board, plan, Date.now());
+  saveSnapshot('board', { board: board, plan: plan });
   pollIdeas();
   pollJournal();
   maybeAutoRefreshGithub();
+}
+
+let boardLive = false;
+
+function showBoard(board, plan, fetchedAt) {
+  setAsyncState(els.boardFetchState, 'ready');
+  if (els.boardColumns) els.boardColumns.hidden = false;
+  state.board = board;
+  state.boardFetchedAt = fetchedAt;
+  state.chiefPlan = plan;
+  renderBoard();
+}
+
+// First paint: the Board this device last saw, drawn before any request, so
+// a slow server never leaves it on "Reading the Board…". The live read
+// replaces it; if that read fails, the stale line carries the snapshot's time.
+export function paintLastKnownBoard() {
+  if (boardLive) return;
+  const snap = readSnapshot('board');
+  if (!snap || !snap.body.board) return;
+  showBoard(snap.body.board, snap.body.plan || { state: 'unavailable' }, snap.at);
 }
 
 // The open Board keeps its GitHub data current without a tap: a stale or
