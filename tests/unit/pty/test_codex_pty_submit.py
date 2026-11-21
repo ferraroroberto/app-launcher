@@ -25,6 +25,11 @@ rendered in the composer, and the exit wait is a polled 15 s budget — a fixed
 3 s budget flaked ~2/20 under concurrent load (typical submit->exit is
 ~870 ms, but the full pre-ship gate can push it past 3 s).
 
+Trust: Codex asks "Trust this folder?" for a directory spelling that is not in
+its trust list, and nothing on the command line trusts one for a single
+process.  The probe skips with that reason instead of answering, because
+answering would persist a trust decision into the user's Codex config.
+
 Readiness (issue #1232): the composer paints before the Codex session is
 configured, and a submit in that window is dropped.  The probe waits for the
 header's ``model:`` field to leave ``loading`` before pasting.  That replaced
@@ -83,6 +88,28 @@ _HOOKS_MODAL_MARKER = "hooks need review"
 # dropped that header field: its footer status row, led by the context-used
 # item, appears only once the session has its model.
 _SESSION_CONFIGURED = re.compile(r"model:\s+(?!loading\b)\S|Context \d+% used · ")
+# The folder-trust prompt Codex shows for a directory that is not in its trust
+# list.  The list is keyed by the path's exact spelling, so a checkout reached
+# through a junction, a drive alias or a git worktree is "new" even when the
+# repo is trusted under another spelling.  The prompt paints about half a
+# second after the composer banner and covers it, so it is invisible to the
+# composer check and the session then never configures behind it.
+_TRUST_MODAL_MARKER = "Trust this folder?"
+
+
+def _skip_if_folder_untrusted(frame: str) -> None:
+    """Skip when Codex is asking whether to trust the project directory.
+
+    Answering would save a trust decision into the user's own Codex config,
+    which this probe must not do (it persists nothing).  No launch flag sets
+    trust for one process, so the probe cannot proceed here.
+    """
+    if _TRUST_MODAL_MARKER in frame:
+        pytest.skip(
+            "Codex asks to trust this project directory (its trust list is "
+            "keyed by exact path spelling); trust it once in a real Codex "
+            "session to run this probe — it will not persist trust itself"
+        )
 
 
 async def _reach_composer(session: PtySession) -> bool:
@@ -98,6 +125,7 @@ async def _reach_composer(session: PtySession) -> bool:
     """
     for _ in range(75):  # ~15 s ceiling at 0.2 s per poll, two modals to clear
         frame = _rendered(session.snapshot_frame() or "")
+        _skip_if_folder_untrusted(frame)
         if _UPDATE_MODAL_MARKER in frame:
             # Numbered-select modal: digit moves the cursor, Enter confirms.
             session.write("2\r")
@@ -121,10 +149,13 @@ async def _wait_for_session_configured(session: PtySession) -> bool:
 
     Bounded at 30 s: unloaded this takes ~1 s, but a synthetic CPU burn on
     this box pushed it to 33 s, and failing here names the real cause instead
-    of the swallowed-Enter symptom further down.
+    of the swallowed-Enter symptom further down.  The trust prompt is checked
+    on every poll because it only appears after the composer has painted.
     """
     for _ in range(300):
-        if _SESSION_CONFIGURED.search(_rendered(session.snapshot_frame() or "")):
+        frame = _rendered(session.snapshot_frame() or "")
+        _skip_if_folder_untrusted(frame)
+        if _SESSION_CONFIGURED.search(frame):
             return True
         if not session.alive:
             return False
