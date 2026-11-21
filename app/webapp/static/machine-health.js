@@ -38,14 +38,22 @@ function diskLabel(d) {
   return (d.drives && d.drives.length ? d.drives.join(', ') : d.disk) || 'Disk';
 }
 
+// The row's figure stays short so a phone keeps it on one line next to the
+// drive letter; the latencies wrap in a note under it.
 function diskText(d) {
   if (d.state === 'unknown') return 'Not confirmed';
   const parts = [];
   if (isNum(d.busy_percent)) parts.push(pctText(d.busy_percent) + ' busy');
   if (isNum(d.queue)) parts.push('queue ' + (Math.round(d.queue * 10) / 10));
+  return parts.join(' · ') || 'Not confirmed';
+}
+
+function diskLatency(d) {
+  if (d.state === 'unknown') return '';
+  const parts = [];
   if (isNum(d.read_ms)) parts.push('read ' + msText(d.read_ms));
   if (isNum(d.write_ms)) parts.push('write ' + msText(d.write_ms));
-  return parts.join(' · ') || 'Not confirmed';
+  return parts.join(' · ');
 }
 
 // The sheet's rows under the verdict: the percents, one row per disk, the top
@@ -62,6 +70,12 @@ export function appendMachineRows(body, health, nowMs) {
       const row = sheetRow(diskLabel(d), diskText(d), 'disk-' + i);
       if (DISK_TONES[d.state]) row.lastChild.dataset.tone = DISK_TONES[d.state];
       body.appendChild(row);
+      const latency = diskLatency(d);
+      if (latency) {
+        const note = el('p', 'cpu-sheet-note', latency);
+        note.dataset.row = 'disk-' + i + '-latency';
+        body.appendChild(note);
+      }
     });
   }
   if (m.holders && m.holders.length) {

@@ -424,16 +424,16 @@ def _assert_the_sheet_shows_each_disk_and_an_older_hub_shows_none(page: Page, st
     expect(first).to_contain_text("C:")
     expect(first).to_contain_text("98% busy")
     expect(first).to_contain_text("queue 7.5")
-    expect(first).to_contain_text("read 120 ms")
-    expect(first).to_contain_text("write 310 ms")
+    expect(body.locator("[data-row='disk-0-latency']")).to_have_text("read 120 ms · write 310 ms")
     expect(first.locator("strong")).to_have_attribute("data-tone", "danger")
     second = body.locator("[data-row='disk-1']")
     expect(second).to_contain_text("D:, F:")
-    expect(second).not_to_contain_text("read")
+    expect(body.locator("[data-row='disk-1-latency']")).to_have_text("write 40 ms")
     expect(second.locator("strong")).to_have_attribute("data-tone", "attention")
     third = body.locator("[data-row='disk-2']")
     expect(third).to_contain_text("Not confirmed")
     expect(third.locator("strong")).not_to_have_attribute("data-tone", re.compile("."))
+    expect(body.locator("[data-row='disk-2-latency']")).to_have_count(0)
     state.update(status=200, body={
         "verdict": "ok", "why": None, "reason": None, "fix": None,
         "machine": _machine(3.2, 40.0), "hub_url": None,
