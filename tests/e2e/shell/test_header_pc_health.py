@@ -121,6 +121,40 @@ def _assert_a_long_process_label_wraps_and_the_figure_keeps_its_line(page: Page,
         assert geometry["valueRight"] <= geometry["rowRight"] + 0.5
 
 
+_IP = "192.0.2.44"
+# headless WebKit's clipboard permission is not reliable, so writeText is captured.
+_CLIPBOARD_MOCK = """
+(() => {
+  window.__copied = [];
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText: async (t) => { window.__copied.push(t); }, readText: async () => '' },
+  });
+})()
+"""
+
+
+def _assert_the_ip_row_copies_the_address_and_reads_unknown_without_one(page: Page, ip: dict) -> None:
+    """The sheet's IP row: the address from ``/api/status``, a Copy that puts
+    exactly that string on the clipboard, and ``Unknown`` with Copy disabled
+    once a re-read (the sheet's open) finds no address. Leaves the sheet closed."""
+    row = page.locator("#cpuSheetBody [data-row='ip']")
+    expect(row.locator(".usage-sheet-value")).to_have_text(_IP)
+    copy = row.get_by_role("button", name="Copy")
+    expect(copy).to_be_enabled()
+    assert row.evaluate("el => el.scrollWidth - el.clientWidth") <= 0, "the IP row spills"
+    copy.click()
+    expect(page.locator("#cpuSheetToast")).to_contain_text("IP address copied")
+    assert page.evaluate("window.__copied") == [_IP]
+
+    ip["value"] = None
+    page.locator("#cpuSheetDone").click()
+    _open_sheet(page)
+    expect(row.locator(".usage-sheet-value")).to_have_text("Unknown")
+    expect(row.get_by_role("button", name="Copy")).to_be_disabled()
+    page.locator("#cpuSheetDone").click()
+
+
 _OWNED = {
     "verdict": "watch", "why": None, "reason": "hwinfo-plugin.exe at 349 k handles",
     "fix": "Restart hwinfo-plugin.exe", "owner": "Stream Deck · HWiNFO plugin",
@@ -201,9 +235,20 @@ def test_the_sheet_names_the_owner_and_restarts_only_after_a_confirm(
 
     page.route(re.compile(r".*/api/system/health$"), health)
     page.route(re.compile(r".*/api/system/restart/.*"), restart)
+    ip = {"value": _IP}
+    page.add_init_script(_CLIPBOARD_MOCK)
+
+    def status(route):
+        payload = route.fetch().json()
+        payload["private_ip"] = ip["value"]
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(payload))
+
+    page.route(re.compile(r".*/api/status$"), status)
     _boot(page, base_url)
     body = _open_sheet(page)
     _assert_a_long_process_label_wraps_and_the_figure_keeps_its_line(page, body)
+    _assert_the_ip_row_copies_the_address_and_reads_unknown_without_one(page, ip)
+    body = _open_sheet(page)
 
     expect(body.locator("[data-row='owner']")).to_contain_text("Stream Deck · HWiNFO plugin")
     restart_btn = body.get_by_role("button", name="Restart")

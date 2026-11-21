@@ -18,14 +18,19 @@
  * and read on the same poll. A verdict that could not be read is "Not
  * confirmed" in the sheet, never "OK"; the hub does the alerting. The same
  * verdict feeds the port and commit rows in this sheet (machine-health.js).
+ *
+ * The sheet also shows the PC's private IP with a Copy action, from the
+ * /api/status payload the page already holds and re-read each time the sheet
+ * opens; an address that could not be read is "Unknown" and Copy is disabled.
  */
 
-import { SYSTEM_LOAD_WARMING_RETRY_MS } from './state.js';
+import { SYSTEM_LOAD_WARMING_RETRY_MS, state } from './state.js';
 import { jsonApi, logPollFailure, toast, apiFailToast } from './api.js';
 import { confirmDialog } from './confirm-dialog.js';
 import { el, sheetRow } from './dom-utils.js';
 import { pctText } from './shared/format.js';
 import { appendMachineRows } from './machine-health.js';
+import { copyText } from './apps/apps-listeners.js';
 
 // The last payload; null when the fetch itself failed. Before the first
 // answer it reads as the server's own "still taking the first sample".
@@ -126,6 +131,9 @@ function appendHealthRows(body) {
     btn.addEventListener('click', function () { restartOwner(h); });
     body.appendChild(btn);
   }
+  // Above the port and holder rows: the address is read at a glance, and
+  // those lists push everything under them past the phone's fold.
+  appendIpRow(body);
   if (h.verdict !== 'unknown') appendMachineRows(body, h);
 }
 
@@ -161,6 +169,34 @@ async function restartOwner(h) {
     apiFailToast('Restart failed', exc, { host });
   }
   await fetchHealth();
+}
+
+// The PC's private IP and a Copy that puts exactly that string on the clipboard.
+function appendIpRow(body) {
+  const ip = state.status && state.status.private_ip;
+  const row = sheetRow('IP', ip || 'Unknown', 'ip');
+  const btn = el('button', 'button-ghost', 'Copy');
+  btn.type = 'button';
+  btn.dataset.track = 'cpu.copy-ip';
+  btn.disabled = !ip;
+  btn.addEventListener('click', function () {
+    copyText(ip, 'IP address', { host: document.getElementById('cpuSheetToast') });
+  });
+  row.appendChild(btn);
+  body.appendChild(row);
+}
+
+// Re-read the address when the sheet opens, so a changed one shows without a
+// reload; a failed read keeps the last value.
+async function refreshIp() {
+  try {
+    state.status = await jsonApi('/api/status');
+  } catch (exc) {
+    logPollFailure('private ip refresh failed', exc);
+    return;
+  }
+  const dialog = sheet();
+  if (dialog && dialog.open) renderSheet();
 }
 
 function renderSheet() {
@@ -256,6 +292,7 @@ function openSheet() {
   if (!dialog) return;
   renderSheet();
   if (!dialog.open) dialog.showModal();
+  refreshIp().catch(function () {});
 }
 
 function closeSheet() {

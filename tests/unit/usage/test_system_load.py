@@ -341,3 +341,47 @@ def test_the_windows_snapshot_sees_this_process():
     procs = sl._windows_process_times()
     mine = [name for (pid, _created), (name, _secs) in procs.items() if pid == os.getpid()]
     assert mine and mine[0].lower().startswith("python")
+
+
+class _FakeProbe:
+    """A UDP socket stand-in: ``connect`` records nothing, ``getsockname`` answers."""
+
+    def __init__(self, address: str | None = None, error: OSError | None = None) -> None:
+        self._address = address
+        self._error = error
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def connect(self, addr) -> None:
+        if self._error:
+            raise self._error
+
+    def getsockname(self):
+        return (self._address, 0)
+
+
+@pytest.mark.parametrize("address", ["192.168.1.20", "10.1.2.3", "172.16.5.9"])
+def test_a_private_address_is_the_pcs_ip(monkeypatch, address):
+    monkeypatch.setattr(sl.socket, "socket", lambda *a, **k: _FakeProbe(address))
+    assert sl.private_ip() == address
+
+
+@pytest.mark.parametrize("address", ["8.8.8.8", "127.0.0.1", "169.254.3.4", "0.0.0.0"])
+def test_an_address_a_second_device_could_not_use_is_unknown(monkeypatch, address):
+    monkeypatch.setattr(sl.socket, "socket", lambda *a, **k: _FakeProbe(address))
+    assert sl.private_ip() is None
+
+
+def test_no_route_is_unknown_not_an_error(monkeypatch):
+    monkeypatch.setattr(sl.socket, "socket", lambda *a, **k: _FakeProbe(error=OSError("unreachable")))
+    assert sl.private_ip() is None
+
+
+def test_status_carries_the_private_ip(webapp_client, monkeypatch):
+    client, _, _ = webapp_client
+    monkeypatch.setattr(sl, "private_ip", lambda: "192.0.2.7")
+    assert client.get("/api/status").json()["private_ip"] == "192.0.2.7"
