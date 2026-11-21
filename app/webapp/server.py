@@ -277,11 +277,10 @@ async def _coverage_cycle(cfg: object) -> None:
 
     Reap runs first — :func:`src.jobs.reap.reap_stranded_runs_all` is
     otherwise lazy-on-read (only ``GET /api/jobs`` or the Board trigger it),
-    so a stranded record from a checkout nobody polls can sit un-finalised,
-    and its failure alert un-sent, indefinitely (a June spawn failure went
-    unreaped, and unnotified, for over two months until this tick started
-    catching it). Reaping first also means coverage's behavioural half sees
-    a freshly-terminal record rather than a stale "running" one.
+    so a stranded record from a checkout nobody polls could sit
+    un-finalised, and its failure alert un-sent, indefinitely. Reaping first
+    also means coverage's behavioural half sees a freshly-terminal record
+    rather than a stale "running" one.
 
     Both halves never raise — a wedged Task Scheduler, a bad job's history,
     or an unreachable Telegram must not take the webapp's lifespan down.
