@@ -22,6 +22,16 @@ LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
 # interactive terminal is gated to this range (plus loopback and an
 # optional user allowlist) and is refused outright over the public tunnel.
 _TAILNET_CGNAT = ipaddress.ip_network("100.64.0.0/10")
+# The private ranges a home or office network hands out (RFC 1918 and
+# link-local for IPv4, unique-local and link-local for IPv6). The opt-in
+# ``terminal_allow_private_lan`` setting trusts them for the terminal routes.
+_PRIVATE_LAN = tuple(
+    ipaddress.ip_network(n)
+    for n in (
+        "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16",
+        "fc00::/7", "fe80::/10",
+    )
+)
 # Cloudflare's tunnel adds these headers — their presence means the
 # request came in over the public edge, never acceptable for a terminal.
 _CLOUDFLARE_HEADERS = ("cf-ray", "cf-connecting-ip")
@@ -68,3 +78,12 @@ def client_in_tailnet(client_host: str, allowlist: List[str]) -> bool:
             if client_host == str(entry):
                 return True
     return False
+
+
+def client_in_private_lan(client_host: str) -> bool:
+    """True when the client IP is in a private (home/office network) range."""
+    try:
+        ip = ipaddress.ip_address(client_host)
+    except ValueError:
+        return False
+    return any(ip in net for net in _PRIVATE_LAN)

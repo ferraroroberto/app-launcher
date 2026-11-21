@@ -17,6 +17,7 @@
   "_comment_copilot_flags": "GitHub Copilot CLI (copilot) launch setting, set from the Coding options card: copilot_skip_permissions is the --allow-all switch. There is no model or effort setting: Copilot resolves --model against the account at launch (#1017), so the launcher has no model to key an effort on; use /model in-session.",
   "_comment_pi_flags": "Pi uses only subscription-safe providers: Claude Opus/Sonnet/Fable 5 through claude-agent-sdk and GPT-5.6 Luna/Terra/Sol through openai-codex. Astra stays disabled until Pi advertises it. Explicit provider/model flags prevent fallback to Pi's native metered anthropic provider.",
   "_comment_session_host_port": "Loopback port the PTY session-host binds. Never network-reachable; the webapp proxies to it. Must differ from 'port'.",
+  "_comment_terminal_allow_private_lan": "Trust private-network addresses on the terminal routes, for a PC with no Tailscale on a trusted LAN. The bearer token and passkey still apply. screen_allow_private_lan additionally admits the screen view (the whole desktop) and works only while this is on. Both off by default.",
   "_comment_tailnet_allowlist": "Extra IPs / CIDRs allowed to reach the interactive terminal endpoints, on top of loopback + the Tailscale CGNAT range 100.64.0.0/10. Leave empty unless you need LAN access.",
   "_comment_outbox_scratch_roots": "Folders, besides a session's own, that an agent may send a file to the Chat pane from (issue #1530). %VAR% and ~ expand, Defaults to \"%TEMP%/claude\", Claude Code's scratch base (where its SendUserFile files live); a non-empty list here replaces it. Settings > Folders > Chat file folders edits it and checks each folder on save (issue #1748). A .zip, .gz, .tgz or .7z sent from any of these folders is shown as a download-only card (served as an attachment, never rendered).",
   "_comment_documents": "Settings > Documents: files the reading sheet may show, rendered live with Mermaid diagrams. Each entry is {id, title, repo, path}: id a short lowercase slug unique in the list, repo the folder name of a primary checkout under projects_dir (a -wt-N worktree is refused), path a relative .md path with forward slashes. Only listed files can be read, and the text is gated like the Life OS file reader: Tailscale-only, passkey-required. An entry that fails these checks is dropped with a warning in the log; an empty list hides the group.",
@@ -72,6 +73,8 @@
   "auth_password": "",
   "session_host_port": 8446,
   "tailnet_allowlist": [],
+  "terminal_allow_private_lan": false,
+  "screen_allow_private_lan": false,
   "outbox_scratch_roots": ["%TEMP%/claude"],
   "documents": [
     {"id": "fleet-guide", "title": "Fleet guide", "repo": "fleet-config", "path": "docs/fleet-guide.md"},

@@ -8,6 +8,7 @@ live terminal won't work on the current connection.
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -39,7 +40,7 @@ from src.launching.model_catalog import (
     catalog_payload,
 )
 from src.launching.presets import checked_launch_presets
-from src.middleware import terminal_reachability
+from src.middleware import is_pc_itself, terminal_http_gate, terminal_reachability
 from src.session_view import outbox as session_outbox
 from src.usage.providers import VALID_USAGE_PROVIDERS, validate_usage_providers
 from src.webapp_config import (
@@ -83,6 +84,7 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "coding_model_choice": cfg.coding_model_choice,
         # Models the Projects, Skills and Board dropdowns leave out; the named model + effort presets they offer.
         "hidden_models": cfg.hidden_models, "launch_presets": cfg.launch_presets,
+        **_private_lan_payload(cfg),
         # Telegram channel sessions leave the Board and session list.
         "hide_channel_sessions": cfg.hide_channel_sessions,
         # Where the SPA opens a session: the PC window, and Chat first.
@@ -169,6 +171,15 @@ def _preferences_payload(cfg: WebappConfig) -> Dict[str, Any]:
     return {
         "life_os_refresh_skill_instructions": cfg.life_os_refresh_skill_instructions,
         "dictation_auto_stop_seconds": cfg.dictation_auto_stop_seconds,
+    }
+
+
+def _private_lan_payload(cfg: WebappConfig) -> Dict[str, Any]:
+    """Settings > Terminal: the private-network override of the Tailscale-only
+    routes, and the screen view's own switch. Both off by default."""
+    return {
+        "terminal_allow_private_lan": cfg.terminal_allow_private_lan,
+        "screen_allow_private_lan": cfg.screen_allow_private_lan,
     }
 
 
@@ -302,6 +313,8 @@ def _checked_usage_providers(raw: Any) -> List[str]:
 # The Settings switches: a truthy string must never flip
 # one ("false" is truthy in Python), so patch_config refuses anything but a bool.
 _SWITCH_KEYS = (
+    "terminal_allow_private_lan",
+    "screen_allow_private_lan",
     "hide_channel_sessions",
     "open_sessions_in_window",
     "open_sessions_in_chat",
@@ -321,6 +334,8 @@ _SWITCH_KEYS = (
 
 # The settings POST /api/config may change; any other body key is ignored.
 _PATCH_KEYS = frozenset({
+    "terminal_allow_private_lan",
+    "screen_allow_private_lan",
     "projects_dir",
     "projects_ignore",
     "outbox_scratch_roots",
@@ -371,6 +386,43 @@ _PATCH_KEYS = frozenset({
     "grok_effort",
     "grok_permission_mode",
 })
+
+
+def _guard_private_lan_patch(
+    request: Request, patch: Dict[str, Any], cfg: WebappConfig,
+) -> None:
+    """Rules for the two private-network switches, applied to ``patch`` in place.
+
+    Turning one on loosens the terminal gate, so only a caller the terminal
+    gate itself would let through may do it: the PC, or a Tailscale (or
+    allowlisted) client holding the passkey token. A bearer token alone, on
+    the public tunnel included, never can. Turning one off is always allowed.
+    The screen switch needs the main switch on, and the main switch going off
+    takes it along, so it can never stay armed behind a closed gate.
+    """
+    if "terminal_allow_private_lan" in patch and not patch["terminal_allow_private_lan"]:
+        patch["screen_allow_private_lan"] = False
+    terminal_on = patch.get("terminal_allow_private_lan", cfg.terminal_allow_private_lan)
+    if patch.get("screen_allow_private_lan") and not terminal_on:
+        raise HTTPException(
+            status_code=400,
+            detail="screen_allow_private_lan needs terminal_allow_private_lan on",
+        )
+    enabling = any(
+        patch.get(key) and not getattr(cfg, key)
+        for key in ("terminal_allow_private_lan", "screen_allow_private_lan")
+    )
+    if not enabling:
+        return
+    client_host = request.client.host if request.client else ""
+    if is_pc_itself(client_host, request.headers):
+        return
+    refusal = terminal_http_gate(request, level="passkey")
+    if refusal is not None:
+        raise HTTPException(
+            status_code=refusal.status_code,
+            detail=json.loads(refusal.body)["detail"],
+        )
 
 
 @router.post("/api/config")
@@ -426,6 +478,7 @@ async def patch_config(request: Request) -> Dict[str, Any]:
             raise HTTPException(
                 status_code=400, detail=f"{key} must be true or false"
             )
+    _guard_private_lan_patch(request, patch, cfg)
     # The favourite agent must name a registered agent. An unknown
     # id — a typo, a stale client, an agent dropped from the registry — is
     # coerced to DEFAULT_AGENT rather than stored, because the row renders

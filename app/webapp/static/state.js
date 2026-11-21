@@ -554,6 +554,8 @@ export const els = {
   appsScanRoot: document.getElementById('appsScanRoot'),
   terminalHistoryLines: document.getElementById('terminalHistoryLines'),
   largeUploadMaxMb: document.getElementById('largeUploadMaxMb'),
+  terminalPrivateLanToggle: document.getElementById('terminalPrivateLanToggle'),
+  screenPrivateLanToggle: document.getElementById('screenPrivateLanToggle'),
   usageShows: document.getElementById('usageShows'),
   bootAutostartToggle: document.getElementById('bootAutostartToggle'),
   remotePowerGuardToggle: document.getElementById('remotePowerGuardToggle'),
