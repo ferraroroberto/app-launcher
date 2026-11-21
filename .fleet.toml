@@ -599,7 +599,10 @@ time_budget_s         = 1200
 # 2026-11-21: 658 -> 659, one node (one test, chromium only) for tests/e2e/shell/test_pc_sheet_ip_copy.py: the real clipboard read back from the PC load
 # sheet's IP Copy, which every existing sheet test mocks; both viewports, the poll rebuild between press and release, a refused writeText, a page with no
 # clipboard API and a failed copy all ride that one node.
-test_budget = 659
+# 2026-11-21: 659 -> 660, one node (one test, chromium only) for tests/e2e/board/test_board_first_load.py: with every boot read hung, the session list
+# and the Board still draw from their last-known snapshots, and the Board's live read goes out at boot rather than on its first poll; no existing test
+# boots with storage seeded and every read held, and both lists plus the boot-read check ride that one node.
+test_budget = 660
 
 # --- static assets under the webapp's static dir -> Chromium smoke ----------
 [[e2e.rule]]

@@ -26,6 +26,6 @@ On the server, boot reads that touch the disk (the agents' PATH check, the proje
 | Any one first-load response, gzipped | < 100 KB |
 
 - `tests/unit/shell/test_first_load_budget.py` fails when the served page, the stylesheet bundle or any module `main.js` imports statically reaches 100 KB gzipped, at the server's compression level. The stylesheet bundle is the closest to it.
-- `tests/e2e/shell/test_first_load_never_waits.py` hangs every read the lists or boot could wait on and checks that both lists still draw from their snapshots, and that a reload on the Board reads it at boot rather than on its poll.
+- `tests/e2e/board/test_board_first_load.py` hangs every read the lists or boot could wait on and checks that both lists still draw from their snapshots, and that a reload on the Board sends its read at boot rather than on its poll.
 
 The phone profile is a 390×844 mobile viewport, 80 ms round trip, 10/5 Mbps and a 4× CPU throttle; the slow-machine profile is a desktop viewport with a 4× CPU throttle. Over plain HTTP/1.1 the first, cold load of ~180 modules is bound by six connections per origin; the served app speaks HTTP/2 over TLS, where they share one connection.
