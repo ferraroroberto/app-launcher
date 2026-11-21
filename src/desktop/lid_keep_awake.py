@@ -37,7 +37,7 @@ from src.subprocess_flags import NO_WINDOW
 
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 # Module-level so tests redirect it at a tmp_path (tests/conftest.py).
 STATE_FILE = PROJECT_ROOT / "webapp" / "lid-keep-awake.json"
