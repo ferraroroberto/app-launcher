@@ -1,7 +1,10 @@
-"""``powershell`` job-kind — runs a ``.ps1`` script natively via
-the absolute Windows PowerShell 5.1 path, per the global CLAUDE.md
-"Windows PowerShell in spawned commands" convention (``pwsh`` on PATH is an
-unreliable WindowsApps reparse stub).
+"""``powershell`` job-kind: runs a ``.ps1`` script through the AllSigned-safe launcher.
+
+The launcher (:mod:`src.launching.ps_script`) starts the script with a plain ``-File`` where the
+machine's execution policy lets an unsigned local file run, and loads it as a ScriptBlock under
+any other policy (``AllSigned``, ``Restricted``) or one that could not be read, so a job never
+overrides the machine's policy. The absolute Windows PowerShell 5.1 path is the launcher's;
+``pwsh`` on PATH is an unreliable WindowsApps reparse stub.
 """
 
 from __future__ import annotations
@@ -11,10 +14,7 @@ from typing import Dict, List, Tuple
 
 from src.jobs.config import Job
 from src.jobs_kinds.base import Problem, require_script
-
-POWERSHELL_EXE = (
-    r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
-)
+from src.launching import ps_script
 
 
 class PowershellKind:
@@ -27,13 +27,7 @@ class PowershellKind:
         self, job: Job, tail: List[str], param_env: Dict[str, str], run_dir: Path
     ) -> Tuple[List[str], Path, Dict[str, str]]:
         script = require_script(job, "PowerShell script")
-        argv = [
-            POWERSHELL_EXE,
-            "-NoProfile",
-            "-NonInteractive",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            str(script),
-        ] + tail
-        return argv, script.parent, dict(param_env)
+        # The ScriptBlock launch carries the script path and arguments in the child's
+        # environment, so they ride in the kind's env overlay next to the typed params.
+        argv, launch_env = ps_script.script_command(script, tail, policy=ps_script.effective_policy())
+        return argv, script.parent, {**param_env, **launch_env}

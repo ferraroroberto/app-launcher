@@ -124,7 +124,7 @@ Verify with `pi --version`, `pi --list-models claude-agent-sdk`, and `pi --list-
 > next detection poll. **Registering** the agent in `src/agents.py` is not:
 > the `:8446` session-host imports that module at *its* start, so upgrading
 > the launcher to a build that adds a new agent needs a session-host restart
-> (`scripts/restart-session-host.ps1 -Confirm`, which ends every live PTY)
+> (`.venv\Scripts\python.exe -m src.launching.ps_script scripts\restart-session-host.ps1 -Confirm`, which ends every live PTY)
 > before the button works — otherwise the launch fails with
 > `unknown agent: pi`.
 

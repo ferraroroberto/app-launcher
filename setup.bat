@@ -1,35 +1,35 @@
 @echo off
 chcp 65001 >nul
 REM ============================================================================
-REM  SETUP - one-shot installer for a fresh clone
+REM  SETUP - install app-launcher on this PC, or bring its setup up to date
 REM ----------------------------------------------------------------------------
-REM  1. Creates .venv (if missing).
-REM  2. Installs Python deps from requirements.txt.
-REM  3. Generates the PWA icons.
-REM  After this runs once, `tray.bat` is enough for day-to-day use.
+REM  Safe to run any number of times; it never overwrites what this PC has
+REM  configured. The work is scripts\install.py (docs\install.md):
+REM    setup.bat            create .venv, install requirements, create missing
+REM                         configs, add keys a config lacks (after a backup)
+REM    setup.bat -WhatIf    list every change, make none
+REM    setup.bat -Startup   also start the tray at log on
+REM  A batch file, not a .ps1, so an AllSigned execution policy never refuses it.
 REM ============================================================================
 
 setlocal
 set "SCRIPT_DIR=%~dp0"
 cd /d "%SCRIPT_DIR%" || exit /b 1
 
-set "VENV_PY=%SCRIPT_DIR%.venv\Scripts\python.exe"
+REM  The repo's own python once .venv exists, else the system one (the py
+REM  launcher first: a bare `python` on PATH can be the Microsoft Store stub).
+set "PY_EXE=%SCRIPT_DIR%.venv\Scripts\python.exe"
+set "PY_ARGS="
+if exist "%PY_EXE%" goto :run
+set "PY_EXE="
+where py >nul 2>nul && set "PY_EXE=py" && set "PY_ARGS=-3"
+if not defined PY_EXE where python >nul 2>nul && set "PY_EXE=python"
+if not defined PY_EXE goto :no_python
 
-if not exist "%VENV_PY%" (
-    echo [1/3] Creating .venv...
-    python -m venv .venv || exit /b 1
-)
+:run
+"%PY_EXE%" %PY_ARGS% "%SCRIPT_DIR%scripts\install.py" %*
+exit /b %ERRORLEVEL%
 
-echo [2/3] Installing Python requirements...
-"%VENV_PY%" -m pip install --upgrade pip || exit /b 1
-"%VENV_PY%" -m pip install -r requirements.txt || exit /b 1
-
-echo [3/3] Generating PWA icons...
-"%VENV_PY%" scripts\gen_icons.py || exit /b 1
-
-echo.
-echo ============================================================================
-echo  Setup complete. Start the tray with:  tray.bat
-echo  Or run the webapp standalone:        webapp.bat
-echo ============================================================================
-exit /b 0
+:no_python
+echo ERROR: no Python found. Install Python 3 from python.org, then run setup.bat again.
+exit /b 1

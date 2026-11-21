@@ -8,8 +8,9 @@ __pycache__/
 .ruff_cache/
 
 # --- Virtualenvs ----------------------------------------------------------
-.venv/
-venv/
+# No trailing slash on .venv/venv: git for Windows can see a junctioned venv as a link, not a directory
+.venv
+venv
 env/
 
 # --- Node (Vitest harness) ------------------------------------------------
@@ -19,6 +20,8 @@ node_modules/
 .tray.pid
 *.log
 *.log.*
+# scratch space a session or a script may write at the repo root
+tmp/
 
 # --- Editor / OS ----------------------------------------------------------
 .vscode/
@@ -38,6 +41,8 @@ config/webauthn_devices.json
 # msvcrt.locking sidecars written beside the JSON they guard (src/_json_io.py);
 # the webapp/jobs/ ones are already covered by that directory's entry below
 config/*.lock
+# timestamped backups setup.bat writes before adding keys to a config
+config/*.bak-*
 
 # --- Webapp runtime data --------------------------------------------------
 webapp/last_tunnel_url.txt

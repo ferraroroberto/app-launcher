@@ -72,5 +72,6 @@ def test_tray_bat_does_not_leak_app_name_to_the_tray(tmp_path: Path) -> None:
         if "=" in line
     )
     assert lines["APP_NAME_ENV"] == "absent"
-    # The tray's display name still reaches the lifecycle helper as its argument.
-    assert "|-AppName|AppLauncher|" in lines["ARGS"]
+    # The tray's display name still reaches the lifecycle helper as its argument
+    # (splatted, so a param-less stub sees it in `-Name:` form).
+    assert "|-AppName:|AppLauncher|" in lines["ARGS"]

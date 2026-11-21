@@ -33,16 +33,12 @@ Every behaviour, per tab, is in [docs/features.md](docs/features.md); the deep r
 ## Install
 
 ```powershell
+git clone https://github.com/ferraroroberto/app-launcher.git
 cd app-launcher
 .\setup.bat
 ```
 
-That creates `.venv`, installs deps, and generates the PWA icons. After this runs once, `tray.bat` is enough for day-to-day use.
-
-**The icon step needs a `project-scaffolding` checkout beside this repo** (or `PROJECT_SCAFFOLDING_DIR` pointing at one): `scripts/gen_icons.py` is a thin caller onto that repo's shared `brand_gen.py`, and `setup.bat` propagates its failure, so without it the install stops at step 3. The generated icons are **committed**, so on a fresh clone that step is only re-running what is already in the tree — if you don't have the sibling checkout, run the first two steps by hand (`python -m venv .venv` then `.venv\Scripts\python.exe -m pip install -r requirements.txt`) and skip it.
-
-If you came from the old `automation\launcher\` Flask version, your apps list and Claude flags survive — copy `automation\launcher\apps_config.json` → `app-launcher\config\apps.json` and `automation\launcher\config.json`'s contents into `app-launcher\config\webapp_config.json` under the matching `claude_*` keys.
-
+`setup.bat` creates `.venv`, installs requirements, creates each missing config from its sample and ends with a checklist of what still needs you; it never overwrites what a PC has configured, a second run reports `unchanged`, and `-WhatIf` lists the changes without making them. Updating a configured PC is `git pull --ff-only` then `tray.bat --restart`, nothing else. Fresh PC, already-configured PC, execution policy and uninstall: [docs/install.md](docs/install.md).
 
 Each coding agent has its own CLI to install (Codex, Antigravity, Copilot, Pi, Grok Build): [docs/installing-agent-clis.md](docs/installing-agent-clis.md).
 
@@ -55,7 +51,7 @@ Each coding agent has its own CLI to install (Codex, Antigravity, Copilot, Pi, G
 .\webapp.bat         # webapp standalone, no tray (dev / headless)
 ```
 
-Both bind `0.0.0.0:8445`. If `webapp/certificates/cert.pem` is present, the server is HTTPS — otherwise plain HTTP (fine for a fresh loopback-only clone). The cert pair is written by `scripts/gen_tailscale_cert.py` — a real Let's Encrypt cert for the tailnet name, zero per-device trust; see [HTTPS certificate](#https-certificate-tailscale).
+Both bind `0.0.0.0` on `config/config.json`'s `webapp.port` (8445 by default). If `webapp/certificates/cert.pem` is present, the server is HTTPS — otherwise plain HTTP (fine for a fresh loopback-only clone). The cert pair is written by `scripts/gen_tailscale_cert.py` — a real Let's Encrypt cert for the tailnet name, zero per-device trust; see [HTTPS certificate](#https-certificate-tailscale).
 
 The tray icon menu has:
 
@@ -71,7 +67,7 @@ The tray icon menu has:
 | You changed | Restart | Notes |
 |---|---|---|
 | webapp code, static assets, `config/config.json` | `tray.bat --restart` | Reclaims `:8445`, keeps the `:8446` sessions; confirm `/api/version`'s `git_sha` ([procedure](docs/restart-and-liveness.md)) |
-| a session-host path (`CLAUDE.md`'s `## session-host`) | `scripts/restart-session-host.ps1 -Confirm` | Operator only: it ends every live terminal |
+| a session-host path (`CLAUDE.md`'s `## session-host`) | `.venv\Scripts\python.exe -m src.launching.ps_script scripts\restart-session-host.ps1 -Confirm` | Operator only: it ends every live terminal |
 | HTTP/2 misbehaving (fallback) | set `"server": "uvicorn"` in `config/config.json`'s `webapp`, then `tray.bat --restart` | The HTTP/1.1 server the webapp ran on before; same TLS, proxy trust and auth. Delete the key and restart to go back to HTTP/2 |
 
 
@@ -324,6 +320,7 @@ The gate also runs a static ratchet (new duplicate blocks and unused imports fai
 | [docs/documents.md](docs/documents.md) | Settings › Documents: the fleet's repo documents rendered live, Mermaid included |
 | [docs/remote-power-guard.md](docs/remote-power-guard.md) | Settings › Hide shut down remotely: no power options over Remote Desktop |
 | [docs/lid-keep-awake.md](docs/lid-keep-awake.md) | Settings › Awake with lid closed: the power plan's lid close action |
+| [docs/install.md](docs/install.md) | Installing on a fresh PC, updating with `git pull`, uninstalling |
 | [docs/installing-agent-clis.md](docs/installing-agent-clis.md) | Installing each coding agent's CLI |
 | [docs/run-troubleshooting.md](docs/run-troubleshooting.md) | Build identity, the watchdog, request logs |
 | [docs/restart-and-liveness.md](docs/restart-and-liveness.md) | Restarting and proving the new build is live |
