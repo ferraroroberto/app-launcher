@@ -10,7 +10,25 @@ from fastapi.responses import JSONResponse
 from src.auth.webauthn_gate import WebAuthnGate
 from src.middleware import trust
 from src.middleware.credentials import credential_accepted, credential_required
-from src.middleware.routes import terminal_guard_level
+from src.middleware.routes import is_screen_path, terminal_guard_level
+
+
+def client_allowed(client_host: str, cfg: Any, *, screen: bool = False) -> bool:
+    """The one verdict on whether a client address may reach a terminal route.
+
+    Loopback, the tailnet range and ``tailnet_allowlist`` always pass. A
+    private-network address passes only when ``terminal_allow_private_lan`` is
+    on, and, for the screen view (the whole desktop), only when
+    ``screen_allow_private_lan`` is on as well. Every credential leg (bearer
+    token, passkey) still applies after this one.
+    """
+    if trust.client_in_tailnet(client_host, getattr(cfg, "tailnet_allowlist", [])):
+        return True
+    if not getattr(cfg, "terminal_allow_private_lan", False):
+        return False
+    if screen and not getattr(cfg, "screen_allow_private_lan", False):
+        return False
+    return trust.client_in_private_lan(client_host)
 
 
 def terminal_http_gate(
@@ -31,7 +49,7 @@ def terminal_http_gate(
         )
     cfg = request.app.state.webapp_config
     client_host = request.client.host if request.client else ""
-    if not trust.client_in_tailnet(client_host, getattr(cfg, "tailnet_allowlist", [])):
+    if not client_allowed(client_host, cfg, screen=is_screen_path(request.url.path)):
         return JSONResponse(
             status_code=403,
             content={"detail": "terminal endpoints are Tailscale-only"},
@@ -73,7 +91,7 @@ def ws_terminal_gate(
         return None
     if trust.via_cloudflare(websocket.headers):
         return 4403, f"{label} is Tailscale-only — blocked on the public tunnel"
-    if not trust.client_in_tailnet(client_host, getattr(cfg, "tailnet_allowlist", [])):
+    if not client_allowed(client_host, cfg, screen=label == "screen"):
         return 4403, f"{label} is Tailscale-only"
     if credential_required(cfg):
         presented = websocket.query_params.get("token", "").strip()
@@ -108,13 +126,16 @@ def terminal_reachability(request: Request) -> Dict[str, Any]:
             ),
         }
     cfg = request.app.state.webapp_config
-    if not trust.client_in_tailnet(client_host, getattr(cfg, "tailnet_allowlist", [])):
+    if not client_allowed(client_host, cfg):
         return {
             "reachable": False,
             "reason": (
                 f"This connection ({client_host}) is not on your tailnet. "
-                "Open the launcher over your Tailscale URL, or add this "
-                "network to tailnet_allowlist in config/webapp_config.json."
+                "Open the launcher over your Tailscale URL, add this network "
+                "to tailnet_allowlist, or turn on Settings > Terminal > Allow "
+                "the private network (a trusted home or office network)."
             ),
         }
-    return {"reachable": True, "reason": "tailnet"}
+    if trust.client_in_tailnet(client_host, getattr(cfg, "tailnet_allowlist", [])):
+        return {"reachable": True, "reason": "tailnet"}
+    return {"reachable": True, "reason": "private-lan"}

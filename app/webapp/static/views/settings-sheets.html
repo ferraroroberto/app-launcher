@@ -860,6 +860,16 @@
             <input id="largeUploadMaxMb" type="number" class="input-native" aria-describedby="largeUploadMaxMbHelp" step="1" inputmode="numeric">
           </label>
           <p id="largeUploadMaxMbHelp" class="field-help">The biggest file Attach large file takes. It is stored on this PC for the agent to use by path, never read into its context.</p>
+          <div class="row">
+            <span>Allow the private network</span>
+            <button type="button" id="terminalPrivateLanToggle" data-track="terminal.private-lan" class="toggle" role="switch" aria-checked="false" aria-label="Allow the private network on terminal routes without Tailscale" aria-describedby="terminalPrivateLanHelp"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+          </div>
+          <p id="terminalPrivateLanHelp" class="field-help">Off, the terminal, transcripts and uploads open only over Tailscale. On, a device on a trusted private network can reach them without it; the token and passkey still apply.</p>
+          <div class="row">
+            <span>Also allow screen view without Tailscale</span>
+            <button type="button" id="screenPrivateLanToggle" data-track="terminal.screen-private-lan" class="toggle" role="switch" aria-checked="false" aria-label="Also allow the screen view without Tailscale" aria-describedby="screenPrivateLanHelp"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+          </div>
+          <p id="screenPrivateLanHelp" class="field-help">The screen view shows this PC’s whole desktop, so it has its own switch and works only while the one above is on.</p>
         </div>
         <div class="detail-actions">
           <button data-track="terminal.done" type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>

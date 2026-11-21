@@ -1940,6 +1940,8 @@ flowchart LR
 - **Holds:**
   - Terminal history in lines
   - Large file limit in MB
+  - Allow the private network, a switch (off by default) that asks first
+  - Also allow screen view without Tailscale, a switch (off by default) that asks first and works only with the one above on
 
 ### `settings.pc-load` PC load sheet
 

@@ -303,16 +303,19 @@ class WebappConfig:
     # Bearer token enforced when the request did NOT come from a
     # loopback IP. Empty string disables enforcement entirely.
     auth_token: str = ""
-    # Optional password gate that hands the bearer token back to the
-    # browser when the user types it correctly. Lets a fresh device
-    # bootstrap without copy-pasting a tokenised URL.
+    # Optional password gate that hands the bearer token back to the browser when typed
+    # correctly, so a fresh device needs no tokenised URL.
     auth_password: str = ""
     # --- interactive phone terminal ---------------------------
     # Loopback port the PTY session-host binds (never network-reachable).
     session_host_port: int = DEFAULT_SESSION_HOST_PORT
-    # Extra IPs / CIDRs allowed to reach the terminal endpoints on top of
-    # loopback + the Tailscale CGNAT range (100.64.0.0/10). Empty by default.
+    # Extra IPs / CIDRs allowed on the terminal endpoints besides loopback and 100.64.0.0/10.
     tailnet_allowlist: list = field(default_factory=list)
+    # Trust private-network addresses on the terminal routes, for a PC with no Tailscale
+    # (token and passkey still apply). The screen view also needs its own switch, which
+    # only takes effect while the first is on. Both off by default.
+    terminal_allow_private_lan: bool = False
+    screen_allow_private_lan: bool = False
     # Folders, besides a session's own, that an agent may send a file to the
     # Chat pane from: its outbox and Claude's SendUserFile. %VAR% and ~
     # expand, so a temp-dir root needs no machine path. Defaults to Claude's
@@ -359,13 +362,10 @@ class WebappConfig:
     # Paths, falling back to the default when absent) or "system" (the
     # Windows default browser, which is how the links opened before).
     desktop_browser: str = "chrome"
-    # Bounded scrollback: how many lines of a
-    # full-screen (ratatui) agent's history the session-host retains and
-    # replays on a (re)connect. See DEFAULT_TERMINAL_HISTORY_LINES for the
-    # real-session evidence behind the default.
+    # Bounded scrollback: lines of a full-screen (ratatui) agent's history the
+    # session-host replays on a (re)connect; DEFAULT_TERMINAL_HISTORY_LINES has the evidence.
     terminal_history_lines: int = DEFAULT_TERMINAL_HISTORY_LINES
-    # Large-file attach limit in MB, Settings-tab configurable.
-    # See DEFAULT_LARGE_UPLOAD_MAX_MB.
+    # Large-file attach limit in MB (see DEFAULT_LARGE_UPLOAD_MAX_MB).
     large_upload_max_mb: int = DEFAULT_LARGE_UPLOAD_MAX_MB
     # Usage meter providers, and the Grok auto-switch for Sonnet lanes: src/usage/.
     usage_providers: list = field(default_factory=lambda: list(DEFAULT_USAGE_PROVIDERS))

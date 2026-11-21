@@ -8,6 +8,12 @@ AUTH_EXEMPT_PREFIXES = ("/static/", "/healthz")
 AUTH_EXEMPT_EXACT = frozenset({"/", "/healthz", "/api/login"})
 
 
+def is_screen_path(path: str) -> bool:
+    """The screen view's HTTP routes. They show the whole desktop, so the LAN
+    override that admits the other terminal routes does not reach them."""
+    return path.startswith("/api/screen/")
+
+
 def is_webhook_hook_path(path: str) -> bool:
     """``POST /api/jobs/<id>/hook`` authenticates itself via the
     job's provider-specific signature, never the bearer token — an external
@@ -322,7 +328,7 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "a hit can quote anything the terminal ever showed.",
     ),
     (
-        lambda p: p.startswith("/api/screen/"),
+        is_screen_path,
         "passkey",
         "Screen view (#1520): the PC's desktop, live — whatever is on screen, "
         "terminals included, so terminal-grade. The /api/screen/ws stream is "

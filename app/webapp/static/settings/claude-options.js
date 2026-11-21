@@ -24,6 +24,7 @@ import { renderSettingsValues } from './settings-sheets.js';
 import { renderRemotePowerGuard } from './remote-power-guard.js';
 import { renderLidKeepAwake } from './lid-keep-awake.js';
 import { renderDictationAutoStop } from './dictation-autostop.js';
+import { renderPrivateLan, wirePrivateLan } from './private-lan.js';
 
 // Shared model-picker controllers, created once the DOM exists.
 let codingModelCombo = null;
@@ -269,6 +270,7 @@ export async function fetchConfig(shouldApply) {
     setSwitch(els.lifeOsRefreshSkillToggle, body.life_os_refresh_skill_instructions !== false);
   }
   renderDictationAutoStop(body);
+  renderPrivateLan(body);
   renderUsageShows(body);
   if (els.hideChannelSessionsToggle) {
     setSwitch(els.hideChannelSessionsToggle, body.hide_channel_sessions !== false);
@@ -640,6 +642,7 @@ export function wireClaudeOptions() {
   piModelCombo = wireModelCombo(els.piModel, function (model) {
     patchConfig({ pi_model: model });
   });
+  wirePrivateLan(patchConfig);
   wireConfigSwitch(els.openSessionsInWindowToggle, 'open_sessions_in_window');
   wireConfigSwitch(els.openSessionsInChatToggle, 'open_sessions_in_chat');
   wireConfigSwitch(els.claudeVerbose, 'claude_verbose');
