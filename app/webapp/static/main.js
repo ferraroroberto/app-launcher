@@ -233,7 +233,6 @@ function startListReads() {
   paintLastKnownSessions();
   paintLastKnownBoard();
   return {
-    agents: safe(fetchAgents),
     sessions: fetchSessions(),
     board: safe(fetchBoard),
     jobs: safe(fetchJobs),
@@ -242,15 +241,17 @@ function startListReads() {
 
 // Once the config is in: redraw under the real hidden-channels setting, read
 // again a first session list that failed (not on the next poll), and fetch
-// the project list after the agents its rows draw icons from.
+// the project list after the agents its rows draw icons from. The agents read
+// stays behind the config: it draws the agent switches and the favourite
+// picker from it.
 function listsAfterConfig(early) {
   redrawSessions();
   renderBoard();
   const sessions = early.sessions.then(function (ok) {
     return ok ? null : safe(fetchSessions);
   });
-  return early.agents.then(function () {
-    // Session rows carry agent icons too, and the early read may have won.
+  return safe(fetchAgents).then(function () {
+    // Session rows carry agent icons too, drawn from the fallback until now.
     redrawSessions();
     return Promise.all([safe(fetchApps), sessions]);
   }).then(function () {
