@@ -44,6 +44,7 @@ through.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -195,6 +196,12 @@ async def list_skills(request: Request) -> Dict[str, Any]:
     disabled, the same way the Coding tab handles a missing projects_dir.
     """
     cfg: WebappConfig = request.app.state.webapp_config
+    # A boot read that walks every skill folder and conversation index: off
+    # the event loop, so the session list's request never queues behind it.
+    return await asyncio.to_thread(_skills_payload, cfg)
+
+
+def _skills_payload(cfg: WebappConfig) -> Dict[str, Any]:
     life_os_dir = Path(cfg.life_os_dir)
     available = skills_dir_for(life_os_dir).is_dir()
     try:

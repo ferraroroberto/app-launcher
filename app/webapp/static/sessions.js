@@ -28,6 +28,7 @@ import {
 } from './api.js';
 import { terminalJsonApi } from './webauthn.js';
 import { renderHomeHead } from './home-head.js';
+import { readSnapshot, saveSnapshot } from './shared/boot-snapshot.js';
 import { isHiddenChannel, isOffBoard, renderChannelSummaries } from './channel-sessions.js';
 // The session overlay's two modes. Circular with this module by
 // design (session-overlay.js → terminal.js / session-transcript.js → here
@@ -555,18 +556,46 @@ export async function stopSession(s) {
   setTimeout(fetchSessions, 1500);
 }
 
+function applySessions(body) {
+  sessionsApplied = true;
+  state.sessions = body.sessions || [];
+  // Unknown (null) unless the server said a number: never read as zero.
+  state.chiefQuestions = typeof body.chief_questions === 'number' ? body.chief_questions : null;
+  state.ownerChecks = typeof body.owner_checks === 'number' ? body.owner_checks : null;
+  renderSessions();
+}
+
+let sessionsLive = false;
+// A list (live or last-known) is on screen; before that a redraw would only
+// flash the empty state.
+let sessionsApplied = false;
+
+// Draw the list again (new config or agents), only once there is one.
+export function redrawSessions() {
+  if (sessionsApplied) renderSessions();
+}
+
+// Resolves true once a live list landed, so boot can retry a failed first read.
 export async function fetchSessions() {
   try {
     const body = await jsonApi('/api/claude-code/sessions');
-    state.sessions = body.sessions || [];
-    // Unknown (null) unless the server said a number: never read as zero.
-    state.chiefQuestions = typeof body.chief_questions === 'number' ? body.chief_questions : null;
-    state.ownerChecks = typeof body.owner_checks === 'number' ? body.owner_checks : null;
-    renderSessions();
+    sessionsLive = true;
+    applySessions(body);
+    saveSnapshot('sessions', body);
+    return true;
   } catch (exc) {
     // Sessions polling is best-effort — don't spam toasts.
     logPollFailure('sessions fetch failed', exc);
+    return false;
   }
+}
+
+// First paint: the list this device last saw, drawn before any request. A
+// live list that already landed wins.
+export function paintLastKnownSessions() {
+  if (sessionsLive) return;
+  const snap = readSnapshot('sessions');
+  if (snap) applySessions(snap.body);
 }
 
 // The usage meter's one endpoint: both tabs' meters render from

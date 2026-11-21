@@ -120,17 +120,22 @@ def _claude_code_entries(cfg: WebappConfig) -> List[AppEntry]:
     )
 
 
+def _registry_rows(cfg: WebappConfig) -> Tuple[Any, List[Dict[str, Any]]]:
+    """The registry and every row decorated for the API. claude-code rows are
+    computed live from ``projects_dir``; the bat-based kinds come from the
+    persisted registry, and any stale claude-code row left in an older
+    apps.json is ignored."""
+    registry = load_registry()
+    bat_entries = [a for a in registry.apps if a.kind != KIND_CLAUDE_CODE]
+    return registry, [decorate_for_api(a) for a in _claude_code_entries(cfg) + bat_entries]
+
+
 @router.get("/api/apps")
 async def get_apps(request: Request) -> Dict[str, Any]:
     cfg: WebappConfig = request.app.state.webapp_config
-    registry = load_registry()
-    # claude-code rows are computed live from `projects_dir`; the
-    # bat-based kinds come from the persisted registry. Any stale
-    # claude-code row left in an older apps.json is ignored.
-    bat_entries = [a for a in registry.apps if a.kind != KIND_CLAUDE_CODE]
-    decorated = [
-        decorate_for_api(a) for a in _claude_code_entries(cfg) + bat_entries
-    ]
+    # The registry read and the projects-dir scan are disk work on every
+    # 4 s poll: off the event loop, so a slow disk stalls only this reply.
+    registry, decorated = await asyncio.to_thread(_registry_rows, cfg)
     # Health for tunnel apps is probed here, server-side — the SPA
     # can't probe a sibling's /healthz from the browser (cross-origin,
     # no CORS headers, every probe would fail).

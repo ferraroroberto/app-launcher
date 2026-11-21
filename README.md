@@ -262,6 +262,10 @@ What is stored, and nothing else: event kind (`session_start`, `view`, `tap`, `s
 
 Every page load and every `/api/` request slower than 800 ms on the real device writes one timing row, so a slow moment can be traced to the connection, the server or the page; `/api` responses carry `Server-Timing: app;dur=<ms>` to split server from network. Rows hold route templates and milliseconds only, in `perf.sqlite3` beside the usage log, pruned at 90 days. Read them with `launcher.py perf-summary [--days N] [--json]` or `GET /api/perf/summary?days=N`: [docs/perf-timings.md](docs/perf-timings.md).
 
+## First load
+
+The session list and the Board draw what this device last saw before any request goes out, then the live reads replace them; a slow or failing server never leaves them blank. No boot read waits on another, and no first-load response may reach 100 KB gzipped: [docs/first-load.md](docs/first-load.md).
+
 ## Phone-speed results
 
 The Apps tab's Performance card shows each measured app's latest `/perf-review` result against its budget, with a cold-ready sparkline and, when a budget is broken, a link to its open issues. The apps without a result are listed under why (never measured, a run that measured nothing, a tunnel), and an unreadable ledger says "Unknown": neither is drawn as a pass. Read-only, from the local ledger via `GET /api/apps/perf`: [docs/perf-ledger.md](docs/perf-ledger.md).
