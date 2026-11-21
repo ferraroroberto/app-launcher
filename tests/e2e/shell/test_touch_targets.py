@@ -27,6 +27,7 @@ agent's sheet - and sweeps the controls it shows.
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -199,7 +200,20 @@ def _assert_every_settings_sheet_header_fits_its_box(page: Page) -> None:
     assert spill == {}
 
 
-def _assert_dialog_title_has_no_ring_but_tabbed_control_does(page: Page) -> None:
+def _next_control_key(browser_name: str) -> str:
+    """The key that moves focus to the next control, buttons included.
+
+    WebKit on macOS leaves buttons and links out of plain Tab (only text
+    fields and selects take it), and Option+Tab is the one that reaches every
+    control, as in Safari. A dialog made only of buttons would otherwise
+    answer a Tab with no focused control at all.
+    """
+    return "Alt+Tab" if browser_name == "webkit" and sys.platform == "darwin" else "Tab"
+
+
+def _assert_dialog_title_has_no_ring_but_tabbed_control_does(
+    page: Page, browser_name: str
+) -> None:
     """Formerly ``test_dialog_title_focus.py::test_dialog_title_has_no_ring_but_tabbed_control_does``.
 
     ``showModal()`` moves focus to the title (``<h2 tabindex="-1" autofocus>``)
@@ -215,7 +229,7 @@ def _assert_dialog_title_has_no_ring_but_tabbed_control_does(page: Page) -> None
         title = page.locator(f"#{title_id}")
         expect(title).to_be_focused()
         expect(title).to_have_css("outline-style", "none")
-        page.keyboard.press("Tab")
+        page.keyboard.press(_next_control_key(browser_name))
         control = page.locator(f"#{dialog_id} :focus")
         expect(control).to_have_count(1)
         expect(control).not_to_have_id(title_id)
@@ -252,7 +266,9 @@ def _mock_data_controls(page: Page) -> None:
     })
 
 
-def test_every_control_meets_the_44px_floor(authed_page: Page, base_url: str) -> None:
+def test_every_control_meets_the_44px_floor(
+    authed_page: Page, base_url: str, browser_name: str
+) -> None:
     """Every tab and every Settings sheet on one page load: a tab's controls
     measure the same whichever load reached them, so a load per tab bought
     nothing. The Board's 320px Large-text reload runs last."""
@@ -297,7 +313,7 @@ def test_every_control_meets_the_44px_floor(authed_page: Page, base_url: str) ->
                 _assert_floor(page, f"Settings > Launch defaults > {agent_id}")
                 close_settings_sheets(page)
             _assert_every_settings_sheet_header_fits_its_box(page)
-            _assert_dialog_title_has_no_ring_but_tabbed_control_does(page)
+            _assert_dialog_title_has_no_ring_but_tabbed_control_does(page, browser_name)
 
         # The card toolbars' toggles carry visible labels (#1176) and wrap: no
         # two expanded targets there may share pixels, on a line or across one.
