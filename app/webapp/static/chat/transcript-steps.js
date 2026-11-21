@@ -353,6 +353,24 @@ export function renderItem(e, opts) {
   d.appendChild(s);
   const body = document.createElement('div');
   body.className = 'tr-item-body';
+  d.appendChild(body);
+  // The card is built on first open. A long chat holds hundreds of folded
+  // calls and few are ever opened, so building every card up front was most
+  // of the cost of opening one on a phone. The summary's click runs before
+  // the details opens, so the card is there the frame it shows; `toggle`
+  // covers an open set from code, and restoreOpen calls `_trFill` itself.
+  let filled = false;
+  d._trFill = function () {
+    if (filled) return;
+    filled = true;
+    fillItemBody(body, e, opts);
+  };
+  s.addEventListener('click', d._trFill);
+  d.addEventListener('toggle', function () { if (d.open) d._trFill(); });
+  return d;
+}
+
+function fillItemBody(body, e, opts) {
   if (e.kind === 'tool_call') {
     // An edit opens as its diff and nothing else: the tool's own
     // "file has been updated" line was a second box saying less.
@@ -381,8 +399,6 @@ export function renderItem(e, opts) {
     unknown.textContent = note;
     body.appendChild(unknown);
   }
-  d.appendChild(body);
-  return d;
 }
 
 // A run in plain words: [verb, object] pairs that read

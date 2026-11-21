@@ -45,6 +45,7 @@ import { wireChanges } from './changes/changes-overlay.js';
 import { wireBackgroundTasks } from './background-tasks/background-tasks-sheet.js';
 import { wireLinks } from './links/links-sheet.js';
 import { markMirrorWindowEarly } from './terminal/terminal-mirror.js';
+import { preloadXtermWhenIdle } from './terminal/xterm-loader.js';
 import { fetchWebauthnStatus, wireWebauthn, writeTerminalToken } from './webauthn.js';
 import { renderSettingsHead } from './home-head.js';
 import { isWideLayout } from './layout.js';
@@ -296,6 +297,10 @@ async function boot() {
   // boot fetch has settled.
   await Promise.all([lists, skills, status, webauthn, git, usage, listeners, running, load].concat(others));
   perfTiming.bootDone();
+  // A terminal this origin cannot reach never opens, so it needs no stack.
+  if (!(state.status && state.status.terminal && state.status.terminal.reachable === false)) {
+    preloadXtermWhenIdle();
+  }
 }
 
 // Cache the URL's tokens and read its session links: ?terminal=<sid> (the

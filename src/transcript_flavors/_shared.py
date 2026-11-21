@@ -10,9 +10,11 @@ so no flavour module needs to import another flavour module's helpers.
 
 from __future__ import annotations
 
+import contextlib
 import difflib
 import json
-from typing import Any, Callable, Dict, List, Optional, Tuple
+import threading
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 Line = Tuple[int, str]
 Entry = Dict[str, Any]
@@ -38,12 +40,47 @@ def _cap(text: str, cap: int) -> Tuple[str, bool]:
     return text[:cap], True
 
 
+# Per-thread parse memo, live only inside `parse_memo()`. Pages are built on a
+# thread pool, one session per thread, so a shared dict would mix requests.
+_PARSE_MEMO = threading.local()
+_UNPARSED = object()
+
+
+@contextlib.contextmanager
+def parse_memo() -> Iterator[None]:
+    """Parse each raw line at most once for the duration of the block.
+
+    One page read builds the same lines several times (the stop check per
+    window, the trim, the live-tail split, the message-key scans), and JSON
+    decoding is nearly all of its cost. Safe because no builder mutates a
+    parsed line: they copy what they need into fresh entry dicts. Lines are
+    keyed by their string, whose hash Python caches on the object, and the
+    memo is dropped when the outermost block exits.
+    """
+    owner = getattr(_PARSE_MEMO, "cache", None) is None
+    if owner:
+        _PARSE_MEMO.cache = {}
+    try:
+        yield
+    finally:
+        if owner:
+            _PARSE_MEMO.cache = None
+
+
 def _loads(raw: str) -> Optional[Dict[str, Any]]:
+    cache = getattr(_PARSE_MEMO, "cache", None)
+    if cache is not None:
+        hit = cache.get(raw, _UNPARSED)
+        if hit is not _UNPARSED:
+            return hit
     try:
         obj = json.loads(raw)
     except ValueError:
-        return None
-    return obj if isinstance(obj, dict) else None
+        obj = None
+    out = obj if isinstance(obj, dict) else None
+    if cache is not None:
+        cache[raw] = out
+    return out
 
 
 def _tool_summary(inputs: Any) -> str:

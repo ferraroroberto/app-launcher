@@ -50,11 +50,16 @@ export function linkify(root) {
   });
 }
 
+// One formatter for every entry: toLocaleTimeString builds a new one per
+// call, which was the costliest step of drawing a long chat on a phone.
+let timeFormat = null;
+
 export function fmtTime(ts) {
   if (!ts) return '';
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (!timeFormat) timeFormat = new Intl.DateTimeFormat([], { hour: '2-digit', minute: '2-digit' });
+  return timeFormat.format(d);
 }
 
 export function meta(label, ts) {

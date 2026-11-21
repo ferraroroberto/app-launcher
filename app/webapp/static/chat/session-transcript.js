@@ -320,7 +320,10 @@ function restoreOpen(root, open) {
   if (!open) return;
   root.querySelectorAll('[data-tr-key]').forEach(function (d) {
     const was = open[d.dataset.trKey];
-    if (was !== undefined) d.open = was;
+    if (was === undefined) return;
+    // A lazily built step card (renderItem) fills before it shows open.
+    if (was && d._trFill) d._trFill();
+    d.open = was;
   });
 }
 
