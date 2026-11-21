@@ -40,7 +40,7 @@ The tray's Tailscale-URL lookup failed only when launched by the tray. Root caus
 
 ### One PTY has exactly one size
 
-When the phone and the PC mirror both attach to the same ConPTY, they **cannot** each have their own layout — a pseudo-console has a single `rows × cols`. The last client to call `resize()` wins, so they fight. There is no clever fix; you **pick an authority**. We made the phone the sole size authority (the WS proxy tags each client `role=pc|phone`; the session-host honours `resize` only from `phone`) and the PC window *mirrors* whatever size the phone set. **Lesson: when a resource is fundamentally single-valued, don't simulate sharing — assign ownership.**
+When the phone and the PC mirror both attach to the same ConPTY, they **cannot** each have their own layout — a pseudo-console has a single `rows × cols`. The last client to call `resize()` wins, so they fight. There is no clever fix; you **pick an authority**. We made the phone the sole size authority (the PC mirror window declares `role=pc` on its WebSocket URL, the proxy attaches every other client, loopback or not, as `phone`, and the session-host honours `resize` only from `phone`) and the PC window *mirrors* whatever size the phone set. **Lesson: when a resource is fundamentally single-valued, don't simulate sharing — assign ownership.**
 
 ### A repaint is a repaint someone keeps — and most of them are not resizes
 

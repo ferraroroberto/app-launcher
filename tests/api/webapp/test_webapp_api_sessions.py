@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 from websockets.exceptions import InvalidHandshake
 
@@ -564,7 +565,54 @@ class TestProxySessionWS:
 
         hosts = frozenset({"testclient", "127.0.0.1", "::1", "localhost"})
         monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", hosts)
-        monkeypatch.setattr(sessions_router, "LOOPBACK_HOSTS", hosts)
+
+    def _upstream_url_for(self, client, sessions_router, monkeypatch, query):
+        """Connect a loopback client and return the upstream URL it chose."""
+        self._patch_loopback(sessions_router, monkeypatch)
+        seen = []
+
+        class _RecordingConnect:
+            def __init__(self, url, *args, **kwargs) -> None:
+                seen.append(url)
+
+            async def __aenter__(self):
+                raise OSError("recorded, not connected")
+
+            async def __aexit__(self, *exc) -> bool:
+                return False
+
+        monkeypatch.setattr(sessions_router, "ws_connect", _RecordingConnect)
+        # The fixture mocks the session client; build the real upstream URL.
+        from src.clients.session import ws_url
+        monkeypatch.setattr(sessions_router.session_client, "ws_url", ws_url)
+        # A real loopback peer address, as a local browser or tunnel has.
+        loopback = TestClient(client.app, client=("127.0.0.1", 50000))
+        with pytest.raises(WebSocketDisconnect):
+            with loopback.websocket_connect(
+                "/api/claude-code/sessions/role-sid/ws" + query
+            ) as ws:
+                ws.receive_text()
+        assert len(seen) == 1
+        return seen[0]
+
+    def test_loopback_in_page_terminal_attaches_as_phone(
+        self, webapp_client, monkeypatch
+    ):
+        """A loopback in-page terminal (a desktop browser on the PC) must
+        drive the PTY size. Attached as role=pc, the session-host drops its
+        resize frames and a full-screen TUI paints against the wrong grid."""
+        client, _, _ = webapp_client
+        from app.webapp.routers import sessions as sessions_router
+        url = self._upstream_url_for(client, sessions_router, monkeypatch, "")
+        assert url.endswith("role=phone"), url
+
+    def test_mirror_window_declares_pc(self, webapp_client, monkeypatch):
+        client, _, _ = webapp_client
+        from app.webapp.routers import sessions as sessions_router
+        url = self._upstream_url_for(
+            client, sessions_router, monkeypatch, "?role=pc"
+        )
+        assert url.endswith("role=pc"), url
 
     def test_upstream_handshake_rejection_closes_4502(
         self, webapp_client, monkeypatch

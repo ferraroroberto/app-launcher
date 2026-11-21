@@ -52,7 +52,7 @@ from src.board import owner_checks
 from src.chief import answers as chief_answers
 from src.clients import session as session_client
 from src.launching import launcher
-from src.middleware import LOOPBACK_HOSTS, ws_terminal_gate
+from src.middleware import ws_terminal_gate
 from src.session_host_paths import sha_contains_commit
 from src.session_model import attach_models
 from src.webapp_config import WebappConfig
@@ -645,7 +645,6 @@ async def proxy_session_ws(websocket: WebSocket, sid: str) -> None:
     Tailscale + bearer + passkey checks are re-applied here.
     """
     cfg: WebappConfig = websocket.app.state.webapp_config
-    client_host = websocket.client.host if websocket.client else ""
 
     # Accept first, *then* gate — so the browser receives the close
     # code + reason and can show a clear message instead of a bare
@@ -657,9 +656,15 @@ async def proxy_session_ws(websocket: WebSocket, sid: str) -> None:
         await websocket.close(code=refusal[0], reason=refusal[1])
         return
 
-    # The phone drives the PTY size; the loopback PC mirror window
-    # connects as role=pc and never resizes it (see session-host).
-    role = "pc" if client_host in LOOPBACK_HOSTS else "phone"
+    # The client declares its role: only the PC mirror window says role=pc,
+    # and the session-host ignores its resize frames so it never fights the
+    # in-page terminal over the PTY size. A loopback address is not a
+    # mirror: a desktop browser's in-page terminal also arrives over
+    # loopback and must still size the PTY to its own xterm, or a
+    # full-screen TUI paints against the wrong grid.
+    declared = (websocket.query_params.get("role") or "").strip().lower()
+    role = "pc" if declared == "pc" else "phone"
+    logger.info(f"🔌 WS proxy {sid[:8]} role={role}")
     upstream_url = session_client.ws_url(
         cfg.session_host_port, sid, role,
         order=websocket.query_params.get("order") or "",
