@@ -18,7 +18,7 @@ from app.webapp.routers._helpers import (
     claude_flags_payload,
     maybe_json,
 )
-from src import boot_autostart, password, remote_power_guard
+from src import boot_autostart, password, remote_power_guard, system_load
 from src.agents import AGENTS, DEFAULT_AGENT, is_installed
 from src.desktop import lid_keep_awake
 from src.launching.flags import (
@@ -551,4 +551,6 @@ async def status(request: Request) -> Dict[str, Any]:
         # gates the 🔊 button's hub path on it before doing a live
         # /api/tts/health probe to confirm the hub is actually answering.
         "tts": bool((cfg.llm_hub_url or "").strip()),
+        # The PC load sheet's IP row; null when it could not be established.
+        "private_ip": system_load.private_ip(),
     }

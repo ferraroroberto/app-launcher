@@ -148,13 +148,17 @@ flowchart LR
   - the CPU reading in any page header
   - Settings › This PC › PC load is a different sheet and holds only the night restart
 - **Holds:**
+  - the PC's private IP address
   - total CPU and memory used
   - the three busiest groups of processes by name and cores used, an Everything else row so the rows add up, and a Restart action on a flagged process
-  - a toast area for the result of a restart
+  - a toast area for the result of a restart or a copy
 - **Does:**
+  - Copy on the IP row puts the address on the clipboard
   - the Screen button opens the Screen view of the PC
   - Done closes
-- **States:** a dash instead of a number when the server could not take a sample
+- **States:**
+  - a dash instead of a number when the server could not take a sample
+  - Unknown instead of an address, with Copy disabled, when the PC's address could not be read
 - **Leads to:**
   - [Screen view](#screenview-screen-view) (Screen)
   - [Confirm dialog](#chromeconfirm-confirm-dialog) (Restart on a flagged process)

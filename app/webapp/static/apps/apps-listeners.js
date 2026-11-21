@@ -28,13 +28,14 @@ const listenerMenu = createRowMenu({ className: 'project-menu', placement: ACTIO
 const expandedListenerPorts = new Set();
 
 // The one copy every Apps-tab menu uses: `what` names the thing copied
-// ("Link", "Path") in the toast.
-export async function copyText(text, what) {
+// ("Link", "Path") in the toast; `opts.host` is the toast host of a sheet that
+// carries its own (a modal dialog hides the page's toast).
+export async function copyText(text, what, opts) {
   try {
     await navigator.clipboard.writeText(text);
-    toast(what + ' copied', 'good');
+    toast(what + ' copied', 'good', opts);
   } catch (exc) {
-    apiFailToast('Could not copy the ' + what.toLowerCase(), exc);
+    apiFailToast('Could not copy the ' + what.toLowerCase(), exc, opts);
   }
 }
 

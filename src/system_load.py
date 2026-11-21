@@ -24,6 +24,9 @@ script and the repo folder it runs in.
 than :data:`MAX_AGE_SECONDS` (``stale``: the tick died or stalled) or a
 sampler that raised (``error``) all read ``unknown``, never ``0%``.
 
+**The PC's private IP** (:func:`private_ip`) rides the same sheet: the address
+the PC reaches the network from, for opening the launcher from another device.
+
 Breadcrumbs go to ``webapp/slow-requests.log`` (the ``launcher.slowreq``
 logger): the live webapp's own stdout is discarded by the tray.
 """
@@ -33,8 +36,10 @@ from __future__ import annotations
 import asyncio
 import ctypes
 import functools
+import ipaddress
 import logging
 import os
+import socket
 import struct
 import sys
 import threading
@@ -492,3 +497,25 @@ def reset() -> None:
         _history.clear()
         _last_demand = 0.0
         _last_error = None
+
+
+def private_ip() -> Optional[str]:
+    """This PC's private IPv4 address, or ``None`` when it cannot be established.
+
+    A UDP ``connect`` sends no packet: it only makes the OS pick the interface
+    it would route through, whose address ``getsockname`` then reports. An
+    address outside the private ranges (or a loopback, link-local or
+    unspecified one) is not what a second device could use, so it reads as
+    unknown rather than as an address.
+    """
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.connect(("10.255.255.255", 9))
+            address = probe.getsockname()[0]
+        parsed = ipaddress.ip_address(address)
+    except (OSError, ValueError) as exc:
+        breadcrumbs.info("ℹ️ private ip not established: %s", exc)
+        return None
+    if not parsed.is_private or parsed.is_loopback or parsed.is_link_local or parsed.is_unspecified:
+        return None
+    return address
