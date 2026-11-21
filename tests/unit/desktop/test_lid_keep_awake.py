@@ -262,3 +262,17 @@ def test_the_default_runner_spawns_without_a_window_and_with_a_timeout(monkeypat
     assert seen["cmd"] == ["powercfg", "/q"]
     assert seen["kwargs"]["creationflags"] == lid.NO_WINDOW
     assert seen["kwargs"]["timeout"] == lid.POWERCFG_TIMEOUT_S
+
+
+def test_the_saved_values_file_defaults_to_the_repo_webapp_folder():
+    """The autouse fixture redirects STATE_FILE, so load a fresh copy of the
+    module to see the real default the Settings switch writes to."""
+    import importlib.util
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[3]
+    spec = importlib.util.spec_from_file_location("_lid_default", lid.__file__)
+    fresh = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fresh)
+
+    assert fresh.STATE_FILE == repo_root / "webapp" / "lid-keep-awake.json"
