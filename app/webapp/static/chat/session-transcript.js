@@ -114,6 +114,11 @@ export function hasTranscriptReader(s) {
 
 // Conversation turns (user + assistant entries) per page — ~20 exchanges.
 const PAGE_LIMIT = 40;
+// The newest page, the one an open waits on, is smaller: ~8 exchanges fill
+// several phone screens, and drawing half as many cards is most of what a
+// phone spends opening a long chat. Scrolling to the top, a pull or Load older
+// brings the rest a full page at a time.
+const FIRST_PAGE_LIMIT = 16;
 
 // One Load older tap keeps fetching until an older user or assistant turn
 // arrives. A page can hold no turn at all (the server's per-request
@@ -320,7 +325,10 @@ function restoreOpen(root, open) {
   if (!open) return;
   root.querySelectorAll('[data-tr-key]').forEach(function (d) {
     const was = open[d.dataset.trKey];
-    if (was !== undefined) d.open = was;
+    if (was === undefined) return;
+    // A lazily built step card (renderItem) fills before it shows open.
+    if (was && d._trFill) d._trFill();
+    d.open = was;
   });
 }
 
@@ -606,7 +614,7 @@ async function readForward(target, manual) {
 }
 
 function fetchPage(before) {
-  const q = new URLSearchParams({ limit: String(PAGE_LIMIT) });
+  const q = new URLSearchParams({ limit: String(before == null ? FIRST_PAGE_LIMIT : PAGE_LIMIT) });
   if (before != null) q.set('before', String(before));
   return jsonApi(
     sessionRoute(view.session.session_id, '/transcript?' + q.toString())

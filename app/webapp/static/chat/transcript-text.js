@@ -50,11 +50,21 @@ export function linkify(root) {
   });
 }
 
+// One formatter for every entry. Building the first one loads the locale's
+// data (~50 ms on a throttled phone), so boot warms it in idle time rather
+// than the first chat paying for it.
+let timeFormat = null;
+
+export function warmTimeFormat() {
+  if (!timeFormat) timeFormat = new Intl.DateTimeFormat([], { hour: '2-digit', minute: '2-digit' });
+  return timeFormat;
+}
+
 export function fmtTime(ts) {
   if (!ts) return '';
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return warmTimeFormat().format(d);
 }
 
 export function meta(label, ts) {

@@ -54,6 +54,7 @@ from src.transcript_flavors._shared import (
     _line_image_blocks,
     _loads,
     cap_diff,
+    parse_memo,
 )
 from src.transcript_flavors.antigravity import antigravity_entries, antigravity_line_key
 from src.transcript_flavors.claude import claude_entries, claude_line_key, sent_file_at
@@ -396,6 +397,7 @@ def _page(
     collected: List[Line] = []
     bytes_read = 0
     charged = 0
+    turns = 0
     span = WINDOW_BYTES
     while True:
         start = max(0, end - span)
@@ -416,8 +418,15 @@ def _page(
             continue
         collected = lines + collected
         charged += sum(min(len(raw), LINE_CHARGE_CAP) for _, raw in lines)
+        # Turns are counted on the new window alone: rebuilding everything
+        # collected so far on every step parsed a long page's lines ten times
+        # over. The count only decides when to stop reading; the trim below
+        # builds the whole page once, so a message split across two windows
+        # can cost one extra window or a page a turn short of `limit`, never a
+        # lost or repeated entry.
+        turns += _turns(build(lines))
         if (
-            _turns(build(collected)) >= limit
+            turns >= limit
             or charged >= REQUEST_BYTE_CAP
             or bytes_read >= REQUEST_READ_CEILING
         ):
@@ -721,11 +730,12 @@ def transcript_activity(
         else:
             build, line_key, _ = _flavor(flavor)
             found = None
-            for limit in _ACTIVITY_TURN_STEPS:
-                page = _page(p, None, limit, build, line_key)
-                found = turn_activity(page["entries"], tool_calls=flavor not in _NO_TOOL_CALL_FLAVORS)
-                if found is not None or page["next_cursor"] is None:
-                    break
+            with parse_memo():
+                for limit in _ACTIVITY_TURN_STEPS:
+                    page = _page(p, None, limit, build, line_key)
+                    found = turn_activity(page["entries"], tool_calls=flavor not in _NO_TOOL_CALL_FLAVORS)
+                    if found is not None or page["next_cursor"] is None:
+                        break
             if len(_ACTIVITY_MEMO) >= _ACTIVITY_MEMO_MAX:
                 _ACTIVITY_MEMO.clear()
             _ACTIVITY_MEMO[key] = (sig, found)
@@ -897,7 +907,8 @@ def transcript_page(
     transcript", which the caller establishes *before* calling.
     """
     build, line_key, tool_errors = _flavor(flavor)
-    page = _page(Path(str(path)), before, limit, build, line_key)
+    with parse_memo():
+        page = _page(Path(str(path)), before, limit, build, line_key)
     # A property of the harness, not of the page — but it travels with the
     # page because that is what the client has in hand when it decides
     # whether an unmarked tool call means "succeeded" or "nobody can tell".

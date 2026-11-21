@@ -393,15 +393,17 @@ def _assert_step_group_folds_and_items(authed_page: Page) -> None:
     expect(group).to_have_js_property("open", True)
     expect(items.first).to_be_visible()
     # Each item is still closed until tapped; the second one is the Bash call,
-    # labelled by its command's first line. Opened, it is a card (#1532): the
-    # whole command, then the output in a block of its own below it.
+    # labelled by its command's first line. Its card is built on first open,
+    # so a closed item holds none. Opened, it is a card (#1532): the whole
+    # command, then the output in a block of its own below it.
     bash = items.nth(1)
     expect(bash.locator(".tr-item-name")).to_have_text("pytest tests/e2e -q")
-    expect(bash.locator(".tr-cmd")).to_have_count(1)
-    expect(bash.locator(".tr-out")).to_have_count(1)
     expect(bash).to_have_js_property("open", False)
+    expect(bash.locator(".tr-cmd")).to_have_count(0)
     bash.locator("summary").click()
     expect(bash).to_have_js_property("open", True)
+    expect(bash.locator(".tr-cmd")).to_have_count(1)
+    expect(bash.locator(".tr-out")).to_have_count(1)
     expect(bash.locator(".tr-cmd")).to_have_text("$ pytest tests/e2e -q\necho done")
     expect(bash.locator(".tr-out")).to_be_visible()
     expect(bash.locator(".tr-out")).to_contain_text("3 passed in 1.2s")
