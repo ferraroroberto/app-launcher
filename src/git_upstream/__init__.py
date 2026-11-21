@@ -38,6 +38,9 @@ logger = logging.getLogger(__name__)
 # a hung credential helper must not hold a worker thread for minutes.
 FETCH_TIMEOUT_S = 30.0
 _LOCAL_TIMEOUT_S = 10.0
+# A fast-forward rewrites the working tree, so it gets longer than a read-only
+# git call but still ends if a hook or a locked file hangs the merge.
+_MERGE_TIMEOUT_S = 60.0
 
 UP_TO_DATE = "up-to-date"
 BEHIND = "behind"
@@ -247,7 +250,7 @@ def guarded_fast_forward(repo: Path, target: str) -> FastForward:
             shutil.rmtree(stash, ignore_errors=True)
             return FastForward(False, f"could not preserve {rel}: {exc}")
 
-    merge = run_git_proc(repo, ["merge", "--ff-only", "--quiet", sha], timeout=60)
+    merge = run_git_proc(repo, ["merge", "--ff-only", "--quiet", sha], timeout=_MERGE_TIMEOUT_S)
     if merge is None or merge.returncode != 0:
         if stash:
             shutil.rmtree(stash, ignore_errors=True)

@@ -82,8 +82,8 @@ from app.webapp.routers.life_os_search import (
 )
 from app.webapp.routers.life_os_spawn import (
     _resolve_launch_choice,
-    _resolve_skill,
     _spawn_skill_session,
+    resolve_skill,
 )
 from app.webapp.routers.sessions import session_input
 from src import audit, board
@@ -181,7 +181,7 @@ async def _caller(profile_id: str, request: Request) -> _Caller:
                 f"The relay token is not {profile.label}'s current one; restart the bot "
                 "after turning relay on.")
     try:
-        skill = _resolve_skill(cfg, profile.skill)
+        skill = resolve_skill(cfg, profile.skill)
     except HTTPException:
         _refuse(404, RelayState.NOT_FOUND, f"{profile.label}'s skill {profile.skill!r} was not found.")
     try:

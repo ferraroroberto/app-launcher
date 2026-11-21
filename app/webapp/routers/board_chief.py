@@ -68,9 +68,9 @@ from app.webapp.routers.board_spawn import (
     _agent_and_flags,
     _await_dispatch_ready,
     _await_pty_quiescent,
-    _read_live_sessions,
     _resolve_repo_entry,
     _type_into_session,
+    read_live_sessions,
 )
 from src import audit, board
 from src.chief import identity as chief_identity
@@ -184,7 +184,7 @@ def _reconcile_chief_labels(
 
     Needs both the live list and the hook state rows together (``shared_name``
     only exists after the state-row join), so this can't live inside
-    ``board_spawn._read_live_sessions`` (``port``-only) — callers that need a
+    ``board_spawn.read_live_sessions`` (``port``-only) — callers that need a
     chief-reconciled live list fetch both and call this, or go through
     :func:`_live_sessions_with_chief_label`.
 
@@ -214,7 +214,7 @@ async def _live_sessions_with_chief_label(
     that acts on "no chief in the list" must not act on it then.
     """
     (live, host_error), state = await asyncio.gather(
-        asyncio.to_thread(_read_live_sessions, cfg.session_host_port),
+        asyncio.to_thread(read_live_sessions, cfg.session_host_port),
         asyncio.to_thread(board.read_sessions_state, Path(cfg.sessions_state_file)),
     )
     reconciled = _reconcile_chief_labels(live, state["rows"])

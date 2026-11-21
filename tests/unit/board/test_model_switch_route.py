@@ -76,7 +76,7 @@ def switch_client(picker_client, monkeypatch, tmp_path):
                 {**_live(agent="codex"), "live_title": "proj | GPT-6-Luna"}
             ]
 
-    monkeypatch.setattr(router, "_resolve_source", fake_resolve)
+    monkeypatch.setattr(router, "resolve_source", fake_resolve)
     monkeypatch.setattr(router, "_type_into_pty", fake_pty)
     paint(["❯"])
     return client, session, paint, typed, state

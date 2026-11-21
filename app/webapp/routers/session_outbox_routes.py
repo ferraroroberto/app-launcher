@@ -30,7 +30,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 
-from app.webapp.routers.board_spawn import SESSION_HOST_UNREACHABLE, _read_live_sessions
+from app.webapp.routers.board_spawn import SESSION_HOST_UNREACHABLE, read_live_sessions
 from src.middleware import is_pc_itself
 from src.session_view import outbox as session_outbox
 from src.webapp_config import WebappConfig
@@ -111,7 +111,7 @@ async def post_outbox(sid: str, request: Request) -> Dict[str, Any]:
             detail={"reason": "bad_request", "message": 'expected JSON {"path": "...", "caption": "..."}'},
         )
     cfg: WebappConfig = request.app.state.webapp_config
-    live, host_error = await asyncio.to_thread(_read_live_sessions, cfg.session_host_port)
+    live, host_error = await asyncio.to_thread(read_live_sessions, cfg.session_host_port)
     session = next((s for s in live if str(s.get("session_id")) == str(sid)), None)
     if session is None:
         if host_error:

@@ -71,7 +71,7 @@ def _resolve_launch_choice(
     return "claude", "opus" if bool(body.get("opus", False)) else "sonnet"
 
 
-def _resolve_skill(cfg: WebappConfig, skill_id: str) -> Skill:
+def resolve_skill(cfg: WebappConfig, skill_id: str) -> Skill:
     """Find a skill by folder id from the live scan, or 404.
 
     The launch slash-command is re-derived here from the validated scan

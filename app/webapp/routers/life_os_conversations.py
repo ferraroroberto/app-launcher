@@ -49,8 +49,8 @@ from app.webapp.routers._helpers import audit_off_loop, client_ip, maybe_json
 from app.webapp.routers.life_os_files import resolve_within
 from app.webapp.routers.life_os_spawn import (
     _resolve_launch_choice,
-    _resolve_skill,
     _spawn_skill_session,
+    resolve_skill,
 )
 from src import audit
 from src.agents import is_installed
@@ -195,7 +195,7 @@ def _conversation_rows(
     refusals: List[str] = []
     for row in rows:
         try:
-            owner = skill or _resolve_skill(cfg, str(row.get("skill") or ""))
+            owner = skill or resolve_skill(cfg, str(row.get("skill") or ""))
         except HTTPException:
             owner = None
         filename = str(row.get("file") or "")
@@ -255,7 +255,7 @@ def _require_history_access(request: Request) -> None:
 async def launch_conversation(skill_id: str, request: Request) -> Dict[str, Any]:
     """Resume the selected source or explicitly start a scoped new conversation."""
     cfg: WebappConfig = request.app.state.webapp_config
-    return await _launch_conversation(_resolve_skill(cfg, skill_id), request, await maybe_json(request))
+    return await _launch_conversation(resolve_skill(cfg, skill_id), request, await maybe_json(request))
 
 
 async def _launch_conversation(
@@ -482,7 +482,7 @@ async def list_skill_conversations(skill_id: str, request: Request) -> Dict[str,
     """
     cfg: WebappConfig = request.app.state.webapp_config
     life_os_dir = Path(cfg.life_os_dir)
-    skill = _resolve_skill(cfg, skill_id)
+    skill = resolve_skill(cfg, skill_id)
 
     index = _safe_conversation_index(life_os_dir, skill)
     rows = _read_conversation_index(index) if index else None
@@ -590,7 +590,7 @@ async def resume_latest_conversation(skill_id: str, request: Request) -> Dict[st
     host can't be asked, that is not known, and nothing is launched (503).
     """
     cfg: WebappConfig = request.app.state.webapp_config
-    skill = _resolve_skill(cfg, skill_id)
+    skill = resolve_skill(cfg, skill_id)
     body = await maybe_json(request)
     candidates = await skill_conversations(cfg, skill)
     if not candidates:
@@ -717,7 +717,7 @@ async def delete_conversation(skill_id: str, request: Request) -> Dict[str, Any]
     """
     cfg: WebappConfig = request.app.state.webapp_config
     root = Path(cfg.life_os_dir)
-    skill = _resolve_skill(cfg, skill_id)
+    skill = resolve_skill(cfg, skill_id)
     rel = request.query_params.get("path", "")
     path = _conversation_path(root, skill, rel)
     if path is None:
@@ -775,7 +775,7 @@ async def rename_conversation(skill_id: str, request: Request) -> Dict[str, Any]
     """
     cfg: WebappConfig = request.app.state.webapp_config
     root = Path(cfg.life_os_dir)
-    skill = _resolve_skill(cfg, skill_id)
+    skill = resolve_skill(cfg, skill_id)
     rel = request.query_params.get("path", "")
     path = _conversation_path(root, skill, rel)
     if path is None:

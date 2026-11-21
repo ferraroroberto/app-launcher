@@ -1,7 +1,7 @@
 """The one mutex-admission implementation (issue #794, finding 2).
 
 ``src.jobs.queue.admit_and_spawn`` replaced three parallel copies of the
-same admission block — the webapp route's ``_admit_and_spawn``, the chain
+same admission block — the webapp route's ``admit_and_spawn_http``, the chain
 dispatcher's ``dispatch_chain_run``, and the executor's own
 ``_finalize_mutex_queue``. They had already drifted once (a chain-spawn
 ``OSError`` wrote ``status="failed"`` to disk while returning a meta still

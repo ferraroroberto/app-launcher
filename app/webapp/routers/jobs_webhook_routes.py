@@ -15,7 +15,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
-from app.webapp.routers.jobs_run import _admit_and_spawn
+from app.webapp.routers.jobs_run import admit_and_spawn_http
 from src import jobs as jobs_mod
 from src.jobs.argv import compose_argv
 from src.jobs.config import get_by_id, load_jobs
@@ -82,7 +82,7 @@ async def run_job_webhook(job_id: str, request: Request) -> Response:
             payload=payload,
         )
 
-    result = await _admit_and_spawn(
+    result = await admit_and_spawn_http(
         job,
         cfg,
         mapped,

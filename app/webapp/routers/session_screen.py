@@ -4,7 +4,7 @@
 None of these routes read the transcript's content. They read the PTY's screen
 (``src.session_view.plan_picker``) and/or type keystrokes into the PTY, so they share
 nothing with the transcript pager but the session lookup
-(``session_transcript._resolve_source``, used by ``/answer``).
+(``session_transcript.resolve_source``, used by ``/answer``).
 
 ``POST /api/claude-code/sessions/{sid}/answer`` answers the session's
 pending ``AskUserQuestion`` from the Chat pane's question card:
@@ -41,8 +41,8 @@ from websockets.exceptions import InvalidHandshake, WebSocketException
 
 from app.webapp.hot_poll import BuildSteps, run_on_default_executor, session_poll
 from app.webapp.routers._helpers import audit_off_loop, maybe_json
-from app.webapp.routers.board_spawn import SESSION_HOST_UNREACHABLE, _read_live_sessions
-from app.webapp.routers.session_transcript import _resolve_source
+from app.webapp.routers.board_spawn import SESSION_HOST_UNREACHABLE, read_live_sessions
+from app.webapp.routers.session_transcript import resolve_source
 from src import audit
 from src.ask_user_question import TOOL_NAME as ASK_TOOL_NAME
 from src.ask_user_question import answer_keystrokes
@@ -154,7 +154,7 @@ async def session_answer(sid: str, request: Request) -> Dict[str, Any]:
     call_id = body.get("tool_use_id")
     if not isinstance(call_id, str) or not call_id:
         raise HTTPException(status_code=400, detail="tool_use_id must be a string")
-    reason, flavor, path, _agent, _why, session = await _resolve_source(sid, cfg)
+    reason, flavor, path, _agent, _why, session = await resolve_source(sid, cfg)
     _refuse_if_host_unreachable(reason)
     if reason == "session_not_found":
         raise HTTPException(status_code=409, detail="This session is no longer running")
@@ -232,7 +232,7 @@ async def _read_screen(
     per-session pool, off the default executor. Without it they run on the
     default executor, as the send-time re-reads always have."""
     run = steps.run if steps is not None else run_on_default_executor
-    live, host_error = await run("read_live_sessions", _read_live_sessions, cfg.session_host_port)
+    live, host_error = await run("read_live_sessions", read_live_sessions, cfg.session_host_port)
     session = next((s for s in live if str(s.get("session_id")) == str(sid)), None)
     if session is None:
         return (SESSION_HOST_UNREACHABLE if host_error else "session_not_found"), None, None
@@ -647,7 +647,7 @@ def _claude_label(transcript: Any) -> Optional[str]:
 
 async def _live_session(cfg: WebappConfig, sid: str) -> Dict[str, Any]:
     """The session-host's row for ``sid``: 503 unreachable, 409 gone."""
-    live, host_error = await asyncio.to_thread(_read_live_sessions, cfg.session_host_port)
+    live, host_error = await asyncio.to_thread(read_live_sessions, cfg.session_host_port)
     session = next((s for s in live if str(s.get("session_id")) == str(sid)), None)
     if session is None:
         _refuse_if_host_unreachable(SESSION_HOST_UNREACHABLE if host_error else None)
@@ -694,7 +694,7 @@ async def _switch_claude(
     cfg: WebappConfig, sid: str, keys: List[Tuple[str, bool]], label: str
 ) -> Tuple[str, bool, Optional[str]]:
     """``(outcome, confirmed_dialog, detail)`` for a Claude Code switch."""
-    _reason, _flavor, transcript, _agent, _why, _session = await _resolve_source(sid, cfg)
+    _reason, _flavor, transcript, _agent, _why, _session = await resolve_source(sid, cfg)
     if transcript is None:
         raise HTTPException(
             status_code=409,
@@ -755,7 +755,7 @@ async def _switch_codex(
     loop = asyncio.get_running_loop()
     end = loop.time() + _MODEL_CONFIRM_S
     while loop.time() < end:
-        live, _error = await asyncio.to_thread(_read_live_sessions, cfg.session_host_port)
+        live, _error = await asyncio.to_thread(read_live_sessions, cfg.session_host_port)
         now = next((s for s in live if str(s.get("session_id")) == str(sid)), None)
         if now is not None and session_model_label(now) == label:
             return "switched", False, None
