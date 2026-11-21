@@ -24,7 +24,7 @@ const STYLESHEET = VENDOR + 'xterm.css';
 let _loading = null;
 
 function stylesheetPresent() {
-  return !!document.querySelector(`link[href="${STYLESHEET}"]`);
+  return !!document.querySelector(`link[rel="stylesheet"][href="${STYLESHEET}"]`);
 }
 
 function stackPresent() {
@@ -63,6 +63,41 @@ function addScript(name) {
   return loaded;
 }
 
+let _scripts = null;
+
+/**
+ * Resolve once the four xterm globals are defined, without applying the
+ * stylesheet: what boot preloads in idle time. Inserting the stylesheet
+ * restyles the whole page, and on WebKit that snapped a scrolled list back to
+ * the top, so it is only fetched into the cache here (a `preload` hint applies
+ * nothing; the file is served immutable) and applied on the first terminal
+ * open. Repeat calls share one load; after a failure the next call fetches
+ * only the scripts that did not arrive.
+ *
+ * @returns {Promise<void>}
+ */
+export function loadXtermScripts() {
+  if (!stylesheetPresent() && !document.querySelector(`link[rel="preload"][href="${STYLESHEET}"]`)) {
+    const hint = document.createElement('link');
+    hint.rel = 'preload';
+    hint.as = 'style';
+    hint.href = STYLESHEET;
+    document.head.appendChild(hint);
+  }
+  if (SCRIPTS.every(function (s) { return window[s[1]]; })) return Promise.resolve();
+  if (!_scripts) {
+    _scripts = Promise.all(SCRIPTS
+      .filter(function (s) { return !window[s[1]]; })
+      .map(function (s) { return addScript(s[0]); }))
+      .then(function () {})
+      .catch(function (exc) {
+        _scripts = null;
+        throw exc;
+      });
+  }
+  return _scripts;
+}
+
 /**
  * Resolve once the xterm globals and stylesheet are in the page.
  * Repeat calls share one load; after a failure the next call fetches only
@@ -73,9 +108,7 @@ function addScript(name) {
 export function loadXterm() {
   if (stackPresent()) return Promise.resolve();
   if (!_loading) {
-    const parts = SCRIPTS
-      .filter(function (s) { return !window[s[1]]; })
-      .map(function (s) { return addScript(s[0]); });
+    const parts = [loadXtermScripts()];
     if (!stylesheetPresent()) parts.push(addStylesheet());
     _loading = Promise.all(parts)
       .then(function () {})
