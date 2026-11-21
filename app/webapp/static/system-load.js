@@ -131,6 +131,9 @@ function appendHealthRows(body) {
     btn.addEventListener('click', function () { restartOwner(h); });
     body.appendChild(btn);
   }
+  // Above the port and holder rows: the address is read at a glance, and
+  // those lists push everything under them past the phone's fold.
+  appendIpRow(body);
   if (h.verdict !== 'unknown') appendMachineRows(body, h);
 }
 
@@ -201,7 +204,6 @@ function renderSheet() {
   if (!body) return;
   body.replaceChildren();
   appendHealthRows(body);
-  appendIpRow(body);
   if (!readingKnown(reading)) {
     body.appendChild(sheetRow('CPU', unknownText(reading), 'cpu'));
     return;
