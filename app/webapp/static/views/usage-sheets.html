@@ -29,7 +29,6 @@
           </button>
         </div>
         <div id="cpuSheetBody" class="usage-sheet-body cpu-sheet-body"></div>
-        <div id="cpuSheetToast" class="sheet-toast" role="status" aria-live="polite" hidden></div>
         <!-- The Screen view's entry (#1520): a link row that acts on tap, so
              no chevron. screen-view.js owns the tap (openScreen). -->
         <button data-track="cpu.screen-view" type="button" id="cpuSheetScreen" class="settings-row cpu-sheet-screen" aria-haspopup="dialog">
@@ -38,6 +37,9 @@
           <span class="settings-row-value">View live</span>
         </button>
         <div class="detail-actions">
+          <!-- Inside the footer: a sheet toast anchors to .detail-actions, so
+               anywhere else it lands above the sheet, off the screen. -->
+          <div id="cpuSheetToast" class="sheet-toast" role="status" aria-live="polite" hidden></div>
           <button data-track="cpu.done" type="button" id="cpuSheetDone" class="button-primary detail-save-btn">Done</button>
         </div>
       </div>
