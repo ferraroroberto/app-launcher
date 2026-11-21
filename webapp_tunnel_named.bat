@@ -3,7 +3,7 @@ chcp 65001 >nul
 REM ============================================================================
 REM  WEBAPP + NAMED CLOUDFLARE TUNNEL (persistent URL)
 REM ----------------------------------------------------------------------------
-REM  Starts the webapp on :8445 and a named Cloudflare tunnel using
+REM  Starts the webapp on its configured port and a named Cloudflare tunnel using
 REM  webapp/cloudflared.yml so the public URL stays the same every launch.
 REM
 REM  One-time setup (run from this directory):

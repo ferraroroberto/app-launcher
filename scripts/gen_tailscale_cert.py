@@ -179,6 +179,13 @@ def _check_and_renew() -> None:
         print(f"[WARN] Cert renewal failed: {exc}")
 
 
+def _configured_port() -> int:
+    """The webapp port from this PC's config, read lazily: ``--check`` runs on every start and needs none of it."""
+    from scripts.webapp_port import resolve_webapp_port
+
+    return resolve_webapp_port()
+
+
 def main() -> None:
     args = sys.argv[1:]
 
@@ -194,10 +201,11 @@ def main() -> None:
     _provision(hostname)
     print()
     print("Restart the webapp (tray.bat --restart or webapp.bat), then open:")
-    print(f"  https://{hostname}:8445")
+    port = _configured_port()
+    print(f"  https://{hostname}:{port}")
     print()
     print("Note: the cert is issued only for the Tailscale hostname, so")
-    print("https://127.0.0.1:8445 and LAN-IP URLs will show a hostname-mismatch")
+    print(f"https://127.0.0.1:{port} and LAN-IP URLs will show a hostname-mismatch")
     print("warning. The PC mirror windows connect over loopback — see the")
     print("README HTTPS section before switching an instance that uses them.")
 

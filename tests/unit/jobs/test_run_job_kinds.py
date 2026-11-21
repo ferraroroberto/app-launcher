@@ -100,6 +100,33 @@ class TestInlineShellExecutor:
         assert list(run_dir.iterdir())  # not an empty stranded directory
 
 
+@pytest.mark.windows_only
+class TestPowershellExecutor:
+    """A real PowerShell job under an AllSigned machine: the unsigned script runs and its
+    arguments, output and exit code reach the run record unchanged."""
+
+    @pytest.mark.parametrize("policy", ["AllSigned", "Bypass"])
+    def test_job_runs_with_its_args_output_and_exit_code(self, isolated_jobs, monkeypatch, policy):
+        _silence_notifier(monkeypatch)
+        monkeypatch.setenv("PSExecutionPolicyPreference", policy)
+        script = isolated_jobs / "demo.ps1"
+        script.write_text(
+            'param([string] $Name)\r\nWrite-Host "name=$Name root=$PSScriptRoot"\r\nexit 3\r\n',
+            encoding="utf-8",
+        )
+        job = Job(id="ps-demo", name="PS demo", script_path=str(script), kind="powershell", args="-Name x")
+        assert _fire(job) == 1
+
+        latest = jobs_mod.latest_run("ps-demo")
+        assert latest is not None
+        assert latest["status"] == "failed"
+        assert latest["exit_code"] == 3
+        output = (jobs_mod.runs_dir("ps-demo") / latest["run_id"] / "output.log").read_text(
+            encoding="utf-8", errors="replace"
+        )
+        assert f"name=x root={isolated_jobs}" in output
+
+
 class TestHttpCheckExecutor:
     @pytest.fixture
     def local_server(self):

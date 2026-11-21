@@ -17,9 +17,18 @@ from src.jobs_kinds import FILE_KINDS, KINDS, resolve_kind
 from src.jobs_kinds.batch import BatchKind
 from src.jobs_kinds.http_check import HttpCheckKind
 from src.jobs_kinds.inline_shell import InlineShellKind
-from src.jobs_kinds.powershell import POWERSHELL_EXE, PowershellKind
+from src.jobs_kinds.powershell import PowershellKind
 from src.jobs_kinds.python import PythonKind
 from src.jobs_kinds.shell_wsl import ShellWslKind
+from src.launching import ps_script
+
+POWERSHELL_EXE = ps_script.POWERSHELL_EXE
+
+
+@pytest.fixture(autouse=True)
+def _policy_bypass(monkeypatch):
+    """No test starts the real execution-policy probe (a PowerShell cold start)."""
+    monkeypatch.setattr(ps_script, "effective_policy", lambda *a, **k: "bypass")
 
 
 def _job(**overrides) -> Job:
@@ -149,10 +158,32 @@ class TestPowershellKind:
         ps1.write_text("Write-Host hi")
         job = _job(script_path=str(ps1), kind="powershell")
         argv, cwd, env = PowershellKind().build_argv(job, ["-Foo"], {}, tmp_path)
-        assert argv == [
-            POWERSHELL_EXE, "-NoProfile", "-NonInteractive",
-            "-ExecutionPolicy", "Bypass", "-File", str(ps1), "-Foo",
-        ]
+        assert argv == [POWERSHELL_EXE, "-NoProfile", "-NonInteractive", "-File", str(ps1), "-Foo"]
+        assert env == {}
+        assert cwd == ps1.parent
+
+    def test_never_overrides_the_execution_policy(self, tmp_path, monkeypatch):
+        ps1 = tmp_path / "demo.ps1"
+        ps1.write_text("Write-Host hi")
+        job = _job(script_path=str(ps1), kind="powershell")
+        for policy in ("bypass", "allsigned", "restricted", None):
+            monkeypatch.setattr(ps_script, "effective_policy", lambda *a, _p=policy, **k: _p)
+            argv, _, _ = PowershellKind().build_argv(job, [], {}, tmp_path)
+            assert "-ExecutionPolicy" not in argv
+
+    @pytest.mark.parametrize("policy", ["allsigned", "restricted", None])
+    def test_build_argv_loads_the_script_as_text_when_files_may_not_run(self, tmp_path, monkeypatch, policy):
+        ps1 = tmp_path / "demo.ps1"
+        ps1.write_text("Write-Host hi")
+        monkeypatch.setattr(ps_script, "effective_policy", lambda *a, **k: policy)
+        job = _job(script_path=str(ps1), kind="powershell")
+        argv, cwd, env = PowershellKind().build_argv(job, ["-Foo", "a b"], {"P": "1"}, tmp_path)
+        assert argv == [POWERSHELL_EXE, "-NoProfile", "-NonInteractive", "-Command", ps_script.BOOTSTRAP]
+        assert env == {
+            "P": "1",
+            ps_script.ENV_SCRIPT: str(ps1),
+            ps_script.ENV_ARGV: "-Fooa b",
+        }
         assert cwd == ps1.parent
 
     def test_build_argv_missing_script_raises(self, tmp_path):
@@ -191,7 +222,7 @@ class TestInlineShellKind:
         "ext,expected_prefix",
         [
             (".bat", ["cmd.exe", "/c"]),
-            (".ps1", [POWERSHELL_EXE, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"]),
+            (".ps1", [POWERSHELL_EXE, "-NoProfile", "-NonInteractive", "-File"]),
             (".sh", ["wsl", "bash"]),
         ],
     )

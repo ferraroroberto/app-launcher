@@ -3,7 +3,7 @@
     {
       "id": "linkedin-scrape",
       "name": "LinkedIn Scrape (sample)",
-      "script_path": "E:\\automation\\content-management\\engagement\\linkedin\\scrape_comments.py",
+      "script_path": "C:\\path\\to\\your\\projects-root\\content-management\\engagement\\linkedin\\scrape_comments.py",
       "args": "",
       "schedule": { "type": "none" },
       "params": [
@@ -21,7 +21,7 @@
     {
       "id": "skill-evals-fleet",
       "name": "Weekly Skill Evals (fleet)",
-      "script_path": "E:\\automation\\fleet-config\\.claude\\skills\\prompt-audit\\evals\\run-weekly.bat",
+      "script_path": "C:\\path\\to\\your\\projects-root\\fleet-config\\.claude\\skills\\prompt-audit\\evals\\run-weekly.bat",
       "args": "",
       "schedule": { "type": "weekly", "day": "TUE", "at": "22:00" },
       "visible": true,
@@ -32,7 +32,7 @@
     {
       "id": "prompt-audit-fleet",
       "name": "Weekly Prompt Audit (fleet)",
-      "script_path": "E:\\automation\\fleet-config\\.claude\\skills\\prompt-audit\\run-weekly.bat",
+      "script_path": "C:\\path\\to\\your\\projects-root\\fleet-config\\.claude\\skills\\prompt-audit\\run-weekly.bat",
       "args": "",
       "schedule": { "type": "weekly", "day": "TUE", "at": "23:00" },
       "visible": true,
@@ -43,7 +43,7 @@
     {
       "id": "codebase-audit-fleet",
       "name": "Weekly Codebase Audit (fleet)",
-      "script_path": "E:\\automation\\fleet-config\\.claude\\skills\\audit-fleet\\run-weekly.bat",
+      "script_path": "C:\\path\\to\\your\\projects-root\\fleet-config\\.claude\\skills\\audit-fleet\\run-weekly.bat",
       "args": "",
       "schedule": { "type": "weekly", "day": "THU", "at": "22:00" },
       "visible": true,
@@ -53,7 +53,7 @@
     {
       "id": "design-sweep-fleet",
       "name": "Weekly Design Sweep (fleet)",
-      "script_path": "E:\\automation\\fleet-config\\.claude\\skills\\design-sweep\\run-weekly.bat",
+      "script_path": "C:\\path\\to\\your\\projects-root\\fleet-config\\.claude\\skills\\design-sweep\\run-weekly.bat",
       "args": "",
       "schedule": { "type": "weekly", "day": "SAT", "at": "22:00" },
       "visible": true,
@@ -63,14 +63,14 @@
     {
       "id": "fleet-health-weekly",
       "name": "Fleet Hardware Health Checkup",
-      "script_path": "E:\\automation\\fleet-config\\.claude\\skills\\fleet-health\\run-weekly.bat",
+      "script_path": "C:\\path\\to\\your\\projects-root\\fleet-config\\.claude\\skills\\fleet-health\\run-weekly.bat",
       "args": "",
       "schedule": { "type": "weekly", "day": "WED", "at": "23:30" }
     },
     {
       "id": "weekly-recap-draft",
       "name": "Weekly Recap (draft)",
-      "script_path": "E:\\automation\\life-os\\.claude\\skills\\_recap\\run-weekly.bat",
+      "script_path": "C:\\path\\to\\your\\projects-root\\life-os\\.claude\\skills\\_recap\\run-weekly.bat",
       "args": "",
       "schedule": { "type": "weekly", "day": "SUN", "at": "21:00" },
       "visible": true,
@@ -79,7 +79,7 @@
     {
       "id": "screen-time-export",
       "name": "Screen time to task-os (nightly)",
-      "script_path": "E:\\automation\\app-launcher\\launcher.py",
+      "script_path": "C:\\path\\to\\your\\projects-root\\app-launcher\\launcher.py",
       "args": "usage-export",
       "schedule": { "type": "daily", "at": "03:30" },
       "visible": true,
@@ -88,7 +88,7 @@
     {
       "id": "life-os-zombie-cleanup",
       "name": "Life OS zombie cleanup (nightly, backup mode)",
-      "script_path": "E:\\automation\\app-launcher\\launcher.py",
+      "script_path": "C:\\path\\to\\your\\projects-root\\app-launcher\\launcher.py",
       "args": "life-os-zombie-cleanup --mode backup",
       "schedule": { "type": "daily", "at": "04:00" },
       "visible": true,
@@ -100,7 +100,7 @@
     {
       "id": "grokbot-ensure",
       "name": "Grok Bot ensure (every 10 minutes)",
-      "script_path": "E:\\automation\\fleet-config\\skills\\_lib\\grokbot\\status.py",
+      "script_path": "C:\\path\\to\\your\\projects-root\\fleet-config\\skills\\_lib\\grokbot\\status.py",
       "args": "ensure",
       "schedule": { "type": "minutes", "every": 10 },
       "rerun_safe": true
@@ -108,7 +108,7 @@
     {
       "id": "hwinfo-refresh",
       "name": "HWiNFO refresh (sample, powershell kind)",
-      "script_path": "E:\\automation\\automation\\system\\hwinfo_refresh.ps1",
+      "script_path": "C:\\path\\to\\your\\projects-root\\automation\\system\\hwinfo_refresh.ps1",
       "kind": "powershell",
       "args": "",
       "schedule": { "type": "none" }
@@ -140,7 +140,7 @@
     {
       "id": "gh-push-deploy",
       "name": "Deploy on GitHub push (sample, webhook-target)",
-      "script_path": "E:\\automation\\automation\\deploy\\deploy.py",
+      "script_path": "C:\\path\\to\\your\\projects-root\\automation\\deploy\\deploy.py",
       "args": "",
       "schedule": { "type": "none" },
       "params": [

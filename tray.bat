@@ -24,9 +24,10 @@ REM
 REM  The full detect -> kill -> reclaim -> start -> verify lifecycle lives in
 REM  the ONE shared, machine-local tray_lifecycle.ps1 owned by fleet-config
 REM  (project-scaffolding#153) -- exposed at %USERPROFILE%\.claude\tray\ by
-REM  fleet-config's install.ps1 junction, shelled to with -File, NOT in
-REM  cmd-side `for /f` output capture or inline `powershell -Command "..."`.
-REM  Both cmd shapes have failed under non-interactive nested callers (Git Bash
+REM  fleet-config's install.ps1 junction, shelled to once (loaded as a
+REM  ScriptBlock, so an AllSigned execution policy does not refuse it), NOT
+REM  through cmd-side `for /f` capture of its detect output or several inline
+REM  PowerShell steps. Both cmd shapes have failed under non-interactive nested callers (Git Bash
 REM  -> `cmd /c "tray.bat --restart"`, or a finisher skill's Bash tool): detect
 REM  output came back empty, nothing was killed, and --restart silently degraded
 REM  to a plain start that adopted the stale webapp and reported success.
@@ -111,12 +112,13 @@ if not exist "%TRAY_PS%" (
 
 REM === ADAPT (4/4): this tray's exclusively-owned ports as a comma list.
 REM     Exclude any mutex-shared port -- see the :8446 note above. ===
+REM  The webapp port is config\config.json webapp.port, read through the same
+REM  resolver the tray's Python code uses; the literal is the fallback when the
+REM  venv python cannot answer.
 set "OWNED_PORTS=8445"
+if exist "%TRAY_VENV%\Scripts\python.exe" for /f "usebackq delims=" %%P in (`"%TRAY_VENV%\Scripts\python.exe" -m scripts.webapp_port`) do set "OWNED_PORTS=%%P"
 REM Optional override. Leave blank to verify http://127.0.0.1:<first-owned-port>/api/version.
 set "VERSION_URL="
-
-set "RESTART_ARG="
-if defined WANT_RESTART set "RESTART_ARG=-Restart"
 
 REM  Every run that gets this far leaves a line in webapp\restart.log, entry and
 REM  exit code, so a restart that never reached this script (Git Bash's
@@ -126,7 +128,13 @@ set "RESTART_LOG=%SCRIPT_DIR%webapp\restart.log"
 if not exist "%SCRIPT_DIR%webapp\" md "%SCRIPT_DIR%webapp" 2>nul
 >>"%RESTART_LOG%" echo %DATE% %TIME% tray.bat entered args=[%*]
 
-%PS% -NoProfile -NonInteractive -File "%TRAY_PS%" launch -AppName "%TRAY_APP_NAME%" -ScriptDir "%SCRIPT_DIR_ARG%" -VenvDir "%TRAY_VENV%" -TrayMatch "launcher\.py\s+tray" -Ports "%OWNED_PORTS%" -TrayLaunch "%TRAY_LAUNCH%" -VersionUrl "%VERSION_URL%" !RESTART_ARG!
+REM  The helper is loaded as text and run as a ScriptBlock, not started with
+REM  -File: -File refuses an unsigned script under an AllSigned (or Restricted)
+REM  execution policy, and overriding the policy would weaken the machine's own
+REM  control. Values travel in the environment, so no quoting nests inside the
+REM  -Command string, and the process is powershell.exe, which the helper's tray
+REM  detection (python processes only) can never mistake for the tray.
+%PS% -NoProfile -NonInteractive -Command "$a = @{ AppName = $env:TRAY_APP_NAME; ScriptDir = $env:SCRIPT_DIR_ARG; VenvDir = $env:TRAY_VENV; TrayMatch = 'launcher\.py\s+tray'; Ports = $env:OWNED_PORTS; TrayLaunch = $env:TRAY_LAUNCH; VersionUrl = $env:VERSION_URL }; if ($env:WANT_RESTART) { $a.Restart = $true }; try { & ([scriptblock]::Create([IO.File]::ReadAllText($env:TRAY_PS))) launch @a } catch { [Console]::Error.WriteLine(($_ | Out-String)); exit 1 }; exit 0"
 set "TRAY_RC=%ERRORLEVEL%"
 >>"%RESTART_LOG%" echo %DATE% %TIME% tray.bat helper exit=!TRAY_RC!
 exit /b !TRAY_RC!

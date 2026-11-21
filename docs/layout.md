@@ -5,7 +5,7 @@ app-launcher/
 ├── launcher.py                # thin entry point — sys.path shim → app/cli/main
 ├── webapp.bat / tray.bat      # the two day-to-day .bat entrypoints
 ├── webapp_tunnel_named.bat    # uvicorn + cloudflared (named tunnel)
-├── setup.bat                  # one-shot fresh-clone installer
+├── setup.bat                  # install or update this PC; runs scripts/install.py (docs/install.md)
 │
 ├── app/
 │   ├── cli/                   # argparse dispatcher: tray | webapp | scan | session-host
@@ -81,7 +81,7 @@ app-launcher/
 │   ├── clients/                # loopback HTTP clients: the shared _loopback_http.py base, the session-host (session.py),
 │   │                           #   local-llm-hub (llm.py, tts.py), photo-ocr, voice-transcriber, and `gh` (github.py)
 │   ├── launching/              # coding-agent launch: per-agent CLI flags (flags.py), spawn helpers (launcher.py),
-│   │                           #   the model catalog, Telegram channel profiles, VS Code workspaces, the tray-restart replacement check (restart_check.py), the Apps row Refresh (app_refresh.py: stop a tracked instance, refuse the launcher's own bat and ports)
+│   │                           #   the model catalog, Telegram channel profiles, VS Code workspaces, the tray-restart replacement check (restart_check.py), the Apps row Refresh (app_refresh.py: stop a tracked instance, refuse the launcher's own bat and ports), the AllSigned-safe PowerShell launcher (ps_script.py)
 │   ├── perf_ledger/            # Apps tab: the read-only reader of fleet-config's perf-review ledger (latest result, cold-ready trend, row mapping)
 │   ├── board/                  # Board backend: kanban assembly (__init__.py), session-state join (state.py),
 │   │                           #   live-session enumeration (sessions.py), the drawer's last exchange (exchange.py),
@@ -109,6 +109,8 @@ app-launcher/
 │   ├── gen_icons.py            # thin caller onto project-scaffolding's shared brand_gen.py (rocket master);
 │   │                           #   finds that checkout as this repo's sibling — PROJECT_SCAFFOLDING_DIR overrides
 │   ├── gen_tailscale_cert.py   # tailscale cert (real LE) + --check auto-renew
+│   ├── install.py              # setup.bat's work: venv, requirements, configs from samples (never overwriting), checklist
+│   ├── webapp_port.py          # prints the configured webapp / session-host port for the .bat and .ps1 launchers
 │   ├── gen_token.py            # bearer token rotate / clear
 │   ├── session_retention.py    # dry-run: what the webapp/sessions retention sweep would remove
 │   ├── probe_repaints.py       # counts an agent's full-viewport repaints in a session transcript

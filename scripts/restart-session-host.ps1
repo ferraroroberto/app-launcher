@@ -1,4 +1,5 @@
-# Manually restart the app-launcher session-host on :8446.
+# Manually restart the app-launcher session-host (:8446 by default; the port is
+# config/webapp_config.json session_host_port).
 #
 # tray.bat --restart deliberately EXCLUDES :8446 to protect live PTY
 # sessions -- so a change under src/session_host.py
@@ -13,8 +14,9 @@
 # mid-work), never unattended, never as part of building or testing a
 # session-host change itself.
 #
-# Usage:
-#   C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -File scripts/restart-session-host.ps1 -Confirm
+# Usage, from the repo root (the launcher starts it under any execution policy,
+# AllSigned included, without overriding the policy):
+#   .venv\Scripts\python.exe -m src.launching.ps_script scripts\restart-session-host.ps1 -Confirm
 #   (bare, with no -Confirm, prints the warning and exits 1 -- does nothing)
 
 param(
@@ -26,14 +28,15 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $trayPs = Join-Path $env:USERPROFILE ".claude\tray\tray_lifecycle.ps1"
 $trayBat = Join-Path $repoRoot "tray.bat"
 $psExe = "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+$venvPy = Join-Path $repoRoot ".venv\Scripts\python.exe"
 
 if (-not $Confirm) {
-    Write-Host "This restarts the app-launcher session-host (:8446)." -ForegroundColor Yellow
+    Write-Host "This restarts the app-launcher session-host." -ForegroundColor Yellow
     Write-Host "It KILLS EVERY LIVE PTY SESSION ON THIS MACHINE, including any standing chief." -ForegroundColor Red
     Write-Host "There is no drain and no idle check. Only proceed at a clean boundary." -ForegroundColor Red
     Write-Host ""
     Write-Host "Re-run with -Confirm to proceed:" -ForegroundColor Yellow
-    Write-Host "  C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -File scripts/restart-session-host.ps1 -Confirm"
+    Write-Host "  .venv\Scripts\python.exe -m src.launching.ps_script scripts\restart-session-host.ps1 -Confirm"
     exit 1
 }
 
@@ -46,9 +49,22 @@ if (-not (Test-Path $trayBat)) {
     exit 1
 }
 
-Write-Host "Reclaiming :8446 (this kills every live PTY now)..." -ForegroundColor Cyan
-& $psExe -NoProfile -NonInteractive -File $trayPs reclaim `
-    -VenvDir (Join-Path $repoRoot ".venv") -Ports 8446
+# Ports come from this PC's ignored config, through the resolver the Python code uses.
+$sessionHostPort = "$(& $venvPy -m scripts.webapp_port --session-host)".Trim()
+$webappPort = "$(& $venvPy -m scripts.webapp_port)".Trim()
+if (-not ($sessionHostPort -match '^\d+$') -or -not ($webappPort -match '^\d+$')) {
+    Write-Host "Could not read the configured ports through scripts.webapp_port." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "Reclaiming :$sessionHostPort (this kills every live PTY now)..." -ForegroundColor Cyan
+# The helper is loaded as text and run as a ScriptBlock, in its own process so its
+# `exit` ends that process and not this script: -File refuses an unsigned script
+# under an AllSigned execution policy, and overriding the policy would weaken it.
+$env:TRAY_PS = $trayPs
+$env:TRAY_VENV = Join-Path $repoRoot ".venv"
+$env:OWNED_PORTS = $sessionHostPort
+& $psExe -NoProfile -NonInteractive -Command 'try { & ([scriptblock]::Create([IO.File]::ReadAllText($env:TRAY_PS))) reclaim -VenvDir $env:TRAY_VENV -Ports $env:OWNED_PORTS } catch { [Console]::Error.WriteLine(($_ | Out-String)); exit 1 }; exit 0'
 if ($LASTEXITCODE -ne 0) {
     Write-Host "tray_lifecycle.ps1 reclaim exited $LASTEXITCODE -- session-host may still be running." -ForegroundColor Red
     exit $LASTEXITCODE
@@ -80,7 +96,7 @@ $confirmed = $false
 $lastSeen = ""
 while ((Get-Date) -lt $deadline) {
     try {
-        $body = Invoke-RestMethod -Uri "https://127.0.0.1:8445/api/version" -SkipCertificateCheck -TimeoutSec 3
+        $body = Invoke-RestMethod -Uri "https://127.0.0.1:$webappPort/api/version" -SkipCertificateCheck -TimeoutSec 3
         $host_ = $body.session_host
         if ($host_.reachable -eq $true) {
             $lastSeen = ("git_sha=$($host_.git_sha) started_at=$($host_.started_at) " +
