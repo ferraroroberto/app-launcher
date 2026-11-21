@@ -159,3 +159,60 @@ def test_a_stale_port_block_leaves_ports_unmeasured_never_zero():
 
 def test_a_payload_with_no_machine_data_has_no_machine_block():
     assert "machine" not in hh.parse({"verdict": "ok", "reason": "fine"})
+
+
+_DISK_BODY = {
+    "verdict": "act", "reason": "disk", "fix": None, "host_id": "example-host",
+    "findings": [{"level": "act", "metric": "disk_load", "value": 98.0}],
+    "disks": [
+        {"disk": "PhysicalDrive2", "drives": ["C:"], "state": "alert",
+         "busy_percent": 98.0, "queue": 7.5, "read_ms": 120.4, "write_ms": 310.0},
+        {"disk": "PhysicalDrive0", "drives": ["D:", "F:"], "state": "watch",
+         "busy_percent": 82.0, "queue": 2.0, "read_ms": None, "write_ms": 40.0},
+        {"disk": "PhysicalDrive1", "drives": ["E:"], "state": "ok",
+         "busy_percent": 1.0, "queue": 0.0, "read_ms": 0.1, "write_ms": 0.3},
+    ],
+}
+
+
+def test_a_disk_load_act_finding_is_critical_and_the_disks_are_passed_through():
+    machine = hh.parse(_DISK_BODY)["machine"]
+    assert machine["critical"] == [{"metric": "disk_load", "value": 98.0}]
+    assert [(d["drives"], d["state"], d["busy_percent"]) for d in machine["disks"]] == [
+        (["C:"], "alert", 98.0), (["D:", "F:"], "watch", 82.0), (["E:"], "ok", 1.0)]
+    assert machine["disks"][0]["queue"] == 7.5 and machine["disks"][0]["write_ms"] == 310.0
+    assert machine["disks"][1]["read_ms"] is None  # no latency sample is not 0 ms
+
+
+def test_a_disk_load_watch_finding_is_not_critical_but_the_disk_still_shows():
+    body = dict(_DISK_BODY, verdict="watch", findings=[{"level": "watch", "metric": "disk_load", "value": 82.0}])
+    machine = hh.parse(body)["machine"]
+    assert machine["critical"] == []
+    assert machine["disks"][1]["state"] == "watch"
+
+
+def test_a_hub_that_sends_no_disks_reads_as_before():
+    body = {k: v for k, v in _DISK_BODY.items() if k != "disks"}
+    machine = hh.parse(body)["machine"]
+    assert machine["disks"] is None
+    assert hh.parse(_PORTS_BODY)["machine"]["disks"] is None
+
+
+@pytest.mark.parametrize("disks", ["busy", {"disk": "x"}, [], [None, 3, {}], [{"disk": "  ", "drives": []}]])
+def test_a_malformed_disks_block_is_not_shown_never_healthy(disks):
+    body = {"verdict": "ok", "reason": "fine", "system": {"commit_percent": 40.0}, "disks": disks}
+    assert hh.parse(body)["machine"]["disks"] is None
+
+
+def test_a_disk_with_a_missing_or_unrecognised_state_reads_unknown():
+    disks = [{"disk": "d0", "drives": ["C:"], "busy_percent": 1.0},
+             {"disk": "d1", "drives": ["D:"], "state": "fine", "busy_percent": True}]
+    got = hh.parse({"verdict": "ok", "disks": disks})["machine"]["disks"]
+    assert [d["state"] for d in got] == ["unknown", "unknown"]
+    assert got[1]["busy_percent"] is None  # a bool is not a number
+
+
+def test_the_disk_block_is_bounded():
+    disks = [{"disk": f"d{i}", "drives": [f"{i}:"] * 9, "state": "ok", "busy_percent": 1.0} for i in range(20)]
+    got = hh.parse({"verdict": "ok", "disks": disks})["machine"]["disks"]
+    assert len(got) == 8 and all(len(d["drives"]) == 4 for d in got)

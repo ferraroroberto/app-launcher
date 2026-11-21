@@ -41,12 +41,19 @@ _TIMEOUT = 3.0
 _MAX_TEXT = 240
 # The act findings that make a machine critical: ephemeral ports (the slow
 # sample's backstop, the port watch's percents and the Tcpip exhaustion events
-# `tcpip_<id>`) and commit charge. Handles, pools and TIME_WAIT alone are not.
+# `tcpip_<id>`), commit charge and a physical disk saturated for minutes (a
+# starved disk froze a machine with no other warning). Handles, pools and
+# TIME_WAIT alone are not.
 PORT_METRICS = frozenset({"tcp_percent", "udp_percent", "ephemeral_ports_percent"})
 COMMIT_METRICS = frozenset({"commit_percent"})
+DISK_METRICS = frozenset({"disk_load"})
 _EVENT_METRIC_PREFIX = "tcpip_"
 _MAX_HOLDERS = 5
 _MAX_MEMORY_OFFENDERS = 3
+_MAX_DISKS = 8
+_MAX_DRIVES = 4
+# The hub's per-disk states; anything else reads unknown, never ok.
+_DISK_STATES = frozenset({"ok", "watch", "alert", "unknown"})
 
 
 class HubHealthError(_loopback_http.LoopbackError):
@@ -88,15 +95,47 @@ def _rows(rows: Any, limit: int, keys: Iterable[str]) -> List[Dict[str, Any]]:
 def is_critical_metric(metric: Any) -> bool:
     """Whether an act finding on ``metric`` is one the chief is woken for."""
     return isinstance(metric, str) and (
-        metric in PORT_METRICS or metric in COMMIT_METRICS or metric.startswith(_EVENT_METRIC_PREFIX)
+        metric in PORT_METRICS or metric in COMMIT_METRICS or metric in DISK_METRICS
+        or metric.startswith(_EVENT_METRIC_PREFIX)
     )
+
+
+def _disks(body: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
+    """One row per physical disk the hub measured, or ``None`` when the payload
+    has no usable ``disks`` block (an older hub, or a malformed one): the sheet
+    then shows no disk rows, never a healthy-looking empty list. A row whose
+    state is missing or unrecognised reads ``unknown``; a reading that is not a
+    number is ``None``, never 0."""
+    rows = body.get("disks")
+    if not isinstance(rows, list):
+        return None
+    out: List[Dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict) or len(out) >= _MAX_DISKS:
+            continue
+        drives = [d for d in (_text(x) for x in (row.get("drives") if isinstance(row.get("drives"), list) else []))
+                  if d][:_MAX_DRIVES]
+        disk = _text(row.get("disk"))
+        if not drives and not disk:
+            continue
+        state = row.get("state")
+        out.append({
+            "disk": disk,
+            "drives": drives,
+            "state": state if state in _DISK_STATES else "unknown",
+            "busy_percent": _num(row.get("busy_percent")),
+            "queue": _num(row.get("queue")),
+            "read_ms": _num(row.get("read_ms")),
+            "write_ms": _num(row.get("write_ms")),
+        })
+    return out or None
 
 
 def _machine(body: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """What the machine row and sheet draw beyond the verdict: the worst ports
-    percent, commit percent, the port holders, the last exhaustion event and the
-    act findings on a critical metric. ``None`` when the payload carries none of
-    them. A stale or missing port block leaves ``ports_percent`` unset, never 0."""
+    percent, commit percent, the port holders, the last exhaustion event, the
+    per-disk load and the act findings on a critical metric. ``None`` when the
+    payload carries none of them. A stale or missing port block leaves ``ports_percent`` unset, never 0."""
     system = body.get("system") if isinstance(body.get("system"), dict) else {}
     ports = body.get("ports") if isinstance(body.get("ports"), dict) else {}
     percents = [
@@ -109,6 +148,7 @@ def _machine(body: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                     ("name", "pid", "value", "tcp", "udp"))
     event = ports.get("last_event") if isinstance(ports.get("last_event"), dict) else None
     findings = body.get("findings") if isinstance(body.get("findings"), list) else []
+    disks = _disks(body)
     critical = [
         {"metric": f["metric"], "value": f.get("value") if isinstance(f.get("value"), (int, float)) else None}
         for f in findings
@@ -124,9 +164,10 @@ def _machine(body: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             "ts": _num(event.get("ts")), "event_id": _num(event.get("event_id")),
             "protocol": _text(event.get("protocol")), "reason": _text(event.get("reason")),
         },
+        "disks": disks,
         "critical": critical,
     }
-    measured = (machine["ports_percent"], machine["commit_percent"], machine["last_event"])
+    measured = (machine["ports_percent"], machine["commit_percent"], machine["last_event"], disks)
     if all(v is None for v in measured) and not holders and not critical:
         return None
     return machine

@@ -56,8 +56,10 @@ _WORKTREE_SUFFIX = re.compile(r"-wt-\d+$")
 # process that happens to sit in a repo folder (an agent CLI) is not.
 _APP_INTERPRETERS = frozenset({"python", "pythonw", "py", "node"})
 # The offenders belong to a metric's resource: ports for the port metrics and
-# the exhaustion events, memory for commit charge.
-_OFFENDER_KEYS = {"commit_percent": "memory_holders"}
+# the exhaustion events, memory for commit charge. The hub names no process
+# behind a saturated disk, so a disk_load event carries none rather than the
+# port holders, who are not its cause.
+_OFFENDER_KEYS = {"commit_percent": "memory_holders", "disk_load": None}
 
 OWNER_FLEET = "fleet"
 OWNER_NON_FLEET = "non-fleet"
@@ -137,7 +139,7 @@ def build_event(
     classify_row: Callable[..., Dict[str, Any]] = classify,
 ) -> Dict[str, Any]:
     key = _OFFENDER_KEYS.get(finding["metric"], "holders")
-    rows = (machine.get(key) or [])[:_MAX_OFFENDERS]
+    rows = (machine.get(key) or [])[:_MAX_OFFENDERS] if key else []
     return {
         "v": EVENT_VERSION,
         "id": uuid.uuid4().hex,
