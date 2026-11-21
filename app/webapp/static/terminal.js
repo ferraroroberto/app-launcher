@@ -210,6 +210,8 @@ function disposeTerminal(t) {
   }
   _termCache.delete(t.sid);
   clearTerminalReconnect(t);
+  // Cancels a screen-first history pass still waiting to parse.
+  t.historyGen = (t.historyGen || 0) + 1;
   if (t.sizeTimer) clearInterval(t.sizeTimer);
   if (t.titleTimer) clearInterval(t.titleTimer);
   if (t.disposeTouch) { try { t.disposeTouch(); } catch (_) {} }

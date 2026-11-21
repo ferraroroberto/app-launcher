@@ -10,6 +10,7 @@ import { apiFailToast, escapeHtml, readToken, sessionRoute } from '../api.js';
 import { clearTerminalToken, ensureTerminalToken } from '../webauthn.js';
 import { icon } from '../_vendored/icons/icons.js';
 import { createRepaintClearer } from './repaint-scrollback.js';
+import { SCREEN_FIRST, applyHistory, isHistoryMarker } from './replay-order.js';
 
 const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000];
 const RECONNECT_GIVE_UP_MS = 30000;
@@ -157,12 +158,13 @@ export function flushRepaintBatch(terminal) {
   });
 }
 
-function termWsUrl(sid, terminalToken) {
+function termWsUrl(sid, terminalToken, order) {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const params = new URLSearchParams();
   const bearerToken = readToken();
   if (bearerToken) params.set('token', bearerToken);
   if (terminalToken) params.set('tt', terminalToken);
+  if (order) params.set('order', order);
   const query = params.toString();
   return proto + '//' + location.host + sessionRoute(sid, '/ws' + (query ? '?' + query : ''));
 }
@@ -223,12 +225,20 @@ export function connectTerminalWs(terminal) {
       terminal.ws.close();
     } catch (_) { /* dying socket; replacement continues */ }
   }
-  const ws = new WebSocket(termWsUrl(terminal.sid, terminal.tt));
+  // Inline agents ask for the current screen before the scrollback
+  // (replay-order.js). A full-screen agent's replay stays concealed behind
+  // the repaint batch, so it keeps the single frame.
+  const order = terminal.isFullscreen ? '' : SCREEN_FIRST;
+  const ws = new WebSocket(termWsUrl(terminal.sid, terminal.tt, order));
   terminal.ws = ws;
   // Inline agents only: a fresh stream, so no carry from the old
   // socket's last message. A full-screen agent paints from the host's VT
   // snapshot and keeps no scrollback of its own to duplicate into.
   terminal.repaintClearer = terminal.isFullscreen ? null : createRepaintClearer();
+  // A history pass the old socket left pending must not land on this one.
+  terminal.historyGen = (terminal.historyGen || 0) + 1;
+  terminal.awaitingHistory = false;
+  terminal.historyHold = null;
 
   ws.onopen = function () {
     if (terminal !== state.terminal) return;
@@ -270,11 +280,24 @@ function onTerminalFrame(terminal, event) {
     return;
   }
   if (route === 'swallow' || !terminal.term) return;
+  if (isHistoryMarker(event.data)) {
+    terminal.awaitingHistory = true;
+    return;
+  }
   // stamp every PTY output frame so the compose bar's bulk-send
   // settle watch (terminal-compose.js) can tell "the agent echoed the
   // paste and went quiet" from "the paste is still being ingested"; it also
   // adds whether a pasted image is still converting.
   stampOutput(terminal, event.data);
+  if (terminal.awaitingHistory) {
+    terminal.awaitingHistory = false;
+    writeHistory(terminal, event.data);
+    return;
+  }
+  if (terminal.historyHold) {
+    terminal.historyHold.push(event.data);
+    return;
+  }
   // Active repaint batch: buffer the burst, flush on the first
   // quiet gap or at the hard deadline — one write, one render.
   if (terminal.batchBuf) {
@@ -289,13 +312,29 @@ function onTerminalFrame(terminal, event) {
     }
     return;
   }
+  writeOutput(terminal, event.data);
+}
+
+// The full replay behind a screen-first frame: it restarts the stream from
+// a clear, so the repaint filter starts over with it.
+function writeHistory(terminal, raw) {
+  terminal.repaintClearer = createRepaintClearer();
+  const data = terminal.repaintClearer(raw, terminal.term.rows);
+  applyHistory(terminal, data, function (frame) {
+    if (terminal.term) writeOutput(terminal, frame);
+  }, function () {
+    try { terminal.term.scrollToBottom(); } catch (_) { /* best effort */ }
+  });
+}
+
+function writeOutput(terminal, raw) {
   const buffer = terminal.term.buffer.active;
   const wasAtBottom = buffer.viewportY >= buffer.baseY - 1;
   // Claude Code's full-viewport repaint would re-commit the rows it
   // redraws to scrollback: clear scrollback right after it.
   const data = terminal.repaintClearer
-    ? terminal.repaintClearer(event.data, terminal.term.rows)
-    : event.data;
+    ? terminal.repaintClearer(raw, terminal.term.rows)
+    : raw;
   terminal.term.write(data, function () {
     if (wasAtBottom) {
       try { terminal.term.scrollToBottom(); } catch (_) { /* best effort */ }
