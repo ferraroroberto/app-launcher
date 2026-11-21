@@ -4,15 +4,15 @@
 // writeSync must find the queue empty (inside a write it would replay the
 // chunk in flight). Invoked by tests/unit/static_ui/test_node_module_helpers.py.
 
-import './_browser_stubs.mjs';
+import '../_browser_stubs.mjs';
 import assert from 'node:assert/strict';
 
 globalThis.location = { protocol: 'http:', host: 'test.invalid' };
 
 const { connectTerminalWs } =
-  await import('../../app/webapp/static/terminal/terminal-connection.js');
+  await import('../../../app/webapp/static/terminal/terminal-connection.js');
 const { isHistoryMarker } =
-  await import('../../app/webapp/static/terminal/replay-order.js');
+  await import('../../../app/webapp/static/terminal/replay-order.js');
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 const settle = async () => { for (let i = 0; i < 10; i++) await tick(); };
