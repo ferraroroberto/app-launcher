@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from src import runtime_files
-from src._json_io import atomic_write_json
+from src._json_io import atomic_write_json, read_json_or
 from src.board import owner_try
 from src.board.state import parse_utc_iso
 from src.clients import github as github_client
@@ -404,15 +404,7 @@ def _forget(ref: str) -> None:
 def read_marks(path: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
     """``{ref: {"mark", "at", "until"?}}``; missing or corrupt reads as none."""
     target = Path(path or MARKS_FILE)
-    try:
-        raw = json.loads(target.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return {}
-    except (OSError, ValueError) as exc:
-        logger.warning("⚠️ owner-check marks unreadable: %s", exc.__class__.__name__)
-        return {}
-    if not isinstance(raw, dict):
-        return {}
+    raw = read_json_or(target, {}, "owner-check marks", expect=dict)
     return {
         str(ref): mark for ref, mark in raw.items()
         if isinstance(mark, dict) and mark.get("mark") in (LATER, PROBLEM, PAUSED, CLOSING)

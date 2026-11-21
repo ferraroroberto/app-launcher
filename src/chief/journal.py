@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src import runtime_files
-from src._json_io import atomic_write_json
+from src._json_io import atomic_write_json, read_json_or
 from src.chief.plan import ref_url
 
 logger = logging.getLogger(__name__)
@@ -69,14 +69,8 @@ def _entry(raw: Any, owner: str) -> Optional[Dict[str, Any]]:
 def read_last_look(path: Optional[Path] = None) -> str:
     """When Roberto last looked (``YYYY-MM-DDTHH:MM:SSZ``), or ``""`` for never
     or an unreadable record."""
-    try:
-        raw = json.loads(Path(path or CHIEF_JOURNAL_LOOK_FILE).read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return ""
-    except (OSError, ValueError) as exc:
-        logger.warning("⚠️ chief journal look unreadable: %s", exc.__class__.__name__)
-        return ""
-    at = raw.get("at") if isinstance(raw, dict) else None
+    raw = read_json_or(Path(path or CHIEF_JOURNAL_LOOK_FILE), {}, "chief journal look", expect=dict)
+    at = raw.get("at")
     return at if isinstance(at, str) and _TS.fullmatch(at) else ""
 
 

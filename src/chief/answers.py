@@ -29,14 +29,13 @@ shared fixture (``tests/fixtures/chief_question_keys.json``).
 
 from __future__ import annotations
 
-import json
 import logging
 import threading
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 
 from src import runtime_files
-from src._json_io import atomic_write_json
+from src._json_io import atomic_write_json, read_json_or
 from src.chief import plan as chief_plan
 
 logger = logging.getLogger(__name__)
@@ -69,14 +68,8 @@ def clean_ids(value: Any) -> Optional[List[str]]:
 
 
 def _read(path: Path) -> dict:
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return {}
-    except (OSError, ValueError) as exc:
-        logger.warning("⚠️ chief answered marks unreadable: %s", exc.__class__.__name__)
-        return {}
-    if not isinstance(raw, dict) or not isinstance(raw.get("updated_at"), str):
+    raw = read_json_or(path, {}, "chief answered marks", expect=dict)
+    if not isinstance(raw.get("updated_at"), str):
         return {}
     return raw
 

@@ -21,7 +21,6 @@ The live webapp's own logger is discarded by the tray, so the breadcrumbs go to
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import threading
@@ -30,7 +29,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 from src import process_restart, restart_window, runtime_files
-from src._json_io import atomic_write_json
+from src._json_io import atomic_write_json, read_json_or
 from src.clients import hub_health
 from src.webapp_config import DEFAULT_CONFIG_PATH
 from src.webapp_settings.values import WEBAPP_CONFIG_PATH_ENV
@@ -57,11 +56,8 @@ def state_path() -> Path:
 def _load() -> Dict[str, Dict[str, str]]:
     """Each restart id's last automatic restart (``night``, ``at``, ``outcome``).
     An unreadable file reads as empty, which can only allow one extra restart."""
-    try:
-        data = json.loads(state_path().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    done = data.get("done") if isinstance(data, dict) else None
+    data = read_json_or(state_path(), {}, "night auto-restart state", expect=dict)
+    done = data.get("done")
     return {k: v for k, v in done.items() if isinstance(v, dict)} if isinstance(done, dict) else {}
 
 

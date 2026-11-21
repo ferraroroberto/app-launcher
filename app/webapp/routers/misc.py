@@ -30,9 +30,9 @@ from src.desktop import session_kind
 from src.desktop.browser import is_web_url, open_url
 from src.diagnostics import (
     detect_local_scheme,
-    find_pids_on_port,
     kill_pids,
     list_app_listeners,
+    listener_pids,
 )
 from src.git_utils import resolve_deployed_sha
 from src.launching.vscode_workspace import is_vscode_installed
@@ -489,7 +489,13 @@ async def kill_port(port: int) -> Dict[str, Any]:
     if port < 1 or port > 65535:
         raise HTTPException(status_code=400, detail="port out of range")
     # The same psutil scan as the probe, plus the kills: off the loop.
-    pids = await asyncio.to_thread(find_pids_on_port, port)
+    found = await asyncio.to_thread(listener_pids, port)
+    if found is None:
+        raise HTTPException(
+            status_code=503, detail="could not read the listening sockets"
+        )
+    own_pid = os.getpid()
+    pids = [pid for pid in found if pid != own_pid]
     if not pids:
         return {"port": port, "killed": [], "detail": "nothing was listening"}
     killed, errors = await asyncio.to_thread(kill_pids, pids)

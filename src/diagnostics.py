@@ -42,32 +42,6 @@ class PortOwner:
         return " ".join(self.cmdline) if self.cmdline else ""
 
 
-def find_pids_on_port(port: int) -> List[int]:
-    """Return all PIDs LISTENing on ``port`` (smart-kill helper)."""
-    if psutil is None:
-        return []
-    own_pid = os.getpid()
-    pids: set[int] = set()
-    try:
-        for proc in psutil.process_iter(["pid", "name"]):
-            try:
-                for conn in proc.net_connections(kind="inet"):
-                    if (
-                        conn.status == psutil.CONN_LISTEN
-                        and conn.laddr
-                        and conn.laddr.port == port
-                    ):
-                        pid = proc.info["pid"]
-                        if pid and pid != own_pid:
-                            pids.add(pid)
-            except (psutil.AccessDenied, psutil.NoSuchProcess):
-                continue
-    except (psutil.AccessDenied, PermissionError, OSError) as exc:
-        logger.debug(f"find_pids_on_port denied ({exc})")
-        return []
-    return sorted(pids)
-
-
 def listener_pids(port: int) -> Optional[List[int]]:
     """Every PID LISTENing on ``port``, this process included.
 

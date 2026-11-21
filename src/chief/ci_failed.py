@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src import instance_role, runtime_files
-from src._json_io import atomic_write_json
+from src._json_io import atomic_write_json, read_json_or
 from src.board import ci_runs
 from src.chief.job_failed import chief_live
 from src.chief_session_end import EVENT_VERSION
@@ -55,15 +55,7 @@ _lock = threading.Lock()
 def read_seen(path: Optional[Path] = None) -> Dict[str, List[int]]:
     """The recorded run ids per repo; ``{}`` when nothing readable is on file."""
     target = Path(path or SEEN_FILE)
-    try:
-        raw = json.loads(target.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return {}
-    except (OSError, ValueError) as exc:
-        logger.warning("⚠️ ci-failed seen runs unreadable: %s", exc.__class__.__name__)
-        return {}
-    if not isinstance(raw, dict):
-        return {}
+    raw = read_json_or(target, {}, "ci-failed seen runs", expect=dict)
     return {
         str(repo): [i for i in ids if isinstance(i, int)][-MAX_PER_REPO:]
         for repo, ids in raw.items() if isinstance(ids, list)

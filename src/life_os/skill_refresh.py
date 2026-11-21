@@ -33,7 +33,6 @@ missing or corrupt file reads as nothing recorded, which falls back to git.
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 import os
 import re
@@ -44,7 +43,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from src import runtime_files
-from src._json_io import atomic_write_json
+from src._json_io import atomic_write_json, read_json_or
 from src.git_utils import run_git
 from src.scanner import skills_dir_for
 from src.webapp_config import WebappConfig
@@ -156,15 +155,7 @@ def committed_since(repo: Path, files: List[Path], since: datetime) -> Optional[
 def read_records(path: Optional[Path] = None) -> Dict[str, str]:
     """The recorded fingerprints; ``{}`` when nothing (readable) is on file."""
     target = Path(path or SKILL_HASHES_FILE)
-    try:
-        raw = json.loads(target.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return {}
-    except (OSError, ValueError) as exc:
-        logger.warning("⚠️ Life OS skill fingerprints unreadable: %s", exc.__class__.__name__)
-        return {}
-    if not isinstance(raw, dict):
-        return {}
+    raw = read_json_or(target, {}, "Life OS skill fingerprints", expect=dict)
     return {k: v for k, v in raw.items() if isinstance(k, str) and isinstance(v, str)}
 
 
