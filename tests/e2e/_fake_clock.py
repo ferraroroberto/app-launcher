@@ -18,16 +18,25 @@ import re
 from playwright.sync_api import Page
 
 # Records the delay (and the callback's source) of every interval the page arms,
-# so a test can wait for the poll it is about to jump instead of guessing when
-# boot has armed it.
+# and of every tick a self-scheduling poll (static/shared/poll.js) arms, named by
+# the read it runs, so a test can wait for the poll it is about to jump instead
+# of guessing when boot has armed it.
 _SPY_INTERVALS = """(() => {
-  const real = window.setInterval;
+  const realInterval = window.setInterval;
+  const realTimeout = window.setTimeout;
   window.__armed = [];
   window.__armedSrc = [];
   window.setInterval = function (fn, ms, ...rest) {
     window.__armed.push(ms);
     window.__armedSrc.push(ms + ':' + String(fn));
-    return real.call(this, fn, ms, ...rest);
+    return realInterval.call(this, fn, ms, ...rest);
+  };
+  window.setTimeout = function (fn, ms, ...rest) {
+    if (fn && fn.pollSource) {
+      window.__armed.push(ms);
+      window.__armedSrc.push(ms + ':' + fn.pollSource);
+    }
+    return realTimeout.call(this, fn, ms, ...rest);
   };
 })();"""
 
@@ -47,7 +56,7 @@ def advance(page: Page, ms: int) -> None:
 
 
 def wait_for_interval(page: Page, ms: int, calls: str | None = None) -> None:
-    """Wait until the page has armed a ``setInterval`` of ``ms``: a poll that
+    """Wait until the page has armed a poll of ``ms``: a poll that
     boot arms only after its first fetch settles, so a jump made earlier would
     pass a poll that does not exist yet.
 

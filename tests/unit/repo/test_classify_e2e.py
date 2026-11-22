@@ -271,6 +271,7 @@ _BOARD_TARGETS = (
     "tests/e2e/settings/test_usage_meter.py"
     " tests/e2e/settings/test_settings_sheets.py"
     " tests/e2e/shell/test_action_row_variants.py tests/e2e/shell/test_async_list_states.py tests/e2e/screens/test_screen_shots.py"
+    " tests/e2e/shell/test_poll_single_flight.py"
 )
 _LIFEOS_TARGETS = (
     "tests/e2e/life_os tests/e2e/life_os/test_life_tab_glance.py "

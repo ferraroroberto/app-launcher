@@ -330,7 +330,7 @@ function closeSheet() {
 }
 
 // The poll itself is armed by main.js after the boot fetch, like every
-// other poll; this wires the taps and the foreground read.
+// other poll, and it owns the read on return to the foreground; this wires the taps.
 export function wireSystemLoad() {
   renderReadings();
   renderHealthMark();
@@ -341,7 +341,4 @@ export function wireSystemLoad() {
   const done = document.getElementById('cpuSheetDone');
   if (close) close.addEventListener('click', closeSheet);
   if (done) done.addEventListener('click', closeSheet);
-  document.addEventListener('visibilitychange', function () {
-    if (!document.hidden) fetchSystemLoad().catch(function () {});
-  });
 }

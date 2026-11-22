@@ -609,7 +609,11 @@ time_budget_s         = 1200
 # 2026-11-22: 660 -> 661, one node (one test, chromium only) for tests/e2e/shell/test_build_restart.py: the build readout's restart sheet, whose
 # session-host target must show the live session count read when the sheet opens and post only on the second tap; no existing test opens that sheet,
 # and the stale-count refresh, the no-post first tap, the confirmed post and the failed-run report all ride that one node.
-test_budget = 660
+# 2026-11-22: 660 -> 662, two nodes (one test, both projections, iphone marker: the issue asks for the phone page)
+# for tests/e2e/shell/test_poll_single_flight.py: it wraps fetch in an init script to count requests in flight and holds
+# routes open, which would taint any page it shared with another node; the session list, Board, transcript and hidden-tab
+# checks all ride that one node.
+test_budget = 662
 
 # --- static assets under the webapp's static dir -> Chromium smoke ----------
 [[e2e.rule]]
@@ -961,6 +965,7 @@ pytest_targets = [
     "tests/e2e/shell/test_action_row_variants.py",
     "tests/e2e/shell/test_async_list_states.py",
     "tests/e2e/screens/test_screen_shots.py",
+    "tests/e2e/shell/test_poll_single_flight.py",
 ]
 
 # The Life OS tab: skills list (life-os.js), conversations (life-os-convos.js)
