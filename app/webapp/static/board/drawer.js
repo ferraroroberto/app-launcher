@@ -116,8 +116,8 @@ function drawerAction(cls, glyph, label, title, reason, onTap, opts) {
   const btn = document.createElement('button');
   btn.dataset.track = opts.track;
   btn.type = 'button';
-  btn.className = 'board-drawer-action ' + cls;
-  btn.innerHTML = icon(glyph) + '<span class="board-drawer-action-label">' + label + '</span>';
+  btn.className = cls;
+  btn.innerHTML = icon(glyph) + '<span class="board-drawer-label">' + label + '</span>';
   btn.title = reason || title;
   btn.setAttribute('aria-label', reason || title);
   if (reason) btn.setAttribute('aria-disabled', 'true');
@@ -182,7 +182,7 @@ export function buildDrawer(card) {
   actions.className = 'board-drawer-actions';
   const session = overlaySession(card);
   const chat = drawerAction(
-    'board-open-chat', 'messages-square', 'Chat', 'Open the chat view',
+    'button-tint board-open-chat', 'messages-square', 'Chat', 'Open the chat view',
     chatAvailable(session) ? null : modeReason(session, 'chat'),
     function () {
       state.boardExpanded = null;
@@ -190,10 +190,9 @@ export function buildDrawer(card) {
     },
     { track: 'board.drawer-chat' }
   );
-  chat.classList.add('is-primary');
   actions.appendChild(chat);
   actions.appendChild(drawerAction(
-    'board-open-terminal', 'terminal', 'Terminal', 'Open the full terminal',
+    'button-surface board-open-terminal', 'terminal', 'Terminal', 'Open the full terminal',
     terminalAvailable(session) ? null : modeReason(session, 'terminal'),
     function () {
       state.boardExpanded = null;

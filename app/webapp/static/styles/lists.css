@@ -216,36 +216,6 @@
   display: flex;
   flex-direction: column;
 }
-.launch-btn {
-  width: 100%;
-  padding: 16px 18px;
-  font-size: var(--font-body);
-  font-weight: 600;
-  color: var(--fg);
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  text-align: left;
-  min-height: var(--row-lg);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 4px;
-}
-.launch-btn:active { background: var(--card-2); }
-/* Apps + Trays rows are inert — launching moved to the per-row
-   ⚡/🚫👁 pair, so the body must not read or feel tappable. Keeps the
-   .launch-btn typography every other list row uses. */
-.launch-btn.inert {
-  cursor: default;
-}
-.launch-btn.inert:active { background: transparent; }
-.launch-btn .meta {
-  font-size: var(--font-body-sm);
-  color: var(--muted);
-  font-weight: 400;
-  overflow-wrap: anywhere;
-}
 .app-item .row-actions {
   display: flex;
   flex-direction: column;

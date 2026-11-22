@@ -401,17 +401,6 @@ textarea.input-native { height: auto; }
 }
 .job-param-row .danger { color: var(--danger, #f55); }
 
-/* ---------- running sessions (tap to open the terminal) ---------- */
-/* The row is one button (the text column) plus a kebab in its own rail,
-   centred against the row's full height. The chevron that briefly
-   replaced the gear is gone: it was centred against the badge line inside
-   the row head, not the row, which is what never lined up — and it carried
-   no actions. The kebab sits in the 52px slot the gear held, outside the row
-   button, so tapping it opens the menu and never the session. */
-.session-item .session-open {
-  width: 100%;
-  text-align: left;
-}
 /* ---------- Glance UI kit ----------
    The shared parts every tab moves onto (glance.js, usage-meter.js). */
 
@@ -527,6 +516,11 @@ textarea.input-native { height: auto; }
   text-overflow: ellipsis;
 }
 .srow-meta-rest { flex: none; white-space: pre; }
+/* ---------- running sessions (tap to open the terminal) ---------- */
+/* The row is one vendored action-row main button (the avatar and text column)
+   plus a kebab in its own rail, centred against the row's full height. The
+   kebab sits outside the row button, so tapping it opens the menu and never
+   the session. This is the row's own geometry over the vendored button's. */
 .session-item .session-open {
   flex-direction: row;
   align-items: center;

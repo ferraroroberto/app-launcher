@@ -796,7 +796,7 @@ def _assert_drawer_floor_on_narrow_desktop(authed_page: Page, browser_name: str,
             # Chat and Terminal keep their whole words in a desktop lane.
             clipped = stable_eval(actions, (
                 "el => el.isConnected ? Array.from(el.querySelectorAll("
-                "'.board-drawer-action-label')).filter("
+                "'.board-drawer-label')).filter("
                 "l => l.scrollWidth > l.clientWidth + 1).map(l => l.textContent) : null"))
             assert clipped == [], f"drawer labels clipped at {width}px: {clipped}"
 
@@ -840,11 +840,11 @@ def test_board_drawer_chat_primary_menu_and_stop_confirms(
     buttons = actions.locator(":scope > button")
     expect(buttons).to_have_count(3)
     chat, terminal, kebab = buttons.nth(0), buttons.nth(1), buttons.nth(2)
-    expect(chat).to_have_class(re.compile(r"\bboard-open-chat\b.*\bis-primary\b"))
+    expect(chat).to_have_class(re.compile(r"\bbutton-tint\b.*\bboard-open-chat\b"))
     expect(chat).to_have_text("Chat")
     expect(terminal).to_have_class(re.compile(r"\bboard-open-terminal\b"))
     expect(terminal).to_have_text("Terminal")
-    expect(terminal).not_to_have_class(re.compile(r"\bis-primary\b"))
+    expect(terminal).to_have_class(re.compile(r"\bbutton-surface\b"))
     expect(kebab).to_have_attribute("aria-label", "Session actions")
     # A full-control Claude session can take every action.
     for b in (chat, terminal):
