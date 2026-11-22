@@ -276,3 +276,98 @@ def test_the_saved_values_file_defaults_to_the_repo_webapp_folder():
     spec.loader.exec_module(fresh)
 
     assert fresh.STATE_FILE == repo_root / "webapp" / "lid-keep-awake.json"
+
+
+def _second_app_copy():
+    """A second copy of the module with its own saved-values file, standing in
+    for the sister app (app-launcher-lite) that shares this machine's power plan
+    but keeps its own state file."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("_lid_second_app", lid.__file__)
+    other = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(other)
+    other.STATE_FILE = lid.STATE_FILE.with_name("second-app-lid-keep-awake.json")
+    return other
+
+
+def test_two_apps_enabling_in_turn_never_save_each_others_zeros(fake):
+    other = _second_app_copy()
+    fake.plans[PLAN_A] = [1, 2]
+    lid.enable(fake)
+    writes = len(fake.writes())
+
+    other.enable(fake)
+    assert len(fake.writes()) == writes, "already on: the second app writes nothing"
+    assert not other.STATE_FILE.exists(), "and saves no values that are really the first app's zeros"
+
+    with pytest.raises(other.LidKeepAwakeError, match="No prior values are saved"):
+        other.disable(fake)
+    assert fake.plans[PLAN_A] == [0, 0], "the refusal changes nothing"
+
+    lid.disable(fake)
+    assert fake.plans[PLAN_A] == [1, 2], "the app that turned it on restores the true original"
+    assert not lid.STATE_FILE.exists()
+
+
+def test_two_apps_in_the_other_order_restore_the_true_original_too(fake):
+    other = _second_app_copy()
+    fake.plans[PLAN_A] = [2, 1]
+    other.enable(fake)
+
+    lid.enable(fake)
+    with pytest.raises(lid.LidKeepAwakeError, match="No prior values are saved"):
+        lid.disable(fake)
+    assert fake.plans[PLAN_A] == [0, 0]
+
+    other.disable(fake)
+    assert fake.plans[PLAN_A] == [2, 1]
+    assert lid.payload(fake)["state"] == "off"
+
+
+def test_each_app_can_take_the_switch_after_the_other_gave_it_back(fake):
+    other = _second_app_copy()
+    fake.plans[PLAN_A] = [1, 2]
+    lid.enable(fake)
+    lid.disable(fake)
+    other.enable(fake)
+    assert saved_other(other) == {PLAN_A: {"ac": 1, "dc": 2}}
+    other.disable(fake)
+    assert fake.plans[PLAN_A] == [1, 2]
+
+
+def saved_other(other):
+    return json.loads(other.STATE_FILE.read_text(encoding="utf-8"))
+
+
+def test_the_apps_saved_values_files_are_separate_files():
+    assert lid.STATE_FILE.name == "lid-keep-awake.json"
+    assert _second_app_copy().STATE_FILE != lid.STATE_FILE
+
+
+def test_powercfg_output_is_decoded_as_oem_only_on_windows(monkeypatch):
+    seen = {}
+
+    def fake_run(cmd, **kwargs):
+        seen["encoding"] = kwargs["encoding"]
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(lid.subprocess, "run", fake_run)
+    monkeypatch.setattr(lid.sys, "platform", "win32")
+    REAL_RUN_POWERCFG(["/q"])
+    assert seen["encoding"] == "oem"
+    monkeypatch.setattr(lid.sys, "platform", "linux")
+    REAL_RUN_POWERCFG(["/q"])
+    assert seen["encoding"] == "utf-8"
+
+
+def test_localised_powercfg_labels_still_read(fake):
+    def spanish(args):
+        return subprocess.CompletedProcess(args, 0, stdout=(
+            f"GUID del plan de energía: {PLAN_A}  (Equilibrado)\n"
+            "  GUID de subgrupo: 4f971e89-eebd-4455-a8de-9e59040e7347  (Botones de inicio y apagado)\n"
+            "    Índice de configuración de CA actual: 0x00000000\n"
+            "    Índice de configuración de CC actual: 0x00000001\n"
+        ), stderr="")
+
+    assert lid.read_values(spanish) == lid.Reading(PLAN_A, 0, 1)
