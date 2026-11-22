@@ -128,6 +128,21 @@ def check_dictation_auto_stop(seconds: object) -> None:
             f"{VALID_DICTATION_AUTO_STOP_SECONDS}; got {seconds!r}"
         )
 
+
+# The browser a session's PC window opens in. "chrome" and "edge" open an app window in that
+# browser, falling back to the other and then to the Windows default when it is not installed;
+# "system" hands the page to the Windows default browser as an ordinary tab.
+VALID_MIRROR_BROWSERS = ("chrome", "edge", "system")
+DEFAULT_MIRROR_BROWSER = "chrome"
+
+
+def check_mirror_browser(choice: object) -> None:
+    """Raise ValueError unless ``choice`` is one of the session-window browsers."""
+    if choice not in VALID_MIRROR_BROWSERS:
+        raise ValueError(
+            f"mirror_browser must be one of {VALID_MIRROR_BROWSERS}; got {choice!r}"
+        )
+
 # Derived from the catalog like the Codex/Pi/chief sets, so a model
 # refresh makes a tier pickable, savable and launchable in one edit. Haiku
 # remains accepted for existing configs and direct launches, but it is not a

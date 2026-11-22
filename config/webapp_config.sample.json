@@ -84,6 +84,7 @@
   ],
   "claude_show_local_window": true,
   "desktop_browser": "chrome",
+  "mirror_browser": "chrome",
   "terminal_history_lines": 10000,
   "webauthn_rp_id": "",
   "webauthn_rp_name": "Launcher",
