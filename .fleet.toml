@@ -110,6 +110,9 @@ tray_watchdog = { src = "app/tray/watchdog.py", sha = "072d7355da45001255c3d53db
 toast = { src = "app/webapp/static/_vendored/toast", sha = "e56c8330f8500b83635773033a09de6fc3cba342", dest = "app/webapp/static/_vendored/toast" }
 build-watch = { src = "app/webapp/static/_vendored/build-watch", sha = "2d871dd5a6a3ee6fe12a3c5c6439d2c53a93c2c4", dest = "app/webapp/static/_vendored/build-watch" }
 synthetic_host = { src = "tests/host/_synthetic_host.py", sha = "160b54e2e0bcf76541d0a5f9bb4d6265dd493c31", dest = "tests/host/_synthetic_host.py" }
+request_budget_ratchet = { src = "scripts/request_budget_ratchet.py", sha = "564864cb95a8b416c16d1a1e1e9f31b9d5b2ec8e", dest = "scripts/request_budget_ratchet.py" }
+request_budget_scan = { src = "scripts/request_budget_scan.py", sha = "564864cb95a8b416c16d1a1e1e9f31b9d5b2ec8e", dest = "scripts/request_budget_scan.py" }
+poll = { src = "app/webapp/static/_vendored/poll", sha = "564864cb95a8b416c16d1a1e1e9f31b9d5b2ec8e", dest = "app/webapp/static/_vendored/poll" }
 
 # ---------------------------------------------------------------------------
 # [verify] -- the launch recipe the generated verify-app-launcher skill reads
@@ -1324,3 +1327,16 @@ name   = "send-submit-state-ui"
 module = "app/webapp/static/chat/submit-state.js"
 type   = "SubmitState"
 derive = "submitState"
+
+# ---------------------------------------------------------------------------
+# Request budget ratchet. scripts/verify-before-ship.ps1 runs
+# scripts/request_budget_ratchet.py, which fails when a fixed-rate browser poll
+# that reaches the server, a poll under the 2 s floor, an undeclared fast server
+# loop, a directory walk in a request handler, a submit to the shared default
+# pool, or a web app without the request-timing middleware is new beyond
+# .request-budget-ratchet-baseline.json. Request handlers live under
+# app/webapp/routers. Mechanism: project-scaffolding docs/request-budget-ratchet.md;
+# the rules and why: docs/polling-budget.md.
+[request_budget_ratchet]
+enabled      = true
+handler_dirs = ["app/webapp/routers"]
