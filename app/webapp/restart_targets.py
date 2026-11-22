@@ -6,8 +6,9 @@ the run record. This module declares this app's two targets and the guard:
 * **Restart app** runs the repo's own ``tray.bat --restart``.
 * **Restart session-host** runs ``scripts/restart-session-host.ps1 -Confirm``,
   which ends every live terminal session. The sheet asks twice for a target
-  with a warning, and this warning names how many live sessions it will end,
-  so the count is read again every time the sheet reads the target list.
+  with a warning, and this warning names how many live sessions it will end.
+  It is a callable the vendored router runs on every ``GET /api/restart`` and
+  the sheet re-reads each time it opens, so the count is current at open time.
 
 Both targets sit behind one guard: a restart is a terminal-grade action (the
 session-host one ends every PTY), so the ``POST`` takes the same Tailscale +
@@ -22,9 +23,8 @@ from __future__ import annotations
 import json
 import logging
 import sys
-from collections.abc import Sequence
 from pathlib import Path
-from typing import Callable, Iterator, List, Optional, Union, overload
+from typing import Optional
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 
@@ -76,45 +76,6 @@ def session_host_warning(count: Optional[int]) -> str:
             "There is no drain: each one stops at once.")
 
 
-class LiveRestartTargets(Sequence):
-    """The two targets, with the session-host warning built from a live count.
-
-    The vendored router iterates its ``targets`` on every ``GET /api/restart``,
-    so the count is fresh each time the sheet reads it. Counting starts only
-    after :meth:`start_counting`: the router also walks the targets once at
-    mount to check their ids, and that walk must not wait on the session-host.
-    """
-
-    def __init__(self, count_sessions: Callable[[], Optional[int]],
-                 session_host_cmd: tuple[str, ...]) -> None:
-        self._count_sessions = count_sessions
-        self._session_host_cmd = session_host_cmd
-        self._counting = False
-
-    def start_counting(self) -> None:
-        self._counting = True
-
-    def _targets(self) -> List[RestartTarget]:
-        count = self._count_sessions() if self._counting else None
-        return [APP_TARGET, RestartTarget(
-            SESSION_HOST_TARGET_ID, SESSION_HOST_LABEL, self._session_host_cmd,
-            warning=session_host_warning(count),
-        )]
-
-    def __len__(self) -> int:
-        return 2
-
-    @overload
-    def __getitem__(self, index: int) -> RestartTarget: ...
-    @overload
-    def __getitem__(self, index: slice) -> List[RestartTarget]: ...
-    def __getitem__(self, index: Union[int, slice]) -> Union[RestartTarget, List[RestartTarget]]:
-        return self._targets()[index]
-
-    def __iter__(self) -> Iterator[RestartTarget]:
-        return iter(self._targets())
-
-
 def restart_guard(request: Request) -> None:
     """Refuse a restart ``POST`` without loopback, or the tailnet and a passkey."""
     if request.method != "POST":
@@ -140,15 +101,18 @@ def build_restart_router(app: FastAPI) -> APIRouter:
     The session-host port is read from ``app.state.webapp_config`` per count,
     so a config reload is followed.
     """
-    targets = LiveRestartTargets(
-        lambda: count_live_sessions(app.state.webapp_config.session_host_port),
-        session_host_command(),
-    )
+    targets = [
+        APP_TARGET,
+        RestartTarget(
+            SESSION_HOST_TARGET_ID, SESSION_HOST_LABEL, session_host_command(),
+            warning=lambda: session_host_warning(
+                count_live_sessions(app.state.webapp_config.session_host_port)),
+        ),
+    ]
     router = restart_router(
         targets=targets,
         status_dir=runtime_data_dir("app-launcher", create=True) / "restart",
         guard=restart_guard,
         spawn=_spawn_runner,
     )
-    targets.start_counting()
     return router

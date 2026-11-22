@@ -164,10 +164,13 @@ def test_the_pc_itself_needs_no_passkey(webapp_client, passkey, spawned, monkeyp
     assert spawned[0]["command"] == list(self_restart.TRAY_RESTART)
 
 
-def test_the_target_walk_at_mount_never_waits_on_the_session_host():
-    calls: list = []
-    targets = restart_targets.LiveRestartTargets(lambda: calls.append(1) or 4, ("x",))
-    assert [t.id for t in targets] == ["app", "session-host"]
-    assert calls == []
-    targets.start_counting()
-    assert "ends 4 live" in targets[1].warning and calls == [1]
+def test_mounting_the_router_never_waits_on_the_session_host(webapp_client):
+    """The warning is a callable the router runs per GET, so mounting counts nothing."""
+    client, app, overrides = webapp_client
+    sessions = overrides["session"].list_sessions
+    sessions.return_value = [{"alive": True}]
+    sessions.reset_mock()
+    restart_targets.build_restart_router(app)
+    sessions.assert_not_called()
+    client.get("/api/restart")
+    sessions.assert_called_once()

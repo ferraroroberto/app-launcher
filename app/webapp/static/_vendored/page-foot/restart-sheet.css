@@ -15,11 +15,16 @@
 }
 
 /* The readout is 12px text: the pseudo-element grows its touch target to the
-   fleet minimum without moving the footer's layout. */
+   fleet minimum without moving the footer's layout. It grows upward only: a box
+   that ends below the readout is scrollable overflow, so a footer flush at the
+   window bottom (the app sets `margin-block-end: 0`) would gain page scroll, and
+   the part below the window could not be tapped anyway. The footer's top margin
+   absorbs part of the growth. The extra pixel covers WebKit snapping the 1.1
+   line box below 1.1em, which would leave the target a hair under the minimum. */
 .page-foot-restart::after {
   content: "";
   position: absolute;
-  inset: calc((var(--hit-min, 44px) - 1.1em) / -2) 0;
+  inset: calc(1.1em - var(--hit-min, 44px) - 1px) 0 0;
 }
 
 .restart-sheet-note {

@@ -72,7 +72,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Union
 from urllib.parse import urlsplit
 
 logger = logging.getLogger(__name__)
@@ -116,9 +116,27 @@ class RestartTarget:
     id: str
     label: str
     command: tuple[str, ...]
-    #: Non-empty means the sheet asks a second time and shows this text.
-    warning: str = ""
+    #: Non-empty means the sheet asks a second time and shows this text. A
+    #: callable is run on every ``GET``, and the sheet reads it each time it
+    #: opens, so a warning that depends on live state is never stale.
+    warning: Union[str, Callable[[], str]] = ""
     timeout_s: int = DEFAULT_TIMEOUT_S
+
+
+def warning_text(target: RestartTarget) -> str:
+    """The target's warning as of now; a callable that fails reads as a generic warning.
+
+    A broken check must not silently drop the second confirmation, so it
+    degrades to a non-empty text rather than to "no warning".
+    """
+    warning = target.warning
+    if not callable(warning):
+        return warning
+    try:
+        return str(warning())
+    except Exception:
+        logger.exception("⚠️ restart target %s: its warning could not be computed", target.id)
+        return "Could not check what this restart interrupts."
 
 
 def launch_root() -> Path:
@@ -291,7 +309,7 @@ def restart_router(
     @router.get("/api/restart")
     def restart_status() -> dict[str, Any]:
         return {
-            "targets": [{"id": t.id, "label": t.label, "warning": t.warning} for t in targets],
+            "targets": [{"id": t.id, "label": t.label, "warning": warning_text(t)} for t in targets],
             "last": public(store.current()),
         }
 
