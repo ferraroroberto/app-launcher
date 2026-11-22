@@ -360,12 +360,9 @@ class WebappConfig:
     desktop_browser: str = "chrome"
     # The browser a session's PC window opens in: "chrome", "edge" or "system" (the default browser).
     mirror_browser: str = DEFAULT_MIRROR_BROWSER
-    # Bounded scrollback: lines of a full-screen (ratatui) agent's history the
-    # session-host replays on a (re)connect; DEFAULT_TERMINAL_HISTORY_LINES has the evidence.
+    # Scrollback a full-screen agent replays on reconnect; evidence: DEFAULT_TERMINAL_HISTORY_LINES.
     terminal_history_lines: int = DEFAULT_TERMINAL_HISTORY_LINES
-    # Logs per-keystroke terminal timings and event-loop lag over 100 ms to
-    # webapp/slow-requests.log. Off by default: a diagnostics switch, read at webapp start.
-    terminal_timing_log: bool = False
+    terminal_timing_log: bool = False  # diagnostics: keystroke timings + loop lag to slow-requests.log
     # Large-file attach limit in MB (see DEFAULT_LARGE_UPLOAD_MAX_MB).
     large_upload_max_mb: int = DEFAULT_LARGE_UPLOAD_MAX_MB
     # Usage meter providers, and the Grok auto-switch for Sonnet lanes: src/usage/.
