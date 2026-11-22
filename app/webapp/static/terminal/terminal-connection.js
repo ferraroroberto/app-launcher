@@ -59,6 +59,33 @@ function disarmPaintWatchdog(terminal) {
 const REPAINT_BATCH_QUIET_MS = 700;
 const REPAINT_BATCH_MAX_MS = 6000;
 
+// A keystroke whose echo takes this long to paint is reported to the webapp,
+// which logs it when its terminal_timing_log switch is on. Only slow ones are
+// sent, so a healthy terminal adds no frames.
+const SLOW_ECHO_MS = 100;
+
+// Called for each keystroke sent: the first unanswered one is the one timed.
+export function markKeystroke(terminal) {
+  if (!terminal.keyAt) terminal.keyAt = performance.now();
+}
+
+// The frame after a keystroke has painted: report the keystroke if it was slow.
+function reportEcho(terminal, frameAt) {
+  const keyAt = terminal.keyAt;
+  if (!keyAt) return;
+  terminal.keyAt = 0;
+  const now = performance.now();
+  const keyToPaint = now - keyAt;
+  if (keyToPaint < SLOW_ECHO_MS) return;
+  if (terminal.ws && terminal.ws.readyState === WebSocket.OPEN) {
+    terminal.ws.send(JSON.stringify({
+      type: 'timing',
+      key_to_paint_ms: Math.round(keyToPaint),
+      paint_ms: Math.round(now - frameAt),
+    }));
+  }
+}
+
 // What Claude Code paints while it turns a pasted image path into an
 // attachment: a "Pasting…" hint first, then the "[Image #N]" chip in
 // place of the path. The space before "#N" is a cursor move in the raw
@@ -331,6 +358,7 @@ function writeHistory(terminal, raw) {
 }
 
 function writeOutput(terminal, raw) {
+  const frameAt = performance.now();
   const buffer = terminal.term.buffer.active;
   const wasAtBottom = buffer.viewportY >= buffer.baseY - 1;
   // Claude Code's full-viewport repaint would re-commit the rows it
@@ -342,6 +370,7 @@ function writeOutput(terminal, raw) {
     if (wasAtBottom) {
       try { terminal.term.scrollToBottom(); } catch (_) { /* best effort */ }
     }
+    reportEcho(terminal, frameAt);
   });
 }
 

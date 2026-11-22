@@ -100,6 +100,6 @@ async def test_slow_audit_write_does_not_stall_concurrent_ws_pump(monkeypatch):
     assert max_gap < _SLOW_WRITE_S / 2, (
         f"a slow audit.session_input call stalled the event loop for "
         f"{max_gap:.3f}s (tick interval is {_TICK_INTERVAL_S}s) — the "
-        "write is still running synchronously on the loop instead of via "
-        "asyncio.to_thread"
+        "write is still running synchronously on the loop instead of on a "
+        "worker thread"
     )

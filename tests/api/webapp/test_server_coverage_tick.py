@@ -165,6 +165,8 @@ class TestLifespanGate:
                 self.snapshot_ticks.append(task)
             elif coro.__qualname__ == "tick_forever" and module == "src.system_load":
                 self.load_ticks.append(task)
+            elif coro.__qualname__ == "tick_forever" and module == "app.webapp.loop_lag":
+                self.lag_ticks.append(task)
             elif coro.__qualname__ == "DemandCache.tick_forever":
                 self.demand_ticks.append(task)
             elif coro.__qualname__ == "tick_forever" and module in (
@@ -181,6 +183,7 @@ class TestLifespanGate:
 
         self.snapshot_ticks = []
         self.load_ticks = []
+        self.lag_ticks = []
         self.demand_ticks = []
         self.doorbell_ticks = []
         self.canonical_modules = []
@@ -216,6 +219,13 @@ class TestLifespanGate:
         await self._run_lifespan(_app(), monkeypatch)
         assert len(self.load_ticks) == 1
         assert self.load_ticks[0].cancelled()
+
+    async def test_loop_lag_monitor_runs_on_every_instance(self, monkeypatch):
+        """The event-loop lag monitor idles until its switch is on, on any instance."""
+        monkeypatch.setenv(SESSION_HOST_PORT_ENV, "54321")  # disposable
+        await self._run_lifespan(_app(), monkeypatch)
+        assert len(self.lag_ticks) == 1
+        assert self.lag_ticks[0].cancelled()
 
     async def test_polled_snapshots_refresh_on_every_instance(self, monkeypatch):
         """/api/version, the channel list, the context filter and the quota rows are read on

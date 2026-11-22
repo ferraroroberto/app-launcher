@@ -86,6 +86,8 @@
   "desktop_browser": "chrome",
   "mirror_browser": "chrome",
   "terminal_history_lines": 10000,
+  "_comment_terminal_timing_log": "Diagnostics switch: log each terminal keystroke's stage timings (webapp received, forwarded, first output; the browser's key-to-paint for a keystroke slower than 100 ms) and any event-loop stall over 100 ms to webapp/slow-requests.log. Default false; read at webapp start (tray.bat --restart after editing).",
+  "terminal_timing_log": false,
   "_comment_request_budgets": "Per-request-class time budgets, {class: [soft_s, hard_s]}, laid over the defaults: past soft a request is logged 'over budget' in webapp/slow-requests.log, past hard a 'budget breach'. Classes: transcript-tick, transcript-open, session-list, board, send, git-status, shell, jobs-list. Empty keeps every default; read live, no restart.",
   "request_budgets": {},
   "webauthn_rp_id": "",
