@@ -87,7 +87,7 @@ app.include_router(restart_router(
 ```
 
 - **Auth is the app's.** `guard` is required and has no default: the same dependency that protects the app's other write routes, so any signed-in client may restart and nobody else can. The `POST` also needs an `Origin` matching the request's host, so another site cannot post a restart from a signed-in browser.
-- **Only declared targets run.** Targets are declared in code, each a fixed argv run from the checkout root; the client sends a target id, never a command. `TRAY_RESTART` is the repo's own `tray.bat --restart`, spelled `cmd.exe /c .\tray.bat --restart` because `cmd` does not search the working directory when `NoDefaultCurrentDirectoryInExePath=1`. A target with a `warning` makes the sheet ask twice and show it. More than one target adds a picker (`data-track="build.restart-target"`).
+- **Only declared targets run.** Targets are declared in code, each a fixed argv run from the checkout root; the client sends a target id, never a command. `TRAY_RESTART` is the repo's own `tray.bat --restart`, spelled `cmd.exe /c .\tray.bat --restart` because `cmd` does not search the working directory when `NoDefaultCurrentDirectoryInExePath=1`. A target with a `warning` makes the sheet ask twice and show it. The `warning` is a string or a zero-argument callable: a callable runs on every `GET /api/restart`, so a warning that depends on live state ("this ends 3 live sessions") is current. A callable that raises degrades to a generic non-empty warning, never to none. More than one target adds a picker (`data-track="build.restart-target"`).
 - **The runner leaves the tray's tree.** `tray.bat --restart` kills the tray's whole tree, webapp included, so the runner starts through `cmd /c start` and is no one's child when the kill comes. It runs the recipe with the target's timeout (default 180 s) and writes `last.json` (the record) and `last.log` (the recipe's output) under `status_dir`.
 - **The recipe runs from the launch spelling.** The checkout root comes from the process's own `sys.prefix`, which keeps the path spelling the tray was started from; `Path.resolve()` would replace a junctioned fleet root with its target.
 - **One run at a time.** A `POST` while a run is in flight answers `409`. A record still `running` 30 s past its timeout reads `unknown`, the runner having vanished, and frees the slot.
@@ -102,6 +102,8 @@ app.include_router(restart_router(
 import { initRestartSheet } from '/static/_vendored/page-foot/restart-sheet.js';
 initRestartSheet();   // or initRestartSheet({ fetchJson: jsonApi }) when reads carry a bearer
 ```
+
+Each time the sheet opens it re-reads `GET /api/restart` and takes the targets' labels and warnings from that answer, with the confirm button held until the read lands, so the warning shown is the one true at that moment and an adopter needs no re-read of its own. A failed re-read keeps the list the page loaded with. Targets that appear or disappear after page load are not picked up until the next load.
 
 The sheet needs the `modal`, `button`, `icon-button` and (with a picker) `select-native` stylesheets. Add `app.restart-sheet` to the app's UX surface map.
 
@@ -118,6 +120,13 @@ After the `202`, the page polls `/api/version` and `/api/restart` every 1.5 s fo
 | refused | `401`/`403` or `409` on the `POST` | "Not allowed from here" / "A restart is already running" |
 
 An unknown result is never shown as success. Pinned by `tests/vendored/test_restart_sheet.py` (the real module under Node) and `tests/vendored/test_self_restart.py` (the routes, every runner ending, and a runner that outlives a `taskkill /T` of its parent).
+
+### Adopter test notes
+
+With the restart on, the readout is a control, and an adopter's tests see it:
+
+- **The hit area grows upward only.** `restart-sheet.css` makes the 44px target with a `::after` that extends above the readout and never below it, so a footer flush at the window bottom (`margin-block-end: 0`) adds no page scroll and needs no `--hit-min` override. The target overlaps about 15px of whatever sits above the footer's own top margin. A tap-target helper that only reads a `::before` expansion does not see this `::after` one: read both (`tests/e2e/_geometry.py` `EFFECTIVE_RECT_JS` does).
+- **The readout is focusable and a button.** It carries `tabindex="0"` and `role="button"`, and the closed restart sheet is a `<dialog>` in the page. A generic locator such as `dialog .detail-save-btn` or `.detail-dialog h2` also matches the closed restart dialog (a strict-mode collision), and a count of all `dialog` elements is no longer zero. Scope such locators to the dialog under test (an id or `[open]`).
 
 ## Required design tokens
 

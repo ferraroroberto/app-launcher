@@ -6,38 +6,13 @@
  * a restart like the routes that write into a live PTY.
  *
  * The session-host target's warning names how many live sessions the restart
- * ends. The vendored sheet reads its target list once, at boot, and shows a
- * target's `warning` when it asks the second time, so the list it holds is
- * refreshed in place every time the sheet opens or its target changes: the
+ * ends. The vendored sheet re-reads the target list each time it opens, so the
  * count it shows is the one read then, not the one from page load.
  */
 
 import { initRestartSheet } from '../_vendored/page-foot/restart-sheet.js';
 import { AuthRequiredError, apiRaw, jsonApi } from '../api.js';
 import { ensureTerminalToken } from '../webauthn.js';
-
-const RESTART_ENDPOINT = '/api/restart';
-
-// The very target objects the vendored sheet holds; refreshed in place.
-let heldTargets = null;
-
-function mergeTargets(held, fresh) {
-  if (!held) return fresh;
-  for (const target of fresh || []) {
-    const mine = held.find((t) => t.id === target.id);
-    if (mine) mine.warning = target.warning;
-  }
-  return held;
-}
-
-async function fetchRestartJson(url) {
-  const body = await jsonApi(url);
-  if (url === RESTART_ENDPOINT && body && Array.isArray(body.targets)) {
-    heldTargets = mergeTargets(heldTargets, body.targets);
-    body.targets = heldTargets;
-  }
-  return body;
-}
 
 async function postRestart(url, body) {
   let terminalToken;
@@ -64,21 +39,10 @@ async function postRestart(url, body) {
   return { status: res.status, body: data };
 }
 
-function refreshTargets() {
-  fetchRestartJson(RESTART_ENDPOINT).catch(() => {});
-}
-
 export async function wireBuildRestart(readout) {
-  const offered = await initRestartSheet({
+  await initRestartSheet({
     readout,
-    fetchJson: fetchRestartJson,
+    fetchJson: jsonApi,
     postJson: postRestart,
   });
-  if (!offered) return;
-  readout.addEventListener('click', refreshTargets);
-  readout.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' || event.key === ' ') refreshTargets();
-  });
-  const sheet = document.querySelector('dialog[data-surface="app.restart-sheet"]');
-  if (sheet) sheet.addEventListener('change', refreshTargets);
 }
