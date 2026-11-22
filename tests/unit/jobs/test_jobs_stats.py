@@ -231,6 +231,12 @@ class TestUnconfirmedRunsInStats:
     """A run whose delivery was never established is not a failure, and the
     aggregates on the job row must not quietly treat it as one."""
 
+    @pytest.fixture(autouse=True)
+    def _adapter_jobs(self, monkeypatch):
+        """The unconfirmed codes are the scheduled-run adapter's, so the
+        seeded ``demo`` job stands in for one."""
+        monkeypatch.setattr(jobs_history_mod, "adapter_run_for", lambda job_id: True)
+
     def test_unconfirmed_leaves_the_success_ratio_rather_than_failing_it(
         self, temp_runs_dir
     ):

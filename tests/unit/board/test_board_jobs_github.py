@@ -56,7 +56,7 @@ def test_jobs_attention_unconfirmed_run_is_not_a_failed_card(webapp_client):
         "started_at": (local_now - timedelta(hours=1)).isoformat(timespec="seconds"),
         "finished_at": (local_now - timedelta(minutes=50)).isoformat(timespec="seconds"),
         "exit_code": 122,
-    })
+    }, script_path="C:/fleet/skills/_lib/claude_progress.py")
     cards = board.jobs_attention(now=local_now)
     assert [(c["job_id"], c["state"]) for c in cards] == [
         ("truncated", "unconfirmed")
@@ -77,7 +77,7 @@ def test_jobs_attention_genuine_failure_still_reads_as_failed(webapp_client):
         "started_at": (local_now - timedelta(hours=1)).isoformat(timespec="seconds"),
         "finished_at": (local_now - timedelta(minutes=50)).isoformat(timespec="seconds"),
         "exit_code": 123,
-    })
+    }, script_path="C:/fleet/skills/_lib/claude_progress.py")
     cards = board.jobs_attention(now=local_now)
     assert [(c["job_id"], c["state"]) for c in cards] == [
         ("delivered-nothing", "failed")

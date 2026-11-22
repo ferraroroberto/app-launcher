@@ -23,6 +23,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional
 
 from src import runtime_files
 from src._json_io import atomic_write_json, file_lock
+from src.jobs.adapter_job import adapter_run_for
 from src.jobs.config import exit_outcomes_for
 from src.jobs.outcome import run_outcome
 from src.jobs.run_status import RunStatus, run_status
@@ -259,9 +260,12 @@ def read_run(
         return {}
     if not isinstance(record, dict):
         return {}
+    job_id = run_dir.parent.name
     if exit_outcomes is None:
-        exit_outcomes = exit_outcomes_for(run_dir.parent.name)
-    outcome, reason = run_outcome(record, exit_outcomes)
+        exit_outcomes = exit_outcomes_for(job_id)
+    outcome, reason = run_outcome(
+        record, exit_outcomes, adapter_run=adapter_run_for(job_id)
+    )
     record["outcome"] = outcome
     record["outcome_reason"] = reason
     return record

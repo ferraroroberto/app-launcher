@@ -80,33 +80,33 @@ def _write_run(job_id: str, run_id: str, *, exit_code: int, status: str = "faile
 
 class TestRunOutcome:
     def test_declared_code_is_deferred(self):
-        outcome, reason = run_outcome({"status": "failed", "exit_code": 3}, DECLARED)
+        outcome, reason = run_outcome({"status": "failed", "exit_code": 3}, DECLARED, adapter_run=True)
         assert outcome == OUTCOME_DEFERRED
         assert reason and "declared deferred" in reason
 
     @pytest.mark.parametrize("code", [1, 2])
     def test_other_codes_of_the_same_job_stay_failed(self, code):
-        assert run_outcome({"status": "failed", "exit_code": code}, DECLARED)[0] \
+        assert run_outcome({"status": "failed", "exit_code": code}, DECLARED, adapter_run=True)[0] \
             == OUTCOME_FAILED
 
     def test_undeclared_job_is_unchanged(self):
-        assert run_outcome({"status": "failed", "exit_code": 3})[0] == OUTCOME_FAILED
-        assert run_outcome({"status": "failed", "exit_code": 3}, {})[0] \
+        assert run_outcome({"status": "failed", "exit_code": 3}, adapter_run=True)[0] == OUTCOME_FAILED
+        assert run_outcome({"status": "failed", "exit_code": 3}, {}, adapter_run=True)[0] \
             == OUTCOME_FAILED
 
     @pytest.mark.parametrize("field", ["killed", "watchdog", "reaped"])
     def test_launcher_terminated_run_is_never_deferred(self, field):
         record = {"status": "failed", "exit_code": 3, field: True}
-        assert run_outcome(record, DECLARED)[0] == OUTCOME_FAILED
+        assert run_outcome(record, DECLARED, adapter_run=True)[0] == OUTCOME_FAILED
 
     def test_success_and_in_flight_are_never_reinterpreted(self):
         for status in ("success", "running", "pending", "queued"):
-            assert run_outcome({"status": status, "exit_code": 3}, DECLARED)[0] \
+            assert run_outcome({"status": status, "exit_code": 3}, DECLARED, adapter_run=True)[0] \
                 == status
 
     def test_declaration_does_not_disturb_adapter_codes(self):
         # 122 is the adapter's "not confirmed"; a job declaring only 3 keeps it.
-        assert run_outcome({"status": "failed", "exit_code": 122}, DECLARED)[0] \
+        assert run_outcome({"status": "failed", "exit_code": 122}, DECLARED, adapter_run=True)[0] \
             == OUTCOME_UNCONFIRMED
 
 

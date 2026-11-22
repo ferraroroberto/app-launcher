@@ -114,7 +114,11 @@ class TestEventShape:
     def test_unconfirmed_exit_code_is_not_confirmed(self, tmp_path, armed):
         # 114: cancellation not confirmed, an exit code the outcome table
         # itself classifies as unconfirmed.
-        assert _events(_fail(tmp_path, exit_code=114))[0]["outcome"] == "not-confirmed"
+        adapter_job = _job(
+            tmp_path, script_path=str(tmp_path / "skills" / "claude_progress.py")
+        )
+        events = _events(_fail(tmp_path, job=adapter_job, exit_code=114))
+        assert events[0]["outcome"] == "not-confirmed"
 
     def test_excerpt_is_the_last_1500_chars(self, tmp_path, armed):
         run = _run_dir(tmp_path, output="A" * 4000 + "B" * 1500)

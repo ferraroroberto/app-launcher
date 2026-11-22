@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from src import runtime_files
 from src.jobs import history as jobs_history
+from src.jobs.adapter_job import adapter_run_for
 from src.jobs.config import exit_outcomes_for
 from src.jobs.outcome import LAUNCHER_TERMINATED_FIELDS, run_outcome
 from src.runtime_data import runtime_data_dir
@@ -334,7 +335,9 @@ def search_runs(
         hits = [dict(row) for row in conn.execute(sql, params).fetchall()]
     for hit in hits:
         hit["outcome"], hit["outcome_reason"] = run_outcome(
-            hit, exit_outcomes_for(hit["job_id"])
+            hit,
+            exit_outcomes_for(hit["job_id"]),
+            adapter_run=adapter_run_for(hit["job_id"]),
         )
         for flag in LAUNCHER_TERMINATED_FIELDS:
             hit.pop(flag, None)

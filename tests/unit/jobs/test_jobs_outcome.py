@@ -15,10 +15,16 @@ is present rather than trusted to stay correct on its own.
 from __future__ import annotations
 
 import ast
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
 
+from src import jobs as jobs_mod
+from src.jobs import config as jc
+from src.jobs import history as jobs_history
+from src.jobs.adapter_job import adapter_run_for, job_runs_adapter
+from src.jobs.config import Job, JobsConfig, save_jobs
 from src.jobs.outcome import (
     OUTCOME_FAILED,
     OUTCOME_SUCCESS,
@@ -42,13 +48,13 @@ from src.jobs.outcome import (
     ],
 )
 def test_acceptance_codes(exit_code, status, expected):
-    outcome, _ = run_outcome({"status": status, "exit_code": exit_code})
+    outcome, _ = run_outcome({"status": status, "exit_code": exit_code}, adapter_run=True)
     assert outcome == expected
 
 
 def test_122_is_not_failed():
     """The whole issue in one assertion."""
-    outcome, reason = run_outcome({"status": "failed", "exit_code": 122})
+    outcome, reason = run_outcome({"status": "failed", "exit_code": 122}, adapter_run=True)
     assert outcome != OUTCOME_FAILED
     assert outcome == OUTCOME_UNCONFIRMED
     assert "never verified" in reason
@@ -58,13 +64,13 @@ def test_122_is_not_failed():
 def test_real_failures_name_themselves(exit_code):
     """A failure that stays a failure still says *why* — 124 is "stalled",
     not a bare number the reader has to go and look up."""
-    outcome, reason = run_outcome({"status": "failed", "exit_code": exit_code})
+    outcome, reason = run_outcome({"status": "failed", "exit_code": exit_code}, adapter_run=True)
     assert outcome == OUTCOME_FAILED
     assert reason and reason.strip()
 
 
 def test_124_names_the_stall():
-    _, reason = run_outcome({"status": "failed", "exit_code": 124})
+    _, reason = run_outcome({"status": "failed", "exit_code": 124}, adapter_run=True)
     assert "stalled" in reason
 
 
@@ -76,7 +82,7 @@ def test_every_not_confirmed_code_is_unconfirmed(exit_code):
     """122 is the one that bit, but it is not the only code that means
     "nobody established this". Fixing only the reported one would leave the
     same defect behind at a lower rate."""
-    outcome, _ = run_outcome({"status": "failed", "exit_code": exit_code})
+    outcome, _ = run_outcome({"status": "failed", "exit_code": exit_code}, adapter_run=True)
     assert outcome == OUTCOME_UNCONFIRMED
 
 
@@ -84,7 +90,7 @@ def test_118_is_unfinished_work_not_a_failed_delivery():
     """#959: 118 carried 123's "delivered no work" reason under a failed
     outcome, so a run that delivered and then left descendants running paged
     as a failed delivery assertion that never existed."""
-    outcome, reason = run_outcome({"status": "failed", "exit_code": 118})
+    outcome, reason = run_outcome({"status": "failed", "exit_code": 118}, adapter_run=True)
     assert outcome == OUTCOME_UNCONFIRMED
     assert "unfinished" in reason
     assert "delivered no work" not in reason
@@ -92,7 +98,7 @@ def test_118_is_unfinished_work_not_a_failed_delivery():
 
 
 def test_123_keeps_the_self_reported_delivered_no_work_reason():
-    outcome, reason = run_outcome({"status": "failed", "exit_code": 123})
+    outcome, reason = run_outcome({"status": "failed", "exit_code": 123}, adapter_run=True)
     assert outcome == OUTCOME_FAILED
     assert "delivered no work" in reason
 
@@ -103,13 +109,13 @@ def test_123_keeps_the_self_reported_delivered_no_work_reason():
 def test_unknown_exit_code_keeps_its_status_and_claims_nothing():
     """A child's own exit code (a plain ``1``) is not the adapter's vocabulary.
     It stays failed and carries no invented explanation."""
-    outcome, reason = run_outcome({"status": "failed", "exit_code": 1})
+    outcome, reason = run_outcome({"status": "failed", "exit_code": 1}, adapter_run=True)
     assert outcome == OUTCOME_FAILED
     assert reason is None
 
 
 def test_reaped_run_with_no_exit_code_stays_failed():
-    outcome, reason = run_outcome({"status": "failed", "exit_code": None, "reaped": True})
+    outcome, reason = run_outcome({"status": "failed", "exit_code": None, "reaped": True}, adapter_run=True)
     assert outcome == OUTCOME_FAILED
     assert reason is None
 
@@ -119,19 +125,19 @@ def test_launcher_terminated_run_is_never_unconfirmed(field):
     """We know exactly what happened to a run this launcher killed, reaped or
     watchdogged: whatever code the torn-down tree reported on its way out is
     not the adapter's verdict, so it can never buy an "unconfirmed"."""
-    outcome, _ = run_outcome({"status": "failed", "exit_code": 122, field: True})
+    outcome, _ = run_outcome({"status": "failed", "exit_code": 122, field: True}, adapter_run=True)
     assert outcome == OUTCOME_FAILED
 
 
 @pytest.mark.parametrize("status", ["running", "pending", "queued", "skipped"])
 def test_non_terminal_status_passes_straight_through(status):
     """A run still in flight has no terminal outcome to reinterpret."""
-    outcome, _ = run_outcome({"status": status, "exit_code": 122})
+    outcome, _ = run_outcome({"status": status, "exit_code": 122}, adapter_run=True)
     assert outcome == status
 
 
 def test_success_is_never_reinterpreted():
-    outcome, _ = run_outcome({"status": "success", "exit_code": 0})
+    outcome, _ = run_outcome({"status": "success", "exit_code": 0}, adapter_run=True)
     assert outcome == OUTCOME_SUCCESS
 
 
@@ -278,3 +284,109 @@ def test_exit_code_outcomes_match_scheduled_runner_verdicts():
         "src.jobs.outcome disagrees with the adapter's own verdict: "
         + "; ".join(mismatched)
     )
+
+
+# ------------------------------------------- the table is the adapter's alone
+# A plain script's exit 2 is its own; only a job whose wrapper runs
+# claude_progress.py / scheduled_runner.py reads the adapter's vocabulary.
+
+
+ADAPTER_BAT = (
+    "@echo off\n"
+    "cd /d C:\\fleet\n"
+    'C:\\fleet\\.venv\\Scripts\\python.exe C:\\fleet\\skills\\_lib\\claude_progress.py'
+    ' "/weekly" --permission-mode bypassPermissions\n'
+)
+
+
+@pytest.fixture
+def registry(tmp_path, monkeypatch):
+    """A registry with an adapter-wrapped job and a plain-script job."""
+    monkeypatch.setattr(jc, "DEFAULT_JOBS_PATH", tmp_path / "jobs.json")
+    monkeypatch.setattr(jobs_history, "JOBS_RUNS_DIR", tmp_path / "runs")
+    wrapper = tmp_path / "run-weekly.bat"
+    wrapper.write_text(ADAPTER_BAT, encoding="utf-8")
+    plain = tmp_path / "sync.py"
+    plain.write_text("import sys\nsys.exit(2)\n", encoding="utf-8")
+    save_jobs(JobsConfig(jobs=[
+        Job(id="adapter-job", name="Adapter", script_path=str(wrapper)),
+        Job(id="plain-job", name="Plain", script_path=str(plain)),
+    ]))
+    return tmp_path
+
+
+def _write_run(job_id: str, exit_code: int) -> None:
+    finished = datetime.now() - timedelta(minutes=5)
+    rd = jobs_mod.new_run_dir(job_id, "20260929T020000")
+    jobs_mod.write_run_json(
+        rd, run_id=rd.name, status="failed", exit_code=exit_code,
+        started_at=(finished - timedelta(seconds=4)).isoformat(timespec="seconds"),
+        finished_at=finished.isoformat(timespec="seconds"), duration_seconds=4.0,
+    )
+
+
+class TestRunOutcome:
+    def test_plain_script_exit_2_is_failed_with_no_reason(self):
+        record = {"status": "failed", "exit_code": 2}
+        assert run_outcome(record, adapter_run=False) == (OUTCOME_FAILED, None)
+
+    def test_adapter_job_exit_2_keeps_the_adapter_reason(self):
+        outcome, reason = run_outcome(
+            {"status": "failed", "exit_code": 2}, adapter_run=True
+        )
+        assert outcome == OUTCOME_FAILED
+        assert "scheduled-run adapter" in reason
+
+    @pytest.mark.parametrize("code", [114, 118, 121, 122])
+    def test_plain_script_never_reads_unconfirmed(self, code):
+        outcome, reason = run_outcome(
+            {"status": "failed", "exit_code": code}, adapter_run=False
+        )
+        assert (outcome, reason) == (OUTCOME_FAILED, None)
+        assert run_outcome(
+            {"status": "failed", "exit_code": code}, adapter_run=True
+        )[0] == OUTCOME_UNCONFIRMED
+
+
+class TestJobDetection:
+    def test_wrapper_naming_the_adapter(self, registry):
+        assert adapter_run_for("adapter-job") is True
+
+    def test_plain_script(self, registry):
+        assert adapter_run_for("plain-job") is False
+
+    def test_unknown_job(self, registry):
+        assert adapter_run_for("no-such-job") is False
+
+    def test_unreadable_script_is_not_the_adapter(self, tmp_path):
+        job = Job(id="j", name="J", script_path=str(tmp_path / "missing.bat"))
+        assert job_runs_adapter(job) is False
+
+    def test_adapter_named_in_args_or_inline_body(self, tmp_path):
+        by_args = Job(id="a", name="A", script_path=str(tmp_path / "x.py"),
+                      args="scheduled_runner.py /skill")
+        by_body = Job(id="b", name="B", script_path="", kind="inline-shell",
+                      kind_config={"script_body": "python claude_progress.py /x",
+                                   "ext": ".bat"})
+        assert job_runs_adapter(by_args) and job_runs_adapter(by_body)
+
+    def test_an_edited_wrapper_is_re_read(self, registry):
+        wrapper = registry / "run-weekly.bat"
+        assert adapter_run_for("adapter-job") is True
+        wrapper.write_text("@echo off\r\necho hello there, no adapter\r\n",
+                           encoding="utf-8")
+        assert adapter_run_for("adapter-job") is False
+
+
+class TestReadPath:
+    def test_card_for_a_plain_script_exit_2(self, registry):
+        _write_run("plain-job", 2)
+        latest = jobs_mod.latest_run("plain-job")
+        assert latest["outcome"] == OUTCOME_FAILED
+        assert latest["outcome_reason"] is None
+
+    def test_card_for_an_adapter_job_exit_2(self, registry):
+        _write_run("adapter-job", 2)
+        latest = jobs_mod.latest_run("adapter-job")
+        assert latest["outcome"] == OUTCOME_FAILED
+        assert "scheduled-run adapter" in latest["outcome_reason"]

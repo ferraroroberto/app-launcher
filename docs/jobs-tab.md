@@ -745,6 +745,8 @@ Derived on read, never persisted: the records already on disk re-render correctl
 | `127` | failed | The agent failed to start |
 | `130` | failed | Cancelled — the owned process tree was stopped |
 
+**The table applies only to Jobs that run the adapter.** `src/jobs/adapter_job.py` decides that from the Job's command, args, inline body or wrapper script text naming `claude_progress.py` or `scheduled_runner.py`, so a `run-*.bat` wrapper counts. Any other Job's non-zero exit reads `failed` with no reason, because a plain script's exit `2` is its own (the log has the cause). A wrapper that cannot be read is treated as not the adapter.
+
 A run **this launcher** killed, reaped or watchdogged (`killed` / `reaped` / `watchdog` on the record) is always `failed`, whatever code the torn-down tree reported on its way out: we know what happened to it, and it is not "unconfirmed".
 
 **Where it shows.** The job row's sparkline dot uses the `--attention` accent rather than `--danger`, the row carries a **not confirmed** chip in attention rather than **failed** in danger, and the sheet's last run reads `not confirmed`; the run-history list uses a `?` glyph (`circle-help`) against `✓` and `✗`; the Board's Other column renders an `unconfirmed` card instead of a `failed` one; `success_rate_30d` excludes unconfirmed runs from the ratio entirely rather than counting them either way, reporting them as `unconfirmed_30d`; and `consecutive_failed_runs` breaks on one, so an unverified run cannot extend a failure streak. The `outcome_reason` rides as the dot's tooltip, so `124` reads "stalled" on the card instead of costing a log dive.

@@ -383,7 +383,7 @@ class TestReapOnPoll:
         third state from. The two are deliberately both present: ``status``
         still says what was written to disk."""
         client, _, _ = webapp_client
-        created = _seed_one_job(client, name="Demo").json()["job"]
+        created = _seed_one_job(client, name="Demo", script=_stub_path("claude_progress.py")).json()["job"]
         from src import jobs as jobs_mod
 
         run_dir = jobs_mod.new_run_dir(created["id"], "20260524T080000")
@@ -406,7 +406,7 @@ class TestReapOnPoll:
     ):
         """The over-correction guard: 123 stays a failure, and names itself."""
         client, _, _ = webapp_client
-        created = _seed_one_job(client, name="Demo").json()["job"]
+        created = _seed_one_job(client, name="Demo", script=_stub_path("claude_progress.py")).json()["job"]
         from src import jobs as jobs_mod
 
         run_dir = jobs_mod.new_run_dir(created["id"], "20260524T080000")
@@ -430,7 +430,7 @@ class TestReapOnPoll:
         weekly-recap-draft runs that delivered and still read as a failed
         delivery assertion."""
         client, _, _ = webapp_client
-        created = _seed_one_job(client, name="Demo").json()["job"]
+        created = _seed_one_job(client, name="Demo", script=_stub_path("claude_progress.py")).json()["job"]
         from src import jobs as jobs_mod
 
         run_dir = jobs_mod.new_run_dir(created["id"], "20260913T220007")
@@ -454,7 +454,7 @@ class TestReapOnPoll:
         """The expanded history list renders per run, so every row needs the
         classification too — not only the newest one on the collapsed row."""
         client, _, _ = webapp_client
-        created = _seed_one_job(client, name="Demo").json()["job"]
+        created = _seed_one_job(client, name="Demo", script=_stub_path("claude_progress.py")).json()["job"]
         from src import jobs as jobs_mod
 
         for run_id, code in (("20260524T080000", 123), ("20260524T090000", 122)):

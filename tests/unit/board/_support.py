@@ -212,13 +212,15 @@ def _tool_use_notification_line(ts: datetime, task_id: str, tool_use_id: str) ->
 # ------------------------------------------------------------ jobs_attention
 
 
-def _seed_job(overrides: dict, job_id: str, run: dict) -> None:
+def _seed_job(
+    overrides: dict, job_id: str, run: dict, script_path: str = "C:/nowhere/script.py"
+) -> None:
     jobs_path = overrides["tmp_jobs_path"]
     existing = json.loads(jobs_path.read_text(encoding="utf-8")) if jobs_path.exists() else {"jobs": []}
     existing["jobs"].append({
         "id": job_id,
         "name": job_id.replace("_", " "),
-        "script_path": "C:/nowhere/script.py",
+        "script_path": script_path,
     })
     jobs_path.write_text(json.dumps(existing), encoding="utf-8")
 

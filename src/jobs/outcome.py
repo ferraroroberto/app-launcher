@@ -65,7 +65,9 @@ DECLARABLE_OUTCOMES = frozenset({OUTCOME_DEFERRED})
 # exit code -> (outcome, one-line reason). Wording condensed from the verdict
 # headlines ``run_outcome.status_line`` prints beside each code, so a job card
 # and its own log agree. Codes absent here (a child's own exit code, e.g. a
-# plain `1`) carry no reason and stay whatever ``status`` said.
+# plain `1`) carry no reason and stay whatever ``status`` said. Consulted only
+# for a job that runs the adapter (``run_outcome``'s ``adapter_run``): the
+# same numbers from any other script are that script's own.
 _EXIT_CODES: Dict[int, Tuple[str, str]] = {
     0: (OUTCOME_SUCCESS, ""),
     2: (OUTCOME_FAILED, "the scheduled-run adapter rejected its own arguments"),
@@ -162,8 +164,16 @@ def _declared_outcome(
 def run_outcome(
     record: Mapping[str, Any],
     exit_outcomes: Optional[Mapping[int, str]] = None,
+    *,
+    adapter_run: bool,
 ) -> Tuple[Optional[str], Optional[str]]:
     """``(outcome, reason)`` for one run record.
+
+    ``adapter_run`` says whether the run's job runs the scheduled-run adapter
+    (:func:`src.jobs.adapter_job.job_runs_adapter`). The table above is the
+    adapter's vocabulary, so for any other job it is not consulted: a plain
+    script's exit 2 is its own, and the record keeps its ``status`` with no
+    reason. The argument is required so a new caller must answer it.
 
     ``outcome`` is a superset of ``status``: it equals ``status`` for every
     record except a ``failed`` one whose exit code says the adapter never
@@ -188,7 +198,7 @@ def run_outcome(
         # launcher killed, watchdogged or reaped is still a failure: its code
         # came from a torn-down tree, not from the child's own choice.
         return declared, f"exit {exit_code} is declared {declared} by this job"
-    classified = classify_exit_code(exit_code)
+    classified = classify_exit_code(exit_code) if adapter_run else None
     if classified is None:
         return status, None
     outcome, reason = classified
