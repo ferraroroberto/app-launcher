@@ -56,6 +56,7 @@ app-launcher/
 │   ├── audit.py                # terminal audit + per-session logs
 │   ├── session_retention.py    # daily webapp/sessions retention sweep (session_retention_days)
 │   ├── diagnostics.py          # log ring buffer + port-owner introspection
+│   ├── request_timing/         # per-request queue/worker time, the budget table, in-flight peaks; snapshot.py is the read-only `launcher.py health` report
 │   ├── static_versioning.py    # content-hash query strings for asset cache-busting
 │   ├── stylesheet_bundle.py    # the linked stylesheets concatenated into the one /static/bundle.css
 │   ├── subprocess_flags.py     # NO_WINDOW spawn-flag convention (single source)
@@ -115,6 +116,7 @@ app-launcher/
 │   ├── webapp_port.py          # prints the configured webapp / session-host port for the .bat and .ps1 launchers
 │   ├── gen_token.py            # bearer token rotate / clear
 │   ├── session_retention.py    # dry-run: what the webapp/sessions retention sweep would remove
+│   ├── bench_requests.py       # p50/p95 benchmark of the slow-feeling requests + max in-flight, GETs only (docs/request-timing.md)
 │   ├── probe_repaints.py       # counts an agent's full-viewport repaints in a session transcript
 │   │                           #   (#930's measurement — see docs/launcher-owned-pty.md)
 │   ├── run_named_tunnel.py     # uvicorn + cloudflared (headless)

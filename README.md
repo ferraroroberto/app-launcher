@@ -256,7 +256,7 @@ What is stored, and nothing else: event kind (`session_start`, `view`, `tap`, `s
 
 ## Real-device timings
 
-Every page load and every `/api/` request slower than 800 ms on the real device writes one timing row, so a slow moment can be traced to the connection, the server or the page; `/api` responses carry `Server-Timing: app;dur=<ms>` to split server from network. Rows hold route templates and milliseconds only, in `perf.sqlite3` beside the usage log, pruned at 90 days. Read them with `launcher.py perf-summary [--days N] [--json]` or `GET /api/perf/summary?days=N`: [docs/perf-timings.md](docs/perf-timings.md).
+Every page load and every `/api/` request slower than 800 ms on the real device writes one timing row, so a slow moment can be traced to the connection, the server or the page; `/api` responses carry `Server-Timing` (`queue`, `worker`, `app`) to split server from network and thread-pool queueing from work. Rows hold route templates and milliseconds only, in `perf.sqlite3` beside the usage log, pruned at 90 days. Read them with `launcher.py perf-summary [--days N] [--json]` or `GET /api/perf/summary?days=N`: [docs/perf-timings.md](docs/perf-timings.md). The server's own side (queue vs worker time per request class, budgets that log `over budget` / `budget breach`, `GET /api/request-stats`, `scripts/bench_requests.py`, `launcher.py health`): [docs/request-timing.md](docs/request-timing.md).
 
 ## First load
 

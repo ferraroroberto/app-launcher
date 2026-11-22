@@ -135,8 +135,10 @@ def test_templater_names_included_routes_and_prefers_literals():
 def test_server_timing_on_api_responses_only(webapp_client):
     client, _, _ = webapp_client
     header = client.get("/api/version").headers.get("server-timing", "")
-    assert header.startswith("app;dur=")
-    assert float(header.split("=", 1)[1]) >= 0
+    # `queue` and `worker` precede `app`; the phone's timing rows read the `app` entry by name.
+    entries = {part.split(";", 1)[0].strip(): part for part in header.split(", ")}
+    assert {"queue", "worker", "app"} <= set(entries)
+    assert float(entries["app"].split("dur=", 1)[1]) >= 0
     assert "server-timing" not in client.get("/").headers
 
 

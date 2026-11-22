@@ -7,9 +7,13 @@ This middleware leaves one, in ``webapp/slow-requests.log``:
 * one line per request slower than ``LAUNCHER_SLOW_REQUEST_S`` (default 3 s):
   method, path, status, elapsed, and how many other requests were still in
   flight when it finished;
-* one line per hot-path GET (``/``, ``/api/jobs``, ``/api/board``) over its
-  :data:`HOT_PATH_BUDGET_S` budget, so a regression in the paths the
-  phone opens on is on disk before anyone notices it by feel;
+* one line per request over its class's budget (``src/request_timing.py``'s
+  table: the phone's hot paths, the transcript tick and open, send and git
+  status): "over budget" past the soft limit, "budget breach" past the hard
+  one, so a regression is on disk before anyone notices it by feel;
+* on every slow or over-budget line, where the time went: ``queue_ms`` (waiting
+  for a pool thread), ``worker_ms`` (running on one), ``total_ms`` and the
+  ``pool`` name, which is also what ``Server-Timing`` carries;
 * a rate-limited in-flight line whenever a new request arrives while more
   than ``LAUNCHER_INFLIGHT_WARN`` (default 16) are already in flight — with
   the age + path of the oldest, enough to tell "event-loop blocked" from
@@ -28,9 +32,9 @@ import logging.handlers
 import os
 import time
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Callable, Dict, Mapping, Optional, Sequence, Tuple
 
-from src import runtime_files
+from src import request_timing, runtime_files
 
 logger = logging.getLogger(__name__)
 slow_logger = logging.getLogger("launcher.slowreq")
@@ -65,11 +69,6 @@ DEFAULT_INFLIGHT_WARN = 16
 # Floor between two in-flight breadcrumbs, so a hammered server logs a
 # heartbeat, not a flood.
 _INFLIGHT_LOG_INTERVAL_S = 30.0
-# The phone's hot paths: what opening the app and its two busiest
-# tabs hits. They answer from memory in tens of milliseconds, so going over
-# this is a regression worth a line long before it reaches the 3 s floor.
-# Written to the same file, since the webapp's own log is discarded.
-HOT_PATH_BUDGET_S = {"/": 0.25, "/api/jobs": 0.25, "/api/board": 0.5}
 
 
 def ensure_file_log_handler(
@@ -172,12 +171,15 @@ def ensure_warning_log_handler() -> None:
     root.addHandler(fh)
 
 
-def _with_server_timing(message: dict, elapsed_s: float) -> dict:
-    """The response-start message plus ``Server-Timing: app;dur=<ms>``: the
-    server's own time to headers, so the phone's timing rows can subtract it
-    from their wait and see the network round trip
-    (``src/usage/perf_timings.py``)."""
-    header = (b"server-timing", f"app;dur={elapsed_s * 1000:.1f}".encode("ascii"))
+def _with_server_timing(
+    message: dict, elapsed_s: float, timing: request_timing.RequestTiming
+) -> dict:
+    """The response-start message plus ``Server-Timing``: ``queue`` and
+    ``worker`` (pool time, with the pool name) and ``app``, the server's own
+    time to headers, so a client can subtract it from its wait and see the
+    network round trip (``src/usage/perf_timings.py``), and a benchmark can
+    tell queueing from work."""
+    header = (b"server-timing", timing.server_timing(elapsed_s).encode("ascii"))
     return {**message, "headers": [*message.get("headers", []), header]}
 
 
@@ -190,8 +192,15 @@ class SlowRequestLogMiddleware:
         app,
         slow_s: Optional[float] = None,
         inflight_warn: Optional[int] = None,
+        get_budget_overrides: Optional[
+            Callable[[], Optional[Mapping[str, Sequence[float]]]]
+        ] = None,
+        stats: Optional[request_timing.RequestStats] = None,
     ) -> None:
         self.app = app
+        # Read per request, so a config edit applies live.
+        self._get_budget_overrides = get_budget_overrides
+        self.stats = request_timing.STATS if stats is None else stats
         self.slow_s = (
             float(os.environ.get("LAUNCHER_SLOW_REQUEST_S", DEFAULT_SLOW_REQUEST_S))
             if slow_s is None
@@ -217,9 +226,12 @@ class SlowRequestLogMiddleware:
         rid = next(self._ids)
         start = time.monotonic()
         self._inflight[rid] = (method, path, start)
+        self.stats.entered(len(self._inflight))
         self._maybe_log_inflight(start)
 
         status_holder = {"status": 0}
+        timing = request_timing.RequestTiming()
+        token = request_timing.current.set(timing)
 
         timed = path.startswith("/api/")
 
@@ -227,31 +239,48 @@ class SlowRequestLogMiddleware:
             if message["type"] == "http.response.start":
                 status_holder["status"] = message.get("status", 0)
                 if timed:
-                    message = _with_server_timing(message, time.monotonic() - start)
+                    message = _with_server_timing(message, time.monotonic() - start, timing)
             await send(message)
 
         try:
             await self.app(scope, receive, send_wrapper)
         finally:
+            request_timing.current.reset(token)
             self._inflight.pop(rid, None)
+            self.stats.left(len(self._inflight))
             elapsed = time.monotonic() - start
+            status = status_holder["status"] or "?"
             if elapsed >= self.slow_s:
                 slow_logger.warning(
-                    "🐢 slow request: %s %s → %s in %.1fs (%d still in flight)",
+                    "🐢 slow request: %s %s → %s in %.1fs (%d still in flight) [%s]",
                     method,
                     path,
-                    status_holder["status"] or "?",
+                    status,
                     elapsed,
                     len(self._inflight),
+                    timing.log_fields(elapsed),
                 )
-            elif method == "GET" and elapsed >= HOT_PATH_BUDGET_S.get(path, float("inf")):
-                slow_logger.warning(
-                    "⏱️ over budget: GET %s → %s in %.2fs (budget %.2fs)",
-                    path,
-                    status_holder["status"] or "?",
-                    elapsed,
-                    HOT_PATH_BUDGET_S[path],
-                )
+            self._judge_budget(method, path, scope, status, elapsed, timing)
+
+    def _judge_budget(self, method, path, scope, status, elapsed, timing) -> None:
+        query = scope.get("query_string", b"").decode("latin-1")
+        name = request_timing.classify(method, path, query)
+        if name is None:
+            return
+        overrides = self._get_budget_overrides() if self._get_budget_overrides else None
+        budget = request_timing.resolve_budgets(overrides)[name]
+        verdict = request_timing.budget_verdict(budget, elapsed)
+        self.stats.judged(name, verdict)
+        if verdict == "breach":
+            slow_logger.warning(
+                "🚨 budget breach: %s %s (%s) → %s in %.2fs, hard limit %.2fs [%s]",
+                method, path, name, status, elapsed, budget.hard_s, timing.log_fields(elapsed),
+            )
+        elif verdict == "over":
+            slow_logger.warning(
+                "⏱️ over budget: %s %s (%s) → %s in %.2fs, soft limit %.2fs [%s]",
+                method, path, name, status, elapsed, budget.soft_s, timing.log_fields(elapsed),
+            )
 
     def _maybe_log_inflight(self, now: float) -> None:
         count = len(self._inflight)

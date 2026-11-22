@@ -11,17 +11,24 @@ import asyncio
 import hashlib
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import psutil
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response
 
 from app.webapp.demand_cache import DemandCache
 from app.webapp.routers._helpers import PROJECT_ROOT, STATIC_DIR, maybe_json
 from app.webapp.shell_html import assemble_shell, shell_stat_key
-from src import instance_role, process_auto_restart, process_restart, system_load
+from src import (
+    instance_role,
+    process_auto_restart,
+    process_restart,
+    request_timing,
+    system_load,
+)
 from src.agents import detect_agents
 from src.build_info import build_identity, resolve_git_sha
 from src.clients import hub_health
@@ -327,6 +334,40 @@ async def system_load_reading() -> Dict[str, Any]:
     """The page header's CPU reading: the shared sampler's cached
     sample, never a scan on request. A read also keeps the sampler awake."""
     return system_load.read()
+
+
+def _git_status_age_s(request: Request) -> Optional[float]:
+    """Seconds since the last git-status scan began, or ``None`` when none has run.
+
+    Reads the cache the git-status route keeps on ``app.state`` and never
+    scans: asking must not start the work it reports on.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    cache = getattr(request.app.state, "git_status_cache", None) or {}
+    cached = cache.get((str(cfg.projects_dir), tuple(cfg.projects_ignore)))
+    return None if cached is None else round(time.monotonic() - cached[0], 1)
+
+
+@router.get("/api/request-stats")
+async def request_stats(
+    request: Request, window_s: float = Query(default=300.0, gt=0, le=900)
+) -> Dict[str, Any]:
+    """Read-only request health: what the timing middleware has seen since boot.
+
+    ``max_inflight`` is the highest in-flight count in the last ``window_s``
+    seconds, the number a benchmark reports beside its latencies. ``budgets``
+    is the table in force, defaults with the config's ``request_budgets``
+    laid over them.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    budgets = request_timing.resolve_budgets(cfg.request_budgets)
+    return {
+        **request_timing.STATS.snapshot(window_s),
+        "budgets": {
+            name: {"soft_s": b.soft_s, "hard_s": b.hard_s} for name, b in budgets.items()
+        },
+        "git_status_age_s": _git_status_age_s(request),
+    }
 
 
 @router.get("/api/system/health")

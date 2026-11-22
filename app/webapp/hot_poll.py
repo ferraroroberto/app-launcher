@@ -51,6 +51,8 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from starlette.datastructures import State
 
+from src.request_timing import TimedExecutor
+
 slow_logger = logging.getLogger("launcher.slowreq")
 
 # Under the phone's 2 s "this is hung" feel, well over a normal build (tens of
@@ -60,13 +62,13 @@ SLOW_STEP_S = 2.0
 
 # A build runs at most four steps at once (the Board's gather), one build per
 # endpoint, plus a stuck build's steps that are still running.
-_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="hot-poll")
+_POOL = TimedExecutor("hot-poll", max_workers=8)
 
 # The per-session polls' pool. A stalled build holds one thread per
 # poll key (single-flight), so this leaves room for a few stuck keys while
 # every other session's Chat still reads; a full pool queues here, never on
 # the default executor.
-SESSION_READS_POOL = ThreadPoolExecutor(max_workers=12, thread_name_prefix="session-reads")
+SESSION_READS_POOL = TimedExecutor("session-reads", max_workers=12)
 
 # Per-session polls kept at once. A transcript's forward cursor is part of the
 # key, so keys come and go with every tick; idle ones are dropped past this.
