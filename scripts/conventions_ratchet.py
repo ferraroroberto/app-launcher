@@ -53,12 +53,16 @@ The rules (each one quotes its global-instruction line in docs/conventions-ratch
     built in and the helper read from `secret_helpers` / `git_wrappers`. A method on an
     instance (`conn.replace`) is not seen;
   * `browser-per-iteration` -- a Playwright browser or context opened inside a loop body;
+  * `host-identity` -- a test reading the real account name or home folder (`getpass.getuser()`,
+    `os.getlogin()`, `pwd.getpw*`, `Path.home()`, `expanduser` on a `~` path, or `USERNAME`/`HOME`/...
+    through `os.environ[...]`, `os.environ.get` or `os.getenv`); checked in test modules only, because
+    there the real value is the expected one on the developer's machine and wrong on every other host;
   * `state-literal`, `state-set-repeat`, `state-write` -- implicit-state-machine suspects in
     Python and JS/TS, read by `conventions_state.py`; a module `[[state_machines]]` declares is
     never reported.
 
 Test modules (and every file under a `tests/` or `test/` folder) are skipped by
-every rule except `no-window` and `browser-per-iteration`. A single call keeps its exception with a
+every rule except `no-window` and `browser-per-iteration`; `host-identity` reads only them. A single call keeps its exception with a
 `# <rule>-exempt: <reason>` comment on its own lines or in the comment block
 right above it (in a web file the comment is `<!-- ... -->`, `// ...` or
 `/* ... */`); a marker with no reason exempts nothing.
@@ -166,9 +170,11 @@ GIT_TIMEOUT_S = 120
 
 RULES = ("no-window", "logging-not-print", "no-drive-path", "secret-compare", "git-wrapper",
          "password-input-vendored", "nav-standalone-head", "login-lockout", "no-pwsh-stub",
-         "must-use", "subprocess-timeout", "browser-per-iteration", "state-literal", "state-set-repeat", "state-write")
+         "must-use", "subprocess-timeout", "browser-per-iteration", "host-identity", "state-literal", "state-set-repeat", "state-write")
 #: The rules a test module is held to; fixtures legitimately spell drive paths, raw compares and raw git.
 TEST_RULES = frozenset({"no-window", "browser-per-iteration"})
+#: The rules only a test module is held to: app code reads the real host on purpose.
+TEST_ONLY_RULES = frozenset({"host-identity"})
 #: The rules read from web files rather than Python source.
 WEB_RULES = frozenset({"password-input-vendored", "nav-standalone-head"})
 WEB_SUFFIXES = (".html", ".htm", ".js", ".mjs", ".cjs", ".ts", ".jsx", ".tsx", ".vue", ".svelte",
@@ -440,7 +446,9 @@ def rules_for(path: str, cfg: Config) -> frozenset[str]:
     else:
         rules &= TEXT_RULES
     if is_test_module(path):
-        rules &= TEST_RULES
+        rules &= TEST_RULES | TEST_ONLY_RULES
+    else:
+        rules -= TEST_ONLY_RULES
     if not any(_under(path, p) for p in cfg.print_paths):
         rules.discard("logging-not-print")
     if any(_under(path, h) for h in cfg.secret_helpers):
@@ -624,7 +632,7 @@ def scan_source(source: bytes | str, path: str, rules: frozenset[str],
     scanner.visit(tree)
     hits = []
     for node, rule, message in [*scanner.hits, *_readers.login_lockout_hits(scanner.login_routes, scanner.imports_lockout),
-                               *_readers.browser_loop_hits(tree, rules)]:
+                               *_readers.browser_loop_hits(tree, rules), *_readers.host_identity_hits(tree, rules)]:
         if rule == "logging-not-print" and (scanner.print_shadowed or scanner.cli or is_cli_path(path)):
             continue
         if not _exempt(rule, _window(node, lines)):

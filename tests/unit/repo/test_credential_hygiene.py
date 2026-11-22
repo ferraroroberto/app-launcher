@@ -90,9 +90,9 @@ def test_disposable_config_cannot_reach_the_live_task_os(tmp_path: Path) -> None
     assert "task_os_person" not in cfg
 
 
-def _host_home_fields() -> set:
-    """Every WebappConfig field whose default resolves inside the user's profile."""
-    home = Path.home().resolve()
+def _host_home_fields(home: Path) -> set:
+    """Every WebappConfig field whose default resolves inside ``home``."""
+    home = home.resolve()
     found = set()
     for f in fields(WebappConfig):
         value = getattr(WebappConfig(), f.name)
@@ -105,14 +105,14 @@ def _host_home_fields() -> set:
     return found
 
 
-def test_every_host_state_default_is_pinned() -> None:
+def test_every_host_state_default_is_pinned(synthetic_host) -> None:
     """#1717: a new config key defaulting into the user's profile must join
     HOST_STATE_KEYS, or the e2e autoboot would read it from the real host.
 
     ``projects_dir`` and its siblings default next to the checkout, not into
     the profile; a checkout that lives inside the profile is not host state.
     """
-    in_profile = _host_home_fields() - {
+    in_profile = _host_home_fields(synthetic_host.home) - {
         "projects_dir", "apps_scan_root", "life_os_dir", "fleet_config_dir",
     }
     assert in_profile <= set(hygiene.HOST_STATE_KEYS), sorted(in_profile - set(hygiene.HOST_STATE_KEYS))

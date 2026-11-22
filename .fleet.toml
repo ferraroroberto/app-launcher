@@ -83,8 +83,8 @@ box_lock_gate = { src = "scripts/box_lock_gate.ps1", sha = "de5b351ecbc58f0908bc
 instruction_ratchet = { src = "scripts/instruction_ratchet.py", sha = "7577aece617ad366e7df8ef522d511184b445144", dest = "scripts/instruction_ratchet.py" }
 doc_refs_ratchet = { src = "scripts/doc_refs_ratchet.py", sha = "a68f6e49393f0ef0b94ab3c79f4338a50d89fa49", dest = "scripts/doc_refs_ratchet.py" }
 dead_code_ratchet = { src = "scripts/dead_code_ratchet.py", sha = "4d0b0ff30e23eb95c73c4b0b1517ec6a43d3a836", dest = "scripts/dead_code_ratchet.py" }
-conventions_ratchet = { src = "scripts/conventions_ratchet.py", sha = "ce64203b017ba636c82737ee7f768c9ef6f422cd", dest = "scripts/conventions_ratchet.py" }
-conventions_readers = { src = "scripts/conventions_readers.py", sha = "7577aece617ad366e7df8ef522d511184b445144", dest = "scripts/conventions_readers.py" }
+conventions_ratchet = { src = "scripts/conventions_ratchet.py", sha = "160b54e2e0bcf76541d0a5f9bb4d6265dd493c31", dest = "scripts/conventions_ratchet.py" }
+conventions_readers = { src = "scripts/conventions_readers.py", sha = "160b54e2e0bcf76541d0a5f9bb4d6265dd493c31", dest = "scripts/conventions_readers.py" }
 conventions_state = { src = "scripts/conventions_state.py", sha = "4d0b0ff30e23eb95c73c4b0b1517ec6a43d3a836", dest = "scripts/conventions_state.py" }
 paced_browser = { src = "tests/e2e/_paced_browser.py", sha = "ce64203b017ba636c82737ee7f768c9ef6f422cd", dest = "tests/e2e/_paced_browser.py" }
 runtime_write_ratchet = { src = "scripts/runtime_write_ratchet.py", sha = "4a06ca84fc9c5005d4be7fa505c9d0e7c0472dba", dest = "scripts/runtime_write_ratchet.py" }
@@ -96,7 +96,7 @@ runtime_write_resolve = { src = "scripts/runtime_write_resolve.py", sha = "ce642
 rec-wave = { src = "app/webapp/static/_vendored/rec-wave", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "app/webapp/static/_vendored/rec-wave" }
 mic-notice = { src = "app/webapp/static/_vendored/mic-notice", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "app/webapp/static/_vendored/mic-notice" }
 single_instance = { src = "app/tray/single_instance.py", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "app/tray/single_instance.py" }
-shot_capture = { src = "tests/e2e/_shot.py", sha = "4a06ca84fc9c5005d4be7fa505c9d0e7c0472dba", dest = "tests/e2e/_shot.py" }
+shot_capture = { src = "tests/e2e/_shot.py", sha = "160b54e2e0bcf76541d0a5f9bb4d6265dd493c31", dest = "tests/e2e/_shot.py" }
 shot_baseline = { src = "scripts/shot_baseline.py", sha = "4a06ca84fc9c5005d4be7fa505c9d0e7c0472dba", dest = "scripts/shot_baseline.py" }
 layout_lint = { src = "tests/e2e/_layout_lint.py", sha = "2d65d6c193cbda0b1f71165c22f50dcdda944a17", dest = "tests/e2e/_layout_lint.py" }
 page-foot = { src = "app/webapp/static/_vendored/page-foot", sha = "5c47d8528998818d8f9b808305874e783a2b47ff", dest = "app/webapp/static/_vendored/page-foot" }
@@ -109,6 +109,7 @@ instruction_repeats = { src = "scripts/instruction_repeats.py", sha = "c5535ac32
 tray_watchdog = { src = "app/tray/watchdog.py", sha = "072d7355da45001255c3d53db00f80c3a3393900", dest = "app/tray/watchdog.py" }
 toast = { src = "app/webapp/static/_vendored/toast", sha = "e56c8330f8500b83635773033a09de6fc3cba342", dest = "app/webapp/static/_vendored/toast" }
 build-watch = { src = "app/webapp/static/_vendored/build-watch", sha = "2d871dd5a6a3ee6fe12a3c5c6439d2c53a93c2c4", dest = "app/webapp/static/_vendored/build-watch" }
+synthetic_host = { src = "tests/host/_synthetic_host.py", sha = "160b54e2e0bcf76541d0a5f9bb4d6265dd493c31", dest = "tests/host/_synthetic_host.py" }
 
 # ---------------------------------------------------------------------------
 # [verify] -- the launch recipe the generated verify-app-launcher skill reads
@@ -285,14 +286,16 @@ allow            = ["tests/_credential_hygiene.py:_RedactedRepr.toterminal"]
 # must_use (every outbound requests call goes through the pooled session in
 # src/clients/_loopback_http.py; sqlite3.connect through
 # src/runtime_files.py; os.replace through src/_json_io.py or src/runtime_files.py;
-# baseline zero). Skipped: secret-compare, since
+# baseline zero), and host-identity (a test reads the account name and home only
+# through the synthetic_host fixture in tests/host/_synthetic_host.py; a guard over
+# the live install carries a reasoned exempt marker). Skipped: secret-compare, since
 # hmac.compare_digest is called from six modules and no single helper owns it.
 # Exit 3 (git unusable, a .py file that does not parse) fails the gate. Procedure
 # and limits: project-scaffolding docs/conventions-ratchet.md.
 [conventions_ratchet]
 enabled      = true
 baseline     = ".conventions-ratchet-baseline.json"
-rules        = ["no-window", "logging-not-print", "no-drive-path", "git-wrapper", "password-input-vendored", "nav-standalone-head", "login-lockout", "no-pwsh-stub", "subprocess-timeout", "browser-per-iteration", "state-literal", "state-set-repeat", "state-write"]
+rules        = ["no-window", "logging-not-print", "no-drive-path", "git-wrapper", "password-input-vendored", "nav-standalone-head", "login-lockout", "no-pwsh-stub", "subprocess-timeout", "browser-per-iteration", "host-identity", "state-literal", "state-set-repeat", "state-write"]
 git_wrappers = ["src/git_utils.py"]
 
 [[conventions_ratchet.must_use]]

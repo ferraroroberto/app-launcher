@@ -23,6 +23,7 @@ from src.launching import ps_script
 from src.subprocess_flags import NO_WINDOW
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+# host-identity-exempt: a guard over the live tray helper installed under this machine's real home
 TRAY_HELPER = Path(os.environ.get("USERPROFILE", str(Path.home()))) / ".claude" / "tray" / "tray_lifecycle.ps1"
 GIT_TIMEOUT_S = 60
 PS_TIMEOUT_S = 120

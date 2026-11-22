@@ -61,6 +61,7 @@ from tests.e2e.fixtures.processes import (
     spawn,
 )
 from tests.e2e.stub_session import write_claude_shim as _write_claude_shim
+from tests.host._synthetic_host import synthetic_host_env
 
 logger = logging.getLogger(__name__)
 
@@ -302,6 +303,9 @@ def boot_webapp(iso: Isolation, servers: Servers, sh_port: int) -> str:
                 # The Screen view's input is recorded, never sent: the
                 # gate runs on the owner's desktop (#1521).
                 _FAKE_INPUT_ENV: "1",
+                # The app renders under a synthetic account and home, so the
+                # screenshot privacy check also catches the account name.
+                **synthetic_host_env({}, iso.host_state_dir),
             },
         )
 
