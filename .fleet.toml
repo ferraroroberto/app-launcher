@@ -70,6 +70,7 @@ icon-button = { src = "app/webapp/static/_vendored/icon-button", sha = "5d460bd1
 notify = { src = "src/notify", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "src/notify" }
 usage-log = { src = "app/webapp/static/_vendored/usage-log", sha = "78635aa74a92b9622326cb53992e0634fbaf6246", dest = "app/webapp/static/_vendored/usage-log" }
 usage_log = { src = "src/usage_log.py", sha = "78635aa74a92b9622326cb53992e0634fbaf6246", dest = "src/usage_log.py" }
+self_restart = { src = "src/self_restart.py", sha = "5c47d8528998818d8f9b808305874e783a2b47ff", dest = "src/self_restart.py" }
 surface_capture = { src = "tests/e2e/_surface.py", sha = "5c4d3a7947dae8b3b4a028bf636c0f052ea3b1f7", dest = "tests/e2e/_surface.py" }
 comment_ratchet = { src = "scripts/comment_ratchet.py", sha = "1ed07ddb5002d4513adf0ce45f1bfaf68f3acc32", dest = "scripts/comment_ratchet.py" }
 static_ratchet = { src = "scripts/static_ratchet.py", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "scripts/static_ratchet.py" }
@@ -98,7 +99,7 @@ single_instance = { src = "app/tray/single_instance.py", sha = "a37f157cda14dda4
 shot_capture = { src = "tests/e2e/_shot.py", sha = "4a06ca84fc9c5005d4be7fa505c9d0e7c0472dba", dest = "tests/e2e/_shot.py" }
 shot_baseline = { src = "scripts/shot_baseline.py", sha = "4a06ca84fc9c5005d4be7fa505c9d0e7c0472dba", dest = "scripts/shot_baseline.py" }
 layout_lint = { src = "tests/e2e/_layout_lint.py", sha = "2d65d6c193cbda0b1f71165c22f50dcdda944a17", dest = "tests/e2e/_layout_lint.py" }
-page-foot = { src = "app/webapp/static/_vendored/page-foot", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "app/webapp/static/_vendored/page-foot" }
+page-foot = { src = "app/webapp/static/_vendored/page-foot", sha = "5c47d8528998818d8f9b808305874e783a2b47ff", dest = "app/webapp/static/_vendored/page-foot" }
 login_lockout = { src = "src/login_lockout.py", sha = "ea4e1e80f83c4f5a1a6b33e8a029e46ca63150c5", dest = "src/login_lockout.py" }
 login_alert = { src = "src/login_alert.py", sha = "ce64203b017ba636c82737ee7f768c9ef6f422cd", dest = "src/login_alert.py" }
 password = { src = "src/password.py", sha = "1fab1b600964581c3df51a9f916f1fb4795ac286", dest = "src/password.py" }
@@ -602,7 +603,10 @@ time_budget_s         = 1200
 # 2026-11-21: 659 -> 660, one node (one test, chromium only) for tests/e2e/board/test_board_first_load.py: with every boot read hung, the session list
 # and the Board still draw from their last-known snapshots, and the Board's live read goes out at boot rather than on its first poll; no existing test
 # boots with storage seeded and every read held, and both lists plus the boot-read check ride that one node.
-test_budget = 660
+# 2026-11-22: 660 -> 661, one node (one test, chromium only) for tests/e2e/shell/test_build_restart.py: the build readout's restart sheet, whose
+# session-host target must show the live session count read when the sheet opens and post only on the second tap; no existing test opens that sheet,
+# and the stale-count refresh, the no-post first tap, the confirmed post and the failed-run report all ride that one node.
+test_budget = 661
 
 # --- static assets under the webapp's static dir -> Chromium smoke ----------
 [[e2e.rule]]
@@ -1210,6 +1214,12 @@ name   = "job-run-status-ui"
 module = "app/webapp/static/jobs/run-status.js"
 type   = "RunStatus"
 derive = "runStatus"
+
+[[state_machines]]
+name   = "self-restart run"
+module = "src/self_restart.py"
+type   = "RestartState"
+derive = "derive_restart_state"
 
 [[state_machines]]
 name   = "life-os-title-sync"

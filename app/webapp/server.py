@@ -28,6 +28,7 @@ from app.webapp.observability import (
     ensure_slow_log_handler,
     ensure_warning_log_handler,
 )
+from app.webapp.restart_targets import build_restart_router
 from app.webapp.routers import (
     apps,
     apps_perf,
@@ -605,6 +606,8 @@ def create_app() -> FastAPI:
     app.include_router(screen_time.router)
     # Real-phone load and slow-API timings (static/perf-timing.js).
     app.include_router(perf_timings.router)
+    # The build readout's restart sheet: the app, and the session-host.
+    app.include_router(build_restart_router(app))
 
     return app
 
