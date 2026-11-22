@@ -49,6 +49,7 @@ import requests
 
 from src.chief.job_failed import publish_job_failed
 from src.clients import llm as llm_client
+from src.jobs.adapter_job import job_runs_adapter
 from src.jobs.history import read_output_tail
 from src.jobs.outcome import OUTCOME_DEFERRED, OUTCOME_UNCONFIRMED, run_outcome
 from src.jobs.run_status import RunStatus
@@ -375,7 +376,7 @@ def _failure_wording(
         "exit_code": exit_code,
         "reaped": reaped,
         "watchdog": bool(watchdog_note),
-    }, job.exit_outcomes)
+    }, job.exit_outcomes, adapter_run=job_runs_adapter(job))
     if outcome == OUTCOME_DEFERRED:
         # The job declared this exit code a designed deferral: the
         # child chose not to do the work, and paging about it every night

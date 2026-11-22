@@ -133,6 +133,7 @@ __all__ = [
     "load_jobs",
     "save_jobs",
     "exit_outcomes_for",
+    "job_for",
     "jobs_file_lock",
     "get_by_id",
     "add_job",
@@ -201,36 +202,41 @@ def save_jobs(cfg: JobsConfig, path: Optional[Path] = None) -> Path:
     return target
 
 
-# (path, mtime_ns, size) -> {job_id: exit_outcomes}. One entry: the registry
-# is one file, and a changed stat means a fresh parse.
-_exit_outcomes_cache: Dict[Tuple[str, int, int], Dict[str, Dict[int, str]]] = {}
+# (path, mtime_ns, size) -> {job_id: Job}. One entry: the registry is one
+# file, and a changed stat means a fresh parse.
+_registry_cache: Dict[Tuple[str, int, int], Dict[str, Job]] = {}
 
 
-def exit_outcomes_for(job_id: str) -> Dict[int, str]:
-    """``job_id``'s declared ``exit_outcomes``, ``{}`` if none.
+def job_for(job_id: str) -> Optional[Job]:
+    """The registry row ``job_id``, or ``None`` for an unknown job or an
+    unreadable registry.
 
-    Every run-record read classifies against this, which on the Jobs tab's
-    4 s poll is every retained run of every job. So the registry is parsed
-    once per on-disk change (keyed on its stat), not once per record. An
-    unknown job, or an unreadable registry, declares nothing: its runs keep
-    their persisted ``status``, which is the behaviour of a job with no deferred exit code.
+    Every run-record read looks its job up here, which on the Jobs tab's 4 s
+    poll is every retained run of every job. So the registry is parsed once
+    per on-disk change (keyed on its stat), not once per record.
     """
     target = DEFAULT_JOBS_PATH
     try:
         stat = target.stat()
     except OSError:
-        return {}
+        return None
     key = (str(target), stat.st_mtime_ns, stat.st_size)
-    by_job = _exit_outcomes_cache.get(key)
-    if by_job is None:
-        by_job = {
-            job.id: dict(job.exit_outcomes)
-            for job in load_jobs(target).jobs
-            if job.exit_outcomes
-        }
-        _exit_outcomes_cache.clear()
-        _exit_outcomes_cache[key] = by_job
-    return dict(by_job.get(job_id, {}))
+    by_id = _registry_cache.get(key)
+    if by_id is None:
+        by_id = {job.id: job for job in load_jobs(target).jobs}
+        _registry_cache.clear()
+        _registry_cache[key] = by_id
+    return by_id.get(job_id)
+
+
+def exit_outcomes_for(job_id: str) -> Dict[int, str]:
+    """``job_id``'s declared ``exit_outcomes``, ``{}`` if none.
+
+    An unknown job, or an unreadable registry, declares nothing: its runs keep
+    their persisted ``status``, which is the behaviour of a job with no deferred exit code.
+    """
+    job = job_for(job_id)
+    return dict(job.exit_outcomes) if job else {}
 
 
 @contextmanager

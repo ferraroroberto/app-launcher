@@ -86,7 +86,10 @@ def test_dismissed_failed_run_raises_no_card(webapp_client):
 def test_dismissed_unconfirmed_run_raises_no_card(webapp_client):
     _client, _app, overrides = webapp_client
     local_now = _local_noon()
-    _seed_job(overrides, "photos", _failed_run(local_now, "20260717T090000", exit_code=122))
+    _seed_job(
+        overrides, "photos", _failed_run(local_now, "20260717T090000", exit_code=122),
+        script_path="C:/fleet/skills/_lib/claude_progress.py",
+    )
     assert [c["state"] for c in board.jobs_attention(now=local_now)] == ["unconfirmed"]
 
     jobs_dismissed.dismiss("photos", "20260717T090000")
