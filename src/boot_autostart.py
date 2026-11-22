@@ -111,8 +111,15 @@ def _wrapper_bat_content(tray_bat: Path) -> str:
 
 
 def is_enabled(startup_dir: Optional[Path] = None) -> bool:
-    """Whether the boot-autostart wrapper bat currently exists."""
-    return wrapper_bat_path(startup_dir).is_file()
+    """Whether the boot-autostart wrapper bat currently exists.
+
+    A machine with no per-user Startup folder (no ``APPDATA``) has nothing
+    enabled, so the settings read answers False instead of failing.
+    """
+    try:
+        return wrapper_bat_path(startup_dir).is_file()
+    except RuntimeError:
+        return False
 
 
 def enable(*, tray_bat: Path = TRAY_BAT_PATH, startup_dir: Optional[Path] = None) -> Path:

@@ -27,6 +27,7 @@ import logging
 import os
 import re
 import subprocess
+import sys
 import threading
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Literal, NamedTuple, Optional, Sequence
@@ -92,7 +93,7 @@ def _run_powercfg(args: Sequence[str]) -> "subprocess.CompletedProcess[str]":
         text=True,
         # powercfg prints in the console's OEM code page; only hex and GUIDs
         # are read from it, so a replaced character costs nothing.
-        encoding="oem",
+        encoding="oem" if sys.platform == "win32" else "utf-8",
         errors="replace",
         creationflags=NO_WINDOW,
         check=False,
