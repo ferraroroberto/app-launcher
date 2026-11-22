@@ -44,10 +44,20 @@ def _check_the_line_is_a_centred_icon(page: Page, line, browser_name: str) -> No
     assert got["use"] == "#i-timer", got
     assert got["iconColor"] == got["lineColor"], f"the icon is not in the line's muted colour: {got}"
     assert 12 <= got["iconSize"] <= 18, got
-    assert abs(got["spanMid"] - got["stripMid"]) <= 1, (
-        f"the line's centre is {got['spanMid'] - got['stripMid']:+.1f}px off the strip's: {got}"
-    )
     assert abs(got["iconMid"] - got["textMid"]) <= 1.5, f"the icon is off the text's centre: {got}"
+    # #2527: the line is centred in the band under the composer input, at
+    # desktop and phone width, light and dark. The strip box alone is no
+    # reference: it starts below the compose bar's 8px bottom padding.
+    for width, height in ((1280, 900), (390, 844)):
+        page.set_viewport_size({"width": width, "height": height})
+        for scheme in ("dark", "light"):
+            page.emulate_media(color_scheme=scheme)
+            seen = stable_eval(line, _STRIP_LINE_JS)
+            for part in ("spanMid", "textMid"):
+                assert abs(seen[part] - seen["bandMid"]) <= 1, (
+                    f"{width}px {scheme}: the line's {part} is {seen[part] - seen['bandMid']:+.1f}px "
+                    f"off the band's centre: {seen}"
+                )
 
     # The strip is max(row, home-indicator inset) tall (#1219), so a taller
     # inset leaves slack the line must split evenly, not keep at its top.
@@ -57,8 +67,8 @@ def _check_the_line_is_a_centred_icon(page: Page, line, browser_name: str) -> No
         cdp.send("Emulation.setSafeAreaInsetsOverride", {"insets": {"bottom": 56, "bottomMax": 56}})
         tall = stable_eval(line, _STRIP_LINE_JS)
         assert tall["stripMid"] != got["stripMid"], f"the emulated inset did not reach the strip: {tall}"
-        assert abs(tall["spanMid"] - tall["stripMid"]) <= 1, (
-            f"in a taller strip the line is {tall['spanMid'] - tall['stripMid']:+.1f}px off its centre: {tall}"
+        assert abs(tall["spanMid"] - tall["bandMid"]) <= 1, (
+            f"in a taller strip the line is {tall['spanMid'] - tall['bandMid']:+.1f}px off its centre: {tall}"
         )
     page.evaluate("() => window.__keepStatusOff.disconnect()")
 

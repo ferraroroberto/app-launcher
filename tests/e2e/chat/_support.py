@@ -367,10 +367,16 @@ def _line_shown_with_status(page: Page, message: str | None) -> bool:
 # The line's own box and its strip, in one evaluate so a re-render between two
 # reads cannot hand back two different nodes (#680, #1346). `span` is the
 # union of everything the line drew (icon and text): its vertical centre is
-# what the eye reads as "where the line sits".
+# what the eye reads as "where the line sits". `stripMid` is the strip box's own
+# centre; `bandMid` is the centre of the band the eye reads as the strip, from
+# the composer input's bottom edge (the compose bar's 8px padding sits above the
+# strip box) to the strip's bottom: the line is judged against that one.
 _STRIP_LINE_JS = """el => {
   if (!el.isConnected) return null;
   const strip = el.parentElement.getBoundingClientRect();
+  const input = document.querySelector('#chatComposeBar .composer-input');
+  if (!input) return null;
+  const bandTop = input.getBoundingClientRect().bottom;
   const icon = el.querySelector('svg.icon');
   const text = el.querySelector('.terminal-activity-text');
   const box = icon && icon.getBoundingClientRect();
@@ -382,6 +388,7 @@ _STRIP_LINE_JS = """el => {
   const cs = getComputedStyle(el);
   return {
     stripMid: strip.top + strip.height / 2,
+    bandMid: (bandTop + strip.bottom) / 2,
     spanMid: span.top + span.height / 2,
     iconMid: box ? box.top + box.height / 2 : null,
     iconSize: box ? box.height : null,
