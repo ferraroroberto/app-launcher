@@ -169,9 +169,15 @@ def _mock_data(page: Page) -> None:
 
 def _goto(page: Page, base_url: str) -> None:
     """Boot the page and wait for the build readout's restart wiring, which
-    lands after first paint and would otherwise race the capture."""
+    lands after first paint and would otherwise race the capture.
+
+    The readout's dotted underline rasterises its dots a little differently
+    from run to run (the glyphs above it do not move), so the capture draws
+    it solid: still visibly tappable, and the same pixels every run.
+    """
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
     expect(page.locator("#buildReadout")).to_have_attribute("role", "button")
+    page.add_style_tag(content=".page-foot-restart { text-decoration-style: solid; }")
 
 
 @pytest.mark.parametrize("name", _TABS)
