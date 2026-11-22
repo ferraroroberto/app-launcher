@@ -167,8 +167,59 @@ def record_owned(proc: subprocess.Popen) -> None:
     except psutil.Error as exc:
         logger.warning("⚠️ autoboot: could not record pid %d in %s: %s", proc.pid, ledger, exc)
         return
-    with open(ledger, "a", encoding="utf-8") as handle:
-        handle.write("".join(line + "\n" for line in lines))
+    _append_atomic(ledger, "".join(line + "\n" for line in lines).encode("utf-8"))
+
+
+def _append_atomic(path: str, payload: bytes) -> None:
+    """Append ``payload`` as one write that no concurrent appender can split.
+
+    xdist workers append to one ledger at once. A buffered text handle flushes
+    in chunks that interleave, and the C runtime's ``O_APPEND`` on Windows
+    seeks to the end and then writes, so two writers still overwrite each
+    other. A handle opened with ``FILE_APPEND_DATA`` and no ``FILE_WRITE_DATA``
+    has the filesystem move the offset to the end atomically with the write.
+    """
+    if sys.platform != "win32":
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT)
+        try:
+            os.write(fd, payload)
+        finally:
+            os.close(fd)
+        return
+    import ctypes
+    from ctypes import wintypes
+
+    file_append_data = 0x0004
+    share_all = 0x1 | 0x2 | 0x4  # READ | WRITE | DELETE
+    open_always, normal_attributes = 4, 0x80
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateFileW.restype = wintypes.HANDLE
+    kernel32.CreateFileW.argtypes = [
+        wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
+        wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE,
+    ]
+    kernel32.WriteFile.argtypes = [
+        wintypes.HANDLE, wintypes.LPCVOID, wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD), wintypes.LPVOID,
+    ]
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    handle = kernel32.CreateFileW(
+        str(path), file_append_data, share_all, None, open_always, normal_attributes, None,
+    )
+    if handle in (None, wintypes.HANDLE(-1).value):
+        raise OSError(ctypes.get_last_error(), f"CreateFileW({path}) failed")
+    try:
+        written = wintypes.DWORD(0)
+        if not kernel32.WriteFile(handle, payload, len(payload), ctypes.byref(written), None):
+            raise OSError(ctypes.get_last_error(), f"WriteFile({path}) failed")
+        if written.value != len(payload):
+            raise OSError(f"short ledger write to {path}: {written.value} of {len(payload)} bytes")
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+class MalformedLedgerLine(ValueError):
+    """A ledger line that is not a ``{"pid", "create_time"}`` record."""
 
 
 def _still_ours(pid: int, create_time: float) -> Optional[psutil.Process]:
@@ -182,15 +233,22 @@ def _still_ours(pid: int, create_time: float) -> Optional[psutil.Process]:
 def sweep_ledger(ledger: Path) -> Tuple[List[str], List[str]]:
     """Kill every recorded process still alive; return (reaped, survivors).
 
-    Each entry is described as ``pid <n> <name>``. Raises ``ValueError`` on a
-    ledger line that does not parse, since that one could hide a live pid.
+    Each entry is described as ``pid <n> <name>``. Raises
+    :class:`MalformedLedgerLine` (naming the line) on a ledger line that does
+    not parse, since that one could hide a live pid.
     """
     targets: List[psutil.Process] = []
-    for raw in ledger.read_text(encoding="utf-8").splitlines():
+    for number, raw in enumerate(ledger.read_text(encoding="utf-8").splitlines(), 1):
         if not raw.strip():
             continue
-        entry = json.loads(raw)
-        proc = _still_ours(int(entry["pid"]), float(entry["create_time"]))
+        try:
+            entry = json.loads(raw)
+            pid, create_time = int(entry["pid"]), float(entry["create_time"])
+        except (ValueError, KeyError, TypeError) as exc:
+            raise MalformedLedgerLine(
+                f"line {number} is not a pid record ({type(exc).__name__}: {exc}): {raw[:200]!r}"
+            ) from exc
+        proc = _still_ours(pid, create_time)
         if proc is not None and proc.pid not in {t.pid for t in targets}:
             targets.append(proc)
     described = [_describe(p) for p in targets]
@@ -225,7 +283,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 3
     try:
         reaped, survivors = sweep_ledger(ledger)
-    except (OSError, ValueError, KeyError) as exc:
+    except MalformedLedgerLine as exc:
+        print(f"ORPHANS=unknown malformed ledger {ledger}: {exc}")
+        return 3
+    except OSError as exc:
         print(f"ORPHANS=unknown unreadable ledger {ledger}: {exc}")
         return 3
     if survivors:

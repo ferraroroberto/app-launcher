@@ -9,6 +9,7 @@ stand-in worker process and kill that worker hard, the way a timeout does.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import time
@@ -117,3 +118,54 @@ def test_sweep_kills_recorded_processes_only(tmp_path: Path, monkeypatch: pytest
 def test_sweep_without_a_ledger_is_unknown(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
     assert main([str(tmp_path / "missing.jsonl")]) == 3
     assert capsys.readouterr().out.startswith("ORPHANS=unknown")
+
+
+# A writer process whose psutil view is faked, so each record_owned() call
+# appends a many-line batch without spawning anything: the contention is on the
+# ledger file, which is what xdist workers share.
+_WRITER = (
+    "import sys\n"
+    "from types import SimpleNamespace\n"
+    "from tests.e2e import _owned_processes as op\n"
+    "ident, rounds, family = int(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3])\n"
+    "class _Fake:\n"
+    "    def __init__(self, pid):\n"
+    "        self.pid = pid\n"
+    "    def create_time(self):\n"
+    "        return 1.5\n"
+    "    def children(self, recursive=False):\n"
+    "        return [_Fake(self.pid * 1000 + k) for k in range(family)]\n"
+    "op.psutil.Process = _Fake\n"
+    "for r in range(rounds):\n"
+    "    op.record_owned(SimpleNamespace(pid=ident * 100 + r))\n"
+)
+
+
+def test_malformed_ledger_line_is_named(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+    ledger = tmp_path / "pids.jsonl"
+    good = json.dumps({"pid": 1, "create_time": 1.0})
+    ledger.write_text(f"{good}\n{good}{good}\n", encoding="utf-8")
+    assert main([str(ledger)]) == 3
+    out = capsys.readouterr().out
+    assert out.startswith("ORPHANS=unknown malformed ledger")
+    assert "line 2" in out
+
+
+def test_parallel_writers_never_fuse_ledger_records(tmp_path: Path) -> None:
+    workers, rounds, family = 8, 150, 40
+    ledger = tmp_path / "pids.jsonl"
+    ledger.touch()
+    env = {**os.environ, "LAUNCHER_E2E_PID_LEDGER": str(ledger)}
+    procs = [
+        subprocess.Popen(
+            [sys.executable, "-c", _WRITER, str(i + 1), str(rounds), str(family)],
+            cwd=str(REPO_ROOT), env=env, creationflags=_FLAGS,
+        )
+        for i in range(workers)
+    ]
+    for proc in procs:
+        assert proc.wait(timeout=120) == 0
+    lines = ledger.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == workers * rounds * (family + 1), "records were lost or fused"
+    for raw in lines:
+        json.loads(raw)
