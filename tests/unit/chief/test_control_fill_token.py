@@ -24,7 +24,7 @@ _CONTROLS = [
     ".input-native",
     '.session-mode-btn[aria-disabled="true"]',
     ".key-btn:disabled",
-    '.board-drawer-action[aria-disabled="true"],\n.board-drawer-action[aria-disabled="true"]:active',
+    '.board-drawer-actions > [aria-disabled="true"]',
 ]
 
 

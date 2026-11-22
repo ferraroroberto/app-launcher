@@ -809,31 +809,23 @@ span.chief-answer-ref { color: var(--muted); }
     grid-template-areas: "chat" "terminal" "menu";
   }
 }
-.board-drawer-action {
+/* Chat (the vendored tint) and Terminal (the vendored surface): the tiers own
+   fill, border and type; this is only the glyph-beside-label layout and the
+   44px floor. A surface is a fixed 36px, so its height gives way to the row's. */
+.board-drawer-actions > .board-open-chat,
+.board-drawer-actions > .board-open-terminal {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
+  width: auto;
   min-width: 0;
+  height: auto;
   min-height: var(--row-sm);
   padding: 0 10px;
-  background: var(--card-2);
-  color: var(--fg);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  font-size: var(--font-body-sm);
-  font-weight: 600;
-  cursor: pointer;
 }
-.board-drawer-action:active { background: var(--card); }
-.board-drawer-action.is-primary {
-  background: var(--accent-soft);
-  border-color: var(--accent-border-soft);
-  color: var(--accent-text);
-}
-.board-drawer-action.is-primary:active { filter: brightness(0.9); }
-.board-drawer-action .icon { flex: none; }
-.board-drawer-action-label {
+.board-drawer-actions .icon { flex: none; }
+.board-drawer-label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -844,13 +836,12 @@ span.chief-answer-ref { color: var(--muted); }
    with no transcript reader): design.md button-disabled — flat muted text on
    the subtle surface, never opacity. aria-disabled, not :disabled, so the
    tap still toasts the reason. */
-.board-drawer-action[aria-disabled="true"],
-.board-drawer-action[aria-disabled="true"]:active {
+.board-drawer-actions > [aria-disabled="true"] {
   background: var(--input-bg);
   border-color: var(--line);
   color: var(--muted);
   cursor: default;
-  filter: none;
+  transform: none;
 }
 
 /* The GitHub refresh in flight (COLOR-02): the ↻ spins at full

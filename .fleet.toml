@@ -1030,7 +1030,8 @@ no_go = [
     ".action-row-main",
     ".session-open",
     ".job-run-btn",
-    ".board-drawer-action",
+    ".board-open-chat",
+    ".board-open-terminal",
     ".board-stop-btn",
     ".board-issue-btn",
     ".board-item:not([data-session-id]) .board-card",
@@ -1094,8 +1095,8 @@ click = "#jobsSearchInput"
 # (fleet-config#995, app-launcher#1227): a git-archive copy of HEAD on free
 # ports with synthetic data only -- a demo project, a stub PTY session with a
 # synthetic Chat transcript, one Life OS skill, one job, one app. Its no_go is
-# the live list with `.board-drawer-action` narrowed to Rename, so the drawer's
-# Chat and Terminal open on the stub session while Stop, Issue and Rename stay
+# the live list without the drawer's Chat and Terminal buttons, so they open on
+# the stub session while Stop, Issue and Rename stay
 # vetoed; `.session-open` stays vetoed because a desktop row tap mirrors the
 # session into a window on the PC. `.action-row-main` is vetoed except on a Board
 # session card, whose main tap only toggles the drawer (#1433, #1502): with the

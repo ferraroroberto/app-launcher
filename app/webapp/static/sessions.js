@@ -335,7 +335,9 @@ function sessionOpenButton(s, isChief, remote) {
   // attempt: restoring the kebab must not restore the dead row.
   const open = document.createElement('button');
   open.dataset.track = 'sessions.open';
-  open.className = 'launch-btn session-open';
+  // The vendored action-row's main button, `session-open` the hook every row
+  // test reads it through; `has-avatar` lays the avatar beside the text.
+  open.className = 'action-row-main has-avatar session-open';
   open.type = 'button';
 
   // The shared session row: the agent's mark in an avatar whose
