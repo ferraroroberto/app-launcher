@@ -218,6 +218,25 @@ class TestEnsureResume:
         # The conversation is already past its own boot — no /chief re-typed.
         overrides["session"].send_input.assert_not_called()
 
+    def test_a_dead_chief_row_marked_ended_is_still_resumed(
+        self, webapp_client, _bypass_gate, _fast_probe, _spawn,
+        _fleet_config_dir, _ready_session,
+    ):
+        """The reconcile pass ends a dead chief's row; Resume exists to reattach exactly that one."""
+        client, app, _ = webapp_client
+        cfg = app.state.webapp_config
+        ended = {
+            **_chief_state_row("chief-1", _recent_iso(minutes=5)),
+            "status": "ended", "ended_at": _recent_iso(minutes=1),
+        }
+        Path(cfg.sessions_state_file).write_text(
+            json.dumps({"old-chief-sess": ended}), encoding="utf-8",
+        )
+        resp = client.post("/api/board/chief/ensure", json={"resume": True})
+        assert resp.status_code == 200
+        assert resp.json()["resumed"] is True
+        assert "--resume old-chief-sess" in _spawn["flags"]
+
     def test_restart_resume_stops_live_chief_first_then_reattaches_it(
         self, webapp_client, _bypass_gate, _fast_probe, _spawn,
         _fleet_config_dir,

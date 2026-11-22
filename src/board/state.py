@@ -36,6 +36,11 @@ logger = logging.getLogger(__name__)
 # matches the writer's own prune horizon in fleet-config's session_state hook.
 STATE_STALE_AFTER = timedelta(hours=24)
 
+# The raw stamp :mod:`src.board.state_reconcile` gives a row whose process is
+# provably gone. The hook writer never produces it; it replaces the stamp so
+# the row is history, not a session.
+STATUS_ENDED = "ended"
+
 # The rate-limits cache is meant to read as near-real-time — the
 # statusline that writes it re-renders on every assistant message — so this
 # is far shorter than STATE_STALE_AFTER's 24h (that one tolerates a cold
@@ -93,9 +98,16 @@ def read_sessions_state(path: Path, *, now: Optional[datetime] = None) -> Dict[s
     rows (precedent: ``life_os.recap_status`` and ``jobs._read_queue_file``).
     ``stale`` is true when the newest row is older than
     :data:`STATE_STALE_AFTER` — the hooks have stopped writing.
+
+    ``rows`` is the hot set every Board, session-list and transcript build
+    walks: a row stamped :data:`STATUS_ENDED` is not in it. Those rows stay
+    readable as history under ``ended_rows`` (the chief's exit evidence reads
+    them there).
     """
     now = now or utc_now()
-    empty: Dict[str, Any] = {"available": False, "stale": False, "updated_at": None, "rows": {}}
+    empty: Dict[str, Any] = {
+        "available": False, "stale": False, "updated_at": None, "rows": {}, "ended_rows": {},
+    }
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -103,12 +115,12 @@ def read_sessions_state(path: Path, *, now: Optional[datetime] = None) -> Dict[s
     if not isinstance(data, dict):
         return empty
 
-    rows = {
+    all_rows = {
         str(sid): row for sid, row in data.items() if isinstance(row, dict)
     }
     stamps = [
         stamp
-        for stamp in (parse_iso(row.get("updated_at")) for row in rows.values())
+        for stamp in (parse_iso(row.get("updated_at")) for row in all_rows.values())
         if stamp is not None
     ]
     newest = max(stamps) if stamps else None
@@ -116,7 +128,8 @@ def read_sessions_state(path: Path, *, now: Optional[datetime] = None) -> Dict[s
         "available": True,
         "stale": bool(newest is not None and now - newest > STATE_STALE_AFTER),
         "updated_at": iso_z(newest) if newest else None,
-        "rows": rows,
+        "rows": {sid: row for sid, row in all_rows.items() if row.get("status") != STATUS_ENDED},
+        "ended_rows": {sid: row for sid, row in all_rows.items() if row.get("status") == STATUS_ENDED},
     }
 
 

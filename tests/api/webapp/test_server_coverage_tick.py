@@ -169,8 +169,10 @@ class TestLifespanGate:
                 self.demand_ticks.append(task)
             elif coro.__qualname__ == "tick_forever" and module in (
                     "app.webapp.chief_doorbell", "app.webapp.relay_idle_close",
-                    "src.process_auto_restart", "src.chief.machine_critical"):
+                    "src.process_auto_restart", "src.chief.machine_critical",
+                    "src.board.state_reconcile"):
                 self.doorbell_ticks.append(task)
+                self.canonical_modules.append(module)
             elif coro.__qualname__ == "fetch_tick_forever":
                 self.fetch_ticks.append(task)
             else:
@@ -181,6 +183,7 @@ class TestLifespanGate:
         self.load_ticks = []
         self.demand_ticks = []
         self.doorbell_ticks = []
+        self.canonical_modules = []
         self.fetch_ticks = []
         monkeypatch.setattr(server.asyncio, "create_task", _spy)
         # Never let the real tick body run — it would sleep two minutes and
@@ -239,6 +242,26 @@ class TestLifespanGate:
         await self._run_lifespan(_app(), monkeypatch)
         assert len(self.fetch_ticks) == 1
         assert self.fetch_ticks[0].cancelled()
+
+    async def test_the_state_reconcile_tick_is_canonical_only(self, monkeypatch):
+        """It rewrites the real state file against the real session-host, so a gate webapp never runs it."""
+        monkeypatch.delenv(SESSION_HOST_PORT_ENV, raising=False)
+
+        def state_ticks():
+            return [m for m in self.canonical_modules if m == "src.board.state_reconcile"]
+
+        monkeypatch.setattr(
+            instance_role, "canonical_instance",
+            lambda project_root=None: (True, instance_role.REASON_CANONICAL),
+        )
+        await self._run_lifespan(_app(), monkeypatch)
+        assert len(state_ticks()) == 1
+        monkeypatch.setattr(
+            instance_role, "canonical_instance",
+            lambda project_root=None: (False, instance_role.REASON_LINKED_WORKTREE),
+        )
+        await self._run_lifespan(_app(), monkeypatch)
+        assert state_ticks() == []
 
     async def test_disposable_instance_never_starts_the_tick(
         self, monkeypatch
