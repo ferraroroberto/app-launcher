@@ -19,6 +19,7 @@ import asyncio
 import functools
 import json
 import logging
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -47,6 +48,7 @@ from app.webapp.routers._helpers import (
     maybe_json,
     mirror_url,
 )
+from app.webapp.terminal_input import KeystrokeTimer, audit_after_pending, audit_later
 from src import audit, board, instance_role
 from src.board import owner_checks
 from src.chief import answers as chief_answers
@@ -681,7 +683,8 @@ async def proxy_session_ws(websocket: WebSocket, sid: str) -> None:
             await audit_off_loop(
                 audit.session_log, sid, "ws_open", client=client_ip_ws(websocket)
             )
-            await _proxy_websocket(websocket, upstream, sid)
+            timer = KeystrokeTimer(sid) if cfg.terminal_timing_log else None
+            await _proxy_websocket(websocket, upstream, sid, timer)
     except (OSError, WebSocketDisconnect, InvalidHandshake) as exc:
         # InvalidHandshake covers an upstream WS upgrade rejected at the
         # HTTP layer — e.g. the session-host answering 403 for a reaped
@@ -696,37 +699,45 @@ async def proxy_session_ws(websocket: WebSocket, sid: str) -> None:
         except RuntimeError:
             pass
     finally:
-        await audit_off_loop(audit.session_log, sid, "ws_close")
+        # Behind this connection's queued input lines, so the log stays in order.
+        await audit_after_pending(audit.session_log, sid, "ws_close")
 
 
-async def _proxy_websocket(client: WebSocket, upstream, sid: str) -> None:
+async def _proxy_websocket(
+    client: WebSocket, upstream, sid: str, timer: Optional[KeystrokeTimer] = None,
+) -> None:
     """Pump frames both ways between the browser and the session-host.
 
     Server→client frames are raw terminal output. Client→server frames are
-    JSON control messages — ``input`` frames are tee'd to the per-session
-    audit log on the way through.
+    JSON control messages. An ``input`` frame is forwarded first and audited
+    after, on the terminal's own writer, so a keystroke never waits for a
+    thread or a disk. A ``timing`` frame is the browser's own measurement:
+    logged while ``timer`` is set, never forwarded.
     """
 
     async def client_to_upstream() -> None:
         while True:
             raw = await client.receive_text()
+            received = time.perf_counter()
             try:
                 msg = json.loads(raw)
-                if isinstance(msg, dict) and msg.get("type") == "input":
-                    # Off the event loop via audit_off_loop: fires on
-                    # every keystroke/paste frame for as long as the terminal
-                    # stays open, sharing this one worker's loop with every
-                    # other live session's pump — the highest-frequency
-                    # blocking-I/O candidate in the whole WS hot path.
-                    await audit_off_loop(
-                        audit.session_input, sid, str(msg.get("data") or "")
-                    )
             except (ValueError, TypeError):
-                pass
+                msg = None
+            kind = msg.get("type") if isinstance(msg, dict) else None
+            if kind == "timing":
+                if timer is not None:
+                    timer.browser_report(msg)
+                continue
             await upstream.send(raw)
+            if kind == "input":
+                if timer is not None:
+                    timer.forwarded(received, time.perf_counter())
+                audit_later(audit.session_input, sid, str(msg.get("data") or ""))
 
     async def upstream_to_client() -> None:
         async for message in upstream:
+            if timer is not None:
+                timer.output()
             if isinstance(message, bytes):
                 message = message.decode("utf-8", errors="replace")
             await client.send_text(message)

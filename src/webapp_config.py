@@ -363,6 +363,9 @@ class WebappConfig:
     # Bounded scrollback: lines of a full-screen (ratatui) agent's history the
     # session-host replays on a (re)connect; DEFAULT_TERMINAL_HISTORY_LINES has the evidence.
     terminal_history_lines: int = DEFAULT_TERMINAL_HISTORY_LINES
+    # Logs per-keystroke terminal timings and event-loop lag over 100 ms to
+    # webapp/slow-requests.log. Off by default: a diagnostics switch, read at webapp start.
+    terminal_timing_log: bool = False
     # Large-file attach limit in MB (see DEFAULT_LARGE_UPLOAD_MAX_MB).
     large_upload_max_mb: int = DEFAULT_LARGE_UPLOAD_MAX_MB
     # Usage meter providers, and the Grok auto-switch for Sonnet lanes: src/usage/.
