@@ -33,9 +33,10 @@ neither imports the other through.
 ``GET /api/board`` is the 5s poll target, so it does only cheap work: the live
 session list from the session-host, one state-file read, one jobs-runs walk
 (all in worker threads, gathered concurrently) and a pure memory read of the
-GitHub cache. The ``gh`` subprocesses run **only** inside the explicit refresh
-endpoint — the exact on-demand contract of the Coding tab's ⎇ git-status
-button. Column assembly is pure logic in :mod:`src.board`.
+GitHub cache. The ``gh`` subprocesses run in a background refresh: the ↻ tap's
+POST, or, when a visible Board tab's poll carries the view header, the one
+server-wide refresh :mod:`src.board.view_refresh` starts once per TTL however
+many tabs are open. Column assembly is pure logic in :mod:`src.board`.
 
 The board + refresh routes are read-only repo/session metadata — the same gate
 class as ``GET /api/claude-code/sessions`` (bearer token, no passkey). The
@@ -89,10 +90,11 @@ from src.board import (
     ci_runs,
     owner_checks,
     proof_reports,
+    view_refresh,
 )
 from src.board.exchange import resolve_exchange, unavailable
 from src.chief import answers as chief_answers
-from src.chief import ci_failed, dispatch_brief, plan_prune
+from src.chief import dispatch_brief, plan_prune
 from src.chief import plan as chief_plan
 from src.clients import github as github_client
 from src.clients import session as session_client
@@ -220,6 +222,8 @@ async def get_board(request: Request) -> Dict[str, Any]:
     good board, ``age_seconds`` old (``generated_at`` says when it was built).
     """
     cfg: WebappConfig = request.app.state.webapp_config
+    if request.headers.get(view_refresh.VIEW_HEADER) == "1":
+        view_refresh.on_view(request.app.state, cfg)
     poll = hot_poll(request.app.state, "GET /api/board")
     return await poll.get(functools.partial(_build_board_payload, cfg))
 
@@ -522,22 +526,16 @@ async def get_rate_limits(request: Request) -> Dict[str, Any]:
 
 @router.post("/api/board/github/refresh")
 async def refresh_github(request: Request) -> Dict[str, Any]:
-    """Run the fleet-wide gh searches now (subprocess-heavy, on demand only).
+    """Run the fleet-wide gh searches now: the ↻ tap, which always runs.
 
     The owner-check list (two ``gh`` calls per repo) and the CI sweep (one
     per repo with a workflow, then the chief's ci-failed events) refresh
     beside it in background threads, so the ↻ never waits on them; the poll
-    shows them landing. a body of ``{"auto": true}`` is the open Board's timer: the cache comes back
-    untouched if it was just filled, so aging tabs cost one set of searches.
+    shows them landing. The open Board's own refresh is server-side, started
+    from its poll (see :func:`get_board`).
     """
     cfg: WebappConfig = request.app.state.webapp_config
-    if (await maybe_json(request)).get("auto") and github_client.recently_filled():
-        return _github_section(github_client.snapshot())
-    owner_checks.start_refresh(cfg.fleet_config_dir, cfg.github_owner)
-    ci_runs.start_refresh(
-        cfg.github_owner, cfg.fleet_config_dir, cfg.projects_dir,
-        functools.partial(ci_failed.observe, cfg),
-    )
+    view_refresh.start_side_sweeps(cfg)
     snap = await asyncio.to_thread(github_client.refresh, cfg.github_owner)
     return _github_section(snap)
 

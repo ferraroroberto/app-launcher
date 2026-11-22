@@ -14,11 +14,11 @@
  * summary, or a folded lane's exception ("1 failing").
  *
  * Cost discipline: fetchBoard() self-gates on the Board tab being visible
- * (pattern: fetchJobs / fetchRunningApps); the server's gh cache is only
- * refreshed via the ↻ button, on tab activation when the cache is older
- * than GH_STALE_MS, or by itself from a visible page once the cache is older
- * than the age in board/github-refresh.js (or was never filled: a webapp
- * restart empties it) — never on a poll of a fresh cache.
+ * (pattern: fetchJobs / fetchRunningApps); the server's gh cache is
+ * refreshed by the ↻ button, or by the server itself: a poll from a visible
+ * page carries the X-Board-View header, and the server starts one refresh
+ * per TTL for every open tab together (src/board/view_refresh.py), so no
+ * tab ever starts a gh sweep on a timer of its own.
  *
  * Act-from-the-card loop: tapping a live session row opens an
  * inline drawer with the last user↔assistant exchange (passkey-gated — it
@@ -58,7 +58,6 @@ import { brandIconEl } from './dom-utils.js';
 import { channelSessionName, isChannelSession, isRelaySession } from './shared/session-kinds.js';
 import { agoText, fmtCardStamp, fmtDuration, plural } from './shared/format.js';
 import { avatar, chip, sessionStatusMeta, sessionStatusParts } from './glance.js';
-import { shouldAutoRefreshGithub } from './board/github-refresh.js';
 import { ACTION_ROW_MENU, actionRow } from './action-rows.js';
 import { failedFetchState, setAsyncState } from './async-state.js';
 import { readSnapshot, saveSnapshot } from './shared/boot-snapshot.js';
@@ -106,12 +105,7 @@ const COLUMNS = [
   { key: 'done', section: 'boardColDone', empty: 'Nothing closed today yet.', glyph: 'circle-check', gh: 'all' },
 ];
 
-const GH_STALE_MS = 2 * 60 * 1000;
-
 let refreshInFlight = false;
-// When the last refresh was started, by tap or by itself: the automatic one
-// waits the age out after it, so a failing gh is not retried on every poll.
-let lastRefreshAttemptAt = 0;
 // The drawer whose section renderBoard() last unfolded (see there).
 let revealedDrawer = null;
 
@@ -813,8 +807,10 @@ export async function fetchBoard() {
   // own quiet note, never the Board's error.
   let board, plan;
   try {
+    // A visible page's poll is a view: the server keeps the GitHub cache
+    // within its TTL for every open tab at once. A hidden page never asks.
     [board, plan] = await Promise.all([
-      jsonApi('/api/board'),
+      jsonApi('/api/board', document.hidden ? undefined : { headers: { 'X-Board-View': '1' } }),
       jsonApi('/api/board/chief-plan').catch(function () { return { state: 'unavailable' }; }),
     ]);
   } catch (exc) {
@@ -831,7 +827,6 @@ export async function fetchBoard() {
   saveSnapshot('board', { board: board, plan: plan });
   pollIdeas();
   pollJournal();
-  maybeAutoRefreshGithub();
 }
 
 function showBoard(board, plan, fetchedAt) {
@@ -846,22 +841,6 @@ function showBoard(board, plan, fetchedAt) {
 export function paintLastKnownBoard() {
   const snap = readSnapshot('board');
   if (snap && snap.body.board) showBoard(snap.body.board, snap.body.plan || { state: 'unavailable' }, snap.at);
-}
-
-// The open Board keeps its GitHub data current without a tap: a stale or
-// never-filled cache (a webapp restart empties it) is refreshed from a
-// visible, foreground page only. The gate and its age live in
-// board/github-refresh.js; a failure here stays on the age line, no toast.
-function maybeAutoRefreshGithub() {
-  if (!shouldAutoRefreshGithub({
-    github: state.board && state.board.github,
-    now: Date.now(),
-    hidden: document.hidden,
-    tab: state.tab,
-    inFlight: refreshInFlight,
-    lastAttemptAt: lastRefreshAttemptAt,
-  })) return;
-  refreshGithub({ quiet: true }).catch(function () {});
 }
 
 // ?board=<sid> deep-link: land on the Board with that card's drawer
@@ -917,14 +896,6 @@ export async function openBoardCard(sid) {
   });
 }
 
-// Stale = never fetched, or older than GH_STALE_MS. An errored cache is
-// never auto-retried — that would hammer a broken gh; ↻ stays manual.
-function ghStale(body) {
-  if (!body || !body.github || body.github.error) return false;
-  const t = Date.parse(body.github.fetched_at || '');
-  return isNaN(t) || Date.now() - t > GH_STALE_MS;
-}
-
 // While a refresh runs the ↻ spins (COLOR-02): aria-busy, never the
 // disabled look, whose line colour measured 1.55:1 on dark. A second tap is
 // a no-op (refreshInFlight).
@@ -934,18 +905,13 @@ function setRefreshBusy(busy) {
   else els.boardRefresh.removeAttribute('aria-disabled');
 }
 
-async function refreshGithub({ quiet = false } = {}) {
+async function refreshGithub() {
   if (refreshInFlight) return;
   refreshInFlight = true;
-  lastRefreshAttemptAt = Date.now();
   setRefreshBusy(true);
   try {
-    // `auto` lets the server skip a refresh another tab just did; a tap
-    // always runs. In the body, so the URL stays the one every caller mocks.
-    const github = await jsonApi('/api/board/github/refresh', quiet ? {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ auto: true }),
-    } : { method: 'POST' });
-    if (github && github.error && !quiet) {
+    const github = await jsonApi('/api/board/github/refresh', { method: 'POST' });
+    if (github && github.error) {
       toast('GitHub refresh failed: ' + github.error, 'error');
     }
     await fetchBoard();
@@ -976,11 +942,8 @@ export function wireBoard() {
   if (!els.tabBoard) return;
   els.tabBoard.addEventListener('click', function () {
     syncDispatchBar();
-    fetchBoard().then(function () {
-      // Opening the tab with a stale (or never-filled) gh cache refreshes
-      // it once; while the tab just sits open only the free poll runs.
-      if (ghStale(state.board)) refreshGithub().catch(function () {});
-    }).catch(function () {});
+    // The poll's view header lets the server refresh a stale cache.
+    fetchBoard().catch(function () {});
   });
   wireDispatch();
   wireChiefAnswers();

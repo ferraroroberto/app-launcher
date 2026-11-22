@@ -341,21 +341,17 @@ def test_board_renders_columns_counts_and_cards(
     expect(yours_section).not_to_have_attribute("open", "")
 
 
-@pytest.mark.parametrize("gh_age_seconds, expected_posts", [
-    pytest.param(15 * 60, ["POST"], id="stale-refreshes-once"),
-    pytest.param(0, [], id="fresh-not-refreshed"),
-])
-def test_board_github_refresh_on_open_tracks_cache_age(
-    authed_page: Page, base_url: str, gh_age_seconds: int,
-    expected_posts: list[str],
+def test_board_poll_marks_a_view_and_only_the_tap_posts_a_refresh(
+    authed_page: Page, base_url: str,
 ) -> None:
-    """Opening the tab with a gh cache older than the client's staleness
-    window (2 min) fires exactly one automatic refresh POST — no ↻ tap
-    needed; a fresh cache must NOT auto-refresh, so tab-open stays free.
-
-    Then the ↻ tap (was test_board_refresh_button_posts_gh_refresh, merged
-    here in #1215) adds exactly one more POST, in both cache-age cases."""
-    _mock_board(authed_page, _board_payload(gh_age_seconds=gh_age_seconds))
+    """Opening the tab with a stale gh cache posts no refresh of its own: the
+    visible page's poll carries the view header and the server refreshes once
+    for every open tab. The ↻ tap posts exactly one refresh."""
+    _mock_board(authed_page, _board_payload(gh_age_seconds=15 * 60))
+    expected_posts: list[str] = []
+    views: list[str] = []
+    authed_page.on("request", lambda req: views.append(req.headers.get("x-board-view", ""))
+                   if req.method == "GET" and req.url.endswith("/api/board") else None)
 
     posts: list[str] = []
 
@@ -371,24 +367,12 @@ def test_board_github_refresh_on_open_tracks_cache_age(
     authed_page.route(re.compile(r".*/api/board/github/refresh$"), _capture)
 
     _open_board(authed_page, base_url)
-    # The automatic refresh is a POST fired as the board loads: wait for it,
-    # or (fresh cache, none expected) for the board to have rendered, then let
-    # any request still in flight land before the exact-list check.
-    if expected_posts:
-        wait_until(authed_page, lambda: len(posts) >= len(expected_posts),
-                   "the automatic gh refresh POST")
-    else:
-        expect(authed_page.locator("li.board-item").first).to_be_visible()
+    expect(authed_page.locator("li.board-item").first).to_be_visible()
     flush_requests(authed_page)
 
-    assert posts == expected_posts, (
-        f"gh cache aged {gh_age_seconds}s should auto-refresh {expected_posts} "
-        f"on tab open, got {posts}"
-    )
+    assert posts == expected_posts, f"tab open posted a refresh of its own: {posts}"
+    assert views and all(v == "1" for v in views), f"Board polls without the view header: {views}"
 
-    # -- was test_board_refresh_button_posts_gh_refresh --
-    # ↻ is disabled while a refresh is in flight (refreshGithub()), so let
-    # the automatic one settle before tapping it.
     expect(authed_page.locator("#boardRefresh")).to_be_enabled()
     authed_page.locator("#boardRefresh").click()
     wait_until(authed_page, lambda: len(posts) >= len(expected_posts) + 1,
@@ -418,8 +402,9 @@ def test_board_poll_heals_an_unfetched_github_that_renders_unknown_not_zero(
     authed_page: Page, base_url: str
 ) -> None:
     """#910: a Board left open while the webapp restarts sees the cache go
-    back to never-fetched on its next 5 s poll, and refreshes it by itself
-    instead of waiting for a ↻ tap or a tab switch. A never-fetched gh cache
+    back to never-fetched on its next 5 s poll, which still carries the view
+    header, so the server refreshes it without a ↻ tap or a tab switch (the
+    server half is unit-tested). A never-fetched gh cache
     must not read as "zero issues". Backlog and Done show an unknown count and
     a not-loaded message; Other keeps its real job count. Once a refresh
     genuinely comes back empty, the same columns show a plain 0 — a real zero
@@ -446,7 +431,8 @@ def test_board_poll_heals_an_unfetched_github_that_renders_unknown_not_zero(
     expect(external.locator(".avatar-badge")).to_have_count(0)
 
     with authed_page.expect_request(
-        lambda req: req.method == "POST" and req.url.endswith("/api/board/github/refresh"),
+        lambda req: req.method == "GET" and req.url.endswith("/api/board")
+        and req.headers.get("x-board-view") == "1",
         timeout=15_000,
     ):
         current["body"] = _unfetched_payload()
@@ -467,8 +453,6 @@ def test_board_poll_heals_an_unfetched_github_that_renders_unknown_not_zero(
         "fetched_at": _iso_utc(datetime.now(timezone.utc)),
         "error": None,
     }
-    # Opening the tab auto-refreshed the never-fetched cache; wait for that to
-    # settle, or this ↻ tap lands on the in-flight guard and is dropped.
     expect(authed_page.locator("#boardRefresh")).to_be_enabled()
     current["body"] = loaded_empty
     authed_page.locator("#boardRefresh").click()

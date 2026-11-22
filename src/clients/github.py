@@ -628,19 +628,6 @@ def workflow_states(owner: str, repo: str) -> Dict[Any, str]:
     return {r["id"]: str(r.get("state") or "") for r in rows if isinstance(r, dict) and "id" in r}
 
 
-# Matches the owner-check and CI sweeps' own cooldowns.
-AUTO_REFRESH_COOLDOWN_SECONDS = 60
-
-
-def recently_filled(seconds: float = AUTO_REFRESH_COOLDOWN_SECONDS) -> bool:
-    """Whether a refresh landed inside ``seconds``; never-filled or unreadable is no."""
-    try:
-        stamp = datetime.fromisoformat(str(snapshot().get("fetched_at")).replace("Z", "+00:00"))
-    except ValueError:
-        return False
-    return (datetime.now(timezone.utc) - stamp).total_seconds() < seconds
-
-
 def snapshot() -> Dict[str, Any]:
     """The cached GitHub view — a pure memory read, safe on every poll."""
     with _lock:

@@ -1,6 +1,7 @@
 """Red GitHub CI on each fleet repo's default branch, for the Board and the chief.
 
-The Board's GitHub refresh (``POST /api/board/github/refresh``) starts
+The Board's GitHub refresh (the ↻ tap's ``POST /api/board/github/refresh``,
+or the server's own while a Board is viewed) starts
 :func:`start_refresh`, which reads every fleet repo that has a workflow file
 with one ``gh api .../actions/runs`` call each and replaces the in-memory
 cache. ``GET /api/board`` turns the cache into cards with :func:`board_cards`,
@@ -20,7 +21,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from src import fleet_scope
 from src.board import ci_dismissed
@@ -46,15 +47,20 @@ _GREEN_CONCLUSIONS = frozenset({"success"})
 #: deleted) is a workflow whose last red run is permanent.
 _ACTIVE = "active"
 
-#: The Board's own staleness re-refresh comes every two minutes; one fleet
-#: sweep a minute is the most GitHub ever sees from here.
+#: The open Board's own refresh comes once per view TTL (five minutes); a tap
+#: can come sooner, but one fleet sweep a minute is the most GitHub ever sees.
 REFRESH_COOLDOWN_SECONDS = 60
 #: A handful of ``gh`` calls in flight keeps a sweep of ~30 repos short.
 _WORKERS = 4
+#: A remembered default branch is re-read at least this often even when its
+#: ref file looks unchanged, so a change the stat cannot see still lands.
+DEFAULT_BRANCH_TTL_SECONDS = 3600
 
 _lock = threading.Lock()
 _cache: Dict[str, Any] = {"fetched_at": None, "repos": {}, "error": None, "refreshing": False}
 _last_refresh_started: Optional[float] = None
+#: repo path -> (ref-file signature, monotonic time read, branch or None).
+_branch_cache: Dict[str, Tuple[Optional[int], float, Optional[str]]] = {}
 
 
 def _now_iso() -> str:
@@ -80,12 +86,41 @@ def ci_repos(fleet_config_dir: str, projects_dir: str) -> List[Dict[str, Any]]:
     return repos
 
 
-def default_branch(repo_path: Path) -> Optional[str]:
-    """The branch ``origin/HEAD`` names in the local clone, else ``None``."""
-    ref = run_git(repo_path, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])
-    if not ref or not ref.startswith("origin/"):
+def _origin_head_signature(repo_path: Path) -> Optional[int]:
+    """The ``origin/HEAD`` ref file's mtime, or ``None`` when it cannot be seen.
+
+    ``origin/HEAD`` is a symbolic ref, which git keeps as a loose file, so a
+    ``remote set-head`` or a re-clone rewrites this one file. A worktree
+    (``.git`` is a file) or an unset ref has no signature; its answer lives on
+    the TTL alone.
+    """
+    try:
+        return (Path(repo_path) / ".git" / "refs" / "remotes" / "origin" / "HEAD").stat().st_mtime_ns
+    except OSError:
         return None
-    return ref[len("origin/"):] or None
+
+
+def default_branch(repo_path: Path, *, now: Optional[float] = None) -> Optional[str]:
+    """The branch ``origin/HEAD`` names in the local clone, else ``None``.
+
+    Remembered per repo: every refresh asks for every CI repo and the answer
+    changes only with the ref file, so ``git`` runs again only on a new
+    ref-file signature or once :data:`DEFAULT_BRANCH_TTL_SECONDS` has passed.
+    A ``None`` is remembered the same way; a ref that appears later changes the
+    signature and is read at once.
+    """
+    tick = time.monotonic() if now is None else now
+    key = str(repo_path)
+    signature = _origin_head_signature(repo_path)
+    with _lock:
+        hit = _branch_cache.get(key)
+    if hit is not None and hit[0] == signature and tick - hit[1] < DEFAULT_BRANCH_TTL_SECONDS:
+        return hit[2]
+    ref = run_git(repo_path, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])
+    branch = (ref[len("origin/"):] or None) if ref and ref.startswith("origin/") else None
+    with _lock:
+        _branch_cache[key] = (signature, tick, branch)
+    return branch
 
 
 def summarize(
@@ -293,3 +328,4 @@ def reset_ci_cache() -> None:
     with _lock:
         _cache.update(fetched_at=None, repos={}, error=None, refreshing=False)
         _last_refresh_started = None
+        _branch_cache.clear()

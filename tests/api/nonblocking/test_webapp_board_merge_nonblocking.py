@@ -48,6 +48,7 @@ async def test_slow_session_merge_does_not_stall_the_board_poll(monkeypatch, tmp
         board_router.board_chief, "_reconcile_chief_labels", lambda live, rows: live
     )
     request = SimpleNamespace(
+        headers={},
         app=SimpleNamespace(
             state=SimpleNamespace(
                 webapp_config=SimpleNamespace(

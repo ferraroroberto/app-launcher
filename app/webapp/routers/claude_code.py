@@ -168,8 +168,12 @@ async def open_project_folder(project_id: str, request: Request) -> Dict[str, An
 # The git-status fan-out's own threads. One git_status per repo on the
 # loop's default executor filled it, so every other to_thread caller
 # (/api/version, sessions, config writes) queued behind a fleet-wide scan.
-# Bounded: a large fleet takes a little longer, and nothing else waits on it.
-_GIT_STATUS_POOL = TimedExecutor("git-status", max_workers=8)
+# Each worker runs its repo's git calls one after another, so the worker count
+# is the most git processes the scan ever has alive at once: two keeps a
+# fleet-wide scan from crowding the CPU beside the session polls, and the
+# scan is served from its cache while it runs, so a slower scan costs no wait.
+GIT_STATUS_MAX_CONCURRENT_GIT = 2
+_GIT_STATUS_POOL = TimedExecutor("git-status", max_workers=GIT_STATUS_MAX_CONCURRENT_GIT)
 
 
 # Overlapping calls share scans, and never a stale one: a call that
