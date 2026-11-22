@@ -321,7 +321,14 @@ and ⋮, which always fit beside a shrinking title. Only the Life OS
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-#terminalOverlay { --status-row: calc(var(--font-body-sm) * 1.45 + 16px); }
+#terminalOverlay {
+  --status-row: calc(var(--font-body-sm) * 1.45 + 16px);
+  /* The compose bar's own bottom padding (.compose-bar, 8px). The strip's line
+     is centred in the band from the input's edge to the card's bottom, not in
+     the strip alone, so it takes this much as bottom padding: the line rises
+     by half of it, and the strip's reserved row is unchanged. */
+  --strip-lead: 8px;
+}
 /* Where the vendored mic-notice sits: one row under the compose bar. The input
    name, level strip and timer are one group centred in the row, so a phone's
    rounded corners never cut either end; a long name takes the room left beside
@@ -556,7 +563,7 @@ and ⋮, which always fit beside a shrinking title. Only the Life OS
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 8px 12px;
+  padding: 0 12px var(--strip-lead);
   font-size: var(--font-body-sm);
   line-height: 1.45;
   text-align: center;
@@ -574,7 +581,7 @@ and ⋮, which always fit beside a shrinking title. Only the Life OS
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 8px 12px;
+  padding: 0 12px var(--strip-lead);
   font-size: var(--font-body-sm);
   line-height: 1.45;
   white-space: nowrap;
