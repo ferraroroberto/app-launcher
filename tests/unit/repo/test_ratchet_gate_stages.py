@@ -1,4 +1,4 @@
-"""The gate's docs-, structure-, instruction-, doc-refs-, dead-code-, conventions- and runtime-write-ratchet stages fail on exit 3 and on a new finding, by name.
+"""The gate's docs-, structure-, instruction-, doc-refs-, dead-code-, conventions-, runtime-write- and request-budget-ratchet stages fail on exit 3 and on a new finding, by name.
 
 The real stage text runs against a throwaway repo with `Fail` stubbed to exit 1; a bare
 `& $python scripts/<ratchet>.py` would let exit 3 ("not confirmed") pass."""
@@ -27,6 +27,7 @@ pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="the gate is a P
 _EXTRA_KEYS = {
     "conventions": 'rules = ["logging-not-print"]\n',
     "runtime_write": 'exclude = ["scripts/**"]\n',
+    "request_budget": 'browser_paths = ["static/**"]\n',
 }
 
 
@@ -69,6 +70,10 @@ def _stage(name: str) -> str:
     ("runtime_write", {"src/a.py": "from pathlib import Path\n\nPath(__file__).with_name('out.txt').write_text('x')\n"}, 1,
      ["runtime write ratchet failed", "src/a.py"]),
     ("runtime_write", {"src/a.py": "x = 1\n"}, 0, ["STAGE-PASSED"]),
+    ("request_budget", {"src/a.py": "def broken(:\n"}, 1, ["request budget ratchet NOT CONFIRMED ("]),
+    ("request_budget", {"static/a.js": "setInterval(() => fetch('/api/x'), 1500);\n"}, 1,
+     ["request budget ratchet failed", "static/a.js", "fixed-rate-poll"]),
+    ("request_budget", {"static/a.js": "const x = 1;\n"}, 0, ["STAGE-PASSED"]),
 ])
 def test_stage_verdict(tmp_path, name: str, files: dict[str, str], code: int, expected: list[str]) -> None:
     (tmp_path / "scripts").mkdir()
@@ -84,6 +89,8 @@ def test_stage_verdict(tmp_path, name: str, files: dict[str, str], code: int, ex
             shutil.copy2(REPO_ROOT / "scripts" / sibling, tmp_path / "scripts")
     if name == "runtime_write":
         shutil.copy2(REPO_ROOT / "scripts" / "runtime_write_resolve.py", tmp_path / "scripts")
+    if name == "request_budget":
+        shutil.copy2(REPO_ROOT / "scripts" / "request_budget_scan.py", tmp_path / "scripts")
     files = {f".{name.replace('_', '-')}-ratchet-baseline.json": '{"version": 1, "entries": []}\n', **files}
     files[".fleet.toml"] = files.get(".fleet.toml", "") + f"[{name}_ratchet]\nenabled = true\n{_EXTRA_KEYS.get(name, '')}"
     for path, text in files.items():

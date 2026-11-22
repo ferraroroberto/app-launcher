@@ -182,6 +182,10 @@ $ratchetStages = @(
     @{ Name = "ux surface"; Argv = @("scripts/ux_surface_ratchet.py")
        NotConfirmed = "a web file could not be read, its JS never closed, git was unusable, or docs/ux-surfaces.yaml is outside the strict subset"
        Failed = "a surface root has no data-surface id, an id has no entry in docs/ux-surfaces.yaml (or the reverse), one id sits on two surfaces, a link names no entry, or docs/ux-surface-map.md is not what scripts/ux_surface_map.py generates; see the named hit above." }
+    # Polling and background-loop waste only goes down: a new fixed-rate poll, sub-2 s poll, fast server loop, shared-pool submit or handler scan fails the ship.
+    @{ Name = "request budget"; Argv = @("scripts/request_budget_ratchet.py")
+       NotConfirmed = "a browser or Python file could not be read or parsed, its JS never closed, or git was unusable"
+       Failed = "a file's count for a request budget rule rose above .request-budget-ratchet-baseline.json; see the named rule and lines above." }
 )
 # ratchet-stages:end
 

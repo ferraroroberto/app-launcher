@@ -37,6 +37,8 @@
 /scripts/instruction_frontmatter.py
 /scripts/instruction_ratchet.py
 /scripts/instruction_repeats.py
+/scripts/request_budget_ratchet.py
+/scripts/request_budget_scan.py
 /scripts/runtime_write_ratchet.py
 /scripts/runtime_write_resolve.py
 /scripts/shot_baseline.py
