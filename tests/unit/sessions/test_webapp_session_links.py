@@ -156,6 +156,7 @@ async def test_board_cards_carry_the_same_provider_link_as_the_coding_tab(
         board_router.board_chief, "_reconcile_chief_labels", lambda live, rows: live
     )
     request = SimpleNamespace(
+        headers={},
         app=SimpleNamespace(
             state=SimpleNamespace(
                 webapp_config=SimpleNamespace(

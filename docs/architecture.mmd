@@ -166,6 +166,7 @@ read over loopback and cached behind /api/system/health"]
 act on ports or commit in the hub verdict,
 one machine-critical chief mailbox event per incident"]
     CIRUNS["board/ci_runs.py + chief/ci_failed.py\nred default-branch CI per fleet repo,\nci-failed chief mailbox events"]
+    VIEWREFRESH["board/view_refresh.py\none single-flight GitHub refresh\nper TTL while a Board is viewed"]
     NOTIFY["notifications.py\nPushover/Telegram on job failure"]
     WEBAPPCFG["webapp_config.py\nconfig/webapp_config.json"]
     LAUNCHFLAGS["launching/flags.py\nper-agent CLI flag builders"]
@@ -265,6 +266,7 @@ one machine-critical chief mailbox event per incident"]
   R_BOARD -->|"Done Issue/PR/Proof + report route"| PROOFREPORTS
   R_BOARD -->|"Your turn owner checks + answers"| OWNERCHECKS
   R_BOARD -->|"red CI cards + sweep on refresh"| CIRUNS
+  R_BOARD -->|"viewed poll starts the refresh"| VIEWREFRESH
   BOARD -->|reads| SESSSTATE["~/.claude/hooks/state/sessions-state.json\n(fleet-config session_state hook)"]
   BOARD -->|reads| ACTIVEISSUES["~/.claude/hooks/state/active-issues.json\n(fleet-config issue workflows)"]
   R_BOARD -->|"reads + writes\n(which conversation the chief is, #675)"| CHIEFPTR["src/chief/pointer.py →\nwebapp/chief-pointer.json"]

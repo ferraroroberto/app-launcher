@@ -65,8 +65,7 @@ _FAKE_BOARD = {
 
 def _board_payload(gh_age_seconds: int = 0) -> dict:
     """_FAKE_BOARD with ``fetched_at`` stamped relative to the real clock —
-    fresh by default so opening the tab does not trigger the stale-cache
-    auto-refresh; pass a large age to test that it does."""
+    fresh by default; pass a large age for a stale cache."""
     payload = copy.deepcopy(_FAKE_BOARD)
     payload["github"]["fetched_at"] = _iso_utc(
         datetime.now(timezone.utc) - timedelta(seconds=gh_age_seconds)
@@ -122,7 +121,7 @@ def _mock_board(page: Page, payload: dict | None = None, plan: dict | None = Non
     # The chief's plan rides the Board poll (#1279); no plan unless a test
     # serves one, so the real server's file never reaches a test.
     _route_plan_from(page, {"plan": plan or {"state": "empty"}})
-    # Default stub for the gh-refresh POST so an auto-refresh can never
+    # Default stub for the gh-refresh POST so a ↻ tap can never
     # escape to the real server (and its real gh subprocess). Tests that
     # care about the POST register their own capturing route *after* this
     # one — Playwright matches the most recently added route first.

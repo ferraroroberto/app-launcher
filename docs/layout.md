@@ -91,7 +91,7 @@ app-launcher/
 │   │                           #   the transcript overlay (transcript.py, dispatch_ids.py, transcript_exchange.py)
 │   │                           #   the Done lane's proof reports (proof_reports.py: a read-only view of each repo's `.proof/` store)
 │   │                           #   the owner checks (owner_checks.py: fleet-config's owner_check list, cached, and the Pending / Pause / Close / Problem marks; owner_try.py: an old check's Try quoted from its issue)
-│   │                           #   red GitHub CI per fleet repo (ci_runs.py: one Actions call per repo, cached)
+│   │                           #   red GitHub CI per fleet repo (ci_runs.py: one Actions call per repo, cached); the viewed Board's single-flight refresh (view_refresh.py)
 │   ├── chief/                  # the fleet chief: identity.py (which live session is the chief), the plan card, its pointer,
 │   │                           #   answered questions, dispatch briefs, the job-failed, ci-failed, machine-critical and cap-raised events
 │   ├── session_view/           # a live Coding session's views: typed transcript pages, Changed files, the Chat outbox,

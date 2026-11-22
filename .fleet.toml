@@ -609,7 +609,7 @@ time_budget_s         = 1200
 # 2026-11-22: 660 -> 661, one node (one test, chromium only) for tests/e2e/shell/test_build_restart.py: the build readout's restart sheet, whose
 # session-host target must show the live session count read when the sheet opens and post only on the second tap; no existing test opens that sheet,
 # and the stale-count refresh, the no-post first tap, the confirmed post and the failed-run report all ride that one node.
-test_budget = 661
+test_budget = 660
 
 # --- static assets under the webapp's static dir -> Chromium smoke ----------
 [[e2e.rule]]
