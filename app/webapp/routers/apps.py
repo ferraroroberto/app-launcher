@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import subprocess
+import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -29,6 +30,7 @@ from app.webapp.routers._helpers import (
     spawn_session_or_400,
 )
 from src import agents, app_runtime, audit
+from src import registry as registry_mod  # read at call time: tests repoint its path
 from src.app_config import AppConfig
 from src.diagnostics import (
     detect_local_scheme,
@@ -120,14 +122,53 @@ def _claude_code_entries(cfg: WebappConfig) -> List[AppEntry]:
     )
 
 
+# The projects-dir scan parses every project's .git/config and /api/apps is
+# polled every 4 s per open page, so the rows are rebuilt only when apps.json
+# or the projects dir's child list changes. A remote edited inside a project
+# touches neither, so the rows are also rebuilt once they are a minute old.
+_ROWS_MAX_AGE_S = 60.0
+_rows_lock = threading.Lock()
+_rows_cache: Dict[str, Any] = {"key": None, "at": 0.0, "rows": None}
+
+
+def _stat_key(path: Path) -> Optional[Tuple[int, int]]:
+    """``(mtime_ns, size)`` of ``path``, or ``None`` when it can't be read."""
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return (st.st_mtime_ns, st.st_size)
+
+
+def _cached_entries(cfg: WebappConfig) -> Tuple[Any, List[AppEntry]]:
+    """The registry and the live claude-code rows, re-read only when their
+    files change (or the cached copy is a minute old)."""
+    registry_path = Path(registry_mod.DEFAULT_REGISTRY_PATH)
+    projects_dir = Path(cfg.projects_dir)
+    key = (
+        str(registry_path), _stat_key(registry_path),
+        str(projects_dir), _stat_key(projects_dir),
+        tuple(cfg.projects_ignore),
+    )
+    now = time.monotonic()
+    with _rows_lock:
+        if _rows_cache["key"] == key and now - _rows_cache["at"] < _ROWS_MAX_AGE_S:
+            return _rows_cache["rows"]
+    rows = (load_registry(), _claude_code_entries(cfg))
+    with _rows_lock:
+        _rows_cache.update(key=key, at=now, rows=rows)
+    return rows
+
+
 def _registry_rows(cfg: WebappConfig) -> Tuple[Any, List[Dict[str, Any]]]:
     """The registry and every row decorated for the API. claude-code rows are
     computed live from ``projects_dir``; the bat-based kinds come from the
     persisted registry, and any stale claude-code row left in an older
-    apps.json is ignored."""
-    registry = load_registry()
+    apps.json is ignored. Decorated per call: a tunnel's URL file changes on
+    every tunnel restart, and the route adds fields to each row."""
+    registry, claude_rows = _cached_entries(cfg)
     bat_entries = [a for a in registry.apps if a.kind != KIND_CLAUDE_CODE]
-    return registry, [decorate_for_api(a) for a in _claude_code_entries(cfg) + bat_entries]
+    return registry, [decorate_for_api(a) for a in claude_rows + bat_entries]
 
 
 @router.get("/api/apps")

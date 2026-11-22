@@ -82,6 +82,7 @@ import { ClaimState, claimState } from './board/claim-state.js';
 import { pollIdeas, renderIdeas, wireIdeas } from './board/ideas-card.js';
 import { pollJournal, wireJournal } from './board/chief-journal.js';
 import { syncFoldAll, wireFoldAll } from './board/fold-all.js';
+import { singleFlight } from './shared/poll.js';
 import {
   bucketChipEls, bucketNodes, hasBuckets, notPlannedCount,
 } from './board/backlog-buckets.js';
@@ -424,7 +425,7 @@ async function dismissAlert(btn, path, opts, isSame) {
       state.board.columns.other = other.filter(function (c) { return !isSame(c); });
       renderBoard();
     }
-    fetchBoard().catch(function () {});
+    fetchBoard.fresh().catch(function () {});
   } catch (exc) {
     apiFailToast('Could not dismiss the alert', exc);
     btn.disabled = false;
@@ -795,7 +796,10 @@ export function renderBoard() {
 
 // ----------------------------------------------------------------- fetch
 
-export async function fetchBoard() {
+// One Board read in flight per page: the poll, a visit and a retry share it.
+export const fetchBoard = singleFlight(readBoard);
+
+async function readBoard() {
   // Self-gate: costs nothing while another tab is up (pattern: fetchJobs).
   // No drawer gate: the chief chat keeps a drawer open for hours, and
   // pausing on it froze the whole Board silently. renderBoard() keeps the
@@ -914,7 +918,7 @@ async function refreshGithub() {
     if (github && github.error) {
       toast('GitHub refresh failed: ' + github.error, 'error');
     }
-    await fetchBoard();
+    await fetchBoard.fresh();
   } finally {
     refreshInFlight = false;
     setRefreshBusy(false);
@@ -951,10 +955,6 @@ export function wireBoard() {
   wireJournal();
   openDesktopColumns();
   wireFoldAll(els.boardFoldAll, els.boardColumns);
-  // Back in the foreground: an aged cache refreshes now, not on the next poll.
-  document.addEventListener('visibilitychange', function () {
-    if (!document.hidden) fetchBoard().catch(function () {});
-  });
   els.boardRefresh.addEventListener('click', function () {
     refreshGithub().catch(function (exc) {
       apiFailToast('GitHub refresh failed', exc);

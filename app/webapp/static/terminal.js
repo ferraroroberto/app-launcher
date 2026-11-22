@@ -71,6 +71,7 @@ import {
 import { voiceDictationAvailable } from './voice.js';
 import { isWideLayout } from './layout.js';
 import { ensureTerminalToken } from './webauthn.js';
+import { startPoll } from './shared/poll.js';
 // Mode routing. Circular with this module by design (same shape as
 // sessions.js ↔ terminal.js): nothing here runs at import time.
 import {
@@ -213,8 +214,8 @@ function disposeTerminal(t) {
   clearTerminalReconnect(t);
   // Cancels a screen-first history pass still waiting to parse.
   t.historyGen = (t.historyGen || 0) + 1;
-  if (t.sizeTimer) clearInterval(t.sizeTimer);
-  if (t.titleTimer) clearInterval(t.titleTimer);
+  if (t.stopSizePoll) t.stopSizePoll();
+  if (t.stopTitlePoll) t.stopTitlePoll();
   if (t.disposeTouch) { try { t.disposeTouch(); } catch (_) {} }
   if (t.disposeLatest) { try { t.disposeLatest(); } catch (_) {} }
   if (t.onWindowResize) window.removeEventListener('resize', t.onWindowResize);
@@ -540,9 +541,9 @@ function registerWarmTerminal(t) {
 // overlay is open or closed — just a direct fetch with no Running-sessions
 // list re-render, which is what the main poll's pause deliberately avoids.
 function startTitleRefresh(t) {
-  t.titleTimer = setInterval(function () {
+  t.stopTitlePoll = startPoll(function () {
     if (t !== state.terminal) return;
-    jsonApi('/api/claude-code/sessions').then(function (body) {
+    return jsonApi('/api/claude-code/sessions').then(function (body) {
       if (t !== state.terminal) return;
       const s = (body.sessions || []).find(function (x) {
         return x.session_id === t.sid;
@@ -715,8 +716,8 @@ function wireSizeTracking(t) {
   const applySize = t.applySize;
   if (t.mirror) {
     // The phone may rotate or resize — re-sync to its size periodically.
-    t.sizeTimer = setInterval(function () {
-      fetchSessions().then(applySize).catch(function () {});
+    t.stopSizePoll = startPoll(function () {
+      return fetchSessions().then(applySize);
     }, 2500);
     return;
   }

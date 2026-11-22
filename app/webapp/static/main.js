@@ -52,6 +52,7 @@ import { fetchWebauthnStatus, wireWebauthn, writeTerminalToken } from './webauth
 import { renderSettingsHead } from './home-head.js';
 import { isWideLayout } from './layout.js';
 import { icon } from './_vendored/icons/icons.js';
+import { startPoll } from './shared/poll.js';
 
 // --------------------------------------------------------- settings panel
 // No Edit mode: Add, Edit and Remove are always one tap away, so there is
@@ -382,71 +383,56 @@ function consumeSessionParams() {
 
 // Each poll arms once its own first fetch has settled, so it never
 // overlaps it, and never waits on a slower, unrelated one: a git scan
-// still running must not hold back the Jobs poll.
+// still running must not hold back the Jobs poll. A second boot (a sign-in
+// after a 401) arms nothing more: the polls already running carry on.
+let pollsArmed = false;
 function armPolls(first) {
-  const noop = function () {};
+  if (pollsArmed) return;
+  pollsArmed = true;
   first.lists.then(function () {
-    setInterval(function () {
-      fetchApps().catch(noop);
-    }, TUNNEL_POLL_MS);
-    setInterval(function () {
+    startPoll(function () { return fetchApps(); }, TUNNEL_POLL_MS);
+    startPoll(function () {
       // Pause the session poll while the session overlay is open (either
       // mode) — it would re-render the list under the overlay for no
       // reason. The open terminal keeps its own title poll (terminal.js).
       // Not on the wide layout: the view docks beside the list
       // so the list is on screen and must keep updating — a session
       // that ends there would otherwise keep its card until a reload.
-      if (!state.sessionView || isWideLayout()) fetchSessions().catch(noop);
+      if (!state.sessionView || isWideLayout()) return fetchSessions();
     }, SESSIONS_POLL_MS);
   });
   first.usage.then(function () {
-    setInterval(function () {
-      fetchRateLimits().catch(noop);
-      // Context filter rides the same cadence as the usage
-      // meter above — no dedicated timer for one more lightweight GET.
-      fetchContextFilter().catch(noop);
+    // Context filter rides the same cadence as the usage meter: no
+    // dedicated poll for one more lightweight GET.
+    startPoll(function () {
+      return Promise.all([fetchRateLimits(), fetchContextFilter()]);
     }, SESSIONS_POLL_MS);
   });
   first.listeners.then(function () {
-    setInterval(function () {
-      fetchListeners().catch(noop);
-    }, LISTENERS_POLL_MS);
+    startPoll(function () { return fetchListeners(); }, LISTENERS_POLL_MS);
   });
   first.running.then(function () {
-    setInterval(function () {
-      // fetchRunningApps() self-gates: it no-ops unless the Apps tab is up.
-      fetchRunningApps().catch(noop);
-    }, RUNNING_APPS_POLL_MS);
+    // fetchRunningApps() self-gates: it no-ops unless the Apps tab is up.
+    startPoll(function () { return fetchRunningApps(); }, RUNNING_APPS_POLL_MS);
   });
   first.webauthn.then(function () {
-    setInterval(function () {
-      fetchWebauthnStatus().catch(noop);
-    }, WEBAUTHN_POLL_MS);
+    startPoll(function () { return fetchWebauthnStatus(); }, WEBAUTHN_POLL_MS);
   });
   first.load.then(function () {
-    setInterval(function () {
-      // Every tab's header shows it; fetchSystemLoad() skips a hidden page.
-      fetchSystemLoad().catch(noop);
-    }, SYSTEM_LOAD_POLL_MS);
+    // Every tab's header shows it.
+    startPoll(function () { return fetchSystemLoad(); }, SYSTEM_LOAD_POLL_MS);
   });
   first.git.then(function () {
-    setInterval(function () {
+    startPoll(function () {
       // Always-on git flags: refresh only while the tab that shows
-      // them (Code; the Board's Backlog doesn't draw them) is visible and
-      // the page is foreground — a backgrounded PWA must not keep spawning
-      // git subprocesses.
-      if (document.hidden) return;
+      // them (Code; the Board's Backlog doesn't draw them) is up.
       if (state.tab !== 'claude') return;
-      refreshGitStatus({ quiet: true }).catch(noop);
+      return refreshGitStatus({ quiet: true });
     }, GIT_STATUS_POLL_MS);
   });
   // No boot fetch of their own: both self-gate to their tab.
-  setInterval(function () {
-    fetchJobs().catch(noop);
-  }, JOBS_POLL_MS);
-  setInterval(function () {
-    fetchBoard().catch(noop);
-  }, BOARD_POLL_MS);
+  startPoll(function () { return fetchJobs(); }, JOBS_POLL_MS);
+  startPoll(function () { return fetchBoard(); }, BOARD_POLL_MS);
 }
 
 // --------------------------------------------------------- wire + go

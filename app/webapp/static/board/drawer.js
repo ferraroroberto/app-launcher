@@ -32,25 +32,26 @@ import { exchangeState } from './exchange-state.js';
 import { isChiefCard } from './board-dispatch.js';
 import { markLooked } from './journal-look.js';
 import { fetchBoard, noteBoardEdit, renderBoard, sessionLabel } from '../board.js';
+import { startPoll } from '../shared/poll.js';
 
 // Chief-only exchange refresh: loadExchange is one-shot, fine for a
 // worker drawer you glance at — but a chat conversation needs the chief's
 // reply to *arrive*. While the chief's drawer is open, re-run loadExchange
-// on a short interval. Cleared unconditionally at the top of renderBoard()
+// on a short poll. Stopped unconditionally at the top of renderBoard()
 // whenever that render doesn't keep the open drawer, and every close
 // path goes through it.
-let chiefExchangeTimer = null;
+let stopChiefExchange = null;
 const CHIEF_EXCHANGE_POLL_MS = 5000;
 
 // The open drawer's shared composer (the same component the session
 // overlay mounts), replacing the private reply box and its per-drawer
-// mic. Same lifecycle problem as chiefExchangeTimer above: a drawer
+// mic. Same lifecycle problem as stopChiefExchange above: a drawer
 // collapse (state.boardExpanded set to null, then renderBoard() rebuilds the
 // card list) drops the composer's DOM node with no teardown, so a recording
 // in flight (or a still-finalizing one) stayed live and held the app-wide
 // dictation mutex indefinitely. reset() — which dispose()s the mic and closes
 // the composer's popovers — runs at the top of renderBoard() under the same
-// rule as chiefExchangeTimer. A kept drawer keeps this instance, its
+// rule as stopChiefExchange. A kept drawer keeps this instance, its
 // draft and a live recording included.
 let drawerComposer = null;
 
@@ -162,11 +163,11 @@ export function buildDrawer(card) {
   drawer.appendChild(exchange);
   loadExchange(card, exchange);
   if (isChiefCard(card)) {
-    chiefExchangeTimer = setInterval(function () {
+    stopChiefExchange = startPoll(function () {
       // Defensive: a tab switch doesn't re-render the board, so gate on
       // the drawer actually still being the visible one.
       if (state.tab !== 'board' || state.boardExpanded !== card.session_id) return;
-      loadExchange(card, exchange);
+      return loadExchange(card, exchange);
     }, CHIEF_EXCHANGE_POLL_MS);
   }
   // A session that has ended has nothing to reply to or act on.
@@ -237,7 +238,7 @@ export function buildDrawer(card) {
         await stopSession({ session_id: card.session_id, name: sessionLabel(card) });
         // The host stops gracefully (quit → force) — give it the same beat
         // sessions.js gives fetchSessions before reconciling the board.
-        setTimeout(function () { fetchBoard().catch(function () {}); }, 1500);
+        setTimeout(function () { fetchBoard.fresh().catch(function () {}); }, 1500);
       },
     },
   ]).dataset.surface = 'board.drawer-menu';
@@ -378,9 +379,9 @@ export function openDrawerItem(card) {
 // instead of wedging every other mic in the app.
 export function syncDrawerLifecycle(openItem) {
   if (!openItem) {
-    if (chiefExchangeTimer) {
-      clearInterval(chiefExchangeTimer);
-      chiefExchangeTimer = null;
+    if (stopChiefExchange) {
+      stopChiefExchange();
+      stopChiefExchange = null;
     }
     if (drawerComposer) {
       drawerComposer.reset();
