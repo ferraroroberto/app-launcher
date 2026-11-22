@@ -56,7 +56,13 @@ from app.webapp.routers import (
 )
 from app.webapp.routers._helpers import STATIC_DIR
 from app.webapp.static_trim import trim_js
-from src import app_runtime, instance_role, process_auto_restart, system_load
+from src import (
+    app_runtime,
+    instance_role,
+    process_auto_restart,
+    request_timing,
+    system_load,
+)
 from src.app_config import load_app_config
 from src.auth.webauthn_gate import WebAuthnGate
 from src.chief import machine_critical
@@ -446,6 +452,9 @@ async def _channel_autostart(app: FastAPI) -> None:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
+    # The loop's own default executor, swapped for one that reports queue and
+    # worker time to the request that submitted the work (src/request_timing).
+    asyncio.get_running_loop().set_default_executor(request_timing.default_executor())
     await _reconcile_orphan_mirror_windows(app)
     # Launched apps outlive a launcher restart; take the previous launcher's
     # records back now so the line naming any that died lands at boot.
@@ -524,6 +533,11 @@ async def _lifespan(app: FastAPI):
                 pass
 
 
+def _budget_overrides(app: FastAPI):
+    """The config's ``request_budgets``, read per request so a save applies live."""
+    return lambda: getattr(getattr(app.state, "webapp_config", None), "request_budgets", None)
+
+
 def create_app() -> FastAPI:
     app_config = load_app_config()
     webapp_cfg = load_webapp_config()
@@ -545,7 +559,7 @@ def create_app() -> FastAPI:
         get_config=lambda: app.state.webapp_config,
     )
     # Outside the auth middleware, so the timing covers it.
-    app.add_middleware(SlowRequestLogMiddleware)
+    app.add_middleware(SlowRequestLogMiddleware, get_budget_overrides=_budget_overrides(app))
     # Added last → outermost, so an auth failure or a bodyless 304 passes
     # through it unchanged. No bypass path: the TTS proxy is `audio/L16` and
     # the SSE stream is `text/event-stream`, both skipped by content type.

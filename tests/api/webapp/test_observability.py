@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.webapp.observability import SlowRequestLogMiddleware
+from src.request_timing import RequestStats, TimedExecutor
 
 _SLOW_LOGGER = "launcher.slowreq"
 
@@ -83,3 +84,86 @@ def test_env_defaults_applied(monkeypatch):
     mw = SlowRequestLogMiddleware(app=None)
     assert mw.slow_s == 7.5
     assert mw.inflight_warn == 12
+
+
+# --- per-request timings and budgets ---------------------------------------
+
+
+def _timed_client(**mw_kwargs) -> TestClient:
+    pool = TimedExecutor("probe", max_workers=1)
+    app = FastAPI()
+
+    @app.get("/api/board")
+    async def board():
+        await asyncio.get_running_loop().run_in_executor(pool, lambda: None)
+        await asyncio.sleep(0.06)
+        return {"ok": True}
+
+    @app.get("/api/quiet")
+    async def quiet():
+        return {"ok": True}
+
+    app.add_middleware(SlowRequestLogMiddleware, slow_s=999.0, stats=RequestStats(), **mw_kwargs)
+    return TestClient(app)
+
+
+def _slow_lines(caplog):
+    return [r.getMessage() for r in caplog.records if r.name == _SLOW_LOGGER]
+
+
+def test_every_api_response_carries_queue_worker_and_total():
+    client = _timed_client()
+    header = client.get("/api/board").headers["server-timing"]
+    assert "queue;dur=" in header and "worker;dur=" in header and 'desc="probe"' in header
+    assert "app;dur=" in header
+    quiet = client.get("/api/quiet").headers["server-timing"]
+    assert 'desc="none"' in quiet  # no thread used, said plainly
+
+
+def test_over_soft_limit_logs_over_budget_with_the_split(caplog):
+    client = _timed_client(get_budget_overrides=lambda: {"board": [0.01, 5.0]})
+    with caplog.at_level(logging.WARNING, logger=_SLOW_LOGGER):
+        client.get("/api/board")
+    lines = _slow_lines(caplog)
+    assert any("over budget" in line and "(board)" in line and "pool=probe" in line for line in lines)
+    assert not any("budget breach" in line for line in lines)
+
+
+def test_over_hard_limit_logs_a_breach_with_the_split(caplog):
+    client = _timed_client(get_budget_overrides=lambda: {"board": [0.01, 0.02]})
+    with caplog.at_level(logging.WARNING, logger=_SLOW_LOGGER):
+        client.get("/api/board")
+    assert any(
+        "budget breach" in line and "queue_ms=" in line and "worker_ms=" in line
+        and "total_ms=" in line and "pool=probe" in line
+        for line in _slow_lines(caplog)
+    )
+
+
+def test_a_request_inside_its_budget_stays_silent(caplog):
+    client = _timed_client(get_budget_overrides=lambda: {"board": [30.0, 60.0]})
+    with caplog.at_level(logging.WARNING, logger=_SLOW_LOGGER):
+        client.get("/api/board")
+    assert not _slow_lines(caplog)
+
+
+def test_slow_line_carries_the_split(caplog):
+    client = _make_client()
+    with caplog.at_level(logging.WARNING, logger=_SLOW_LOGGER):
+        client.get("/slow")
+    assert any("total_ms=" in line for line in _slow_lines(caplog))
+
+
+def test_request_stats_reports_the_table_and_the_cache_age_without_scanning(webapp_client):
+    client, app, _ = webapp_client
+    app.state.webapp_config.request_budgets = {"board": [2.0, 4.0]}
+    res = client.get("/api/request-stats", params={"window_s": 60})
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["budgets"]["board"] == {"soft_s": 2.0, "hard_s": 4.0}
+    assert body["budgets"]["send"] == {"soft_s": 5.0, "hard_s": 10.0}
+    assert body["window_s"] == 60
+    assert body["max_inflight"] >= 1  # this very request
+    assert body["git_status_age_s"] is None  # no scan has run, and asking started none
+    assert getattr(app.state, "git_status_cache", None) in (None, {})
+    assert client.get("/api/request-stats", params={"window_s": 0}).status_code == 422

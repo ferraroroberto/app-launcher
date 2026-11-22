@@ -11,7 +11,6 @@ import asyncio
 import functools
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -26,6 +25,7 @@ from src.launching.vscode_workspace import (
     open_workspace,
 )
 from src.registry import load_registry
+from src.request_timing import TimedExecutor
 from src.scanner import ProjectDir, git_status, scan_project_dirs
 from src.session_view.git_changes import (
     file_diff,
@@ -169,7 +169,7 @@ async def open_project_folder(project_id: str, request: Request) -> Dict[str, An
 # loop's default executor filled it, so every other to_thread caller
 # (/api/version, sessions, config writes) queued behind a fleet-wide scan.
 # Bounded: a large fleet takes a little longer, and nothing else waits on it.
-_GIT_STATUS_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="git-status")
+_GIT_STATUS_POOL = TimedExecutor("git-status", max_workers=8)
 
 
 # Overlapping calls share scans, and never a stale one: a call that
@@ -308,7 +308,7 @@ async def claude_git_status(request: Request, fresh: bool = False) -> Dict[str, 
 # ------------------------------------------------------------- fetch and sync
 # The fetches and fast-forwards get their own threads: each is network-bound
 # or writes a checkout, and none may queue behind (or hold up) the status scan.
-_SYNC_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="git-sync")
+_SYNC_POOL = TimedExecutor("git-sync", max_workers=8)
 # One fetch-all or sync at a time: two overlapping runs would fetch every repo
 # twice and could race two fast-forwards on one checkout.
 _SYNC_LOCK = asyncio.Lock()

@@ -1,6 +1,7 @@
 """CLI subcommand registry."""
 
 from .base import BaseCommand
+from .health_cmd import HealthCommand
 from .life_os_zombie_cmd import LifeOsZombieCommand
 from .perf_summary_cmd import PerfSummaryCommand
 from .run_job_cmd import RunJobCommand
@@ -19,6 +20,7 @@ COMMANDS = {
     "usage-export": UsageExportCommand,
     "perf-summary": PerfSummaryCommand,
     "life-os-zombie-cleanup": LifeOsZombieCommand,
+    "health": HealthCommand,
 }
 
 
