@@ -17,6 +17,7 @@ app-launcher/
 │       ├── shell_html.py      # splices static/views/*.html into index.html where its include markers sit
 │       ├── static_trim.py     # strips comments from the JS modules the static mount serves
 │       ├── demand_cache.py    # a slow read kept in memory and rebuilt in the background while it is polled (/api/version, the channel list)
+│       ├── restart_targets.py # the build readout's restart sheet: its two targets (app, session-host + live session count) and the passkey guard
 │       ├── session_host/      # loopback PTY host on :8446 — owns every claude ConPTY; a second HTTP
 │       │                      #   surface with its own server.py, so the webapp mounts nothing from it
 │       ├── routers/           # split API routers (config, sessions, life_os, board, …)
@@ -32,7 +33,7 @@ app-launcher/
 │           ├── jobs/          # Jobs tab modules beside jobs.js: a job row, a Recent runs row, the agenda, the job dialog
 │           ├── life-os/       # Life OS tab modules beside life-os.js: conversations, the doc browser, the conversation viewer
 │           ├── screen/        # the Screen view: the socket and lifecycle (screen-view.js), control, keys, quality, and their pure helpers
-│           ├── shared/        # modules several views import: the model picker, session-kind predicates, number/date formatting, the launch-size contract, the Mermaid diagram renderer (mermaid-render.js)
+│           ├── shared/        # modules several views import: the model picker, session-kind predicates, number/date formatting, the launch-size contract, the Mermaid diagram renderer (mermaid-render.js), the build readout's restart wiring (build-restart.js)
 │           ├── settings/      # Settings sheets and cards: launch defaults, API tokens, Telegram, the context filter, fleet scope, inspiration sources, the Documents group and its reading sheet
 │           ├── terminal/      # the Terminal pane's modules beside terminal.js: bar, composer bytes, socket, keys, mirror, read-aloud, theme, touch
 │           └── styles/        # the app's own CSS: base.css (tokens, tabs, shell) + one file per view, linked in cascade order
@@ -75,6 +76,7 @@ app-launcher/
 │   ├── notifications.py        # notify_on_failure dispatch
 │   ├── notify/                 # vendored provider package behind notifications.py (Telegram, …)
 │   ├── usage_log.py            # vendored: local view/tap log router + SQLite store
+│   ├── self_restart.py         # vendored: /api/restart routes, the detached restart runner and its run record
 │   ├── auth/                   # credentials beyond the main token: api_tokens.py (job-scoped tokens), the delegate token,
 │   │                           #   webauthn_gate.py (passkey enrollment / assertion + terminal tokens)
 │   ├── middleware/             # the webapp's auth gate: trust.py (loopback/tailnet), credentials, routes (guard table), terminal_gate, bearer

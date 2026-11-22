@@ -1,0 +1,42 @@
+/* Fleet page-foot restart sheet (VENDORED VERBATIM from project-scaffolding).
+ *
+ * The sheet itself is the vendored `modal` shell; this file adds only the
+ * tappable readout and the sheet's status line and log. Link it after
+ * page-foot.css and modal.css. The readout keeps every type property
+ * page-foot.css pins; only the cursor, a dotted underline and an invisible
+ * hit area are added, and only when the app offers a restart.
+ */
+
+.page-foot-restart {
+  position: relative;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+/* The readout is 12px text: the pseudo-element grows its touch target to the
+   fleet minimum without moving the footer's layout. */
+.page-foot-restart::after {
+  content: "";
+  position: absolute;
+  inset: calc((var(--hit-min, 44px) - 1.1em) / -2) 0;
+}
+
+.restart-sheet-note {
+  margin: var(--space-sm, 8px) 0;
+  color: var(--ink);
+}
+
+.restart-sheet-note[data-tone="warning"],
+.restart-sheet-note[data-tone="error"] {
+  color: var(--danger-text);
+}
+
+.restart-sheet-log {
+  margin: 0 0 var(--space-sm, 8px);
+  max-height: 10rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--muted);
+}

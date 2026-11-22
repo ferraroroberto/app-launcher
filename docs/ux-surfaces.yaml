@@ -201,6 +201,26 @@ surfaces:
       none: the page foot, one line at the end of the column outside every tab panel.
     holds:
       - the running build and when it started
+    does:
+      - a tap or Enter opens the restart sheet
+
+  - id: app.restart-sheet
+    area: chrome
+    title: Restart sheet
+    root: data-surface
+    reach:
+      - a tap on the build readout
+    holds:
+      - a picker, Restart app or Restart session-host
+      - a status line and, after a failure, the recipe's last log lines
+      - one primary action named after the picked target
+    does:
+      - Restart app runs the repo's own tray restart, waits for the new build and reloads
+      - Restart session-host first shows how many live terminal sessions it will end, and runs only on a second tap, Restart anyway
+      - a failed, timed-out or unconfirmed restart says so and does not reload
+    states:
+      - refused without the passkey (or the PC itself), a restart already running, restarted, failed, not confirmed, timed out
+    why: the fleet's vendored page-foot restart sheet; the app declares its two targets in app/webapp/restart_targets.py
 
   # -------------------------------------------------------------------- code
   - id: code.tab

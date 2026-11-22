@@ -9,6 +9,7 @@ The fleet's canonical **page-foot**: a centered, quiet footer line — `Build: <
 | `page-foot.css` | Visual contract — centered layout, muted text, and its own pinned type: the design.md `caption` style (system-ui, 12px, 600, line-height 1.1) with tabular numerals. Inherits nothing from the app's body or container font, and doesn't depend on external `.muted`/`.small` utility classes. |
 | `page-foot.js` | ESM — `fmtBuildTime(iso)` + `buildReadoutText(sha, builtAtIso)`, the one shared text formatter so the footer string can't drift between apps. |
 | `page-foot.html` | Markup skeleton to copy and adapt. |
+| `restart-sheet.js` / `restart-sheet.css` | Optional restart on a tap of the readout; see "Restart from the readout". |
 
 ## How to vendor
 
@@ -62,6 +63,62 @@ An app that has never shown a build line, or has its own, does these in order:
 - The `<p>`'s text is set entirely by `buildReadoutText()`; no additional class is needed (the styling is self-contained in `page-foot.css`, not borrowed from generic `.muted`/`.small` utilities).
 - Any reload-on-stale-asset logic (e.g. home-automation's asset-hash comparison that triggers one automatic reload after a deploy) is orthogonal to the footer text and stays app-specific — out of scope here.
 
+## Restart from the readout
+
+Optional. An app whose tray declares a restart recipe can let the owner tap the build readout and restart the app from any client that can already use it, the phone over the tailnet included. Two halves, both vendored verbatim:
+
+| File | Role |
+| --- | --- |
+| `restart-sheet.js` | `initRestartSheet(opts?)`: reads `GET /api/restart`; with no targets, or no route, the readout stays plain text. Otherwise the readout becomes a button (`data-track="build.restart-open"`) opening a `modal` sheet (`data-track-view="build.restart"`, `data-surface="app.restart-sheet"`). Also exports the pure `outcome()` decision and the `POLL_INTERVAL_MS` / `RESTART_TIMEOUT_MS` cadence. |
+| `restart-sheet.css` | The tappable readout (cursor, dotted underline, a 44px hit area that moves nothing) and the sheet's status line and log. |
+| `src/self_restart.py` | The server half (manifest key `self_restart`): `GET`/`POST /api/restart`, the detached runner and the run record. |
+
+### Server
+
+```python
+from src.runtime_data import runtime_data_dir
+from src.self_restart import TRAY_RESTART, RestartTarget, restart_router
+
+app.include_router(restart_router(
+    targets=[RestartTarget("app", "Restart app", TRAY_RESTART)],
+    status_dir=runtime_data_dir("my-app", create=True) / "restart",
+    guard=require_auth,   # the dependency the app's other write routes use
+))
+```
+
+- **Auth is the app's.** `guard` is required and has no default: the same dependency that protects the app's other write routes, so any signed-in client may restart and nobody else can. The `POST` also needs an `Origin` matching the request's host, so another site cannot post a restart from a signed-in browser.
+- **Only declared targets run.** Targets are declared in code, each a fixed argv run from the checkout root; the client sends a target id, never a command. `TRAY_RESTART` is the repo's own `tray.bat --restart`, spelled `cmd.exe /c .\tray.bat --restart` because `cmd` does not search the working directory when `NoDefaultCurrentDirectoryInExePath=1`. A target with a `warning` makes the sheet ask twice and show it. More than one target adds a picker (`data-track="build.restart-target"`).
+- **The runner leaves the tray's tree.** `tray.bat --restart` kills the tray's whole tree, webapp included, so the runner starts through `cmd /c start` and is no one's child when the kill comes. It runs the recipe with the target's timeout (default 180 s) and writes `last.json` (the record) and `last.log` (the recipe's output) under `status_dir`.
+- **The recipe runs from the launch spelling.** The checkout root comes from the process's own `sys.prefix`, which keeps the path spelling the tray was started from; `Path.resolve()` would replace a junctioned fleet root with its target.
+- **One run at a time.** A `POST` while a run is in flight answers `409`. A record still `running` 30 s past its timeout reads `unknown`, the runner having vanished, and frees the slot.
+
+### Client
+
+```html
+<link rel="stylesheet" href="/static/_vendored/modal/modal.css">
+<link rel="stylesheet" href="/static/_vendored/page-foot/restart-sheet.css">
+```
+```js
+import { initRestartSheet } from '/static/_vendored/page-foot/restart-sheet.js';
+initRestartSheet();   // or initRestartSheet({ fetchJson: jsonApi }) when reads carry a bearer
+```
+
+The sheet needs the `modal`, `button`, `icon-button` and (with a picker) `select-native` stylesheets. Add `app.restart-sheet` to the app's UX surface map.
+
+### Outcomes
+
+After the `202`, the page polls `/api/version` and `/api/restart` every 1.5 s for up to 90 s. `built_at` is captured at process start, so a new process shows even when the SHA did not change.
+
+| Outcome | When | Shown |
+| --- | --- | --- |
+| restarted | a new `built_at`, and the record says `ok` | "Restarted · Build: …", then one reload |
+| failed | the record says `failed`, `timeout`, `error` or `unknown` | the reason, the exit code and the log tail; no reload |
+| not confirmed | at 90 s: a new process without an `ok` record, or `ok` without a new process | "The app is back, but the restart result is not confirmed." |
+| timed out | at 90 s: no new process and no `ok` | "The app did not come back in 90 s", with the PC command |
+| refused | `401`/`403` or `409` on the `POST` | "Not allowed from here" / "A restart is already running" |
+
+An unknown result is never shown as success. Pinned by `tests/vendored/test_restart_sheet.py` (the real module under Node) and `tests/vendored/test_self_restart.py` (the routes, every runner ending, and a runner that outlives a `taskkill /T` of its parent).
+
 ## Required design tokens
 
 | Token | Light value | Used for |
@@ -70,6 +127,10 @@ An app that has never shown a build line, or has its own, does these in order:
 | `--font-caption` | `0.75rem` | readout text size (falls back to `0.75rem`) |
 | `--space-md` | `16px` | outer vertical margin (falls back to `16px`) |
 | `--space-xs` | `4px` | outer horizontal margin (falls back to `4px`) |
+| `--ink` | `#1f2328` | restart sheet status text |
+| `--danger-text` | `#a40e26` | restart sheet warning and failure text |
+| `--hit-min` | `44px` | the tappable readout's touch target (falls back to `44px`) |
+| `--space-sm` | `8px` | restart sheet status and log spacing (falls back to `8px`) |
 
 The font family has no token: design.md names it per type style (`system-ui, -apple-system, "Segoe UI", sans-serif`), so the CSS carries it literally. An app's own `--font` is deliberately not read.
 
