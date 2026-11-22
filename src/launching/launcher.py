@@ -30,11 +30,14 @@ import threading
 import time
 import webbrowser
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from src.app_runtime import find_child_process
 from src.clients import session as session_client
+from src.desktop.browser import find_browser
+from src.runtime_data import runtime_data_dir
 from src.subprocess_flags import NO_WINDOW
+from src.webapp_settings.values import DEFAULT_MIRROR_BROWSER
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +50,10 @@ _START_HOP_TIMEOUT_SECONDS = 10.0
 _WM_CLOSE = 0x0010
 
 # Title the PC mirror page sets on load (see terminal.js). EnumWindows
-# matches on this to find the Edge --app window that hosts the mirror —
-# the spawned msedge.exe PID hands the request off to an existing Edge
-# instance, so the PID alone is useless for closing the window.
+# matches on this substring to find the --app window that hosts the mirror, in
+# Chrome or Edge alike (either appends its own name to the title) — a spawned
+# browser PID can hand the request off to a running instance, so it is useless
+# for closing the window.
 _MIRROR_TITLE_PREFIX = "app-launcher-mirror-"
 
 # How long to poll for the mirror window's HWND after spawn (seconds).
@@ -219,21 +223,56 @@ def spawn_claude_session(
     return session
 
 
-# Edge / Chrome installs to probe for `--app` (chromeless) window mode.
-_BROWSER_APP_CANDIDATES = (
-    (r"Microsoft\Edge\Application\msedge.exe", "ProgramFiles(x86)"),
-    (r"Microsoft\Edge\Application\msedge.exe", "ProgramFiles"),
-    (r"Google\Chrome\Application\chrome.exe", "ProgramFiles"),
-    (r"Google\Chrome\Application\chrome.exe", "ProgramFiles(x86)"),
-)
+# Which browser to try first, and which to fall back to, for each ``mirror_browser`` choice.
+# "system" has no app-window browser at all: the page goes to the Windows default.
+_MIRROR_BROWSER_ORDER = {"chrome": ("chrome", "edge"), "edge": ("edge", "chrome"), "system": ()}
+
+
+def _mirror_browser_choice() -> str:
+    """The saved ``mirror_browser`` setting, read fresh so a Settings change applies to the next
+    window without a restart. An unreadable config falls back to the default."""
+    from src.webapp_config import DEFAULT_MIRROR_BROWSER, load_webapp_config
+
+    try:
+        return load_webapp_config().mirror_browser
+    except Exception as exc:  # noqa: BLE001 — a bad config must never stop a session window
+        logger.warning(f"⚠️  could not read mirror_browser ({exc}); using {DEFAULT_MIRROR_BROWSER}")
+        return DEFAULT_MIRROR_BROWSER
+
+
+def pick_mirror_browser(
+    choice: str, finder: Optional[Callable[[str], Optional[str]]] = None
+) -> Optional[Tuple[str, str]]:
+    """``(name, executable)`` of the browser a session window opens in, or ``None`` for the
+    Windows default browser.
+
+    The chosen browser when installed, else the other one, else ``None``.
+    """
+    find = finder or find_browser
+    for name in _MIRROR_BROWSER_ORDER.get(choice, _MIRROR_BROWSER_ORDER[DEFAULT_MIRROR_BROWSER]):
+        exe = find(name)
+        if exe:
+            return name, exe
+    return None
+
+
+def _mirror_profile_dir(browser: str) -> Path:
+    """The mirror windows' own profile folder for ``browser``.
+
+    Without ``--user-data-dir`` a browser that is already running takes the new window over
+    and ignores ``--app`` and ``--ignore-certificate-errors``, which brings back the
+    certificate warning and a tabbed window. One folder per browser: the two profile
+    formats are not interchangeable.
+    """
+    return runtime_data_dir("app-launcher") / f"mirror-window-{browser}"
 
 
 def open_local_terminal_window(url: str, sid: Optional[str] = None) -> None:
     """Open ``url`` in a window on the PC — the launcher-owned terminal mirror.
 
-    Prefers Edge/Chrome ``--app`` mode for a clean, dedicated window that
-    feels like a terminal rather than a browser tab; falls back to the
-    default browser. ``--ignore-certificate-errors`` is passed because the
+    Prefers the Settings-chosen browser (Chrome or Edge) in ``--app`` mode for a
+    clean, dedicated window that feels like a terminal rather than a browser tab;
+    falls back to the other one, then to the default browser. ``--ignore-certificate-errors`` is passed because the
     window only ever points at this launcher's own loopback origin, whose
     self-signed cert is intentionally not trusted on the PC — that risk
     doesn't apply to ``127.0.0.1``. ``--test-type`` suppresses the flag
@@ -255,33 +294,34 @@ def open_local_terminal_window(url: str, sid: Optional[str] = None) -> None:
 
 
 def _spawn_terminal_window(url: str) -> None:
-    """Spawn the Edge/Chrome --app window for ``url``, with browser fallback."""
-    for rel, env_key in _BROWSER_APP_CANDIDATES:
-        base = os.environ.get(env_key)
-        if not base:
-            continue
-        exe = Path(base) / rel
-        if not exe.is_file():
-            continue
+    """Spawn the Chrome/Edge ``--app`` window for ``url``, with browser fallback."""
+    choice = _mirror_browser_choice()
+    picked = pick_mirror_browser(choice)
+    if picked is not None:
+        name, exe = picked
         try:
             subprocess.Popen(
                 [
-                    str(exe),
+                    exe,
                     f"--app={url}",
                     "--window-size=1024,720",
                     "--ignore-certificate-errors",
                     "--test-type",
+                    f"--user-data-dir={_mirror_profile_dir(name)}",
+                    "--no-first-run",
+                    "--no-default-browser-check",
                 ],
                 creationflags=NO_WINDOW,
                 close_fds=True,
             )
-            logger.info(f"🖥️  opened local terminal window: {url}")
+            note = "" if name == choice else f" (chosen {choice} not installed)"
+            logger.info(f"🖥️  opened local terminal window in {name}{note}: {url}")
             return
         except OSError as exc:
-            logger.debug(f"--app launch via {exe} failed: {exc}")
+            logger.warning(f"⚠️  --app launch via {exe} failed: {exc}")
     try:
         webbrowser.open(url)
-        logger.info(f"🖥️  opened local terminal window (default browser): {url}")
+        logger.info(f"🖥️  opened local terminal window (default browser, chosen {choice}): {url}")
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"⚠️  could not open local terminal window: {exc}")
 

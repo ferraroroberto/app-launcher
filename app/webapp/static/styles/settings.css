@@ -65,8 +65,8 @@ button.settings-row:active { background: var(--card-2); }
 /* Text size: the label beside the vendored segmented control. */
 .settings-row--inline .text-size-label { flex: none; }
 .text-size-card .segmented { flex: 1; min-width: 0; }
-.dictation-autostop-row .settings-row-label { flex: none; }
-.dictation-autostop-row .segmented { flex: 1; min-width: 0; }
+.dictation-autostop-row .settings-row-label, .mirror-browser-row .settings-row-label { flex: none; }
+.dictation-autostop-row .segmented, .mirror-browser-row .segmented { flex: 1; min-width: 0; }
 /* A row's value that is an exception (settings-sheets.js setValue). */
 .settings-row-value[data-tone="attention"] { color: var(--attention-text); }
 /* The note under a group (This PC, Life OS): it wraps, unlike a one-line group footer. */

@@ -90,6 +90,8 @@ async def get_config(request: Request) -> Dict[str, Any]:
         # Where the SPA opens a session: the PC window, and Chat first.
         "open_sessions_in_window": cfg.open_sessions_in_window,
         "open_sessions_in_chat": cfg.open_sessions_in_chat,
+        # The browser the PC window opens in: chrome, edge or system.
+        "mirror_browser": cfg.mirror_browser,
         # ...and start by themselves when the webapp starts.
         "autostart_channel_sessions": cfg.autostart_channel_sessions,
         "channel_model": cfg.channel_model,
@@ -347,6 +349,7 @@ _PATCH_KEYS = frozenset({
     "hide_channel_sessions",
     "open_sessions_in_window",
     "open_sessions_in_chat",
+    "mirror_browser",
     "autostart_channel_sessions",
     "channel_model",
     "apps_scan_root",

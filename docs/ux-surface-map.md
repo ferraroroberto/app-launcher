@@ -1757,7 +1757,7 @@ flowchart LR
   - Documents: the list of documents, with Retry when it could not be read
   - Appearance: Text size (Small, Default, Large) and Usage meter
   - Agents: Launch defaults and Chief
-  - Sessions: Open in a new window and Open in Chat switches
+  - Sessions: Open in a new window switch, Window browser (Chrome, Edge, Default) and Open in Chat switch
   - Life OS: Refresh skills on resume switch
   - Dictation: Auto-stop (Off, 2 s, 3 s, 5 s)
   - Connections: Telegram, Context filter, Fleet scope, Inspiration, API tokens

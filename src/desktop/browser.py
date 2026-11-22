@@ -8,12 +8,14 @@ window is an Edge ``--app`` window. The page hands a link to
 Chrome when Chrome is installed and ``desktop_browser`` asks for it.
 
 Chrome is found the way Windows finds it, through the registry's
-``App Paths`` entry, never a hardcoded install path.
+``App Paths`` entry, never a hardcoded install path. :func:`find_browser` adds
+the Program Files install folders for the session window's Chrome or Edge.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import webbrowser
 from pathlib import Path
@@ -24,11 +26,19 @@ from src.subprocess_flags import NO_WINDOW
 
 logger = logging.getLogger(__name__)
 
-_APP_PATHS_KEY = r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe"
+_APP_PATHS_KEY = r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{exe}"
+
+# Each browser a session window can open in: its executable's name (the App Paths key) and
+# where its installer puts it under a Program Files root or the per-user install folder.
+_BROWSERS = {
+    "chrome": ("chrome.exe", r"Google\Chrome\Application\chrome.exe"),
+    "edge": ("msedge.exe", r"Microsoft\Edge\Application\msedge.exe"),
+}
+_INSTALL_ROOT_ENV = ("ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA")
 
 
-def find_chrome() -> Optional[str]:
-    """Chrome's executable from ``App Paths`` (machine, then user), or None.
+def _app_paths_exe(exe_name: str) -> Optional[str]:
+    """``exe_name``'s executable from ``App Paths`` (machine, then user), or None.
 
     None on a non-Windows host, with no registry entry, or when the entry
     names a file that no longer exists (an uninstall that left the key).
@@ -39,13 +49,35 @@ def find_chrome() -> Optional[str]:
         return None
     for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
         try:
-            with winreg.OpenKey(hive, _APP_PATHS_KEY) as key:
+            with winreg.OpenKey(hive, _APP_PATHS_KEY.format(exe=exe_name)) as key:
                 value, _kind = winreg.QueryValueEx(key, "")
         except OSError:
             continue
         path = str(value or "").strip().strip('"')
         if path and Path(path).is_file():
             return path
+    return None
+
+
+def find_chrome() -> Optional[str]:
+    """Chrome's executable from ``App Paths`` (machine, then user), or None."""
+    return _app_paths_exe(_BROWSERS["chrome"][0])
+
+
+def find_browser(name: str) -> Optional[str]:
+    """The installed ``"chrome"`` or ``"edge"`` executable, or None.
+
+    ``App Paths`` first, then the Program Files and per-user install folders, so a
+    browser the registry key missed is still found.
+    """
+    exe_name, relative = _BROWSERS[name]
+    found = _app_paths_exe(exe_name)
+    if found:
+        return found
+    for env_key in _INSTALL_ROOT_ENV:
+        root = os.environ.get(env_key)
+        if root and (Path(root) / relative).is_file():
+            return str(Path(root) / relative)
     return None
 
 

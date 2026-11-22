@@ -24,6 +24,7 @@ import { renderSettingsValues } from './settings-sheets.js';
 import { renderRemotePowerGuard } from './remote-power-guard.js';
 import { renderLidKeepAwake } from './lid-keep-awake.js';
 import { renderDictationAutoStop } from './dictation-autostop.js';
+import { renderMirrorBrowser } from './mirror-browser.js';
 import { renderPrivateLan, wirePrivateLan } from './private-lan.js';
 
 // Shared model-picker controllers, created once the DOM exists.
@@ -270,6 +271,7 @@ export async function fetchConfig(shouldApply) {
     setSwitch(els.lifeOsRefreshSkillToggle, body.life_os_refresh_skill_instructions !== false);
   }
   renderDictationAutoStop(body);
+  renderMirrorBrowser(body);
   renderPrivateLan(body);
   renderUsageShows(body);
   if (els.hideChannelSessionsToggle) {

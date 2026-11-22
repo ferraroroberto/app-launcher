@@ -55,7 +55,7 @@ from src.webapp_settings.values import (  # noqa: F401 — re-exported for webap
     DEFAULT_CLAUDE_PERMISSION_MODE, DEFAULT_CODEX_EFFORT, DEFAULT_CODEX_MODEL,
     DEFAULT_CODEX_MODEL_EFFORTS, DEFAULT_CODEX_PERMISSION_MODE, DEFAULT_CODING_MODEL_CHOICE,
     DEFAULT_DICTATION_AUTO_STOP_SECONDS, DEFAULT_GROK_EFFORT, DEFAULT_GROK_PERMISSION_MODE,
-    DEFAULT_HOST, DEFAULT_LARGE_UPLOAD_MAX_MB, DEFAULT_PI_EFFORT, DEFAULT_PI_MODEL,
+    DEFAULT_HOST, DEFAULT_LARGE_UPLOAD_MAX_MB, DEFAULT_MIRROR_BROWSER, DEFAULT_PI_EFFORT, DEFAULT_PI_MODEL,
     DEFAULT_PI_TRUST_MODE, DEFAULT_PORT, DEFAULT_SESSION_HOST_PORT, DEFAULT_TERMINAL_HISTORY_LINES,
     LEGACY_CLAUDE_MODELS, MAX_CHIEF_AUTO_COMPACT_THRESHOLD, MAX_CHIEF_WORKER_CAP,
     MAX_LARGE_UPLOAD_MAX_MB, MAX_TERMINAL_HISTORY_LINES, MIN_CHIEF_AUTO_COMPACT_THRESHOLD,
@@ -65,6 +65,7 @@ from src.webapp_settings.values import (  # noqa: F401 — re-exported for webap
     VALID_CODEX_PERMISSION_MODES, VALID_CODING_MODEL_CHOICES, VALID_GROK_EFFORTS,
     VALID_GROK_PERMISSION_MODES, VALID_PI_EFFORTS, VALID_PI_MODELS, VALID_PI_TRUST_MODES,
     WEBAPP_CONFIG_PATH_ENV, valid_claude_efforts_for, check_dictation_auto_stop,
+    check_mirror_browser,
 )
 # isort: on
 
@@ -334,11 +335,9 @@ class WebappConfig:
     # interactive terminal window for it on the PC (over loopback, so it
     # bypasses the Tailscale + passkey gate). Input works from both sides.
     claude_show_local_window: bool = True
-    # Whether sessions get the dedicated PC Edge window. Off (the default),
-    # a row tap and every launch (any surface, the chief and API callers
-    # included) render in the page and open no window; on, a full-control
-    # session's terminal gets the window. The session kebab's "Open in new
-    # window" reaches the window either way.
+    # Whether sessions get the dedicated PC window. Off (the default), a row tap and every launch
+    # (any surface, the chief and API callers included) render in the page and open no window;
+    # on, a full-control session's terminal gets it. The kebab's "Open in new window" always does.
     open_sessions_in_window: bool = False
     # A session with no remembered view opens in Chat wherever Chat exists,
     # on the phone too; off restores Terminal on the phone. An explicit
@@ -357,11 +356,11 @@ class WebappConfig:
     # Model a Telegram channel session starts on when its launch names none,
     # and the one the boot-time autostart uses.
     channel_model: str = DEFAULT_CHANNEL_MODEL
-    # Where a link tapped in Chat or a transcript opens when the page runs on
-    # the PC itself: "chrome" (found through the registry's App
-    # Paths, falling back to the default when absent) or "system" (the
-    # Windows default browser, which is how the links opened before).
+    # Where a link tapped in Chat or a transcript opens when the page runs on the PC itself:
+    # "chrome" (found through App Paths, else the Windows default) or "system" (the default).
     desktop_browser: str = "chrome"
+    # The browser a session's PC window opens in: "chrome", "edge" or "system" (the default browser).
+    mirror_browser: str = DEFAULT_MIRROR_BROWSER
     # Bounded scrollback: lines of a full-screen (ratatui) agent's history the
     # session-host replays on a (re)connect; DEFAULT_TERMINAL_HISTORY_LINES has the evidence.
     terminal_history_lines: int = DEFAULT_TERMINAL_HISTORY_LINES
@@ -989,6 +988,7 @@ def _validate(cfg: WebappConfig) -> None:
             f"{MAX_CHIEF_WORKER_CAP}; got {cfg.chief_worker_cap}"
         )
     check_dictation_auto_stop(cfg.dictation_auto_stop_seconds)
+    check_mirror_browser(cfg.mirror_browser)
     threshold = cfg.chief_auto_compact_threshold
     if threshold != 0 and not (
         MIN_CHIEF_AUTO_COMPACT_THRESHOLD <= threshold <= MAX_CHIEF_AUTO_COMPACT_THRESHOLD
