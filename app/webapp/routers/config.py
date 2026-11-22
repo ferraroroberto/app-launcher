@@ -90,8 +90,6 @@ async def get_config(request: Request) -> Dict[str, Any]:
         # Where the SPA opens a session: the PC window, and Chat first.
         "open_sessions_in_window": cfg.open_sessions_in_window,
         "open_sessions_in_chat": cfg.open_sessions_in_chat,
-        # The browser the PC window opens in: chrome, edge or system.
-        "mirror_browser": cfg.mirror_browser,
         # ...and start by themselves when the webapp starts.
         "autostart_channel_sessions": cfg.autostart_channel_sessions,
         "channel_model": cfg.channel_model,
@@ -168,9 +166,10 @@ async def _power_payloads() -> Dict[str, Any]:
 
 
 def _preferences_payload(cfg: WebappConfig) -> Dict[str, Any]:
-    """Settings > Life OS and Dictation: the skill refresh switch and the
-    quiet seconds that end a dictation take (0 = off)."""
+    """Settings > Sessions, Life OS and Dictation: the browser a session window opens in,
+    the skill refresh switch and the quiet seconds that end a dictation take (0 = off)."""
     return {
+        "mirror_browser": cfg.mirror_browser,
         "life_os_refresh_skill_instructions": cfg.life_os_refresh_skill_instructions,
         "dictation_auto_stop_seconds": cfg.dictation_auto_stop_seconds,
     }
