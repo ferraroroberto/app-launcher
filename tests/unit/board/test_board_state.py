@@ -14,7 +14,9 @@ from tests.unit.board._support import NOW, _iso
 
 def test_state_missing_file_unavailable(tmp_path: Path):
     result = board.read_sessions_state(tmp_path / "nope.json", now=NOW)
-    assert result == {"available": False, "stale": False, "updated_at": None, "rows": {}}
+    assert result == {
+        "available": False, "stale": False, "updated_at": None, "rows": {}, "ended_rows": {},
+    }
 
 
 def test_state_corrupt_file_unavailable(tmp_path: Path):

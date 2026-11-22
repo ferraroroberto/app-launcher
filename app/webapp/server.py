@@ -65,6 +65,7 @@ from src import (
 )
 from src.app_config import load_app_config
 from src.auth.webauthn_gate import WebAuthnGate
+from src.board import state_reconcile
 from src.chief import machine_critical
 from src.clients import session as session_client
 from src.compression import StreamSafeGZipMiddleware
@@ -492,6 +493,11 @@ async def _lifespan(app: FastAPI):
         # chief mailbox event per incident. Canonical instance only, so a gate
         # webapp never writes the real mailbox.
         tasks.append(asyncio.create_task(machine_critical.tick_forever(app)))
+        # Hook-state rows whose process is gone become history. Canonical only:
+        # it rewrites the real state file against the real session-host.
+        tasks.append(asyncio.create_task(state_reconcile.tick_forever(
+            lambda: getattr(app.state, "webapp_config", None)
+        )))
         # Always started: it reads each bot's idle_close_minutes every tick and
         # touches only what the relay reopened, so a settings save applies live.
         tasks.append(asyncio.create_task(relay_idle_close.tick_forever(app)))

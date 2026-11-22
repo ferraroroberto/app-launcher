@@ -667,9 +667,12 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
             )
             await _stop_chief_for_respawn(cfg.session_host_port, sid)
 
-        resumed_session_id = await _resume_target(state["rows"], preferred_sid) if resume else ""
+        # A dead chief's row is `ended` (src.board.state_reconcile); resuming it is
+        # the point, so the resume lookup reads ended rows too.
+        resume_rows = {**state["ended_rows"], **state["rows"]}
+        resumed_session_id = await _resume_target(resume_rows, preferred_sid) if resume else ""
         session, sid = await _spawn_chief(
-            cfg, request, body, state["rows"], resumed_session_id, rows=rows, cols=cols,
+            cfg, request, body, resume_rows, resumed_session_id, rows=rows, cols=cols,
         )
         # The branch ensure took, paired with the "kept" line above:
         # a chief that disappears and comes back is diagnosable from here.
