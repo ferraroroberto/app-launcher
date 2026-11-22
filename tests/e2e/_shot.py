@@ -38,14 +38,17 @@ The pins, all applied by `variant_page()`:
 
 `shot()` refuses a page whose clock is not pinned (a popup, a context opened
 some other way) and a page whose rendered text contains this machine's home
-folder: the baseline is committed, often to a public repo.
+folder or the synthetic account name (`tests/host/_synthetic_host.py`): the baseline
+is committed, often to a public repo. The harness starts the app under test with
+`synthetic_host_env()`, so an app that renders the account name in any form
+fails here on the developer's own machine, not first on another host.
 
 Chromium rasterises a changed region of a tile over the pixels already there
 unless partial raster is off; add `CHROMIUM_CAPTURE_ARGS` to the suite's
 `browser_type_launch_args` so one DOM always paints one set of pixels.
 
 Vendor-verbatim: copied byte-for-byte into adopters (manifest key
-`shot_capture`); stdlib and Playwright only. Contract:
+`shot_capture`, which requires `synthetic_host`); stdlib, Playwright and that sibling only. Contract:
 docs/playwright-ui-testing.md ("Screenshot baseline").
 """
 
@@ -60,6 +63,8 @@ from pathlib import Path
 
 from playwright.sync_api import Browser, Page
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
+from tests.host._synthetic_host import SYNTHETIC_ACCOUNT
 
 #: The suite's one instant: every run, on every day, renders this date.
 PINNED_NOW = datetime(2026, 1, 15, 9, 0, tzinfo=UTC)
@@ -175,6 +180,7 @@ def _assert_pinned_clock(page: Page) -> None:
 
 
 def _assert_no_host_identity(page: Page) -> None:
+    # host-identity-exempt: the privacy check compares the page against the real home on purpose
     home = str(Path.home())
     text = page.evaluate("() => document.documentElement.innerText || ''")
     for spelling in {home, home.replace("\\", "/"), home.replace("/", "\\")}:
@@ -183,6 +189,11 @@ def _assert_no_host_identity(page: Page) -> None:
                 "this page shows the home folder of the machine running the suite; a committed "
                 "screenshot of it would publish the account name. Render a fixture path instead."
             )
+    if SYNTHETIC_ACCOUNT.lower() in text.lower():
+        raise AssertionError(
+            f"this page shows the account name of the host it runs on (the harness's synthetic "
+            f"{SYNTHETIC_ACCOUNT!r}); on any real machine it would publish the owner's. Render a fixture value instead."
+        )
 
 
 def shot(page: Page, path: Path, *, full_page: bool = False) -> None:

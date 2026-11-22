@@ -82,6 +82,7 @@ from tests._progress_log import (  # noqa: E402,F401
     pytest_runtest_logreport,
     pytest_runtest_logstart,
 )
+from tests.host._synthetic_host import synthetic_host  # noqa: E402,F401 -- registers the fixture
 
 # --- tests/ source-mutation guard (#822) -------------------------------------
 #

@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 # harness must do neither — so a real-agent test launches in a checkout that
 # already cleared it, or skips naming trust rather than time out against a
 # prompt that will never go away.
+# host-identity-exempt: the real agent keeps its folder-trust state under the real home, and the real-agent tests launch it there
 _CLAUDE_STATE_FILE = Path.home() / ".claude.json"
 
 
