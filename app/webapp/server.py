@@ -62,7 +62,7 @@ from app.webapp.routers import (
     tokens,
     webauthn,
 )
-from app.webapp.routers._helpers import STATIC_DIR
+from app.webapp.routers._helpers import PROJECT_ROOT, STATIC_DIR
 from app.webapp.static_trim import trim_js
 from src import (
     app_runtime,
@@ -81,6 +81,7 @@ from src.launching import launcher
 from src.middleware import BearerTokenMiddleware
 from src.request_timing import RequestTimingMiddleware, default_executor
 from src.runtime_data import runtime_db_path
+from src.static_bundles.js_bundle import BUNDLE_DIR, ENTRY, BundleError, build_js_bundle
 from src.static_versioning import (
     compute_asset_hashes,
     fleet_hash_of,
@@ -200,6 +201,36 @@ def _load_stylesheet_bundle(app: FastAPI, asset_hashes: Dict[str, str]) -> Optio
 
     app.add_api_route(f"/static/{BUNDLE_RELPATH}", _serve_bundle, include_in_schema=False)
     _log.info("ℹ️ Stylesheets bundled into /static/%s (%d bytes)", BUNDLE_RELPATH, len(bundle))
+    return bundle
+
+
+def _load_js_bundle(app: FastAPI, asset_hashes: Dict[str, str]) -> Optional[Dict[str, Tuple[bytes, str]]]:
+    """Bundle the ES modules and register the route that serves them, or ``None``.
+
+    Built (or read from its cache) under ``webapp/js-bundle/``. On ``None``
+    the index keeps loading ``main.js`` and its graph module by module.
+    """
+    if not asset_hashes:
+        return None
+    fleet = app.state.asset_fleet_hash
+    try:
+        bundle = build_js_bundle(STATIC_DIR, PROJECT_ROOT / "webapp" / BUNDLE_DIR, fleet)
+    except (BundleError, OSError, ValueError) as exc:
+        _log.warning("⚠️ could not bundle the ES modules; serving them separately: %s", exc)
+        return None
+    if bundle is None:
+        return None
+    asset_hashes[f"{BUNDLE_DIR}/{ENTRY}"] = fleet
+
+    def _serve_js_bundle(name: str) -> Response:
+        if name not in bundle:
+            return Response(status_code=404)
+        body, media_type = bundle[name]
+        return Response(body, media_type=media_type, headers={"Cache-Control": _LONG_CACHE})
+
+    app.add_api_route(f"/static/{BUNDLE_DIR}/{{name}}", _serve_js_bundle, include_in_schema=False)
+    size = sum(len(body) for name, (body, _) in bundle.items() if name.endswith(".js"))
+    _log.info("ℹ️ ES modules bundled into /static/%s/ (%d files, %d bytes of JS)", BUNDLE_DIR, len(bundle), size)
     return bundle
 
 
@@ -599,6 +630,7 @@ def create_app() -> FastAPI:
         )
 
     app.state.stylesheet_bundle = _load_stylesheet_bundle(app, asset_hashes)
+    app.state.js_bundle = _load_js_bundle(app, asset_hashes)
 
     if STATIC_DIR.exists():
         app.mount(

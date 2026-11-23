@@ -177,6 +177,7 @@ one machine-critical chief mailbox event per incident"]
     APPCFG["app_config.py\nconfig/config.json"]
     WEBAUTHNGATE["auth/webauthn_gate.py"]
     STATICVER["static_versioning.py\nasset content-hash stamping"]
+    JSBUNDLE["static_bundles/js_bundle.py\nES modules bundled at start\n(pinned esbuild via npx)"]
     DIAG["diagnostics.py\nport/process introspection"]
     LLMCLIENT["clients/llm.py"]
     TTSCLIENT["clients/tts.py"]
@@ -288,6 +289,7 @@ one machine-critical chief mailbox event per incident"]
   R_TOKENS --> WEBAPPCFG
   R_WEBAUTHN --> WEBAUTHNGATE
   WSERVER --> STATICVER
+  WSERVER --> JSBUNDLE
   WSERVER --> SHELLHTML
   R_SESS --> OCRCLIENT
   R_SESS --> VOICECLIENT

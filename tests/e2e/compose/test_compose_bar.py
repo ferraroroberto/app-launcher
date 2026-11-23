@@ -345,6 +345,7 @@ def _assert_status_message_keeps_layout(authed_page: Page, send, attach, send_af
     return idle
 
 
+@pytest.mark.unbundled
 def test_compose_send_and_attach_stay_put_during_autogrow(
     authed_page: Page, base_url: str, launched_pty_session: str, browser_name: str
 ) -> None:

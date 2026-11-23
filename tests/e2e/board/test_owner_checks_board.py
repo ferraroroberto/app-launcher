@@ -426,6 +426,7 @@ def test_done_applies_a_large_sheet_of_tapped_and_typed_answers(
     assert posts == [[expected["demo#139"]]], posts
 
 
+@pytest.mark.unbundled
 @pytest.mark.iphone
 def test_owner_checks_use_the_chief_answer_form_at_phone_width(
     authed_page: Page, base_url: str

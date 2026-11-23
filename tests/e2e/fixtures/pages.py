@@ -13,6 +13,7 @@ import requests
 import urllib3
 from playwright.sync_api import Browser, BrowserContext, Page
 
+from src.static_bundles.js_bundle import UNBUNDLED_COOKIE
 from tests.e2e._shared_context import PROPERTY, SharedContexts, install_taint_guard
 from tests.e2e._shot import CHROMIUM_CAPTURE_ARGS
 from tests.e2e.fixtures.env import TOKEN_KEY, autoboot_enabled
@@ -133,6 +134,17 @@ def _bound_default_timeouts(context: BrowserContext) -> None:
     # context-level cap covers every page they create.
     context.set_default_timeout(DEFAULT_TIMEOUT_MS)
     context.set_default_navigation_timeout(DEFAULT_TIMEOUT_MS)
+
+
+@pytest.fixture(autouse=True)
+def _unbundled_page(request: pytest.FixtureRequest, context: BrowserContext, base_url: str) -> None:
+    # A test marked `unbundled` reaches into the page's live modules with
+    # `import('/static/<module>.js')`; under the bundle that URL is a second
+    # instance with its own state, so its page loads the modules one by one.
+    # The shared context's reset clears the cookie after the test.
+    if request.node.get_closest_marker("unbundled") is None:
+        return
+    context.add_cookies([{"name": UNBUNDLED_COOKIE, "value": "off", "url": base_url}])
 
 
 def seed_token_init_script(token: str) -> str:

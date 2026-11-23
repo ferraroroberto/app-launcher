@@ -767,6 +767,7 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     webauthn_mock = MagicMock()
     webauthn_mock.configured.return_value = False
     monkeypatch.setattr(server_mod, "WebAuthnGate", lambda: webauthn_mock)
+    monkeypatch.setattr(server_mod, "_load_js_bundle", lambda app, hashes: None)  # same page with or without Node
 
     # Build the app fresh. ``create_app()`` calls load_webapp_config /
     # load_app_config / load_registry — all redirected above.

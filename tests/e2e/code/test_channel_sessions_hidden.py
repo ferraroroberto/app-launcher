@@ -151,6 +151,7 @@ def _open_coding(page: Page, base_url: str) -> None:
     expect(page.locator("#sessionsList")).to_be_attached()
 
 
+@pytest.mark.unbundled
 @pytest.mark.iphone
 def test_coding_list_swaps_channel_rows_for_a_summary_line_the_board_drops_them_and_none_can_be_killed(
     authed_page: Page, base_url: str

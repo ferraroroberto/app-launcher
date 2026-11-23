@@ -7,7 +7,7 @@ Phone-first launcher hub for the rest of the home stack. Five tabs: **Coding**, 
 
 **Project specifics:**
 
-- **Stack:** FastAPI + vanilla JS — **not** Streamlit; do not introduce Streamlit.
+- **Stack:** FastAPI + vanilla JS — **not** Streamlit; do not introduce Streamlit. Contributors run no build step: at start the server bundles the ES modules with a pinned esbuild (`src/static_bundles/js_bundle.py`, via `npx`), and without Node the page loads the separate modules. An e2e test that imports a live module by URL is marked `unbundled`.
 - **Config & secrets:** no `.env`. Project config in `config/config.json` (committed template only); runtime UI prefs + secrets in `config/webapp_config.json` (gitignored).
 - **Registries:** apps in `config/apps.json` (gitignored, committed sample `config/apps.sample.json`), every row carrying a `kind` — `streamlit` | `webapp` | `tunnel` | `tray` — which back the **Apps** tab; jobs in `config/jobs.json`. **Coding** and **Life OS** need no registry (they list directories live).
 - **Life's skill rows swipe (#1503).** The gesture is `static/swipe-row.js` behind `actionRow`'s optional `swipe` field. Code's rows and toolbar must stay byte-identical (goldens in `test_life_tab_glance.py` and `test_resume_toggle.py`). A swipe can't be judged in a desktop engine: thresholds are a plain-Node test (`tests/js/swipe_row.test.mjs`); the real check is on the iPhone.

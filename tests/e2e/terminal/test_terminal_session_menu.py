@@ -188,6 +188,7 @@ def _leg_latest_pill_shows_only_when_scrolled_up(authed_page: Page) -> None:
     assert at_tail, "tapping Latest did not return the terminal to its tail"
 
 
+@pytest.mark.unbundled
 def test_menu_copy_link_and_rename_update_the_bar(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
