@@ -119,6 +119,10 @@ def open_tab(page: Page, base_url: str, tab: str, pane: str) -> None:
                 f"two taps on {tab} never reached it; events seen: {record['events'] or 'none'}"
             )
     expect(page.locator(pane), f"a click reached {tab} but {pane} stayed hidden").to_be_visible()
+    # A tab view imported on first open (lazy-views.js) is wired a moment after
+    # its pane shows; a tap before that races the wiring.
+    expect(page.locator(pane), f"{pane}'s view never finished loading").not_to_have_attribute(
+        "data-view-load", "loading")
 
 
 def open_settings(page: Page) -> None:

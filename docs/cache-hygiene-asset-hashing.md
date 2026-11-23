@@ -3,9 +3,13 @@
 Every `.js` / `.css` under `app/webapp/static/` (excluding `vendor/`) is hashed
 at app startup. A single **fleet hash** (sha256 over the sorted per-file
 hashes, first 8 hex chars) is stamped onto every asset URL — both in
-`index.html` and on the ES-module `import './foo.js'` lines inside JS files
-(rewritten at serve time, not on disk). This is how the webapp guarantees the
-iPhone PWA never serves a stale asset against fresh HTML, or vice versa.
+`index.html` and on the ES-module `import './foo.js'` lines inside JS files,
+static `from '...'` and dynamic `import('...')` alike (rewritten at serve time,
+not on disk). This is how the webapp guarantees the iPhone PWA never serves a
+stale asset against fresh HTML, or vice versa. A dynamic import must keep a
+literal relative specifier for the stamp to reach it: an unstamped URL loads a
+second copy of a module that a static import already loaded, with its own
+state.
 
 - The static mount is a `_VersionedStatic(StaticFiles)` subclass that sets
   `Cache-Control: public, max-age=31536000, immutable` on hashed assets,

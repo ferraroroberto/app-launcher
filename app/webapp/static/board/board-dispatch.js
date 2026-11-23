@@ -419,5 +419,7 @@ export function wireDispatch() {
   dispatchModelCombo = wireModelCombo(els.boardDispatchModel, function () {
     els.boardDispatchModel.dispatchEvent(new Event('change'));
   });
+  // The config may have landed before this view loaded (lazy-views.js).
+  if (state.boardDispatchModelOptions) dispatchModelCombo.setOptions(state.boardDispatchModelOptions);
   syncDispatchBar();
 }

@@ -75,3 +75,29 @@ def test_every_first_load_module_is_under_budget() -> None:
         if (size := _gz(text)) >= BUDGET_BYTES
     }
     assert not over, f"first-load modules over {BUDGET_BYTES} B gzipped: {over}"
+
+
+def test_lazy_tab_views_stay_out_of_the_boot_graph() -> None:
+    """The Board and Jobs views load on first open (lazy-views.js), not at boot.
+
+    One static import of either from a boot module would pull its whole
+    subtree (29 modules) back into the six-connection queue a phone launch
+    waits on.
+    """
+    graph = _module_graph()
+    assert STATIC_DIR / "lazy-views.js" in graph
+    leaked = sorted(
+        str(path.relative_to(STATIC_DIR)).replace("\\", "/")
+        for path in graph
+        if path.name in ("board.js", "jobs.js") or path.parent.name == "jobs"
+        or (path.parent.name == "board" and path.name not in _BOOT_BOARD_LEAVES)
+    )
+    assert not leaked, f"lazy tab-view modules in the boot graph: {leaked}"
+    lazy = (STATIC_DIR / "lazy-views.js").read_text(encoding="utf-8")
+    for spec in ("./board.js", "./board/board-dispatch.js", "./jobs.js"):
+        assert f"import('{spec}')" in lazy
+
+
+# Small board/ helpers the boot modules read without the view: the nav badge's
+# counts (home-head.js) and the journal's looked-at mark (chat-send.js).
+_BOOT_BOARD_LEAVES = ("chief-keys.js", "owner-needs.js", "journal-look.js")

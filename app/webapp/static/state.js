@@ -117,6 +117,9 @@ export const state = {
   // When `board` last landed (Date.now()): the Board tab's nav badge counts
   // from it while it is this fresh, else from the sessions poll.
   boardFetchedAt: 0,
+  // The Board's "Start with" model list, from the config. The Board view
+  // loads on first open (lazy-views.js) and builds its combo from this.
+  boardDispatchModelOptions: null,
   // GET /api/board/chief-plan's last answer, fetched with `board`.
   chiefPlan: null,
   // The chief's unanswered questions, fleet-wide, from the sessions poll

@@ -48,13 +48,10 @@ import { hasTranscriptReader } from './chat/session-transcript.js';
 import { hasBackgroundTasks, openBackgroundTasks } from './background-tasks/background-tasks-sheet.js';
 import { hasLinks, openLinks } from './links/links-sheet.js';
 import { syncFailed } from './life-os/title-sync.js';
-// runChiefAction (and the ensureChief it wraps) lives in board-dispatch.js
-// (split off board.js), exported
-// for this cross-tab use, as is the chief settings dialog; board.js already imports
-// stopSession/sessionTitle/openSessionRename from this module, so this
-// mirrors the existing sessions.js<->terminal.js circular-import pattern
-// rather than introducing a new risk.
-import { runChiefAction } from './board/board-dispatch.js';
+// runChiefAction (and the ensureChief it wraps) lives in board-dispatch.js,
+// part of the Board view, which loads on first open (lazy-views.js): a chief
+// verb here loads it first rather than pulling the Board into the boot graph.
+import { loadView } from './lazy-views.js';
 import { openSettingsAt } from './tabs.js';
 import { singleFlight } from './shared/poll.js';
 
@@ -147,6 +144,21 @@ const sessionMenu = createRowMenu({
   },
 });
 
+// A chief verb on the Code tab: the Board view's chief lifecycle, loaded on
+// the first tap. The button is held while it loads, so a second tap cannot
+// start a second chief; runChiefAction holds it from there. A failed load
+// says so; the verb's own errors are its toasts.
+function runChief(opts) {
+  opts.button.disabled = true;
+  loadView('board').then(function (v) {
+    opts.button.disabled = false;
+    return v.dispatch.runChiefAction(opts);
+  }, function (exc) {
+    opts.button.disabled = false;
+    apiFailToast('Chief ' + opts.label.toLowerCase() + ' failed', exc);
+  });
+}
+
 // The chief's kebab items beyond a session's own: Restart, the same
 // graceful stop-then-resume as the Board's Restart, and Chief settings,
 // which opens Settings › Chief. Restart only while it runs; settings
@@ -158,7 +170,7 @@ function chiefMenuItems(kebab, alive) {
       label: 'Restart', ariaLabel: 'Restart the chief',
       hidden: !alive,
       onTap: function () {
-        runChiefAction({
+        runChief({
           button: kebab, label: 'Restart', fresh: true, resume: true,
           onDone: fetchSessions.fresh, confirmMessage: CHIEF_RESTART_CONFIRM,
         });
@@ -211,7 +223,7 @@ function stoppedChiefRow() {
     btn.title = verb.title;
     btn.setAttribute('aria-label', verb.text + ' chief');
     btn.addEventListener('click', function () {
-      runChiefAction({
+      runChief({
         button: btn, label: verb.text, fresh: false, resume: verb.resume,
         restart: verb.restart, onDone: fetchSessions.fresh,
       });

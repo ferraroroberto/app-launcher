@@ -14,7 +14,7 @@
 import { els, state } from '../state.js';
 import { apiFailToast, jsonApi, toast } from '../api.js';
 import { wireModelCombo } from '../shared/model-combo.js';
-import { setBoardDispatchModelOptions } from '../board/board-dispatch.js';
+import { ifViewLoaded } from '../lazy-views.js';
 import { setLifeOsModel, setLifeOsModelOptions } from '../life-os.js';
 import { syncLaunchPresets } from '../shared/launch-presets.js';
 import { renderLaunchPresetsEditor, wireLaunchPresets } from './launch-presets-settings.js';
@@ -139,7 +139,9 @@ function renderSharedModelSelectors() {
   if (codingModelCombo) codingModelCombo.setOptions(options);
   if (codingModelCombo) codingModelCombo.setValue(config.coding_model_choice);
   setLifeOsModelOptions(options);
-  setBoardDispatchModelOptions(boardOptions);
+  // The Board's combo is built when its view loads and takes the list then.
+  state.boardDispatchModelOptions = boardOptions;
+  ifViewLoaded('board', function (v) { v.dispatch.setBoardDispatchModelOptions(boardOptions); });
   syncLaunchPresets(config, PRESET_SURFACES);
   renderLaunchPresetsEditor();
 }

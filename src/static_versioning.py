@@ -48,13 +48,16 @@ _HASHED_SUFFIXES = (".js", ".css", ".svg")
 # doesn't benefit from a content hash).
 _SKIP_DIRS = ("vendor",)
 
-# ``import ... from './foo.js'`` or ``'../dir/foo.js'`` — captures the
+# ``import ... from './foo.js'`` or ``'../dir/foo.js'``, and a dynamic
+# ``import('./foo.js')`` (a tab view loaded on first open) — captures the
 # whole quoted relative specifier (any number of ``./``/``../`` segments
-# and subdirectories) so ``?v=<hash>`` can be stamped onto it. Any
+# and subdirectories) so ``?v=<hash>`` can be stamped onto it. The dynamic
+# form needs the stamp as much as the static one: an unstamped URL is a
+# second module instance beside the stamped one, with its own state. Any
 # existing ``?v=…`` is captured too, so re-stamping an already-stamped
 # body is idempotent.
 _JS_IMPORT_RE = re.compile(
-    r"""(from\s*['"])(\.\.?/(?:[\w\-.]+/)*[\w\-.]+\.js)(\?v=[^'"]*)?(['"])"""
+    r"""((?:from|import\s*\()\s*['"])(\.\.?/(?:[\w\-.]+/)*[\w\-.]+\.js)(\?v=[^'"]*)?(['"])"""
 )
 
 # ``href``/``src`` pointing at a hashable ``/static/`` asset — including

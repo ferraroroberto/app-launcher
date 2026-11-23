@@ -25,9 +25,8 @@ import { fetchSystemLoad, wireSystemLoad } from './system-load.js';
 import { fetchAgents, fetchApps, fetchRunningApps, wireApps } from './apps.js';
 import { refreshGitStatus } from './apps/apps-coding.js';
 import { fetchListeners } from './apps/apps-listeners.js';
-import { fetchJobs, wireJobs } from './jobs.js';
 import { fetchChannels, fetchSkills, openConvoByLink, wireLifeOs } from './life-os.js';
-import { fetchBoard, openBoardCard, paintLastKnownBoard, renderBoard, wireBoard } from './board.js';
+import { ifViewLoaded, loadView, openView, wireLazyViews } from './lazy-views.js';
 import { wireHtmlViewer, wireImageLightbox } from './lightbox.js';
 import { openScreenWindow, wireScreenView } from './screen/screen-view.js';
 import { wireTokens } from './settings/tokens.js';
@@ -94,13 +93,18 @@ function wireSettings() {
   wireScreenTime();
 }
 
+// The Board repaints under a new setting only once its tab has loaded it.
+function redrawBoard() {
+  ifViewLoaded('board', function (v) { v.board.renderBoard(); });
+}
+
 // Telegram channel sessions: the switch saves at once like every other
 // Settings switch, then both lists repaint under the new setting.
 function wireChannelHide() {
   wireConfigSwitch(els.hideChannelSessionsToggle, 'hide_channel_sessions', {
     after: function () {
       renderSessions();
-      renderBoard();
+      redrawBoard();
     },
   });
 }
@@ -226,18 +230,17 @@ function safe(fn) {
   });
 }
 
-// The session list and the Board never wait on the config round trip: they
-// draw what this device last saw at once, and their live reads go out beside
-// the config's. Both render safely before the config lands (hidden channels
-// stay hidden until it says otherwise). The Board and Jobs fetches self-gate
-// to their tab; without them a reload on either tab waited for its first poll.
+// The session list never waits on the config round trip: it draws what this
+// device last saw at once, and its live read goes out beside the config's.
+// It renders safely before the config lands (hidden channels stay hidden
+// until it says otherwise). A reload on the Board or Jobs tab imports that
+// view and reads its data here too (lazy-views.js), or it would wait for its
+// first poll; the Board paints its last-known lanes as soon as it loads.
 function startListReads() {
   paintLastKnownSessions();
-  paintLastKnownBoard();
   return {
     sessions: fetchSessions(),
-    board: safe(fetchBoard),
-    jobs: safe(fetchJobs),
+    view: safe(function () { return openView(state.tab); }),
   };
 }
 
@@ -248,7 +251,7 @@ function startListReads() {
 // picker from it.
 function listsAfterConfig(early) {
   redrawSessions();
-  renderBoard();
+  redrawBoard();
   const sessions = early.sessions.then(function (ok) {
     return ok ? null : safe(fetchSessions);
   });
@@ -260,7 +263,7 @@ function listsAfterConfig(early) {
     // A Board opened before the project list landed drew its issue actions
     // without it (they key on the registered projects). git-status used to
     // redraw it by coming last in the serial chain; now nothing else would.
-    if (state.tab === 'board') renderBoard();
+    if (state.tab === 'board') redrawBoard();
   });
 }
 
@@ -321,7 +324,10 @@ async function boot() {
   // The readout's restart sheet reads /api/restart once; no targets, no button.
   const others = [safe(fetchVersion), safe(function () { return wireBuildRestart(els.buildReadout); })];
   // The Board card link fetches the Board itself, so it needs none of these.
-  if (boardSid) openBoardCard(boardSid).catch(function () {});
+  if (boardSid) {
+    loadView('board').then(function (v) { return v.board.openBoardCard(boardSid); })
+      .catch(function () {});
+  }
 
   armPolls({ lists, usage, listeners, running, webauthn, load, git });
 
@@ -335,7 +341,7 @@ async function boot() {
   // safe() never rejects, so neither does this: boot() resolves once every
   // boot fetch has settled.
   await Promise.all([lists, skills, status, webauthn, git, usage, listeners, running, load,
-    early.board, early.jobs].concat(others));
+    early.view].concat(others));
   perfTiming.bootDone();
   warmSessionOpen();
 }
@@ -430,9 +436,13 @@ function armPolls(first) {
       return refreshGitStatus({ quiet: true });
     }, GIT_STATUS_POLL_MS);
   });
-  // No boot fetch of their own: both self-gate to their tab.
-  startPoll(function () { return fetchJobs(); }, JOBS_POLL_MS);
-  startPoll(function () { return fetchBoard(); }, BOARD_POLL_MS);
+  // Both self-gate to their tab, and poll nothing until it first opened.
+  startPoll(function () {
+    return ifViewLoaded('jobs', function (v) { return v.jobs.fetchJobs(); });
+  }, JOBS_POLL_MS);
+  startPoll(function () {
+    return ifViewLoaded('board', function (v) { return v.board.fetchBoard(); });
+  }, BOARD_POLL_MS);
 }
 
 // --------------------------------------------------------- wire + go
@@ -451,9 +461,8 @@ wireProgressSheet();
 wireUsageMenu();
 wireSystemLoad();
 wireApps();
-wireJobs();
 wireLifeOs();
-wireBoard();
+wireLazyViews();
 wireImageLightbox();
 wireHtmlViewer();
 wireScreenView();

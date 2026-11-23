@@ -98,3 +98,13 @@ def test_unknown_import_passes_through_unchanged(tmp_path: Path) -> None:
     hashes = compute_asset_hashes(static_dir)
     body = "import { foo } from './not-on-disk.js';\n"
     assert rewrite_js_imports(body, hashes, from_dir="") == body
+
+
+def test_rewrite_js_imports_stamps_dynamic_import(tmp_path: Path) -> None:
+    """A lazily imported view gets the same stamp as its static importers."""
+    static_dir = _make_static_tree(tmp_path)
+    hashes = compute_asset_hashes(static_dir)
+    body = "const mod = await import('./state.js');\nimport( \"./state.js\" );\n"
+    stamped = rewrite_js_imports(body, hashes, from_dir="")
+    assert stamped.count("./state.js?v=" + hashes["state.js"]) == 2
+    assert rewrite_js_imports(stamped, hashes, from_dir="") == stamped
