@@ -12,7 +12,6 @@ import asyncio
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Callable
 from unittest.mock import MagicMock
 
 import httpx
@@ -20,33 +19,10 @@ import pytest
 
 from app.webapp.session_host import pools, server
 from src.session_host_input import INPUT_OK, InputOutcome
+from tests._pool_stall import Stall, until
 
-_HANG_S = 6.0
 _BOUND_S = 1.0
 _DEFAULT_WORKERS = 2
-
-
-class _Stall:
-    """A call that blocks until released (or :data:`_HANG_S` passes), counting entries."""
-
-    def __init__(self, answer: Any) -> None:
-        self.answer = answer
-        self.entered = 0
-        self.lock = threading.Lock()
-        self.release = threading.Event()
-
-    def __call__(self, *_args: Any, **_kwargs: Any) -> Any:
-        with self.lock:
-            self.entered += 1
-        self.release.wait(_HANG_S)
-        return self.answer
-
-
-async def _until(check: Callable[[], bool], timeout: float = 3.0) -> None:
-    """Wait for ``check``; on timeout, return and let the assertions say what went wrong."""
-    end = time.monotonic() + timeout
-    while not check() and time.monotonic() < end:
-        await asyncio.sleep(0.01)
 
 
 def _fake_session() -> MagicMock:
@@ -72,7 +48,7 @@ _INPUT = ("post", "/sessions/sid/input", {"data": "hi", "submit": True})
 )
 def test_a_stalled_kind_leaves_other_requests_free(monkeypatch, stalled, pool, stalled_call, other_call):
     session = _fake_session()
-    stall = _Stall(InputOutcome(reason=INPUT_OK, ingested=True, submitted=True, submit_confirmed=True)
+    stall = Stall(InputOutcome(reason=INPUT_OK, ingested=True, submitted=True, submit_confirmed=True)
                    if stalled == "submit_input" else session)
     if stalled == "submit_input":
         session.submit_input = stall
@@ -89,7 +65,7 @@ def test_a_stalled_kind_leaves_other_requests_free(monkeypatch, stalled, pool, s
             method, url, body = stalled_call
             calls = [asyncio.create_task(client.request(method, url, json=body)) for _ in range(stalls)]
             try:
-                await _until(lambda: stall.entered >= stalls - 1)
+                await until(lambda: stall.entered >= stalls - 1)
                 await asyncio.sleep(0.1)  # time for the last call to queue, not to enter
                 method, url, body = other_call
                 started = time.perf_counter()

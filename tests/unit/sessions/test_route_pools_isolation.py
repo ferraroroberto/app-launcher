@@ -14,39 +14,15 @@ import contextvars
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Callable
 
 import httpx
 import pytest
 
 from app.webapp import route_pools
+from tests._pool_stall import Stall, until
 
-_HANG_S = 6.0
 _BOUND_S = 1.0
 _DEFAULT_WORKERS = 2
-
-
-class _Stall:
-    """A read that blocks until released (or :data:`_HANG_S` passes), counting entries."""
-
-    def __init__(self, answer: Any) -> None:
-        self.answer = answer
-        self.entered = 0
-        self.lock = threading.Lock()
-        self.release = threading.Event()
-
-    def __call__(self, *_args: Any, **_kwargs: Any) -> Any:
-        with self.lock:
-            self.entered += 1
-        self.release.wait(_HANG_S)
-        return self.answer
-
-
-async def _until(check: Callable[[], bool], timeout: float = 3.0) -> None:
-    """Wait for ``check``; on timeout, return and let the assertions say what went wrong."""
-    end = time.monotonic() + timeout
-    while not check() and time.monotonic() < end:
-        await asyncio.sleep(0.01)
 
 
 @pytest.mark.parametrize(
@@ -64,7 +40,7 @@ async def _until(check: Callable[[], bool], timeout: float = 3.0) -> None:
 )
 def test_stalled_reads_leave_the_board_plan_poll_free(webapp_client, monkeypatch, target, url, pool, answer):
     _, app, _ = webapp_client
-    stall = _Stall(answer)
+    stall = Stall(answer)
     monkeypatch.setattr(target, stall)
     stalls = pool._max_workers + 1
 
@@ -78,7 +54,7 @@ def test_stalled_reads_leave_the_board_plan_poll_free(webapp_client, monkeypatch
                 for _ in range(stalls)
             ]
             try:
-                await _until(lambda: stall.entered >= stalls - 1)
+                await until(lambda: stall.entered >= stalls - 1)
                 await asyncio.sleep(0.1)  # time for the last read to queue, not to enter
                 started = time.perf_counter()
                 plan = await client.get("/api/board/chief-plan")
