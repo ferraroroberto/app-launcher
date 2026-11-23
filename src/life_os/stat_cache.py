@@ -9,12 +9,18 @@ those mtimes unchanged costs one ``stat`` per folder and no directory read.
 The fingerprint is taken *before* the build: a change that lands while the
 build runs leaves the stored fingerprint older than the folder, so the next
 read rebuilds instead of trusting a half-seen listing.
+
+A folder's mtime has coarse resolution (one timer tick on NTFS, 2 s on FAT),
+so a second change in the same tick as the one before the build leaves the
+mtime where it was. A fingerprint holding an mtime that recent is therefore
+not stored, and reads rebuild until the folder has been quiet for the window.
 """
 
 from __future__ import annotations
 
 import os
 import threading
+import time
 from pathlib import Path
 from typing import Callable, Dict, FrozenSet, Hashable, List, Optional, Tuple, TypeVar
 
@@ -22,6 +28,10 @@ T = TypeVar("T")
 
 # folder path -> its st_mtime_ns; a folder that cannot be statted records None.
 _Fingerprint = Tuple[Tuple[str, Optional[int]], ...]
+
+# Wider than any filesystem's mtime resolution (FAT's 2 s is the coarsest), so
+# an mtime older than this before the build cannot hide a later change.
+_RACY_WINDOW_NS = 2_000_000_000
 
 
 def _mtime_ns(path: str) -> Optional[int]:
@@ -40,6 +50,11 @@ def _folders_under(root: Path, recursive: bool, skip: FrozenSet[str]) -> List[st
         dirs[:] = [d for d in dirs if d not in skip]
         folders.append(dirpath)
     return folders or [str(root)]
+
+
+def _settled(fingerprint: _Fingerprint, taken_ns: int) -> bool:
+    """True when every folder's mtime is older than the racy window before ``taken_ns``."""
+    return all(mtime is None or mtime < taken_ns - _RACY_WINDOW_NS for _folder, mtime in fingerprint)
 
 
 class DirListingCache:
@@ -72,10 +87,15 @@ class DirListingCache:
         if held is not None and self._current(held[0]):
             return held[1]  # type: ignore[return-value]
         folders = _folders_under(root, recursive, skip)
+        taken_ns = time.time_ns()
         fingerprint = tuple((folder, _mtime_ns(folder)) for folder in folders)
         value = build()
-        with self._lock:
-            self._entries[slot] = (fingerprint, value)
+        if _settled(fingerprint, taken_ns):
+            with self._lock:
+                self._entries[slot] = (fingerprint, value)
+        else:
+            with self._lock:
+                self._entries.pop(slot, None)
         return value
 
     @staticmethod
