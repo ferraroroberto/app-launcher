@@ -40,6 +40,7 @@ logger): the webapp's own stdout is discarded by the tray.
 from __future__ import annotations
 
 import asyncio
+import functools
 import itertools
 import logging
 import threading
@@ -47,6 +48,8 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, Iterable, Optional
+
+from src.request_timing import TimedExecutor
 
 logger = logging.getLogger(__name__)
 # The file-backed breadcrumb logger app/webapp/observability.py attaches.
@@ -60,6 +63,10 @@ MAX_AGE_SECONDS = 10.0
 SLOW_BUILD_SECONDS = 2.0
 # The tick refreshes the schtasks-backed caches this long before they expire.
 WARM_AHEAD_SECONDS = 2 * TICK_SECONDS
+# The tick's own thread: its walk and warm-up run one after another, and a
+# slow disk or hung schtasks then stalls only the tick, never a request
+# waiting on the event loop's shared default pool.
+_TICK_POOL = TimedExecutor("jobs-snapshot-tick", max_workers=1)
 
 
 @dataclass
@@ -247,17 +254,20 @@ def _demanded() -> bool:
 
 async def tick_forever() -> None:
     """Rebuild every TICK_SECONDS while the polls are asking; idle otherwise."""
+    loop = asyncio.get_running_loop()
     while True:
         await asyncio.sleep(TICK_SECONDS)
         if not _demanded():
             continue
         try:
             # A read that just rebuilt inline needs no second walk.
-            await asyncio.to_thread(rebuild, "tick", unless_younger_than=TICK_SECONDS / 2)
+            await loop.run_in_executor(
+                _TICK_POOL, functools.partial(rebuild, "tick", unless_younger_than=TICK_SECONDS / 2)
+            )
         except Exception:  # noqa: BLE001 — a failed tick must not end the loop
             breadcrumbs.exception("❌ jobs snapshot tick failed; reads will rebuild inline")
         try:
-            await asyncio.to_thread(warm_caches)
+            await loop.run_in_executor(_TICK_POOL, warm_caches)
         except Exception:  # noqa: BLE001
             breadcrumbs.exception("❌ jobs cache warm-up failed; polls pay the refresh")
 

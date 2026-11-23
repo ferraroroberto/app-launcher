@@ -64,14 +64,14 @@ async def test_slow_decoration_does_not_stall_the_pause_endpoint(monkeypatch):
     assert max_gap < _SLOW_DECORATE_S / 2, (
         f"a slow _decorate_job stalled the event loop for {max_gap:.3f}s "
         f"(tick interval is {_TICK_INTERVAL_S}s) — pause is still decorating "
-        "synchronously instead of via asyncio.to_thread"
+        "synchronously instead of on the jobs-files pool"
     )
 
 
 def test_no_handler_decorates_a_job_on_the_event_loop():
     """Every ``_decorate_job(...)`` call in the router must be deferred into a
-    worker thread: passed by reference to ``asyncio.to_thread`` (no call node
-    at all), or called inside a lambda that ``to_thread`` runs (``get_jobs``'s
+    worker thread: passed by reference to ``run_on(JOBS_FILES, ...)`` (no call node
+    at all), or called inside a lambda that ``run_on`` runs (``get_jobs``'s
     list comprehension). A bare call anywhere else runs on the loop.
     """
     source = Path(jobs_router.__file__).read_text(encoding="utf-8")
@@ -96,7 +96,7 @@ def test_no_handler_decorates_a_job_on_the_event_loop():
             offenders.append(f"jobs.py:{node.lineno}: {ast.get_source_segment(source, node)}")
 
     assert offenders == [], (
-        "_decorate_job blocks (schtasks + disk walk) and must run via "
-        "asyncio.to_thread; found direct call(s) on the event loop:\n"
+        "_decorate_job blocks (schtasks + disk walk) and must run on the "
+        "jobs-files pool; found direct call(s) on the event loop:\n"
         + "\n".join(offenders)
     )

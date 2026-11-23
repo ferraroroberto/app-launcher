@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request, WebSocket
 from fastapi.responses import FileResponse
 from starlette.websockets import WebSocketDisconnect
 
+from app.webapp.route_pools import JOBS_FILES, run_on
 from app.webapp.routers._helpers import known_run_dir, maybe_json
 from src import jobs as jobs_mod
 from src.middleware import (
@@ -28,8 +29,8 @@ async def update_job_run(job_id: str, run_id: str, request: Request) -> dict:
     body = await maybe_json(request)
     if set(body) != {"pinned"} or not isinstance(body.get("pinned"), bool):
         raise HTTPException(status_code=400, detail="body must be {pinned: bool}")
-    await asyncio.to_thread(jobs_mod.write_run_json, run_dir, pinned=body["pinned"])
-    record = await asyncio.to_thread(jobs_mod.read_run, run_dir)
+    await run_on(JOBS_FILES, jobs_mod.write_run_json, run_dir, pinned=body["pinned"])
+    record = await run_on(JOBS_FILES, jobs_mod.read_run, run_dir)
     record.setdefault("run_id", run_id)
     return {"run": record}
 
@@ -92,14 +93,14 @@ async def stream_job_run(websocket: WebSocket, job_id: str, run_id: str) -> None
     live_statuses = {"queued", "pending", "running"}
     try:
         while True:
-            record = await asyncio.to_thread(jobs_mod.read_run, run_dir)
+            record = await run_on(JOBS_FILES, jobs_mod.read_run, run_dir)
             status = str(record.get("status") or "pending")
             try:
                 size = output_path.stat().st_size if output_path.is_file() else 0
             except OSError:
                 size = 0
             if first or size < offset:
-                snapshot = await asyncio.to_thread(jobs_mod.read_output_tail, run_dir)
+                snapshot = await run_on(JOBS_FILES, jobs_mod.read_output_tail, run_dir)
                 await websocket.send_json(
                     {"type": "snapshot", "output": snapshot, "status": status}
                 )
@@ -113,7 +114,7 @@ async def stream_job_run(websocket: WebSocket, job_id: str, run_id: str) -> None
                         handle.seek(offset)
                         return handle.read(length)
 
-                delta = await asyncio.to_thread(_read_delta)
+                delta = await run_on(JOBS_FILES, _read_delta)
                 offset = size
                 if delta:
                     await websocket.send_json(

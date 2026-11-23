@@ -6,7 +6,7 @@ A slow answer is either slow work or fast work that waited for a free thread. Ev
 queue;dur=1.2;desc="default+hot-poll", worker;dur=31.5;desc="default+hot-poll", app;dur=63.3
 ```
 
-- `queue` is the time the request's work waited for a pool thread, `worker` the time it ran on one, `app` the server's whole time to the response headers (the request's `total_ms`), all in milliseconds. `desc` names the pool: `default` (the event loop's own), `hot-poll`, `session-reads`, `git-status`, `git-sync`, the Board and session routes' pools (`board-files`, `session-files`, `session-host-calls`, `route-outbound`, `audit-writes`, one per kind of blocking work, in `app/webapp/route_pools.py`), or `none` for a request that used no thread.
+- `queue` is the time the request's work waited for a pool thread, `worker` the time it ran on one, `app` the server's whole time to the response headers (the request's `total_ms`), all in milliseconds. `desc` names the pool: `default` (the event loop's own), `hot-poll`, `session-reads`, `git-status`, `git-sync`, the routes' named pools (`board-files`, `session-files`, `session-host-calls`, `route-outbound`, `audit-writes`, `jobs-files`, `job-spawns`, `app-probes`, one per kind of blocking work, in `app/webapp/route_pools.py`), the Jobs snapshot's `jobs-snapshot-tick`, or `none` for a request that used no thread.
 - Parallel steps add up, so `queue + worker` can exceed `app`. A shared single-flight build is charged to the request that started it. The header carries what had finished when the response began; the log lines below carry the final figures.
 - The event loop's default executor and the named pools are `TimedExecutor`s from the vendored `src/request_timing.py`. A background tick (no request in flight) is not timed.
 
