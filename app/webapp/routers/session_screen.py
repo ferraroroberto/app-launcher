@@ -39,7 +39,8 @@ from fastapi import APIRouter, HTTPException, Request
 from websockets.asyncio.client import connect as ws_connect
 from websockets.exceptions import InvalidHandshake, WebSocketException
 
-from app.webapp.hot_poll import BuildSteps, run_on_default_executor, session_poll
+from app.webapp.hot_poll import BuildSteps, run_on_session_files, session_poll
+from app.webapp.route_pools import SESSION_FILES, SESSION_HOST, run_on
 from app.webapp.routers._helpers import audit_off_loop, maybe_json
 from app.webapp.routers.board_spawn import SESSION_HOST_UNREACHABLE, read_live_sessions
 from app.webapp.routers.session_transcript import resolve_source
@@ -124,7 +125,7 @@ async def _type_into_console(port: int, sid: str, keys: List[Tuple[str, bool]]) 
         if sent:
             await asyncio.sleep(_ANSWER_KEY_GAP_S)
         try:
-            await asyncio.to_thread(session_client.send_input, port, sid, text, enter)
+            await run_on(SESSION_HOST, session_client.send_input, port, sid, text, enter)
         except session_client.SessionHostError as exc:
             raise _PartialAnswer(sent, len(keys), str(exc)) from exc
 
@@ -162,7 +163,7 @@ async def session_answer(sid: str, request: Request) -> Dict[str, Any]:
         # Only Claude Code has the tool; any other reason means there is no
         # transcript to check against, which must stop the send all the same.
         raise HTTPException(status_code=409, detail=_NOT_WAITING)
-    pending = await asyncio.to_thread(pending_decision_call, path)
+    pending = await run_on(SESSION_FILES, pending_decision_call, path)
     if not pending or pending["name"] != ASK_TOOL_NAME or pending["id"] != call_id:
         logger.info("ℹ️ answer %s refused: question ...%s is not the pending one", sid[:8], call_id[-8:])
         raise HTTPException(status_code=409, detail=_NOT_WAITING)
@@ -231,7 +232,7 @@ async def _read_screen(
     ``steps`` is a polled route's build: its reads then run on the
     per-session pool, off the default executor. Without it they run on the
     default executor, as the send-time re-reads always have."""
-    run = steps.run if steps is not None else run_on_default_executor
+    run = steps.run if steps is not None else run_on_session_files
     live, host_error = await run("read_live_sessions", read_live_sessions, cfg.session_host_port)
     session = next((s for s in live if str(s.get("session_id")) == str(sid)), None)
     if session is None:
@@ -494,7 +495,7 @@ async def session_resume_sessions(sid: str, request: Request) -> Dict[str, Any]:
     if reason is not None:
         return {"available": False, "reason": reason, "picker": False, "sessions": []}
     project_dir = str(session.get("project_dir") or "")
-    sessions = await asyncio.to_thread(resume_picker.list_sessions, project_dir)
+    sessions = await run_on(SESSION_FILES, resume_picker.list_sessions, project_dir)
     if sessions is None:
         logger.info("⚠️ resume list %s: projects folder unreadable", sid[:8])
         return {"available": False, "reason": "no_sessions_folder", "picker": False, "sessions": []}
@@ -529,7 +530,7 @@ async def session_resume(sid: str, request: Request) -> Dict[str, Any]:
     reason, session, lines = await _read_screen(cfg, sid)
     _refuse_unseen_resume_screen(reason)
     showing = _resume_picker_showing(via, lines)
-    sessions = await asyncio.to_thread(
+    sessions = await run_on(SESSION_FILES,
         resume_picker.list_sessions, str(session.get("project_dir") or "")
     )
     target = body.get("session_id")
@@ -647,7 +648,7 @@ def _claude_label(transcript: Any) -> Optional[str]:
 
 async def _live_session(cfg: WebappConfig, sid: str) -> Dict[str, Any]:
     """The session-host's row for ``sid``: 503 unreachable, 409 gone."""
-    live, host_error = await asyncio.to_thread(read_live_sessions, cfg.session_host_port)
+    live, host_error = await run_on(SESSION_HOST, read_live_sessions, cfg.session_host_port)
     session = next((s for s in live if str(s.get("session_id")) == str(sid)), None)
     if session is None:
         _refuse_if_host_unreachable(SESSION_HOST_UNREACHABLE if host_error else None)
@@ -701,7 +702,7 @@ async def _switch_claude(
             detail="Chat can't read this session's transcript, so a switch couldn't be confirmed: "
                    "nothing was sent",
         )
-    if await asyncio.to_thread(_claude_label, transcript) == label:
+    if await run_on(SESSION_FILES, _claude_label, transcript) == label:
         return "switched", False, None
     reason, _session, lines = await _read_screen(cfg, sid)
     _refuse_busy_claude_screen(reason, lines)
@@ -710,7 +711,7 @@ async def _switch_claude(
     loop = asyncio.get_running_loop()
     end = loop.time() + _MODEL_CONFIRM_S
     while loop.time() < end:
-        if await asyncio.to_thread(_claude_label, transcript) == label:
+        if await run_on(SESSION_FILES, _claude_label, transcript) == label:
             return "switched", answered, None
         if not answered:
             _r, _s, lines = await _read_screen(cfg, sid)
@@ -755,7 +756,7 @@ async def _switch_codex(
     loop = asyncio.get_running_loop()
     end = loop.time() + _MODEL_CONFIRM_S
     while loop.time() < end:
-        live, _error = await asyncio.to_thread(read_live_sessions, cfg.session_host_port)
+        live, _error = await run_on(SESSION_HOST, read_live_sessions, cfg.session_host_port)
         now = next((s for s in live if str(s.get("session_id")) == str(sid)), None)
         if now is not None and session_model_label(now) == label:
             return "switched", False, None

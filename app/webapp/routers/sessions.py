@@ -38,6 +38,7 @@ from websockets.asyncio.client import connect as ws_connect
 from websockets.exceptions import InvalidHandshake
 
 from app.webapp.hot_poll import BuildSteps, hot_poll
+from app.webapp.route_pools import OUTBOUND, SESSION_HOST, run_on
 from app.webapp.routers import life_os_conversations, voice_ocr_tts
 from app.webapp.routers._helpers import (
     PROJECT_ROOT,
@@ -224,7 +225,7 @@ async def stop_claude_session(sid: str, request: Request) -> Dict[str, Any]:
     # this file's own policy, stalling the loop here stalls every other live
     # session's WebSocket pump.
     try:
-        posted = await asyncio.to_thread(launcher.close_mirror_window, sid)
+        posted = await run_on(OUTBOUND, launcher.close_mirror_window, sid)
         logger.debug(
             f"close_mirror_window({sid[:8]}) returned {posted}; "
             f"forwarding stop({mode!r}) to session-host"
@@ -232,7 +233,7 @@ async def stop_claude_session(sid: str, request: Request) -> Dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"🛑 mirror window close raised for {sid[:8]}: {exc}")
     try:
-        result = await asyncio.to_thread(
+        result = await run_on(SESSION_HOST,
             session_client.stop, cfg.session_host_port, sid, mode
         )
     except session_client.SessionHostError as exc:
@@ -260,7 +261,7 @@ async def rename_claude_session(sid: str, request: Request) -> Dict[str, Any]:
     body = await maybe_json(request)
     title = str(body.get("title") or "").strip()
     try:
-        result = await asyncio.to_thread(
+        result = await run_on(SESSION_HOST,
             session_client.rename, cfg.session_host_port, sid, title
         )
     except session_client.SessionHostError as exc:
@@ -273,7 +274,7 @@ async def rename_claude_session(sid: str, request: Request) -> Dict[str, Any]:
     # the reply says only when there was a conversation to name.
     if title:
         try:
-            sessions = await asyncio.to_thread(session_client.list_sessions, cfg.session_host_port)
+            sessions = await run_on(SESSION_HOST, session_client.list_sessions, cfg.session_host_port)
         except session_client.SessionHostError as exc:
             logger.warning("⚠️ Session rename: the session list was unavailable, so the Life OS "
                            "conversation title was not updated (%s)", exc)
@@ -315,7 +316,7 @@ async def mirror_claude_session(sid: str, request: Request) -> Dict[str, Any]:
     pc_url = mirror_url(request, cfg, sid)
     # Runs the win32 focus/spawn off the event loop; the spawn returns as soon
     # as Edge is launched (its HWND poll is a daemon thread), so this is quick.
-    action = await asyncio.to_thread(
+    action = await run_on(OUTBOUND,
         launcher.open_or_focus_mirror_window, pc_url, sid
     )
     await audit_off_loop(
@@ -339,7 +340,7 @@ async def session_image(
     inline = request.query_params.get("inline") in ("1", "true")
     content = await file.read()
     try:
-        result = await asyncio.to_thread(
+        result = await run_on(SESSION_HOST,
             session_client.upload_image,
             cfg.session_host_port,
             sid,
@@ -384,7 +385,7 @@ async def session_large_file(sid: str, request: Request) -> Dict[str, Any]:
     declared = request.headers.get("content-length", "")
     if declared.isdigit() and int(declared) > limit:
         raise HTTPException(status_code=413, detail=f"{_mb(int(declared))}, {too_big}")
-    supported = await asyncio.to_thread(
+    supported = await run_on(SESSION_HOST,
         session_client.supports_large_upload, cfg.session_host_port
     )
     if supported is None:
@@ -545,7 +546,7 @@ async def session_input(sid: str, request: Request, response: Response) -> Dict[
     cfg: WebappConfig = request.app.state.webapp_config
     text, submit = _input_payload(await maybe_json(request))
     try:
-        result = await asyncio.to_thread(
+        result = await run_on(SESSION_HOST,
             session_client.send_input, cfg.session_host_port, sid, text, submit
         )
     except session_client.SessionHostError as exc:
@@ -588,7 +589,7 @@ async def session_discard_pending_input(
     """
     cfg: WebappConfig = request.app.state.webapp_config
     try:
-        result = await asyncio.to_thread(
+        result = await run_on(SESSION_HOST,
             session_client.discard_pending_input, cfg.session_host_port, sid, entry_id
         )
     except session_client.SessionHostError as exc:
@@ -625,7 +626,7 @@ async def _input_refused(
     """Audit a refused input and return the HTTP error to raise for it."""
     status, detail = exc.status, str(exc)
     if exc.status == 500:
-        status, detail = await asyncio.to_thread(
+        status, detail = await run_on(SESSION_HOST,
             _classify_input_500, cfg.session_host_port, sid, detail
         )
     # Includes the 502 the host raises for a payload it wrote but never

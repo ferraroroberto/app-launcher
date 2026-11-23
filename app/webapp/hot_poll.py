@@ -51,6 +51,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from starlette.datastructures import State
 
+from app.webapp.route_pools import SESSION_FILES, run_on
 from src.request_timing import TimedExecutor
 
 slow_logger = logging.getLogger("launcher.slowreq")
@@ -117,12 +118,12 @@ class BuildSteps:
         ) or "between steps"
 
 
-async def run_on_default_executor(
+async def run_on_session_files(
     _name: str, fn: Callable[..., Any], *args: Any, **kwargs: Any
 ) -> Any:
-    """:meth:`BuildSteps.run`'s shape on the loop's default executor, for a
-    shared reader called from a route that is not a poll (a send-time re-read)."""
-    return await asyncio.to_thread(fn, *args, **kwargs)
+    """:meth:`BuildSteps.run`'s shape on the session-files pool, for a shared
+    reader called from a route that is not a poll (a send-time re-read)."""
+    return await run_on(SESSION_FILES, fn, *args, **kwargs)
 
 
 Build = Callable[[BuildSteps], Awaitable[Dict[str, Any]]]

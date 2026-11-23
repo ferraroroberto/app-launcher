@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Tuple
 from fastapi import APIRouter, HTTPException, Request
 
 from app.webapp.hot_poll import start_or_join
+from app.webapp.route_pools import OUTBOUND, SESSION_FILES, run_on
 from app.webapp.routers._helpers import maybe_json
 from src import git_upstream
 from src.launching.vscode_workspace import (
@@ -102,10 +103,10 @@ async def open_project_in_vscode(project_id: str, request: Request) -> Dict[str,
     if not is_vscode_installed():
         raise HTTPException(status_code=503, detail="the 'code' CLI is not on PATH")
     try:
-        workspace, created = await asyncio.to_thread(
+        workspace, created = await run_on(SESSION_FILES,
             ensure_workspace_file, Path(cfg.projects_dir), project.name
         )
-        pid = await asyncio.to_thread(open_workspace, workspace)
+        pid = await run_on(OUTBOUND, open_workspace, workspace)
     except OSError as exc:
         raise HTTPException(
             status_code=500, detail=f"could not open VS Code: {exc}"
@@ -125,7 +126,7 @@ async def project_changes(project_id: str, request: Request) -> Dict[str, Any]:
     project = _project_or_404(request, project_id)
     if not is_git_repo(project.project_dir):
         raise HTTPException(status_code=409, detail="not a git repository")
-    changes = await asyncio.to_thread(list_changes, project.project_dir)
+    changes = await run_on(OUTBOUND, list_changes, project.project_dir)
     return {"id": project.id, "name": project.name, **changes.to_dict()}
 
 
@@ -141,7 +142,7 @@ async def project_file_diff(project_id: str, request: Request, path: str = "") -
     if not is_git_repo(project.project_dir):
         raise HTTPException(status_code=409, detail="not a git repository")
     try:
-        result = await asyncio.to_thread(file_diff, project.project_dir, path)
+        result = await run_on(OUTBOUND, file_diff, project.project_dir, path)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"bad path: {exc}") from exc
     except OSError as exc:
@@ -159,7 +160,7 @@ async def open_project_folder(project_id: str, request: Request) -> Dict[str, An
     """
     project = _project_or_404(request, project_id)
     try:
-        pid = await asyncio.to_thread(open_folder, project.project_dir)
+        pid = await run_on(OUTBOUND, open_folder, project.project_dir)
     except OSError as exc:
         raise HTTPException(status_code=503, detail=f"could not open folder: {exc}") from exc
     return {"ok": True, "path": str(project.project_dir), "pid": pid}
@@ -236,7 +237,7 @@ async def _scan_git_status(
     started_at = time.monotonic()
     projects = scan_project_dirs(Path(projects_dir), list(ignore))
     loop = asyncio.get_running_loop()
-    app_dirs = await asyncio.to_thread(_registered_app_dirs)
+    app_dirs = await run_on(SESSION_FILES, _registered_app_dirs)
     timed = await asyncio.gather(
         *(loop.run_in_executor(_GIT_STATUS_POOL, _timed_git_status, p.project_dir, app_dirs) for p in projects)
     )
