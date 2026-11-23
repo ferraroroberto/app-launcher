@@ -565,6 +565,9 @@ class TestRecapProposalsListing:
         pdir = life_os / ".claude" / "skills" / "_recap" / "proposals"
         pdir.mkdir(parents=True, exist_ok=True)
         (pdir / "2026-06-12.md").write_text("newest", encoding="utf-8")
+        # The cache only keeps a listing of a folder that has been quiet past its racy window.
+        settled = time.time_ns() - 60_000_000_000
+        os.utime(pdir, ns=(settled, settled))
         globs: list = []
         real_glob = Path.glob
 

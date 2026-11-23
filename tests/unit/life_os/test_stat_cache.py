@@ -6,6 +6,7 @@ Synthetic folders under ``tmp_path`` only.
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 from typing import List
 
@@ -28,6 +29,13 @@ class _Builds:
         return sorted(p.name for p in self.root.rglob("*") if p.is_file())
 
 
+def _settle(*folders: Path) -> None:
+    """Age each folder's mtime past the racy window, as a folder nobody touched for a while."""
+    old = time.time_ns() - 60_000_000_000
+    for folder in folders:
+        os.utime(folder, ns=(old, old))
+
+
 @pytest.fixture()
 def stat_calls(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> List[str]:
     """Every ``os.stat`` the cache makes on a path under ``tmp_path``."""
@@ -45,6 +53,7 @@ def stat_calls(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> List[str]:
 
 def test_unchanged_folder_costs_one_stat_and_no_rebuild(tmp_path: Path, stat_calls: List[str]) -> None:
     (tmp_path / "a.md").write_text("a", encoding="utf-8")
+    _settle(tmp_path)
     cache = DirListingCache()
     build = _Builds(tmp_path)
     assert cache.get(tmp_path, "k", build) == ["a.md"]
@@ -60,6 +69,7 @@ def test_unchanged_folder_costs_one_stat_and_no_rebuild(tmp_path: Path, stat_cal
 def test_unchanged_tree_costs_one_stat_per_folder(tmp_path: Path, stat_calls: List[str]) -> None:
     (tmp_path / "sub" / "deep").mkdir(parents=True)
     (tmp_path / "sub" / "deep" / "x.md").write_text("x", encoding="utf-8")
+    _settle(tmp_path, tmp_path / "sub", tmp_path / "sub" / "deep")
     cache = DirListingCache()
     build = _Builds(tmp_path)
     cache.get(tmp_path, "k", build, recursive=True)
@@ -90,6 +100,18 @@ def test_a_new_file_in_a_nested_folder_rebuilds_a_recursive_listing(tmp_path: Pa
     assert build.count == 2
 
 
+def test_a_change_in_the_same_mtime_tick_is_not_missed(tmp_path: Path) -> None:
+    """A coarse clock leaves the folder mtime unchanged by a second write in the same tick."""
+    tick = time.time_ns()
+    os.utime(tmp_path, ns=(tick, tick))
+    cache = DirListingCache()
+    build = _Builds(tmp_path)
+    assert cache.get(tmp_path, "k", build) == []
+    (tmp_path / "same_tick.md").write_text("s", encoding="utf-8")
+    os.utime(tmp_path, ns=(tick, tick))
+    assert cache.get(tmp_path, "k", build) == ["same_tick.md"]
+
+
 def test_a_removed_folder_rebuilds(tmp_path: Path) -> None:
     folder = tmp_path / "gone"
     folder.mkdir()
@@ -105,6 +127,7 @@ def test_a_removed_folder_rebuilds(tmp_path: Path) -> None:
 
 def test_a_skipped_folder_is_not_part_of_the_fingerprint(tmp_path: Path, stat_calls: List[str]) -> None:
     (tmp_path / "node_modules").mkdir()
+    _settle(tmp_path)
     cache = DirListingCache()
     build = _Builds(tmp_path)
     cache.get(tmp_path, "k", build, recursive=True, skip=frozenset({"node_modules"}))
@@ -119,6 +142,7 @@ def test_a_skipped_folder_is_not_part_of_the_fingerprint(tmp_path: Path, stat_ca
 
 def test_keys_keep_listings_of_one_folder_apart(tmp_path: Path) -> None:
     (tmp_path / "a.md").write_text("a", encoding="utf-8")
+    _settle(tmp_path)
     cache = DirListingCache()
     assert cache.get(tmp_path, "one", lambda: ["one"]) == ["one"]
     assert cache.get(tmp_path, "two", lambda: ["two"]) == ["two"]
@@ -132,6 +156,7 @@ def test_walk_files_reads_an_unchanged_tree_once_and_hands_out_copies(
     (skill / "memory").mkdir(parents=True)
     (skill / "SKILL.md").write_text("s", encoding="utf-8")
     (skill / "memory" / "obs.md").write_text("o", encoding="utf-8")
+    _settle(skill, skill / "memory")
     monkeypatch.setattr(life_os_files, "_walk_cache", DirListingCache())
     reads: List[Path] = []
     real = life_os_files._walk_files
