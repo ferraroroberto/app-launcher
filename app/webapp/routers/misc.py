@@ -49,6 +49,7 @@ from src.request_health import BUDGETS, STATS
 from src.request_timing import resolve_budgets
 from src.scanner import pretty_folder_name
 from src.session_host_paths import declared_session_host_paths, paths_touched_between
+from src.static_bundles.js_bundle import UNBUNDLED_COOKIE, link_js_bundle
 from src.static_versioning import asset_hash_for, rewrite_index_html
 from src.stylesheet_bundle import link_bundle
 from src.webapp_config import WebappConfig
@@ -66,21 +67,23 @@ _CLAUDE_MD_PATH = PROJECT_ROOT / "CLAUDE.md"
 VERSION_TICK_S = 5.0
 
 
-def _stamped_index(app: Any) -> Tuple[str, str]:
+def _stamped_index(app: Any, bundled: bool) -> Tuple[str, str]:
     """The hash-stamped index.html and its ETag, re-rendered only on change.
 
     Every page load used to re-read the 135 KB file and regex-rewrite its
     asset_hashes. The rendered body is cached on the app, keyed on
     the mtime and size of index.html and its view fragments, so an edit on
     disk is still picked up on the next load without a restart; the asset
-    hashes are fixed per process.
+    hashes are fixed per process. ``bundled`` picks the page that loads the
+    ES-module bundle over the one that loads ``main.js``'s graph module by
+    module; each is cached on its own.
     """
     index_path = STATIC_DIR / "index.html"
     try:
         key = shell_stat_key(index_path)
-        cached = getattr(app.state, "index_cache", None)
-        if cached is not None and cached[0] == key:
-            return cached[1], cached[2]
+        cached = getattr(app.state, "index_cache", None) or {}
+        if cached.get(bundled, (None,))[0] == key:
+            return cached[bundled][1], cached[bundled][2]
         shell = assemble_shell(index_path)
     except (OSError, ValueError):
         _log.exception("❌ could not assemble index.html")
@@ -88,10 +91,19 @@ def _stamped_index(app: Any) -> Tuple[str, str]:
     asset_hashes = getattr(app.state, "asset_hashes", {}) or {}
     if getattr(app.state, "stylesheet_bundle", None) is not None:
         shell = link_bundle(shell)
+    if bundled:
+        shell = link_js_bundle(shell)
     stamped = rewrite_index_html(shell, asset_hashes)
     etag = '"' + hashlib.sha256(stamped.encode("utf-8")).hexdigest()[:20] + '"'
-    app.state.index_cache = (key, stamped, etag)
+    app.state.index_cache = {**cached, bundled: (key, stamped, etag)}
     return stamped, etag
+
+
+def _wants_js_bundle(request: Request) -> bool:
+    """Whether this page load gets the ES-module bundle: built, and not opted out by cookie."""
+    if getattr(request.app.state, "js_bundle", None) is None:
+        return False
+    return request.cookies.get(UNBUNDLED_COOKIE) != "off"
 
 
 def _etag_matches(header: str, etag: str) -> bool:
@@ -102,7 +114,7 @@ def _etag_matches(header: str, etag: str) -> bool:
 
 @router.get("/")
 async def index(request: Request) -> Response:
-    stamped, etag = _stamped_index(request.app)
+    stamped, etag = _stamped_index(request.app, _wants_js_bundle(request))
     # Force Safari (iPhone PWA especially) to revalidate the HTML on every
     # load. Without this, a stale cached index.html keeps pointing at a
     # `?v=<old hash>` script that no longer exists after a refactor — the

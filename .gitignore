@@ -47,6 +47,8 @@ config/*.bak-*
 # --- Webapp runtime data --------------------------------------------------
 webapp/last_tunnel_url.txt
 webapp/certificates/
+# The ES-module bundle the server builds at start (src/static_bundles/js_bundle.py), cached per source state
+webapp/js-bundle/
 webapp/cloudflared.yml
 webapp/terminal-themes.json
 webapp/sessions/

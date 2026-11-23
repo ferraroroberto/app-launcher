@@ -443,6 +443,7 @@ def _probe_terminal_tokens_follow_app_theme(page: Page) -> None:
     assert _term_bg(page) == "#0a0a0a"
 
 
+@pytest.mark.unbundled
 def test_terminal_module_contracts(
     authed_page: Page, base_url: str, browser_name: str
 ) -> None:

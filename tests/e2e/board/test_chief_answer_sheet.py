@@ -309,6 +309,7 @@ def test_answer_sheet_busy_image_tap_cancels_the_upload(
     expect(also.locator(".composer-input")).to_have_value(_CHIEF_UPLOAD)
 
 
+@pytest.mark.unbundled
 @pytest.mark.iphone
 def test_answer_sheet_other_fields_dictate_into_the_draft(
     authed_page: Page, base_url: str, tmp_path

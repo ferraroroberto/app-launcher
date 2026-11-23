@@ -96,5 +96,5 @@ manual step this mechanism exists to kill.
 ## Out of scope (deliberately)
 
 - Service-worker offline cache — separate, much larger change.
-- Build-time bundler (Vite / esbuild) — vanilla JS by design.
+- A build-time bundler. The server bundles the ES modules itself at start (`src/static_bundles/js_bundle.py`), so contributors still run no build step; the bundle's files carry the same fleet hash.
 - CI hooks for a validation pipeline on this mechanism.

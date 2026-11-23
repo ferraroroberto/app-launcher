@@ -101,9 +101,10 @@ def test_every_header_shows_the_reading_and_its_four_states(
     authed_page: Page, base_url: str
 ) -> None:
     """The first load of ``system-load.js`` is cut (#1610, formerly
-    ``test_a_failed_script_load_gets_one_fresh_boot``): that page boots
-    without ``main.js`` and the header keeps its markup default, so every
-    reading below comes from the one fresh boot ``_boot`` gives it."""
+    ``test_a_failed_script_load_gets_one_fresh_boot``), or of the bundle's
+    entry, which carries it: that page boots without ``main.js`` and the
+    header keeps its markup default, so every reading below comes from the
+    one fresh boot ``_boot`` gives it."""
     page = authed_page
     current = {"body": _reading("normal", 42.4)}
     calls: list = []
@@ -121,7 +122,7 @@ def test_every_header_shows_the_reading_and_its_four_states(
         else:
             route.continue_()
 
-    page.route(re.compile(r".*/static/system-load\.js"), _cut_first_load)
+    page.route(re.compile(r".*/static/(system-load|js-bundle/main)\.js(\?.*)?$"), _cut_first_load)
     _fake_clock.install(page)
     _boot(page, base_url)
     assert cut, "the script was never requested"

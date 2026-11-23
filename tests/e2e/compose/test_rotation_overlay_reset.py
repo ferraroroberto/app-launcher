@@ -46,6 +46,7 @@ _LIVE_MODULE = """
 """
 
 
+@pytest.mark.unbundled
 def test_orientationchange_releases_stale_overlay_pin(
     authed_page: Page,
     base_url: str,

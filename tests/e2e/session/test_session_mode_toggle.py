@@ -181,6 +181,7 @@ def _skip_unless_phone(browser_name: str) -> None:
         )
 
 
+@pytest.mark.unbundled
 def test_toggle_keeps_terminal_scrollback_and_socket(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:

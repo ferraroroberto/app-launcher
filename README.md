@@ -262,7 +262,7 @@ Every page load and every `/api/` request slower than 800 ms on the real device 
 
 ## First load
 
-The session list and the Board draw what this device last saw before any request goes out, then the live reads replace them; a slow or failing server never leaves them blank. No boot read waits on another, and no first-load response may reach 100 KB gzipped: [docs/first-load.md](docs/first-load.md).
+The session list and the Board draw what this device last saw before any request goes out, then the live reads replace them; a slow or failing server never leaves them blank. No boot read waits on another, and no first-load response may reach 100 KB gzipped except the ES-module bundle, which the server builds at start with a pinned esbuild (Node needed; without it the modules load separately): [docs/first-load.md](docs/first-load.md).
 
 ## Phone-speed results
 

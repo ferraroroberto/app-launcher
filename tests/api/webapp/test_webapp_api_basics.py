@@ -7,6 +7,8 @@ import re
 
 import pytest
 
+from src.static_bundles.js_bundle import BUNDLE_DIR as JS_BUNDLE_DIR
+from src.static_bundles.js_bundle import UNBUNDLED_COOKIE
 from src.static_versioning import compute_asset_hashes, fleet_hash_of
 from src.stylesheet_bundle import BUNDLE_RELPATH
 from tests._css import STATIC
@@ -84,6 +86,16 @@ class TestIndex:
         links = re.findall(r'<link rel="stylesheet" href="([^"]+)"', body)
         assert len(links) == 1
         assert re.fullmatch(r"/static/bundle\.css\?v=[a-f0-9]{8}", links[0])
+
+    def test_index_loads_the_js_bundle_unless_the_cookie_opts_out(self, webapp_client):
+        client, app, _ = webapp_client
+        app.state.js_bundle = {"main.js": (b"", "text/javascript")}
+        app.state.asset_hashes[f"{JS_BUNDLE_DIR}/main.js"] = app.state.asset_fleet_hash
+        body = client.get("/").text
+        assert re.search(r'<script type="module" src="/static/js-bundle/main\.js\?v=[a-f0-9]{8}">', body)
+        assert "/static/main.js" not in body
+        client.cookies.set(UNBUNDLED_COOKIE, "off")
+        assert re.search(r'<script type="module" src="/static/main\.js\?v=[a-f0-9]{8}">', client.get("/").text)
 
     def test_bundle_is_the_sheets_in_link_order(self, webapp_client):
         client, _, _ = webapp_client

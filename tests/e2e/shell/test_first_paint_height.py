@@ -209,7 +209,8 @@ def _assert_usage_card_holds_its_height(page: Page, base_url: str, shows: list, 
     page.add_init_script(
         f"try {{ localStorage.setItem('app-launcher.usageshows', '{' '.join(shows)}'); }} catch (e) {{}}")
     _answer(page, r".*/api/claude-code/git-status$", {"projects": []})
-    script = _Held(page, r".*/static/main\.js(\?.*)?$")
+    # The entry script, bundled or not: either way it carries the whole page.
+    script = _Held(page, r".*/static/(js-bundle/)?main\.js(\?.*)?$")
     # Boot reads the config first and the quota only after it lands.
     config = _Held(page, r".*/api/config$", patch={"usage_providers": shows})
     data = [_Held(page, r".*/api/rate-limits(\?.*)?$", quota),

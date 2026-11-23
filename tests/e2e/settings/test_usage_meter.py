@@ -20,7 +20,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.fixtures.ui import close_settings_sheets, open_settings_sheet
+from tests.e2e.fixtures.ui import close_settings_sheets, open_settings_sheet, open_tab
 from tests.e2e.fixtures.waits import boot_retrying_static_failure, stable_eval
 
 pytestmark = pytest.mark.smoke
@@ -535,8 +535,11 @@ def test_board_does_not_jump_when_the_usage_meter_lands(
     authed_page.add_init_script(_QUOTA_SHIM)
     authed_page.add_init_script(_HOLD_RATE_LIMITS)
     _mock_board(authed_page)
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    authed_page.locator("#tabBoard").click()
+    # The lanes show before the Board view has loaded; its own first read then
+    # adds a loading line above them. Measure once that read has landed.
+    with authed_page.expect_response(re.compile(r".*/api/board(\?.*)?$")):
+        open_tab(authed_page, base_url, "#tabBoard", "#paneBoard")
+    expect(authed_page.locator("#boardFetchState")).to_be_hidden()
     columns = authed_page.locator("#boardColumns")
     expect(columns).to_be_visible()
     top = "el => el.isConnected ? Math.round(el.getBoundingClientRect().top) : null"

@@ -240,6 +240,7 @@ def _leg_warm_reopen_reuses_terminal_and_ws(
     )
 
 
+@pytest.mark.unbundled
 def test_terminal_reconnects_after_ws_drop(
     authed_page: Page,
     base_url: str,
@@ -330,6 +331,7 @@ def _stable_marker_count(page: Page, marker: str) -> int:
     return last
 
 
+@pytest.mark.unbundled
 def test_reconnect_replay_does_not_duplicate_scrollback(
     authed_page: Page,
     base_url: str,

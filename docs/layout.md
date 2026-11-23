@@ -60,6 +60,7 @@ app-launcher/
 │   ├── request_health/         # `__init__.py`: the launcher's request classes and their limits; snapshot.py: the read-only `launcher.py health` report
 │   ├── static_versioning.py    # content-hash query strings for asset cache-busting
 │   ├── stylesheet_bundle.py    # the linked stylesheets concatenated into the one /static/bundle.css
+│   ├── static_bundles/         # js_bundle.py: main.js's module graph bundled at start by a pinned esbuild into /static/js-bundle/
 │   ├── subprocess_flags.py     # NO_WINDOW spawn-flag convention (single source)
 │   ├── env_path.py             # effective-PATH resolution for coding-agent detection
 │   ├── build_info.py           # git-sha / build-time metadata behind `GET /api/version`

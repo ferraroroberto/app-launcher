@@ -102,6 +102,7 @@ def test_board_deep_link_opens_drawer(
     expect(drawer).to_contain_text("Merge fixed — tests green. Ship it?")
 
 
+@pytest.mark.unbundled
 def test_drawer_mic_renders_when_voice_available(
     authed_page: Page, base_url: str
 ) -> None:
