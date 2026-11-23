@@ -9,7 +9,6 @@ whose row shaping it reuses so a search hit renders like an index entry.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import subprocess
@@ -18,6 +17,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app.webapp.route_pools import LIFE_OS_FILES, OUTBOUND, run_on
 from app.webapp.routers._helpers import audit_off_loop, client_ip
 from app.webapp.routers.life_os_conversations import (
     _conversation_rows,
@@ -121,8 +121,8 @@ async def run_conversation_search(
     if skill:
         argv.extend(["--skill", skill])
     try:
-        proc = await asyncio.to_thread(
-            subprocess.run,
+        proc = await run_on(
+            OUTBOUND, subprocess.run,
             argv,
             capture_output=True,
             text=True,
@@ -148,8 +148,8 @@ async def run_conversation_search(
     if not isinstance(rows, list):
         return _search_unavailable("search returned an unreadable result")
 
-    results = await asyncio.to_thread(
-        _conversation_rows, cfg,
+    results = await run_on(
+        LIFE_OS_FILES, _conversation_rows, cfg,
         [row for row in rows if isinstance(row, dict) and (not skill or row.get("skill") == skill)],
     )
     return {

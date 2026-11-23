@@ -13,13 +13,12 @@ each function's docstring, which is the clearest argument for the module
 existing.
 
 The router calls one entry point per mutation - :func:`reconcile_delete_sync`,
-:func:`reconcile_rename` - and no longer has to know that there are three
+:func:`reconcile_rename_sync` - and no longer has to know that there are three
 artefacts or in which order they must be touched.
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import re
@@ -387,8 +386,11 @@ def resync_search_index(cfg: WebappConfig) -> None:
     _resync_search_index(cfg)
 
 
-async def reconcile_rename(resolved: Path, new_name: str, cfg: WebappConfig) -> None:
-    """Same, for a renamed conversation. ``resolved`` is the pre-rename path."""
+def reconcile_rename_sync(resolved: Path, new_name: str, cfg: WebappConfig) -> None:
+    """Same, for a renamed conversation. ``resolved`` is the pre-rename path.
+
+    Blocking (file edits plus the search-db rebuild): the router runs it on
+    its Life OS pool."""
     _rename_conversation_index(resolved, new_name)
     _rename_index_md(resolved, new_name)
-    await asyncio.to_thread(_resync_search_index, cfg)
+    _resync_search_index(cfg)

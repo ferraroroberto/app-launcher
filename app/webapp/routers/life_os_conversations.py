@@ -34,7 +34,6 @@ honest rather than broken on a fresh machine.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import re
@@ -45,6 +44,13 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app.webapp.route_pools import (
+    LIFE_OS_FILES,
+    OUTBOUND,
+    SESSION_FILES,
+    SESSION_HOST,
+    run_on,
+)
 from app.webapp.routers._helpers import audit_off_loop, client_ip, maybe_json
 from app.webapp.routers.life_os_files import resolve_within
 from app.webapp.routers.life_os_spawn import (
@@ -279,7 +285,7 @@ async def _launch_conversation(
         selection = await _legacy_selection(cfg, root, skill, body, agent, action, legacy)
     rel = str(selection.get("path") or "")
     path = _conversation_path(root, skill, rel)
-    source = (await asyncio.to_thread(read_captures, Path(cfg.fleet_config_dir), [path]))[0]
+    source = (await run_on(LIFE_OS_FILES, read_captures, Path(cfg.fleet_config_dir), [path]))[0]
     # `revision` marks a capture whose header was verified; an oversized one has
     # no `body` but still resumes.
     if "revision" not in source:
@@ -310,7 +316,7 @@ async def _launch_conversation(
         if keep_model:
             model, model_kept = await _kept_model(cfg, agent, resume_sid)
         override = (model if agent == "codex" else None) if keep_model else model
-        refresh = await asyncio.to_thread(plan_refresh, cfg, skill.id, resume_sid, path.name)
+        refresh = await run_on(LIFE_OS_FILES, plan_refresh, cfg, skill.id, resume_sid, path.name)
         flags = build_resume_flags(cfg, agent, model_override=override, session_id=resume_sid,
                                    keep_model=keep_model, effort_model=model if keep_model else None)
         flags += refresh.suffix
@@ -337,7 +343,7 @@ async def _launch_conversation(
              "model_kept": model_kept,
              "handoff_truncated": action == "handoff" and len(source["body"]) > MAX_HANDOFF_CHARS}
     if action == "resume":
-        await asyncio.to_thread(record_refresh, refresh)
+        await run_on(LIFE_OS_FILES, record_refresh, refresh)
         title_sync = await _name_resumed_session(cfg, skill, path, result.get("session"))
         if title_sync:
             reply["title_sync"] = title_sync
@@ -359,7 +365,7 @@ async def _legacy_selection(
         raise HTTPException(400, "legacy conversation selections can only resume with Claude")
     index = _safe_conversation_index(root, skill)
     rows = _read_conversation_index(index) if index else None
-    candidates = await asyncio.to_thread(_conversation_rows, cfg, rows or [], skill=skill)
+    candidates = await run_on(LIFE_OS_FILES, _conversation_rows, cfg, rows or [], skill=skill)
     matches = [r for r in candidates if r["agent"] == "claude" and r["sid"] == sid]
     if len(matches) != 1:
         raise HTTPException(409, "No unique matching Claude capture; refresh history and select it again.")
@@ -378,7 +384,7 @@ async def _handoff_flags(
     if "body" not in source:
         raise HTTPException(409, OVERSIZED_HANDOFF_REASON)
     try:
-        handoff_path = await asyncio.to_thread(write_handoff, source, skill.id, rel)
+        handoff_path = await run_on(LIFE_OS_FILES, write_handoff, source, skill.id, rel)
     except OSError:
         logger.warning("Life OS handoff artifact write unavailable")
         raise HTTPException(503, "Could not prepare the selected conversation handoff.")
@@ -412,8 +418,8 @@ async def _name_resumed_session(
     if not title or not session_id:
         return None
     try:
-        await asyncio.to_thread(
-            session_client.rename, cfg.session_host_port, session_id, session_name_for(title))
+        await run_on(
+            SESSION_HOST, session_client.rename, cfg.session_host_port, session_id, session_name_for(title))
     except session_client.SessionHostError as exc:
         logger.warning("⚠️ Life OS resume: the resumed session was not named after its "
                        "conversation title (%s)", exc)
@@ -431,7 +437,7 @@ async def _kept_model(cfg: WebappConfig, agent: str, sid: str) -> tuple[str, boo
     otherwise the persisted Codex default, reported as not kept so the phone
     can say so rather than claim a model it did not keep.
     """
-    recorded = await asyncio.to_thread(recorded_model, agent, sid)
+    recorded = await run_on(SESSION_FILES, recorded_model, agent, sid)
     if agent != "codex":
         return recorded, True
     if recorded in VALID_CODEX_MODELS:
@@ -489,7 +495,7 @@ async def list_skill_conversations(skill_id: str, request: Request) -> Dict[str,
     if rows is None:
         return {"skill": skill.id, "available": False, "conversations": []}
 
-    conversations = await asyncio.to_thread(_conversation_rows, cfg, rows, skill=skill)
+    conversations = await run_on(LIFE_OS_FILES, _conversation_rows, cfg, rows, skill=skill)
     conversations, system = await split_system_chats(cfg, conversations, title=True)
     # The indexer already writes newest-first; re-sorting on the date-stamped
     # filename makes that a property of this endpoint rather than a hope.
@@ -524,7 +530,7 @@ async def split_system_chats(
     except (session_client.SessionHostError, OSError, ValueError) as exc:
         logger.info("ℹ️ Life OS bot chats classified without live sessions: %s", exc)
     if title and any(not c["title"] and c["sid"] and c["path"] for c in conversations):
-        await asyncio.to_thread(apply_bot_titles, cfg, conversations, bots)
+        await run_on(LIFE_OS_FILES, apply_bot_titles, cfg, conversations, bots)
     return split_system_rows(conversations, bots)
 
 
@@ -539,7 +545,7 @@ async def _conversation_sessions(cfg: WebappConfig) -> Dict[str, List[Dict[str, 
     cannot be asked: that is "unknown", and the caller must not read it as
     "nothing is running".
     """
-    sessions = await asyncio.to_thread(session_client.list_sessions, cfg.session_host_port)
+    sessions = await run_on(SESSION_HOST, session_client.list_sessions, cfg.session_host_port)
     return await _group_by_conversation(cfg, sessions)
 
 
@@ -552,7 +558,7 @@ async def _group_by_conversation(
     with the zombie cleanup job); it reads the hook-state file, so it
     runs off the loop.
     """
-    return await asyncio.to_thread(group_by_conversation, cfg, sessions)
+    return await run_on(LIFE_OS_FILES, group_by_conversation, cfg, sessions)
 
 
 async def _live_conversations(cfg: WebappConfig) -> Dict[str, Dict[str, Any]]:
@@ -614,7 +620,7 @@ async def skill_conversations(cfg: WebappConfig, skill: Skill) -> List[Dict[str,
     rows = _read_conversation_index(index) if index else None
     if not rows:
         return []
-    candidates = await asyncio.to_thread(_conversation_rows, cfg, rows, skill=skill)
+    candidates = await run_on(LIFE_OS_FILES, _conversation_rows, cfg, rows, skill=skill)
     return sorted(candidates, key=lambda r: _capture_mtime(root, r["path"]) if r["path"] else 0.0,
                   reverse=True)
 
@@ -725,7 +731,7 @@ async def delete_conversation(skill_id: str, request: Request) -> Dict[str, Any]
     if not path.is_file():
         raise HTTPException(404, "file not found")
 
-    source = (await asyncio.to_thread(read_captures, Path(cfg.fleet_config_dir), [path]))[0]
+    source = (await run_on(LIFE_OS_FILES, read_captures, Path(cfg.fleet_config_dir), [path]))[0]
     if "revision" not in source:
         raise HTTPException(409, "Nothing was deleted: can't tell which Claude transcript this "
                                  f"capture belongs to. {source['reason']}")
@@ -741,7 +747,7 @@ async def delete_conversation(skill_id: str, request: Request) -> Dict[str, Any]
                                  "session. Stop that session first.")
 
     try:
-        removed = await asyncio.to_thread(delete_conversation_files, cfg, skill.id, path, source)
+        removed = await run_on(LIFE_OS_FILES, delete_conversation_files, cfg, skill.id, path, source)
     except ConversationDeleteError as exc:
         raise HTTPException(exc.status, exc.message)
     await audit_off_loop(
@@ -794,7 +800,7 @@ async def rename_conversation(skill_id: str, request: Request) -> Dict[str, Any]
         raise HTTPException(400, f"The name is longer than {_MAX_TITLE_CHARS} characters.")
 
     try:
-        proc = await asyncio.to_thread(_run_title_cli, cfg, skill.id, path.name, title)
+        proc = await run_on(OUTBOUND, _run_title_cli, cfg, skill.id, path.name, title)
     except FileNotFoundError:
         raise HTTPException(503, "Renaming is unavailable: conversation_title.py isn't installed "
                                  "in the fleet-config checkout.")
@@ -826,7 +832,7 @@ async def rename_conversation(skill_id: str, request: Request) -> Dict[str, Any]
     )
     # The capture's own header says which session it is; a cleared title
     # has nothing to mirror, so the capture is not even read for it.
-    capture = (await asyncio.to_thread(read_captures, Path(cfg.fleet_config_dir), [path]))[0] if stored else {}
+    capture = (await run_on(LIFE_OS_FILES, read_captures, Path(cfg.fleet_config_dir), [path]))[0] if stored else {}
     reply = {"skill": skill.id, "path": rel, "file": path.name, "title": stored}
     session_sync = await sync_title_to_sessions(cfg, capture, stored)
     if session_sync:
@@ -890,8 +896,8 @@ async def sync_title_to_sessions(
     name = session_name_for(title)
     for sess in owners:
         try:
-            await asyncio.to_thread(
-                session_client.rename, cfg.session_host_port, str(sess.get("session_id")), name)
+            await run_on(
+                SESSION_HOST, session_client.rename, cfg.session_host_port, str(sess.get("session_id")), name)
             counts["renamed"] += 1
         except session_client.SessionHostError as exc:
             counts["failed"] += 1
@@ -958,7 +964,7 @@ async def sync_session_title(
                 if any(str(o.get("session_id")) == session_id for o in owners)}
         if not mine:
             return None
-        found = await asyncio.to_thread(_captures_with_sessions, cfg, mine)
+        found = await run_on(LIFE_OS_FILES, _captures_with_sessions, cfg, mine)
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         logger.warning("⚠️ Session rename: could not tell which Life OS conversation the session "
                        "has open, its title was not updated (%s)", exc)
@@ -969,7 +975,7 @@ async def sync_session_title(
     titled, untitled = 0, 0
     for skill, path in found:
         try:
-            proc = await asyncio.to_thread(_run_title_cli, cfg, skill.id, path.name, title)
+            proc = await run_on(OUTBOUND, _run_title_cli, cfg, skill.id, path.name, title)
         except (OSError, subprocess.SubprocessError) as exc:
             proc, reason = None, str(exc)
         else:

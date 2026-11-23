@@ -23,7 +23,6 @@ for an endpoint that reads arbitrary files under a root).
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
 from pathlib import Path
@@ -31,6 +30,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app.webapp.route_pools import LIFE_OS_FILES, SESSION_HOST, run_on
 from app.webapp.routers._helpers import audit_off_loop, client_ip, maybe_json
 from src import audit
 from src.clients import session as session_client
@@ -192,7 +192,7 @@ async def delete_file(request: Request) -> Dict[str, Any]:
             detail="only conversation logs can be deleted",
         )
     skill_id = resolved.relative_to(skills_dir_for(Path(cfg.life_os_dir)).resolve()).parts[0]
-    source = (await asyncio.to_thread(read_captures, Path(cfg.fleet_config_dir), [resolved]))[0]
+    source = (await run_on(LIFE_OS_FILES, read_captures, Path(cfg.fleet_config_dir), [resolved]))[0]
     if "revision" not in source:
         raise HTTPException(
             status_code=409,
@@ -202,7 +202,7 @@ async def delete_file(request: Request) -> Dict[str, Any]:
     sid = str(source.get("sid", "")).lower()
     if sid:
         try:
-            live = await asyncio.to_thread(life_os_delete.live_conversations, cfg)
+            live = await run_on(SESSION_HOST, life_os_delete.live_conversations, cfg)
         except session_client.SessionHostError as exc:
             logger.warning("⚠️ Life OS delete: session host unavailable (%s)", exc)
             raise HTTPException(
@@ -217,8 +217,8 @@ async def delete_file(request: Request) -> Dict[str, Any]:
                        "session. Stop that session first.",
             )
     try:
-        removed = await asyncio.to_thread(
-            life_os_delete.delete_conversation, cfg, skill_id, resolved, source
+        removed = await run_on(
+            LIFE_OS_FILES, life_os_delete.delete_conversation, cfg, skill_id, resolved, source
         )
     except life_os_delete.ConversationDeleteError as exc:
         raise HTTPException(status_code=exc.status, detail=exc.message)
@@ -301,7 +301,7 @@ async def rename_file(request: Request) -> Dict[str, Any]:
         resolved.rename(target)
     except OSError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    await life_os_index.reconcile_rename(resolved, target.name, cfg)
+    await run_on(LIFE_OS_FILES, life_os_index.reconcile_rename_sync, resolved, target.name, cfg)
     await audit_off_loop(
         audit.audit_event,
         "lifeos_rename", path=rel, to=new_rel, client=client_ip(request)

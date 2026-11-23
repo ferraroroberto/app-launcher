@@ -44,13 +44,13 @@ through.
 
 from __future__ import annotations
 
-import asyncio
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app.webapp.route_pools import LIFE_OS_FILES, run_on
 from app.webapp.routers import (
     life_os_archived,
     life_os_channels,
@@ -201,7 +201,7 @@ async def list_skills(request: Request) -> Dict[str, Any]:
     cfg: WebappConfig = request.app.state.webapp_config
     # A boot read that walks every skill folder and conversation index: off
     # the event loop, so the session list's request never queues behind it.
-    return await asyncio.to_thread(_skills_payload, cfg)
+    return await run_on(LIFE_OS_FILES, _skills_payload, cfg)
 
 
 def _skills_payload(cfg: WebappConfig) -> Dict[str, Any]:
