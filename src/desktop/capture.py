@@ -45,6 +45,8 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from PIL import Image
 
+from src.request_timing import TimedExecutor
+
 logger = logging.getLogger(__name__)
 
 # Pacing: at most one grab per interval while frames are flowing (~7 fps),
@@ -61,6 +63,10 @@ JPEG_QUALITY = 70
 # Thumbnail for change detection: a 4x box reduction keeps a one-character
 # change (a clock tick) visible in the digest at a fraction of the bytes.
 THUMB_REDUCE = 4
+# The Screen view's own threads: monitor lists, input and each stream's grab and
+# encode. One stream keeps one frame in flight, so a few cover two viewers plus
+# their input; a stalled grab never queues a request on the shared default pool.
+SCREEN_POOL = TimedExecutor("desktop-screen", max_workers=4)
 # Quality presets. The connect query's ``preset=`` is validated against
 # PRESETS: JPEG quality, the pause between frames, and a cap on the frame width
 # on top of what the phone asks for (None = no extra cap). Balanced is built
@@ -402,6 +408,7 @@ async def stream_frames(
             stats.record("encode", time.perf_counter() - resized_at)
         return data
 
+    loop = asyncio.get_running_loop()
     frames = 0
     last_digest: Optional[bytes] = None
     unavailable = False
@@ -409,7 +416,7 @@ async def stream_frames(
         if not await _wait_or_stop(acked, stopped):
             break
         try:
-            image, digest = await asyncio.to_thread(grab_and_digest)
+            image, digest = await loop.run_in_executor(SCREEN_POOL, grab_and_digest)
         except CaptureUnavailable as exc:
             if not unavailable:
                 unavailable = True
@@ -422,7 +429,7 @@ async def stream_frames(
             last_digest = None
             await send_status("live")
         if digest != last_digest:
-            data = await asyncio.to_thread(resize_and_encode, image)
+            data = await loop.run_in_executor(SCREEN_POOL, resize_and_encode, image)
             if stopped.is_set():
                 break
             acked.clear()

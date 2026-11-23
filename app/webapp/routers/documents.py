@@ -12,12 +12,12 @@ the Life OS file reader (see ``src/middleware/routes.py``).
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app.webapp.route_pools import MISC_FILES, run_on
 from app.webapp.routers._helpers import audit_off_loop, client_ip
 from src import audit, documents
 from src.webapp_config import WebappConfig
@@ -39,7 +39,7 @@ _STATUS_BY_KIND = {
 async def list_documents(request: Request) -> Dict[str, Any]:
     cfg: WebappConfig = request.app.state.webapp_config
     allowed = documents.parse_documents(cfg.documents)
-    rows = await asyncio.to_thread(documents.list_documents, cfg.projects_dir, allowed)
+    rows = await run_on(MISC_FILES, documents.list_documents, cfg.projects_dir, allowed)
     return {"documents": rows}
 
 
@@ -50,7 +50,7 @@ async def get_document(doc_id: str, request: Request) -> Dict[str, Any]:
     if doc is None:
         raise HTTPException(status_code=404, detail="no such document")
     try:
-        body = await asyncio.to_thread(documents.read_document, cfg.projects_dir, doc)
+        body = await run_on(MISC_FILES, documents.read_document, cfg.projects_dir, doc)
     except documents.DocumentError as exc:
         logger.warning("⚠️  document %s not served (%s): %s", doc.id, exc.kind, exc.detail)
         raise HTTPException(status_code=_STATUS_BY_KIND[exc.kind], detail=exc.detail)

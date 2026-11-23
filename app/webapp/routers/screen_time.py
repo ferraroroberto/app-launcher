@@ -15,13 +15,13 @@ task-os unreachable, 502 task-os refused) and a message fit for the sheet.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import sqlite3
 from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
+from app.webapp.route_pools import MISC_FILES, SERVICE_CALLS, run_on
 from src.usage import export as usage_export
 from src.usage.feature_counts import empty_feature_counts, feature_counts
 from src.usage_log import MAX_TIME_DAYS, local_window, open_read_only
@@ -35,7 +35,7 @@ router = APIRouter()
 @router.get("/api/screen-time/export")
 async def export_status(request: Request) -> Dict[str, Any]:
     cfg: WebappConfig = request.app.state.webapp_config
-    status = await asyncio.to_thread(usage_export.read_status)
+    status = await run_on(MISC_FILES, usage_export.read_status)
     return {"configured": usage_export.is_configured(cfg), **status}
 
 
@@ -43,10 +43,10 @@ async def export_status(request: Request) -> Dict[str, Any]:
 async def export_now(request: Request) -> Dict[str, Any]:
     cfg: WebappConfig = request.app.state.webapp_config
     try:
-        result = await asyncio.to_thread(usage_export.run_export, cfg)
+        result = await run_on(SERVICE_CALLS, usage_export.run_export, cfg)
     except usage_export.ExportError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))
-    status = await asyncio.to_thread(usage_export.read_status)
+    status = await run_on(MISC_FILES, usage_export.read_status)
     return {"result": result.to_dict(), "configured": True, **status}
 
 
@@ -69,7 +69,7 @@ def _read_feature_counts(days: int) -> Dict[str, Any]:
 @router.get("/api/usage/features")
 async def feature_use(days: int = Query(7, ge=1, le=MAX_TIME_DAYS)) -> Dict[str, Any]:
     try:
-        return await asyncio.to_thread(_read_feature_counts, days)
+        return await run_on(MISC_FILES, _read_feature_counts, days)
     except sqlite3.Error as exc:
         logger.info("ℹ️ usage log: feature counts unavailable (%s)", exc)
         raise HTTPException(status_code=503, detail="usage log unavailable")

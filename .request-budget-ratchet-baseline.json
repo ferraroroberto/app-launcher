@@ -1,24 +1,6 @@
 {
   "version": 1,
   "entries": [
-    {"key": "app/webapp/chief_doorbell.py", "counts": {"default-pool": 6}},
-    {"key": "app/webapp/quota_cache.py", "counts": {"default-pool": 1}},
-    {"key": "app/webapp/relay_idle_close.py", "counts": {"default-pool": 6}},
-    {"key": "app/webapp/routers/config.py", "counts": {"default-pool": 3}},
-    {"key": "app/webapp/routers/context_filter.py", "counts": {"default-pool": 3}},
-    {"key": "app/webapp/routers/desktop_screen.py", "counts": {"default-pool": 3}},
-    {"key": "app/webapp/routers/documents.py", "counts": {"default-pool": 2}},
-    {"key": "app/webapp/routers/fleet_scope.py", "counts": {"default-pool": 4}},
-    {"key": "app/webapp/routers/inspiration.py", "counts": {"default-pool": 5}},
-    {"key": "app/webapp/routers/progress.py", "counts": {"default-pool": 1}},
-    {"key": "app/webapp/routers/screen_time.py", "counts": {"default-pool": 4}},
-    {"key": "app/webapp/routers/voice_ocr_tts.py", "counts": {"default-pool": 7}},
-    {"key": "app/webapp/server.py", "counts": {"default-pool": 8}},
-    {"key": "app/webapp/session_host/server.py", "counts": {"default-pool": 15}},
-    {"key": "src/board/state_reconcile.py", "counts": {"default-pool": 1}},
-    {"key": "src/chief/machine_critical.py", "counts": {"default-pool": 1}},
-    {"key": "src/desktop/capture.py", "counts": {"default-pool": 2}},
-    {"key": "src/process_auto_restart.py", "counts": {"default-pool": 1}},
-    {"key": "src/system_load.py", "counts": {"default-pool": 1}}
+    {"key": "app/webapp/session_host/server.py", "counts": {"default-pool": 15}}
   ]
 }

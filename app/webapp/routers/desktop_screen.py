@@ -56,6 +56,7 @@ from typing import Any, Awaitable, Callable, Dict, Optional
 from fastapi import APIRouter, WebSocket
 from starlette.websockets import WebSocketDisconnect
 
+from app.webapp.route_pools import run_on
 from app.webapp.routers._helpers import audit_off_loop, client_ip_ws
 from src import audit
 from src.desktop import capture as desktop_capture
@@ -73,7 +74,7 @@ WS_PATH = "/api/screen/ws"
 @router.get("/api/screen/monitors")
 async def screen_monitors() -> Dict[str, Any]:
     """The displays the Screen view can show; no capture happens here."""
-    monitors = await asyncio.to_thread(desktop_capture.list_monitors)
+    monitors = await run_on(desktop_capture.SCREEN_POOL, desktop_capture.list_monitors)
     return {"monitors": [m.to_dict() for m in monitors]}
 
 
@@ -119,7 +120,7 @@ async def _read_client(
                 elif readout is not None:
                     readout.clear()
             elif session is not None:
-                await asyncio.to_thread(session.handle_text, text)
+                await run_on(desktop_capture.SCREEN_POOL, session.handle_text, text)
                 for reply in session.take_replies():
                     if send is not None:
                         await send(reply)
@@ -176,7 +177,7 @@ async def screen_ws(websocket: WebSocket) -> None:
         await websocket.close(code=refusal[0], reason=refusal[1])
         return
 
-    monitors = await asyncio.to_thread(desktop_capture.list_monitors)
+    monitors = await run_on(desktop_capture.SCREEN_POOL, desktop_capture.list_monitors)
     monitor = desktop_capture.pick_monitor(monitors, _int_param(websocket, "monitor"))
     if monitor is None:
         await websocket.close(code=4404, reason="no such monitor")

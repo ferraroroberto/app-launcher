@@ -39,6 +39,7 @@ from src._json_io import atomic_write_json, read_json_or
 from src.chief_session_end import EVENT_VERSION
 from src.chief_session_end import publish as publish_event
 from src.clients import hub_health
+from src.request_timing import TimedExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,9 @@ STATE_FILE = PROJECT_ROOT / "webapp" / "machine-critical-open.json"
 # cache, so a tick is one fresh read and never a second request inside it.
 TICK_SECONDS = hub_health.OK_CACHE_SECONDS
 _MAX_OFFENDERS = 5
+# The tick's own thread: a hung hub probe then stalls only this watch, never a
+# request on the loop's shared default pool.
+_TICK_POOL = TimedExecutor("machine-critical-tick", max_workers=1)
 _WORKTREE_SUFFIX = re.compile(r"-wt-\d+$")
 # Only an interpreter running a repo's script is that repo's app; any other
 # process that happens to sit in a repo folder (an agent CLI) is not.
@@ -235,7 +239,9 @@ async def tick_forever(app: Any) -> None:
     Settings save applies live."""
     while True:
         try:
-            await asyncio.to_thread(tick_once, getattr(app.state, "webapp_config", None))
+            await asyncio.get_running_loop().run_in_executor(
+                _TICK_POOL, tick_once, getattr(app.state, "webapp_config", None)
+            )
         except Exception:  # noqa: BLE001 — never take the lifespan down
             logger.exception("❌ machine-critical tick failed")
         await asyncio.sleep(TICK_SECONDS)

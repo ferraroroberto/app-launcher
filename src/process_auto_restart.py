@@ -31,6 +31,7 @@ from typing import Any, Callable, Dict, Optional
 from src import process_restart, restart_window, runtime_files
 from src._json_io import atomic_write_json, read_json_or
 from src.clients import hub_health
+from src.request_timing import TimedExecutor
 from src.webapp_config import DEFAULT_CONFIG_PATH
 from src.webapp_settings.values import WEBAPP_CONFIG_PATH_ENV
 
@@ -40,6 +41,9 @@ TICK_SECONDS = 60.0
 STATE_FILE_NAME = "process_auto_restart.json"
 # How long the sheet keeps announcing an automatic restart.
 SHOW_FOR = timedelta(hours=24)
+# The tick's own thread: a restart that waits on a process to stop then stalls
+# only this tick, never a request on the loop's shared default pool.
+_TICK_POOL = TimedExecutor("auto-restart-tick", max_workers=1)
 
 _lock = threading.Lock()
 _last_skip: Optional[str] = None
@@ -148,7 +152,9 @@ async def tick_forever(app: Any) -> None:
     Settings save applies live."""
     while True:
         try:
-            await asyncio.to_thread(tick_once, getattr(app.state, "webapp_config", None))
+            await asyncio.get_running_loop().run_in_executor(
+                _TICK_POOL, tick_once, getattr(app.state, "webapp_config", None)
+            )
         except Exception:  # noqa: BLE001 — never take the lifespan down
             breadcrumbs.exception("❌ night auto-restart tick failed")
         await asyncio.sleep(TICK_SECONDS)

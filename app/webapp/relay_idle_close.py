@@ -41,6 +41,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import HTTPException
 
+from app.webapp.route_pools import AUDIT, LIFE_OS_FILES, SESSION_HOST, run_on
 from app.webapp.routers import life_os_relay
 from app.webapp.routers.life_os_spawn import resolve_skill
 from src import audit
@@ -90,24 +91,24 @@ async def _send_notice(caller: Any, title: str) -> str:
     bot_sid = str(bot.get("session_id"))
     text = _notice(title)
     try:
-        verdict = await asyncio.to_thread(
-            session_client.send_input, caller.cfg.session_host_port, bot_sid, text, True)
+        verdict = await run_on(
+            SESSION_HOST, session_client.send_input, caller.cfg.session_host_port, bot_sid, text, True)
     except session_client.SessionHostError as exc:
         logger.warning(f"⚠️ relay {caller.profile.id} idle close: notice to the bot not "
                        f"delivered ({exc.status}); its next status call reports the stop")
-        await asyncio.to_thread(audit.session_log, bot_sid, "input", bytes=len(text),
-                                submit=True, reason="error", detail=str(exc)[:200])
+        await run_on(AUDIT, audit.session_log, bot_sid, "input", bytes=len(text),
+                     submit=True, reason="error", detail=str(exc)[:200])
         return "failed"
     reason = (verdict or {}).get("reason") if isinstance(verdict, dict) else None
-    await asyncio.to_thread(audit.session_log, bot_sid, "input", bytes=len(text),
-                            submit=True, reason=reason, preview=text[:120])
+    await run_on(AUDIT, audit.session_log, bot_sid, "input", bytes=len(text),
+                 submit=True, reason=reason, preview=text[:120])
     return "deferred" if reason == session_client.INPUT_DEFERRED else "sent"
 
 
 async def _close_profile(cfg: Any, profile: ChannelProfile, sessions: List[Dict[str, Any]],
                          now: float, state: ReaperState) -> None:
     by_sid = {str(s.get("session_id")): s for s in sessions if s.get("alive", True)}
-    held = await asyncio.to_thread(relay_registry.entries, profile.id, list(by_sid))
+    held = await run_on(LIFE_OS_FILES, relay_registry.entries, profile.id, list(by_sid))
     if not held:
         return
     try:
@@ -151,8 +152,8 @@ async def _close_profile(cfg: Any, profile: ChannelProfile, sessions: List[Dict[
             continue
         state.last_outcome[sid] = outcome
         fields = {"notice": notice} if notice else {}
-        await asyncio.to_thread(
-            audit.audit_event, "lifeos_relay", action="relay_idle_stop", profile=profile.id,
+        await run_on(
+            AUDIT, audit.audit_event, "lifeos_relay", action="relay_idle_stop", profile=profile.id,
             skill=skill.id, session=sid, idle_minutes=idle_minutes, outcome=str(outcome), **fields)
         logger.info(f"ℹ️ relay {profile.id} idle close: {sid[:8]} idle {idle_minutes} min, "
                     f"{outcome}" + (f", notice {notice}" if notice else ""))
@@ -168,7 +169,7 @@ async def tick_once(cfg: Any, profiles_path: Optional[Path], state: ReaperState,
     if not due:
         return
     try:
-        sessions = await asyncio.to_thread(session_client.list_sessions, cfg.session_host_port)
+        sessions = await run_on(SESSION_HOST, session_client.list_sessions, cfg.session_host_port)
     except session_client.SessionHostError as exc:
         logger.info(f"ℹ️ relay idle close: session host unreachable ({exc}); next tick")
         return

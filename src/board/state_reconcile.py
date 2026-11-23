@@ -38,6 +38,7 @@ from src._json_io import atomic_write_json
 from src.board.state import STATUS_ENDED, iso_z, parse_iso, utc_now
 from src.clients import session as session_client
 from src.diagnostics import is_pid_alive
+from src.request_timing import TimedExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,9 @@ TICK_SECONDS = 300.0
 # than the row can still miss a session started in between; a row this fresh is
 # left for the next pass.
 MIN_AGE_SECONDS = 120.0
+# The tick's own thread: a stalled state-file write or session-host call then
+# stalls only the reconcile, never a request on the loop's shared default pool.
+_TICK_POOL = TimedExecutor("state-reconcile-tick", max_workers=1)
 
 
 @dataclass(frozen=True)
@@ -198,7 +202,7 @@ async def tick_forever(get_cfg: Callable[[], Any]) -> None:
         cfg = get_cfg()
         if cfg is not None:
             try:
-                await asyncio.to_thread(reconcile_from_config, cfg)
+                await asyncio.get_running_loop().run_in_executor(_TICK_POOL, reconcile_from_config, cfg)
             except Exception:  # noqa: BLE001 -- never take the lifespan down
                 logger.exception("❌ session state reconcile failed")
         await asyncio.sleep(TICK_SECONDS)

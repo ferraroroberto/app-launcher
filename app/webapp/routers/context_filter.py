@@ -19,6 +19,7 @@ from typing import Any, Dict
 from fastapi import APIRouter, HTTPException, Request
 
 from app.webapp.demand_cache import DemandCache
+from app.webapp.route_pools import MISC_FILES, run_on
 from app.webapp.routers._helpers import maybe_json
 from src.context_filter_state import (
     HARNESS_SUPPORT,
@@ -69,8 +70,8 @@ async def _build_context_filter(app: Any) -> Dict[str, Any]:
     # Both reads are blocking file IO — off the event loop, run concurrently
     # since neither depends on the other.
     mode, stats = await asyncio.gather(
-        asyncio.to_thread(read_mode, mode_path),
-        asyncio.to_thread(read_stats, log_path),
+        run_on(MISC_FILES, read_mode, mode_path),
+        run_on(MISC_FILES, read_stats, log_path),
     )
     return {"mode": mode, "harnesses": HARNESS_SUPPORT, "stats": stats}
 
@@ -86,7 +87,7 @@ async def put_context_filter_mode(request: Request) -> Dict[str, Any]:
         )
     mode_path = Path(cfg.context_filter_mode_file)
     try:
-        fresh = await asyncio.to_thread(write_mode, mode_path, mode)
+        fresh = await run_on(MISC_FILES, write_mode, mode_path, mode)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     context_filter_cache(request.app).mark_dirty()
