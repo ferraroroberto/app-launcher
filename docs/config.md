@@ -202,6 +202,13 @@ alphabetical order, no reordering UI yet — waiting for each to report
 ready (via its `.fleet.toml`'s declared `port`, or a fixed delay if that's
 missing) before starting the next. This avoids a boot-time CPU/disk spike
 from launching several sister Python processes concurrently. One tray
-failing to start doesn't block the rest. A tray launched this way is
+failing to start doesn't block the rest. A tray whose port already
+answers is not launched. A tray with a declared port that is still closed
+after the walk is retried after 30 s, 60 s and 120 s while the tray runs,
+then given up on. Before each retry the port is probed again and the
+tray's process is looked for, and a tray found either way is never
+started twice. Each step leaves a line in `webapp/registered_trays.log`:
+`spawn ok` or `spawn failed`, `ready` or `readiness timeout`,
+`retry n/3` and `failed after 3 retries`. A tray launched this way is
 started, not managed — `tray.bat --restart` on THIS machine never touches
 another repo's tray process.

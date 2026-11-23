@@ -360,7 +360,7 @@ class TrayApp:
             )
             _notify("Launcher start failed", str(exc))
         try:
-            registered_trays.launch_all()
+            registered_trays.launch_all(stop=self.watchdog_stop)
         except Exception as exc:  # noqa: BLE001 — launch_all must never raise; belt-and-braces
             logger.error(f"❌ Registered Trays launch failed: {exc}")
             registered_trays._log_breadcrumb(f"launch_all raised: {exc}")
