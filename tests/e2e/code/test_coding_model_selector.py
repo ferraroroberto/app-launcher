@@ -25,6 +25,7 @@ from playwright.sync_api import Page, expect
 from src.launching.model_catalog import DEFAULT_HIDDEN_MODELS
 from tests.e2e.fixtures.ui import (
     close_settings_sheets,
+    load_tab_view,
     open_agent_sheet,
     open_settings_sheet,
 )
@@ -360,11 +361,13 @@ def test_server_catalog_populates_shared_model_selectors(
     authed_page.request.post(f"{base_url}/api/config", data={"hidden_models": list(DEFAULT_HIDDEN_MODELS)})
     try:
         authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+        _load_board_picker(authed_page)
         _assert_switching_a_model_on_offers_it_in_every_dropdown(authed_page, base_url)
 
         # Every catalog model on, whatever the copied config hides.
         authed_page.request.post(f"{base_url}/api/config", data={"hidden_models": []})
         authed_page.reload(wait_until="domcontentloaded")
+        _load_board_picker(authed_page)
         _open_projects(authed_page)
 
         coding = authed_page.locator("#codingModelMenu button[data-value]")
@@ -451,6 +454,7 @@ def test_grok_is_offered_by_the_board_dispatch_picker_only(
             "grok": [{"value": "grok-4.7", "label": "4.7", "available": True}] if installed else []
         }
         authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+        _load_board_picker(authed_page)
         _open_projects(authed_page)
         expect(
             authed_page.locator("#codingModelMenu button[data-value='claude:sonnet']")
@@ -613,6 +617,13 @@ def test_model_selection_owns_polls_until_config_save_settles(
 # Settings › Models in the dropdowns: a switched-off model leaves the Coding,
 # Life OS and Board pickers, and switching it on returns it with no reload.
 VISIBILITY_PICKERS = ("#codingModelMenu", "#lifeOsModelCombo", "#boardDispatchModel")
+
+
+def _load_board_picker(page: Page) -> None:
+    """The Board's "Start with" picker is built when the Board view first
+    loads, so open the Board once, then come back to Code."""
+    load_tab_view(page, "#tabBoard", "#paneBoard")
+    page.locator("#tabClaude").click()
 
 
 def _offered(page: Page, value: str):

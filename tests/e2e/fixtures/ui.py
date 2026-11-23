@@ -119,6 +119,25 @@ def open_tab(page: Page, base_url: str, tab: str, pane: str) -> None:
                 f"two taps on {tab} never reached it; events seen: {record['events'] or 'none'}"
             )
     expect(page.locator(pane), f"a click reached {tab} but {pane} stayed hidden").to_be_visible()
+    wait_view_wired(page, pane)
+
+
+def wait_view_wired(page: Page, pane: str) -> None:
+    """Wait until a tab view imported on first open (shared/lazy-views.js) is wired.
+
+    Its pane shows a moment before its controls have listeners, so a tap in
+    between does nothing. A pane that is not lazy never carries the
+    attribute and passes at once.
+    """
+    expect(page.locator(pane), f"{pane}'s view never finished loading").not_to_have_attribute(
+        "data-view-load", "loading")
+
+
+def load_tab_view(page: Page, tab: str, pane: str) -> None:
+    """Open a lazy tab once so its view is imported and wired, wherever the
+    test goes next (its Settings-fed pickers are built when it loads)."""
+    page.locator(tab).click()
+    expect(page.locator(pane)).to_have_attribute("data-view-load", "ready")
 
 
 def open_settings(page: Page) -> None:
