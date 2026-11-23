@@ -559,7 +559,7 @@ def test_only_desktop_input_injects():
 
 
 def test_only_the_screen_socket_reaches_desktop_input():
-    """``src.desktop.input`` is imported by the Screen router alone."""
+    """``src.desktop.input`` is imported by the Screen router and the Prevent lock nudge alone."""
     importers = []
     for path in _python_files():
         rel = path.relative_to(REPO).as_posix()
@@ -574,7 +574,7 @@ def test_only_the_screen_socket_reaches_desktop_input():
         )
         if imported or dynamic:
             importers.append(rel)
-    assert importers == ["app/webapp/routers/desktop_screen.py"]
+    assert sorted(importers) == ["app/webapp/routers/desktop_screen.py", "src/desktop/prevent_lock.py"]
 
 
 def _screen_ws_body() -> List[ast.stmt]:

@@ -431,6 +431,7 @@ function wireFields() {
   });
   wireOutboxRoots();
   wireAutoRestart();
+  wireConfigSwitch(els.preventLockToggle, 'prevent_lock', { label: 'Prevent lock' });
 }
 
 // The night auto-restart: a switch and its window. A time input only fires

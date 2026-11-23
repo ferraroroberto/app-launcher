@@ -13,7 +13,7 @@ import mimetypes
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -76,6 +76,7 @@ from src.board import state_reconcile
 from src.chief import machine_critical
 from src.clients import session as session_client
 from src.compression import StreamSafeGZipMiddleware
+from src.desktop import prevent_lock
 from src.jobs import snapshot as jobs_snapshot
 from src.launching import launcher
 from src.middleware import BearerTokenMiddleware
@@ -490,6 +491,39 @@ async def _channel_autostart(app: FastAPI) -> None:
     )
 
 
+def _canonical_loops(app: FastAPI) -> List[asyncio.Task]:
+    """The always-on lifespan loops only the canonical checkout may run: each
+    reads its own Settings switch every beat, so a save arms it live."""
+    tasks: List[asyncio.Task] = []
+    # Always started: it re-reads the chief_doorbell toggle every tick and
+    # does nothing while it is off, so a Settings save arms it live.
+    tasks.append(asyncio.create_task(chief_doorbell.tick_forever(app)))
+    # Always started: it reads the night auto-restart switch every tick and does
+    # nothing while it is off. Canonical instance only, so a disposable gate
+    # webapp never restarts a real process.
+    tasks.append(asyncio.create_task(process_auto_restart.tick_forever(app)))
+    # Always started: it reads the Prevent lock switch every beat and holds
+    # and sends nothing while it is off. Canonical instance only, so a
+    # disposable gate webapp never moves the real pointer.
+    tasks.append(asyncio.create_task(prevent_lock.tick_forever(app)))
+    # The hub's machine verdict at `act` on ports or commit becomes one
+    # chief mailbox event per incident. Canonical instance only, so a gate
+    # webapp never writes the real mailbox.
+    tasks.append(asyncio.create_task(machine_critical.tick_forever(app)))
+    # Hook-state rows whose process is gone become history. Canonical only:
+    # it rewrites the real state file against the real session-host.
+    tasks.append(asyncio.create_task(state_reconcile.tick_forever(
+        lambda: getattr(app.state, "webapp_config", None)
+    )))
+    # Always started: it reads each bot's idle_close_minutes every tick and
+    # touches only what the relay reopened, so a settings save applies live.
+    tasks.append(asyncio.create_task(relay_idle_close.tick_forever(app)))
+    # The Projects tiles' ahead/behind: a slow fetch round while a page
+    # polls git status. Canonical only, so a gate webapp stays offline.
+    tasks.append(asyncio.create_task(claude_code.fetch_tick_forever(app)))
+    return tasks
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     # The loop's own default executor, swapped for one that reports queue and
@@ -525,28 +559,7 @@ async def _lifespan(app: FastAPI):
             tasks.append(asyncio.create_task(_coverage_tick(app)))
         if _session_retention_days(cfg) > 0:
             tasks.append(asyncio.create_task(_session_retention_tick(app)))
-        # Always started: it re-reads the chief_doorbell toggle every tick and
-        # does nothing while it is off, so a Settings save arms it live.
-        tasks.append(asyncio.create_task(chief_doorbell.tick_forever(app)))
-        # Always started: it reads the night auto-restart switch every tick and does
-        # nothing while it is off. Canonical instance only, so a disposable gate
-        # webapp never restarts a real process.
-        tasks.append(asyncio.create_task(process_auto_restart.tick_forever(app)))
-        # The hub's machine verdict at `act` on ports or commit becomes one
-        # chief mailbox event per incident. Canonical instance only, so a gate
-        # webapp never writes the real mailbox.
-        tasks.append(asyncio.create_task(machine_critical.tick_forever(app)))
-        # Hook-state rows whose process is gone become history. Canonical only:
-        # it rewrites the real state file against the real session-host.
-        tasks.append(asyncio.create_task(state_reconcile.tick_forever(
-            lambda: getattr(app.state, "webapp_config", None)
-        )))
-        # Always started: it reads each bot's idle_close_minutes every tick and
-        # touches only what the relay reopened, so a settings save applies live.
-        tasks.append(asyncio.create_task(relay_idle_close.tick_forever(app)))
-        # The Projects tiles' ahead/behind: a slow fetch round while a page
-        # polls git status. Canonical only, so a gate webapp stays offline.
-        tasks.append(asyncio.create_task(claude_code.fetch_tick_forever(app)))
+        tasks.extend(_canonical_loops(app))
         if _autostart_channel_sessions_on(cfg):
             tasks.append(asyncio.create_task(_channel_autostart(app)))
         else:

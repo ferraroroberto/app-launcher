@@ -21,7 +21,7 @@ from app.webapp.routers._helpers import (
 )
 from src import boot_autostart, password, remote_power_guard, system_load
 from src.agents import AGENTS, DEFAULT_AGENT, is_installed
-from src.desktop import lid_keep_awake
+from src.desktop import lid_keep_awake, prevent_lock
 from src.launching.flags import (
     build_antigravity_flags,
     build_claude_flags,
@@ -167,8 +167,10 @@ async def _power_payloads() -> Dict[str, Any]:
 
 def _preferences_payload(cfg: WebappConfig) -> Dict[str, Any]:
     """Settings > Sessions, Life OS and Dictation: the browser a session window opens in,
-    the skill refresh switch and the quiet seconds that end a dictation take (0 = off)."""
+    the skill refresh switch and the quiet seconds that end a dictation take (0 = off).
+    Also the Prevent lock switch (off by default), the stored value only."""
     return {
+        "prevent_lock": cfg.prevent_lock,
         "mirror_browser": cfg.mirror_browser,
         "life_os_refresh_skill_instructions": cfg.life_os_refresh_skill_instructions,
         "dictation_auto_stop_seconds": cfg.dictation_auto_stop_seconds,
@@ -330,6 +332,7 @@ _SWITCH_KEYS = (
     "life_os_refresh_skill_instructions",
     "grok_auto_switch",
     "process_auto_restart",
+    "prevent_lock",
 )
 
 
@@ -361,6 +364,7 @@ _PATCH_KEYS = frozenset({
     "process_auto_restart",
     "process_auto_restart_start",
     "process_auto_restart_end",
+    "prevent_lock",
     "chief_auto_compact_threshold",
     "chief_doorbell",
     "chief_auto_drain",
@@ -518,6 +522,9 @@ async def patch_config(request: Request) -> Dict[str, Any]:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     request.app.state.webapp_config = new_cfg
+    if "prevent_lock" in patch:
+        # The loop applies the switch at once, so off releases the keep-awake request now.
+        prevent_lock.poke()
     return {
         "ok": True,
         "claude_flags": build_claude_flags(new_cfg),

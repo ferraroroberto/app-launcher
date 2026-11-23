@@ -801,3 +801,24 @@ class TestPatchConfig:
         assert resp.status_code == 200
         # auth_token is NOT in the allow-list and must not be patched here.
         assert app.state.webapp_config.auth_token == ""
+
+
+class TestPreventLockSwitch:
+    def test_off_by_default_and_saved_through_the_config_post(self, webapp_client):
+        from src.webapp_config import load_webapp_config
+
+        client, app, overrides = webapp_client
+        assert client.get("/api/config").json()["prevent_lock"] is False
+        assert client.post("/api/config", json={"prevent_lock": True}).status_code == 200
+        assert app.state.webapp_config.prevent_lock is True
+        assert client.get("/api/config").json()["prevent_lock"] is True
+        # The setting survives a restart: a fresh load from disk reads it back.
+        assert load_webapp_config(overrides["tmp_webapp_cfg_path"]).prevent_lock is True
+        client.post("/api/config", json={"prevent_lock": False})
+        assert load_webapp_config(overrides["tmp_webapp_cfg_path"]).prevent_lock is False
+
+    def test_a_truthy_string_is_refused(self, webapp_client):
+        client, app, _ = webapp_client
+        resp = client.post("/api/config", json={"prevent_lock": "false"})
+        assert resp.status_code == 400
+        assert app.state.webapp_config.prevent_lock is False

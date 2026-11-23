@@ -395,15 +395,15 @@ class WebappConfig:
     # --- read-aloud hub TTS --------------------------------
     # Base URL of the local-llm-hub, whose OpenAI-shape POST /v1/audio/speech
     # synthesizes the Coding terminal's 🔊 read-aloud with the high-quality
-    # Orpheus voice (streamed WAV). The webapp proxies to it over loopback so
-    # the phone never talks to it directly. Empty string disables the hub
-    # path (🔊 falls back to the on-device Web Speech voice). Plain HTTP — the
-    # hub binds loopback only and serves no TLS, unlike the sibling apps above.
+    # Orpheus voice (streamed WAV). The webapp proxies to it over loopback so the
+    # phone never talks to it directly. Empty string disables the hub path (🔊
+    # falls back to the on-device Web Speech voice). Plain HTTP: the hub binds loopback only.
     llm_hub_url: str = "http://127.0.0.1:8000"
     # Night auto-restart of a flagged allowlisted process (src/process_auto_restart.py): off, window HH:MM.
     process_auto_restart: bool = False
     process_auto_restart_start: str = DEFAULT_START
     process_auto_restart_end: str = DEFAULT_END
+    prevent_lock: bool = False  # Settings > Prevent lock (src/desktop/prevent_lock.py): pointer nudge + keep-awake, off
     # --- Screen time export to task-os ---------------------
     # Where `launcher.py usage-export` and the Screen time sheet's Send to
     # task-os put each completed day's minutes (src/usage/export.py): the
