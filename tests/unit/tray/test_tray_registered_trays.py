@@ -8,6 +8,7 @@ directly at module scope — no ``TrayApp`` construction needed.
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -202,7 +203,7 @@ class TestBootBreadcrumbLog:
     @pytest.mark.parametrize(
         ("ready", "expected"),
         [
-            (True, ["launching 1 autostart entry", "A: launching", "A: ready"]),
+            (True, ["launching 1 autostart entry", "A: spawn ok", "A: ready"]),
             (False, ["A: readiness unconfirmed"]),
         ],
         ids=["ready", "timeout"],
@@ -238,7 +239,7 @@ class TestBootBreadcrumbLog:
         rt_mod.launch_all()
 
         log_text = (tmp_path / "webapp" / "registered_trays.log").read_text(encoding="utf-8")
-        assert "A: failed to launch: boom" in log_text
+        assert "A: spawn failed (OSError: boom)" in log_text
 
     def test_registry_load_failure_still_logs(self, monkeypatch, tmp_path: Path):
 
@@ -377,7 +378,7 @@ class TestTrayStartLaunchesTraysRegardless:
 
         tray_mod.TrayApp._start(stub)
 
-        launch_all.assert_called_once_with()
+        launch_all.assert_called_once_with(stop=stub.watchdog_stop)
         assert isinstance(stub.starter_exc, RuntimeError)
         log = (tmp_path / "webapp" / "registered_trays.log").read_text(encoding="utf-8")
         assert "webapp not ready after 15.0s" in log
@@ -388,9 +389,40 @@ class TestTrayStartLaunchesTraysRegardless:
         tray_mod.TrayApp._start(stub)
 
         stub._start_webapp.assert_called_once_with(restart=False)
-        launch_all.assert_called_once_with()
+        launch_all.assert_called_once_with(stop=stub.watchdog_stop)
         assert stub.starter_exc is None
         assert not (tmp_path / "webapp" / "registered_trays.log").exists()
+
+    def test_webapp_failure_still_reconciles_a_missed_entry(self, monkeypatch, tmp_path: Path):
+        """The real walk, retries included, runs when the webapp failed, and
+        it waits on the tray's own stop event."""
+        from app.tray import tray as tray_mod
+
+        (bat,) = _stub_tray_registry(monkeypatch, tmp_path, "a")
+        _write_fleet_toml(bat.parent, "port = 8447")
+        monkeypatch.setattr(tray_mod, "_notify", lambda title, message: None)
+        monkeypatch.setattr(rt_mod, "find_running_target", lambda b: None)
+        monkeypatch.setattr(rt_mod, "port_listening", lambda port: False)
+        spawn = MagicMock(return_value=7)
+        monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", spawn)
+        waits = iter([False, True])
+        monkeypatch.setattr(rt_mod, "_wait_for_tray_ready", lambda repo_dir: next(waits))
+        stops: list = []
+        monkeypatch.setattr(
+            rt_mod, "_pause", lambda seconds, stop: stops.append(stop) or False,
+            raising=False,
+        )
+        stub = MagicMock()
+        stub.starter_exc = None
+        stub.watchdog_stop = threading.Event()
+        stub._start_webapp.side_effect = RuntimeError("webapp not ready after 15.0s")
+
+        tray_mod.TrayApp._start(stub)
+
+        assert spawn.call_count == 2
+        assert stops == [stub.watchdog_stop]
+        log = (tmp_path / "webapp" / "registered_trays.log").read_text(encoding="utf-8")
+        assert "A: retry 1/3" in log
 
     def test_launch_all_raising_never_propagates(self, tray):
         tray_mod, stub, launch_all = tray
@@ -398,7 +430,7 @@ class TestTrayStartLaunchesTraysRegardless:
 
         tray_mod.TrayApp._start(stub)  # must not raise
 
-        launch_all.assert_called_once_with()
+        launch_all.assert_called_once_with(stop=stub.watchdog_stop)
 
 
 class TestMiniAppsAutostart:
@@ -471,3 +503,196 @@ class TestMiniAppsAutostart:
         monkeypatch.setattr(rt_mod, "_wait_for_tray_ready", lambda repo_dir: True)
 
         rt_mod.launch_all()
+
+
+class TestReconcileMissedAutostarts:
+    """A tray entry not confirmed ready after the first pass is re-checked on
+    a bounded backoff; it is relaunched only when its port is closed and its
+    target is not running, and gives up with a ``failed`` breadcrumb."""
+
+    @pytest.fixture
+    def pauses(self, monkeypatch):
+        seen: list = []
+        monkeypatch.setattr(
+            rt_mod, "_pause", lambda seconds, stop: seen.append(seconds) or False,
+            raising=False,
+        )
+        return seen
+
+    def _one_port_tray(self, monkeypatch, tmp_path: Path):
+        (bat,) = _stub_tray_registry(monkeypatch, tmp_path, "a")
+        _write_fleet_toml(bat.parent, "port = 8447")
+        monkeypatch.setattr(rt_mod, "find_running_target", lambda b: None)
+        return bat
+
+    def _log(self, tmp_path: Path) -> str:
+        return (tmp_path / "webapp" / "registered_trays.log").read_text(encoding="utf-8")
+
+    def test_timeout_then_ready_on_retry(self, monkeypatch, tmp_path: Path, pauses):
+        self._one_port_tray(monkeypatch, tmp_path)
+        monkeypatch.setattr(rt_mod, "port_listening", lambda port: False)
+        spawn = MagicMock(return_value=4242)
+        monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", spawn)
+        waits = iter([False, True])
+        monkeypatch.setattr(rt_mod, "_wait_for_tray_ready", lambda repo_dir: next(waits))
+
+        rt_mod.launch_all()
+
+        assert spawn.call_count == 2
+        assert pauses == [30.0]
+        log = self._log(tmp_path)
+        assert "A: readiness timeout" in log
+        assert "A: retry 1/3" in log
+        assert "A: ready" in log
+        assert "pid 4242" in log
+        assert "failed after" not in log
+
+    def test_repeated_timeouts_stop_after_the_budget(self, monkeypatch, tmp_path: Path, pauses):
+        self._one_port_tray(monkeypatch, tmp_path)
+        monkeypatch.setattr(rt_mod, "port_listening", lambda port: False)
+        spawn = MagicMock(return_value=1)
+        monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", spawn)
+        monkeypatch.setattr(rt_mod, "_wait_for_tray_ready", lambda repo_dir: False)
+
+        rt_mod.launch_all()
+
+        assert spawn.call_count == 1 + 3
+        assert pauses == [30.0, 60.0, 120.0]
+        log = self._log(tmp_path)
+        assert "A: retry 3/3" in log
+        assert "A: failed after 3 retries" in log
+
+    def test_spawn_oserror_is_logged_as_a_spawn_failure_and_retried(
+        self, monkeypatch, tmp_path: Path, pauses
+    ):
+        self._one_port_tray(monkeypatch, tmp_path)
+        monkeypatch.setattr(rt_mod, "port_listening", lambda port: False)
+        calls = {"n": 0}
+
+        def _spawn(bat_path):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise OSError("[WinError 2] cannot start")
+            return 99
+
+        monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", _spawn)
+        monkeypatch.setattr(rt_mod, "_wait_for_tray_ready", lambda repo_dir: True)
+
+        rt_mod.launch_all()
+
+        assert calls["n"] == 2
+        log = self._log(tmp_path)
+        assert "A: spawn failed (OSError: [WinError 2] cannot start)" in log
+        assert "readiness timeout" not in log
+        assert "A: retry 1/3" in log
+        assert "A: ready" in log
+
+    def test_an_entry_already_answering_is_never_launched(self, monkeypatch, tmp_path: Path, pauses):
+        self._one_port_tray(monkeypatch, tmp_path)
+        monkeypatch.setattr(rt_mod, "port_listening", lambda port: True)
+        spawn = MagicMock()
+        monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", spawn)
+
+        rt_mod.launch_all()
+
+        spawn.assert_not_called()
+        assert "A: ready (:8447 already answering) — not launched" in self._log(tmp_path)
+
+    def test_a_retry_rechecks_the_port_before_relaunching(self, monkeypatch, tmp_path: Path, pauses):
+        self._one_port_tray(monkeypatch, tmp_path)
+        answers = iter([False, True])
+        monkeypatch.setattr(rt_mod, "port_listening", lambda port: next(answers))
+        spawn = MagicMock(return_value=1)
+        monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", spawn)
+        monkeypatch.setattr(rt_mod, "_wait_for_tray_ready", lambda repo_dir: False)
+
+        rt_mod.launch_all()
+
+        spawn.assert_called_once()
+        log = self._log(tmp_path)
+        assert "A: ready (:8447 answering) — not relaunched" in log
+        assert "A: retry" not in log
+
+    def test_a_retry_never_relaunches_a_running_target(self, monkeypatch, tmp_path: Path, pauses):
+        self._one_port_tray(monkeypatch, tmp_path)
+        monkeypatch.setattr(rt_mod, "port_listening", lambda port: False)
+        monkeypatch.setattr(rt_mod, "find_running_target", lambda b: 5150)
+        spawn = MagicMock(return_value=1)
+        monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", spawn)
+        monkeypatch.setattr(rt_mod, "_wait_for_tray_ready", lambda repo_dir: False)
+
+        rt_mod.launch_all()
+
+        spawn.assert_called_once()
+        assert "A: already running (pid 5150) — not relaunched" in self._log(tmp_path)
+
+    def test_a_retry_never_relaunches_what_it_cannot_check(self, monkeypatch, tmp_path: Path, pauses):
+        self._one_port_tray(monkeypatch, tmp_path)
+        monkeypatch.setattr(rt_mod, "port_listening", lambda port: False)
+
+        def _unknown(_bat):
+            raise RuntimeError("process table unreadable")
+
+        monkeypatch.setattr(rt_mod, "find_running_target", _unknown)
+        spawn = MagicMock(return_value=1)
+        monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", spawn)
+        monkeypatch.setattr(rt_mod, "_wait_for_tray_ready", lambda repo_dir: False)
+
+        rt_mod.launch_all()
+
+        spawn.assert_called_once()
+        assert "A: not relaunched, could not check it is not running" in self._log(tmp_path)
+
+    def test_an_entry_with_no_port_is_not_retried(self, monkeypatch, tmp_path: Path, pauses):
+        _stub_tray_registry(monkeypatch, tmp_path, "a")
+        spawn = MagicMock(return_value=1)
+        monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", spawn)
+        monkeypatch.setattr(rt_mod, "_wait_for_tray_ready", lambda repo_dir: False)
+
+        rt_mod.launch_all()
+
+        spawn.assert_called_once()
+        assert pauses == []
+        assert "A: readiness unconfirmed (no .fleet.toml port) — not retried" in self._log(tmp_path)
+
+    def test_a_stopping_tray_ends_reconciliation(self, monkeypatch, tmp_path: Path):
+        self._one_port_tray(monkeypatch, tmp_path)
+        monkeypatch.setattr(rt_mod, "port_listening", lambda port: False)
+        spawn = MagicMock(return_value=1)
+        monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", spawn)
+        monkeypatch.setattr(rt_mod, "_wait_for_tray_ready", lambda repo_dir: False)
+        stop = threading.Event()
+        stop.set()
+
+        rt_mod.launch_all(stop=stop)
+
+        spawn.assert_called_once()
+        assert "reconciliation stopped: tray is stopping (1 pending)" in self._log(tmp_path)
+
+    def test_a_dropped_first_spawn_ends_with_one_copy_answering(
+        self, monkeypatch, tmp_path: Path, pauses
+    ):
+        """The first spawn is lost (nothing starts); the real readiness wait
+        times out on a fake clock, and the retry starts exactly one copy."""
+        self._one_port_tray(monkeypatch, tmp_path)
+        world = {"spawns": 0, "copies": 0}
+
+        def _spawn(bat_path):
+            world["spawns"] += 1
+            if world["spawns"] > 1:
+                world["copies"] += 1
+            return 1000 + world["spawns"]
+
+        clock = {"t": 0.0}
+        monkeypatch.setattr(rt_mod.time, "monotonic", lambda: clock["t"])
+        monkeypatch.setattr(rt_mod.time, "sleep", lambda s: clock.__setitem__("t", clock["t"] + s))
+        monkeypatch.setattr(rt_mod, "port_listening", lambda port: world["copies"] > 0)
+        monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", _spawn)
+
+        rt_mod.launch_all()
+
+        assert world == {"spawns": 2, "copies": 1}
+        log = self._log(tmp_path)
+        assert "A: readiness timeout" in log
+        assert "A: retry 1/3" in log
+        assert log.rstrip().endswith("A: ready")
