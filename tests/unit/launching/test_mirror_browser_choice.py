@@ -125,6 +125,7 @@ def test_the_setting_defaults_to_chrome_and_refuses_an_unknown_browser():
 # ------------------------------------------------------------ finding a browser
 
 
+@pytest.mark.windows_only
 def test_find_browser_prefers_app_paths_then_the_install_folders(monkeypatch, tmp_path):
     exe = tmp_path / "Google" / "Chrome" / "Application" / "chrome.exe"
     exe.parent.mkdir(parents=True)
