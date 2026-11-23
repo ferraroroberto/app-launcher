@@ -1,4 +1,4 @@
-"""The gate's docs-, structure-, instruction-, doc-refs-, dead-code-, conventions-, runtime-write- and request-budget-ratchet stages fail on exit 3 and on a new finding, by name.
+"""The gate's docs-, structure-, instruction-, doc-refs-, dead-code-, conventions-, runtime-write-, request-budget- and windows-only-ratchet stages fail on exit 3 and on a new finding, by name.
 
 The real stage text runs against a throwaway repo with `Fail` stubbed to exit 1; a bare
 `& $python scripts/<ratchet>.py` would let exit 3 ("not confirmed") pass."""
@@ -74,6 +74,10 @@ def _stage(name: str) -> str:
     ("request_budget", {"static/a.js": "setInterval(() => fetch('/api/x'), 1500);\n"}, 1,
      ["request budget ratchet failed", "static/a.js", "fixed-rate-poll"]),
     ("request_budget", {"static/a.js": "const x = 1;\n"}, 0, ["STAGE-PASSED"]),
+    ("windows_only", {"tests/test_a.py": "def broken(:\n"}, 1, ["windows only ratchet NOT CONFIRMED ("]),
+    ("windows_only", {"tests/test_a.py": "import os\n\n\ndef test_a():\n    assert os.environ['ProgramFiles']\n"}, 1,
+     ["windows only ratchet failed", "tests/test_a.py", "[win-env-read]"]),
+    ("windows_only", {"tests/test_a.py": "def test_a():\n    assert True\n"}, 0, ["STAGE-PASSED"]),
 ])
 def test_stage_verdict(tmp_path, name: str, files: dict[str, str], code: int, expected: list[str]) -> None:
     (tmp_path / "scripts").mkdir()

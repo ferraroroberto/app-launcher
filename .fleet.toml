@@ -114,6 +114,7 @@ request_budget_ratchet = { src = "scripts/request_budget_ratchet.py", sha = "564
 request_budget_scan = { src = "scripts/request_budget_scan.py", sha = "564864cb95a8b416c16d1a1e1e9f31b9d5b2ec8e", dest = "scripts/request_budget_scan.py" }
 poll = { src = "app/webapp/static/_vendored/poll", sha = "564864cb95a8b416c16d1a1e1e9f31b9d5b2ec8e", dest = "app/webapp/static/_vendored/poll" }
 request_timing = { src = "src/request_timing.py", sha = "564864cb95a8b416c16d1a1e1e9f31b9d5b2ec8e", dest = "src/request_timing.py" }
+windows_only_ratchet = { src = "scripts/windows_only_ratchet.py", sha = "5ba99b0a04b1b5d7b3689f8f7a59bd3fe625a9bc", dest = "scripts/windows_only_ratchet.py" }
 
 # ---------------------------------------------------------------------------
 # [verify] -- the launch recipe the generated verify-app-launcher skill reads
@@ -876,6 +877,10 @@ path  = ".runtime-write-ratchet-baseline.json"
 label = "repo-meta"
 [[e2e.rule]]
 tier  = "none"
+path  = ".windows-only-ratchet-baseline.json"
+label = "repo-meta"
+[[e2e.rule]]
+tier  = "none"
 path  = ".gitignore"
 label = "repo-meta"
 [[e2e.rule]]
@@ -1342,6 +1347,18 @@ derive = "submitState"
 enabled      = true
 handler_dirs = ["app/webapp/routers"]
 stat_cache   = ["src.life_os.stat_cache"]
+
+# ---------------------------------------------------------------------------
+# Windows-only ratchet. scripts/verify-before-ship.ps1 runs
+# scripts/windows_only_ratchet.py, which fails when a test that touches a
+# Windows-only API carries no `windows_only` marker beyond
+# .windows-only-ratchet-baseline.json. The Mac nightly ([ci.nightly]) leaves the
+# marked tests out, so an unmarked one passes here and fails there a night later.
+# Mechanism: project-scaffolding docs/windows-only-ratchet.md.
+[windows_only_ratchet]
+enabled  = true
+baseline = ".windows-only-ratchet-baseline.json"
+marker   = "windows_only"
 
 # Server loops that wake faster than the ratchet's 5 s floor, or on an interval
 # the source does not fix. Each one runs only while something waits on it: a
