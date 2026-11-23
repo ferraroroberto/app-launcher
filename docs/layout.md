@@ -99,7 +99,7 @@ app-launcher/
 │   │                           #   background tasks, the plan and `/resume` pickers, transcript-file location, the working-tree diff
 │   ├── transcript_flavors/     # per-harness transcript-line grammars (claude/codex/grok/pi/antigravity/copilot)
 │   ├── desktop/                # the Screen view's PC side: capture, input, cursor, clipboard, browser, session kind (Console or Remote Desktop), the lid close action (lid_keep_awake.py)
-│   ├── life_os/                # Life OS: capture, history, title, the delete routine, the index, zombie sweep + backup, the relay registry
+│   ├── life_os/                # Life OS: capture, history, title, the delete routine, the index, zombie sweep + backup, the relay registry, the stat-keyed directory listing cache
 │   ├── progress/               # fleet progress: totals.py caches daily GitHub totals per repo (lines, PRs merged, issues opened/closed)
 │   │                           #   in webapp/progress-totals.json; snapshot() reads it with no GitHub call, refresh() is explicit;
 │   │                           #   history.py/tokens.py/buckets.py answer GET /api/progress (the totals + the hub's token history, bucketed)

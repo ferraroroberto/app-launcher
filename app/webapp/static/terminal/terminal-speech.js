@@ -61,6 +61,7 @@ function stopWatchdog() {
 function startWatchdog() {
   stopWatchdog();
   _observed = false;
+  // request-budget-exempt: asks the browser's speech engine whether it is still speaking; it never calls the server.
   _watchdog = setInterval(function () {
     const s = window.speechSynthesis;
     if (!s) { finishNaturally(); return; }

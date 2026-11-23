@@ -85,6 +85,7 @@ export function watchForPause(stream, pauseMs, onPause) {
   const source = createLevelSource(stream);
   if (!source) return null;
   const detector = createPauseDetector(pauseMs);
+  // request-budget-exempt: samples the microphone level in the page; it never calls the server.
   const timer = setInterval(function () {
     const reading = source.read(1);
     // A context not running yet measures nothing; never count it as quiet.
