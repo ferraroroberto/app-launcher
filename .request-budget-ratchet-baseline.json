@@ -1,6 +1,4 @@
 {
   "version": 1,
-  "entries": [
-    {"key": "app/webapp/session_host/server.py", "counts": {"default-pool": 15}}
-  ]
+  "entries": []
 }
