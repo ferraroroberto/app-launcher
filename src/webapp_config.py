@@ -45,7 +45,7 @@ from src.launching.model_catalog import (
 )
 from src.launching.presets import load_launch_presets
 from src.restart_window import DEFAULT_END, DEFAULT_START, validate_window
-from src import request_timing, runtime_files
+from src import request_health, runtime_files
 from src.usage.providers import DEFAULT_USAGE_PROVIDERS, load_usage_providers
 from src.webapp_settings.values import (  # noqa: F401 — re-exported for webapp_config.<name> callers
     ALWAYS_ON_CLAUDE_FLAGS, CREDENTIAL_KEYS, DEFAULT_CHANNEL_MODEL,
@@ -285,7 +285,7 @@ class WebappConfig:
     # Settings > Chief turns it off; readers take auto_drain from the
     # chief settings payload.
     chief_auto_drain: bool = True
-    request_budgets: dict = field(default_factory=dict)  # {class: [soft_s, hard_s]}, src/request_timing; read live
+    request_budgets: dict = field(default_factory=dict)  # {class: [soft_s, hard_s]}, src/request_health; read live
     # One chief-mailbox event per failed Job run / newly red main-branch CI
     # run; on by default, written only while a chief is live.
     chief_job_failures: bool = True
@@ -628,7 +628,7 @@ _CUSTOM_LOADERS: Dict[str, Callable[[dict], Any]] = {
     "pi_model_efforts": _load_pi_model_efforts,
     "usage_providers": load_usage_providers,
     "hidden_models": load_hidden_models,
-    "request_budgets": request_timing.load_request_budgets,
+    "request_budgets": request_health.load_request_budgets,
     "launch_presets": load_launch_presets,
 }
 

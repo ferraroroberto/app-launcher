@@ -9,7 +9,7 @@ records two kinds of row from the real device and posts them here:
 * ``api`` — one per ``/api/`` request whose total time reached
   :data:`SLOW_API_MS`, with the Resource Timing split. The ``server`` leg is
   the response's ``Server-Timing: app;dur=`` value
-  (:class:`app.webapp.observability.SlowRequestLogMiddleware`), so
+  (:class:`src.request_timing.RequestTimingMiddleware`), so
   ``wait - server`` is the network round trip.
 
 **Privacy is enforced here, not trusted to the client.** A row is stored only

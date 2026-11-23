@@ -10,7 +10,7 @@ from datetime import datetime
 
 import pytest
 
-from src.request_timing import snapshot as hs
+from src.request_health import snapshot as hs
 
 NOW = datetime(2026, 3, 4, 12, 0, 0)
 ROWS = [

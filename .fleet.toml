@@ -113,6 +113,7 @@ synthetic_host = { src = "tests/host/_synthetic_host.py", sha = "160b54e2e0bcf76
 request_budget_ratchet = { src = "scripts/request_budget_ratchet.py", sha = "564864cb95a8b416c16d1a1e1e9f31b9d5b2ec8e", dest = "scripts/request_budget_ratchet.py" }
 request_budget_scan = { src = "scripts/request_budget_scan.py", sha = "564864cb95a8b416c16d1a1e1e9f31b9d5b2ec8e", dest = "scripts/request_budget_scan.py" }
 poll = { src = "app/webapp/static/_vendored/poll", sha = "564864cb95a8b416c16d1a1e1e9f31b9d5b2ec8e", dest = "app/webapp/static/_vendored/poll" }
+request_timing = { src = "src/request_timing.py", sha = "564864cb95a8b416c16d1a1e1e9f31b9d5b2ec8e", dest = "src/request_timing.py" }
 
 # ---------------------------------------------------------------------------
 # [verify] -- the launch recipe the generated verify-app-launcher skill reads

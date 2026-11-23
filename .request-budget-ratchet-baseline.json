@@ -42,7 +42,7 @@
     {"key": "app/webapp/routers/session_transcript.py", "counts": {"default-pool": 15}},
     {"key": "app/webapp/routers/sessions.py", "counts": {"default-pool": 10}},
     {"key": "app/webapp/routers/voice_ocr_tts.py", "counts": {"default-pool": 7}},
-    {"key": "app/webapp/server.py", "counts": {"unwatched-loop": 2, "default-pool": 8, "timing-middleware": 1}},
+    {"key": "app/webapp/server.py", "counts": {"unwatched-loop": 2, "default-pool": 8}},
     {"key": "app/webapp/session_host/server.py", "counts": {"default-pool": 15}},
     {"key": "app/webapp/static/chat/chat-activity.js", "counts": {"fixed-rate-poll": 2}},
     {"key": "app/webapp/static/screen/screen-quality-sheet.js", "counts": {"fixed-rate-poll": 1, "poll-floor": 1}},

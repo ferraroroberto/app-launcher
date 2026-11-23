@@ -56,7 +56,8 @@ app-launcher/
 │   ├── audit.py                # terminal audit + per-session logs
 │   ├── session_retention.py    # daily webapp/sessions retention sweep (session_retention_days)
 │   ├── diagnostics.py          # log ring buffer + port-owner introspection
-│   ├── request_timing/         # per-request queue/worker time, the budget table, in-flight peaks; snapshot.py is the read-only `launcher.py health` report
+│   ├── request_timing.py       # vendored: per-request queue/worker time, the timing middleware, in-flight peaks
+│   ├── request_health/         # `__init__.py`: the launcher's request classes and their limits; snapshot.py: the read-only `launcher.py health` report
 │   ├── static_versioning.py    # content-hash query strings for asset cache-busting
 │   ├── stylesheet_bundle.py    # the linked stylesheets concatenated into the one /static/bundle.css
 │   ├── subprocess_flags.py     # NO_WINDOW spawn-flag convention (single source)

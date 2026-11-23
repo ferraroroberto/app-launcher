@@ -26,7 +26,6 @@ from src import (
     instance_role,
     process_auto_restart,
     process_restart,
-    request_timing,
     system_load,
 )
 from src.agents import detect_agents
@@ -45,6 +44,8 @@ from src.git_utils import resolve_deployed_sha
 from src.launching.vscode_workspace import is_vscode_installed
 from src.middleware import is_pc_itself, via_cloudflare
 from src.registry import load_registry
+from src.request_health import BUDGETS, STATS
+from src.request_timing import resolve_budgets
 from src.scanner import pretty_folder_name
 from src.session_host_paths import declared_session_host_paths, paths_touched_between
 from src.static_versioning import asset_hash_for, rewrite_index_html
@@ -360,9 +361,9 @@ async def request_stats(
     laid over them.
     """
     cfg: WebappConfig = request.app.state.webapp_config
-    budgets = request_timing.resolve_budgets(cfg.request_budgets)
+    budgets = resolve_budgets(BUDGETS, cfg.request_budgets)
     return {
-        **request_timing.STATS.snapshot(window_s),
+        **STATS.snapshot(window_s),
         "budgets": {
             name: {"soft_s": b.soft_s, "hard_s": b.hard_s} for name, b in budgets.items()
         },

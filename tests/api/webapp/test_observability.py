@@ -12,8 +12,8 @@ import logging
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.webapp.observability import SlowRequestLogMiddleware
-from src.request_timing import RequestStats, TimedExecutor
+from app.webapp.observability import request_timing_options
+from src.request_timing import RequestStats, RequestTimingMiddleware, TimedExecutor
 
 _SLOW_LOGGER = "launcher.slowreq"
 
@@ -30,7 +30,7 @@ def _make_client(slow_s: float = 0.05) -> TestClient:
         await asyncio.sleep(slow_s * 3)
         return {"ok": True}
 
-    app.add_middleware(SlowRequestLogMiddleware, slow_s=slow_s)
+    app.add_middleware(RequestTimingMiddleware, **{**request_timing_options(), "slow_s": slow_s})
     return TestClient(app)
 
 
@@ -57,7 +57,7 @@ def test_fast_request_stays_silent(caplog):
 def test_inflight_breadcrumb_thresholded_and_rate_limited(caplog):
     # Drive the in-flight logic directly: TestClient is serial, so real
     # concurrent requests can't populate the registry in a unit test.
-    mw = SlowRequestLogMiddleware(app=None, slow_s=999.0, inflight_warn=2)
+    mw = RequestTimingMiddleware(None, **{**request_timing_options(), "slow_s": 999.0, "inflight_warn": 2})
 
     with caplog.at_level(logging.WARNING, logger=_SLOW_LOGGER):
         mw._inflight = {1: ("GET", "/a", 90.0), 2: ("GET", "/b", 95.0)}
@@ -81,7 +81,7 @@ def test_inflight_breadcrumb_thresholded_and_rate_limited(caplog):
 def test_env_defaults_applied(monkeypatch):
     monkeypatch.setenv("LAUNCHER_SLOW_REQUEST_S", "7.5")
     monkeypatch.setenv("LAUNCHER_INFLIGHT_WARN", "12")
-    mw = SlowRequestLogMiddleware(app=None)
+    mw = RequestTimingMiddleware(None, **request_timing_options())
     assert mw.slow_s == 7.5
     assert mw.inflight_warn == 12
 
@@ -103,7 +103,8 @@ def _timed_client(**mw_kwargs) -> TestClient:
     async def quiet():
         return {"ok": True}
 
-    app.add_middleware(SlowRequestLogMiddleware, slow_s=999.0, stats=RequestStats(), **mw_kwargs)
+    options = {**request_timing_options(), "slow_s": 999.0, "stats": RequestStats(), **mw_kwargs}
+    app.add_middleware(RequestTimingMiddleware, **options)
     return TestClient(app)
 
 
@@ -121,7 +122,7 @@ def test_every_api_response_carries_queue_worker_and_total():
 
 
 def test_over_soft_limit_logs_over_budget_with_the_split(caplog):
-    client = _timed_client(get_budget_overrides=lambda: {"board": [0.01, 5.0]})
+    client = _timed_client(budget_overrides=lambda: {"board": [0.01, 5.0]})
     with caplog.at_level(logging.WARNING, logger=_SLOW_LOGGER):
         client.get("/api/board")
     lines = _slow_lines(caplog)
@@ -130,7 +131,7 @@ def test_over_soft_limit_logs_over_budget_with_the_split(caplog):
 
 
 def test_over_hard_limit_logs_a_breach_with_the_split(caplog):
-    client = _timed_client(get_budget_overrides=lambda: {"board": [0.01, 0.02]})
+    client = _timed_client(budget_overrides=lambda: {"board": [0.01, 0.02]})
     with caplog.at_level(logging.WARNING, logger=_SLOW_LOGGER):
         client.get("/api/board")
     assert any(
@@ -141,7 +142,7 @@ def test_over_hard_limit_logs_a_breach_with_the_split(caplog):
 
 
 def test_a_request_inside_its_budget_stays_silent(caplog):
-    client = _timed_client(get_budget_overrides=lambda: {"board": [30.0, 60.0]})
+    client = _timed_client(budget_overrides=lambda: {"board": [30.0, 60.0]})
     with caplog.at_level(logging.WARNING, logger=_SLOW_LOGGER):
         client.get("/api/board")
     assert not _slow_lines(caplog)

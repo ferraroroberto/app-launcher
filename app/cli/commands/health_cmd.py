@@ -2,7 +2,7 @@
 
 Writes ``webapp/health/health-<date>-<time>.txt`` (listeners, top CPU, agent
 processes, lane count, memory, request pressure, the slow-request tail). It
-signals no process and starts no work; see :mod:`src.request_timing.snapshot`.
+signals no process and starts no work; see :mod:`src.request_health.snapshot`.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from __future__ import annotations
 import argparse
 import logging
 
-from src.request_timing import snapshot
+from src.request_health import snapshot
 from src.webapp_config import load_webapp_config
 
 from .base import BaseCommand
