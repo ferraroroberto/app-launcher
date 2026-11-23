@@ -53,6 +53,8 @@ Each coding agent has its own CLI to install (Codex, Antigravity, Copilot, Pi, G
 
 Both bind `0.0.0.0` on `config/config.json`'s `webapp.port` (8445 by default). If `webapp/certificates/cert.pem` is present, the server is HTTPS — otherwise plain HTTP (fine for a fresh loopback-only clone). The cert pair is written by `scripts/gen_tailscale_cert.py` — a real Let's Encrypt cert for the tailnet name, zero per-device trust; see [HTTPS certificate](#https-certificate-tailscale).
 
+The server is Hypercorn, which speaks HTTP/2 to browsers over that TLS. A cold phone launch fetches about 185 static files, and over HTTP/1.1 they queue for the browser's six connections per origin; HTTP/2 sends them all over one connection, which roughly halves the cold launch on a throttled phone. Clients that offer only HTTP/1.1 (cloudflared, the tray's health probes) still get HTTP/1.1, and uvicorn stays as an HTTP/1.1-only fallback (`server` in [docs/config.md](docs/config.md)).
+
 The tray icon menu has:
 
 - **🚀 Open launcher** — open the local URL in the default browser
