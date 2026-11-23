@@ -52,6 +52,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, Optional
 
+from app.webapp.route_pools import BOARD_FILES, SESSION_FILES, SESSION_HOST, run_on
 from app.webapp.routers import board_chief
 from app.webapp.routers.board_spawn import read_live_sessions
 from src import board
@@ -183,14 +184,14 @@ async def observe(cfg: Any) -> Observation:
     reconcile stays on the loop, as in ``GET /api/board``: it schedules the
     chief-pointer write with ``create_task``.
     """
-    pending = await asyncio.to_thread(
-        count_pending, Path(cfg.chief_inbox_dir), int(time.time() * 1000)
+    pending = await run_on(
+        BOARD_FILES, count_pending, Path(cfg.chief_inbox_dir), int(time.time() * 1000)
     )
     if not pending:
         return Observation(pending=pending)
     (live, host_error), state = await asyncio.gather(
-        asyncio.to_thread(read_live_sessions, cfg.session_host_port),
-        asyncio.to_thread(board.read_sessions_state, Path(cfg.sessions_state_file)),
+        run_on(SESSION_HOST, read_live_sessions, cfg.session_host_port),
+        run_on(BOARD_FILES, board.read_sessions_state, Path(cfg.sessions_state_file)),
     )
     if host_error is not None:
         return Observation(pending=pending, blocked=f"session-host unreadable: {host_error}")
@@ -204,7 +205,7 @@ async def observe(cfg: Any) -> Observation:
     if not isinstance(dirty, bool):
         dirty = None
     status = None
-    cards = await asyncio.to_thread(board.merge_sessions, live, state["rows"])
+    cards = await run_on(BOARD_FILES, board.merge_sessions, live, state["rows"])
     for card in cards:
         if str(card.get("session_id") or "") == sid:
             status = str(card.get("status") or "") or None
@@ -311,8 +312,8 @@ async def tick_once(
     # returns, and the ledger row must not be later than the line it matches.
     sent_at = time.time()
     try:
-        result = await asyncio.to_thread(
-            send_fn, cfg.session_host_port, obs.chief_sid, DOORBELL_LINE, True
+        result = await run_on(
+            SESSION_HOST, send_fn, cfg.session_host_port, obs.chief_sid, DOORBELL_LINE, True
         )
     except session_client.SessionHostError as exc:
         # The back-off already started: a host that refuses the write is
@@ -321,8 +322,8 @@ async def tick_once(
         return "ring failed"
     # The Chat pane folds this turn from the row; a failed write is logged by
     # the ledger and only leaves the turn to the fixed-line match.
-    await asyncio.to_thread(
-        record_fn, obs.chief_sid, DOORBELL_LINE, ORIGIN_DOORBELL, now=sent_at
+    await run_on(
+        SESSION_FILES, record_fn, obs.chief_sid, DOORBELL_LINE, ORIGIN_DOORBELL, now=sent_at
     )
     logger.info(
         "🔔 chief doorbell rang (%s) reason=%s",

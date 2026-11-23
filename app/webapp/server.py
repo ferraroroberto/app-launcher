@@ -29,6 +29,14 @@ from app.webapp.observability import (
     request_timing_options,
 )
 from app.webapp.restart_targets import build_restart_router
+from app.webapp.route_pools import (
+    APP_PROBES,
+    JOBS_FILES,
+    OUTBOUND,
+    SESSION_FILES,
+    SESSION_HOST,
+    run_on,
+)
 from app.webapp.routers import (
     apps,
     apps_perf,
@@ -226,8 +234,8 @@ async def _reconcile_orphan_mirror_windows(app: FastAPI) -> None:
     if cfg is None:
         return
     try:
-        sessions_live = await asyncio.to_thread(
-            session_client.list_sessions, cfg.session_host_port
+        sessions_live = await run_on(
+            SESSION_HOST, session_client.list_sessions, cfg.session_host_port
         )
     except session_client.SessionHostError as exc:
         _log.debug(
@@ -239,8 +247,8 @@ async def _reconcile_orphan_mirror_windows(app: FastAPI) -> None:
         str(s.get("session_id")) for s in sessions_live if s.get("session_id")
     ]
     try:
-        closed = await asyncio.to_thread(
-            launcher.close_orphan_mirror_windows, live_sids
+        closed = await run_on(
+            OUTBOUND, launcher.close_orphan_mirror_windows, live_sids
         )
     except Exception as exc:  # noqa: BLE001
         _log.debug("ℹ️ orphan mirror reconcile failed: %s", exc)
@@ -296,7 +304,7 @@ async def _coverage_cycle(cfg: object) -> None:
     from src.jobs import coverage as jobs_coverage
     from src.jobs.reap import reap_stranded_runs_all
 
-    reaped = await asyncio.to_thread(reap_stranded_runs_all)
+    reaped = await run_on(JOBS_FILES, reap_stranded_runs_all)
     if reaped:
         _log.warning(
             "🧟 swept %d stranded run(s) across %d job(s): %s",
@@ -304,8 +312,8 @@ async def _coverage_cycle(cfg: object) -> None:
             len(reaped),
             ", ".join(reaped),
         )
-    await asyncio.to_thread(_publish_script_missing, cfg)
-    alerted = await asyncio.to_thread(jobs_coverage.check_and_alert, cfg)
+    await run_on(JOBS_FILES, _publish_script_missing, cfg)
+    alerted = await run_on(OUTBOUND, jobs_coverage.check_and_alert, cfg)
     if alerted:
         _log.warning(
             "🕳️ coverage alerts pushed for %d job(s): %s",
@@ -374,8 +382,8 @@ async def _session_retention_tick(app: FastAPI) -> None:
         days = _session_retention_days(cfg)
         if cfg is not None and days > 0:
             try:
-                await asyncio.to_thread(
-                    session_retention.run_scheduled_sweep,
+                await run_on(
+                    SESSION_FILES, session_retention.run_scheduled_sweep,
                     cfg.session_host_port,
                     days,
                 )
@@ -409,7 +417,7 @@ async def _owns_listener(port: int) -> bool:
     loop = asyncio.get_running_loop()
     deadline = loop.time() + LISTENER_WAIT_SECONDS
     while True:
-        pids = await asyncio.to_thread(diagnostics.listener_pids, port)
+        pids = await run_on(APP_PROBES, diagnostics.listener_pids, port)
         if pids is not None and own in pids:
             return True
         if pids:
@@ -459,7 +467,7 @@ async def _lifespan(app: FastAPI):
     await _reconcile_orphan_mirror_windows(app)
     # Launched apps outlive a launcher restart; take the previous launcher's
     # records back now so the line naming any that died lands at boot.
-    await asyncio.to_thread(app_runtime.adopt_previous)
+    await run_on(APP_PROBES, app_runtime.adopt_previous)
     # The jobs runtime snapshot behind /api/jobs and /api/board. It
     # only walks while those polls are asking, so every instance runs it:
     # the reads it serves happen on every instance too.

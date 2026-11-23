@@ -7,12 +7,12 @@ live terminal won't work on the current connection.
 
 from __future__ import annotations
 
-import asyncio
 import json
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app.webapp.route_pools import OUTBOUND, run_on
 from app.webapp.routers._helpers import (
     PROJECT_ROOT,
     cert_present,
@@ -161,7 +161,7 @@ async def _power_payloads() -> Dict[str, Any]:
     off the event loop; a PC with no lid reports "unsupported"."""
     return {
         "remote_power_guard": remote_power_guard.payload(),
-        "lid_keep_awake": await asyncio.to_thread(lid_keep_awake.payload),
+        "lid_keep_awake": await run_on(OUTBOUND, lid_keep_awake.payload),
     }
 
 
@@ -546,10 +546,10 @@ async def set_lid_keep_awake(request: Request) -> Dict[str, Any]:
     body = await maybe_json(request)
     change = lid_keep_awake.enable if bool(body.get("enabled")) else lid_keep_awake.disable
     try:
-        await asyncio.to_thread(change)
+        await run_on(OUTBOUND, change)
     except lid_keep_awake.LidKeepAwakeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"ok": True, "lid_keep_awake": await asyncio.to_thread(lid_keep_awake.payload)}
+    return {"ok": True, "lid_keep_awake": await run_on(OUTBOUND, lid_keep_awake.payload)}
 
 
 @router.post("/api/settings/remote-power-guard")

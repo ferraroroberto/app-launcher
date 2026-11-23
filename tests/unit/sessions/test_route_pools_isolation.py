@@ -1,4 +1,4 @@
-"""A stalled session, Jobs or Life OS read fills only its own pool: the Board's plan poll still answers.
+"""A stalled session, Jobs, Life OS or misc read fills only its own pool: the Board's plan poll still answers.
 
 Each read below hangs on an injected event (no CPU burn), and there are more of
 them than its pool has threads, so that pool is full and queueing. The Board's
@@ -57,8 +57,10 @@ async def _until(check: Callable[[], bool], timeout: float = 3.0) -> None:
         ("src.jobs.index.search_runs", "/api/jobs/runs/search?q=x", route_pools.JOBS_FILES, []),
         ("app.webapp.routers.life_os._skills_payload", "/api/life-os/skills",
          route_pools.LIFE_OS_FILES, {"available": True, "skills": []}),
+        ("src.fleet_scope.list_repos", "/api/fleet/scope",
+         route_pools.MISC_FILES, {"available": True, "repos": []}),
     ],
-    ids=["session-outbox", "jobs-search", "life-os-skills"],
+    ids=["session-outbox", "jobs-search", "life-os-skills", "fleet-scope"],
 )
 def test_stalled_reads_leave_the_board_plan_poll_free(webapp_client, monkeypatch, target, url, pool, answer):
     _, app, _ = webapp_client

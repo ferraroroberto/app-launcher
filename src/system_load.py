@@ -50,6 +50,8 @@ from typing import Any, Deque, Dict, Iterable, List, Optional, Tuple
 
 import psutil
 
+from src.request_timing import TimedExecutor
+
 breadcrumbs = logging.getLogger("launcher.slowreq")
 
 TICK_SECONDS = 5.0
@@ -64,6 +66,9 @@ SUSTAIN_SECONDS = 30.0
 ATTENTION_PERCENT = 70.0
 DANGER_PERCENT = 90.0
 TOP_N = 3
+# The sampler's own thread: a slow process walk then stalls only the header's
+# reading, never a request on the loop's shared default pool.
+_TICK_POOL = TimedExecutor("system-load-tick", max_workers=1)
 # Command lines are read for at most this many processes of one shown group
 # (largest first), so a 200-worker pytest tree cannot make a sample slow. The
 # rest keep the bare image name, which merges into the same row when the
@@ -435,7 +440,7 @@ async def tick_forever() -> None:
         if not _demanded():
             continue
         try:
-            await asyncio.to_thread(tick_once)
+            await asyncio.get_running_loop().run_in_executor(_TICK_POOL, tick_once)
         except Exception as exc:  # noqa: BLE001 — a failed tick must not end the loop
             with _lock:
                 first = _last_error is None

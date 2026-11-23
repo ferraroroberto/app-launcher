@@ -25,7 +25,14 @@ fills only the pool of its kind:
   scans and local health or scheme probes.
 * :data:`LIFE_OS_FILES`: Life OS's own files (skill folders, conversation
   captures and indexes, the relay registry, channel profiles, archived
-  backups), read by the Life OS tab and by every relay call a channel bot makes.
+  backups), read by the Life OS tab and by every relay call a channel bot makes;
+* :data:`SERVICE_CALLS`: HTTP calls to the sibling services (voice
+  transcription, photo OCR, TTS, the LLM hub, task-os), which can each take
+  seconds to minutes, kept apart so a long transcription never starves the
+  short subprocess and ``gh`` calls on :data:`OUTBOUND`;
+* :data:`MISC_FILES`: the smaller views' own files (fleet scope, inspiration
+  sources, the context filter's mode and log, Documents, the usage log and the
+  Screen time export status).
 
 The pools are :class:`TimedExecutor`, so a request's ``Server-Timing``
 names the pool its time went to. A pool's threads start on first use.
@@ -57,6 +64,11 @@ APP_PROBES = TimedExecutor("app-probes", max_workers=8)
 # A Life OS boot reads skills, conversations and channels at once, and each
 # relay bot polls on its own; a few more cover a stalled capture read.
 LIFE_OS_FILES = TimedExecutor("life-os-files", max_workers=6)
+# A recording's chunks go one at a time; a few more cover an OCR, a summary and
+# a TTS probe in flight at once.
+SERVICE_CALLS = TimedExecutor("service-calls", max_workers=6)
+# Settings and the smaller sheets read a file or two per open, never in bulk.
+MISC_FILES = TimedExecutor("misc-files", max_workers=4)
 
 
 async def run_on(pool: TimedExecutor, fn: Callable[..., T], /, *args: Any, **kwargs: Any) -> T:

@@ -9,7 +9,6 @@ still registers one ``sessions.router``, the same pattern
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any, Dict, List
 
@@ -17,6 +16,7 @@ import httpx
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from starlette.responses import StreamingResponse
 
+from app.webapp.route_pools import SERVICE_CALLS, run_on
 from app.webapp.routers._helpers import audit_off_loop, client_ip, maybe_json
 from src import audit
 from src.clients import llm as llm_client
@@ -47,7 +47,7 @@ async def transcribe_create(request: Request) -> Dict[str, Any]:
     base = _voice_base(request)
     language = (request.query_params.get("language") or "").strip() or None
     try:
-        result = await asyncio.to_thread(voice_client.create_session, base, language)
+        result = await run_on(SERVICE_CALLS, voice_client.create_session, base, language)
     except voice_client.VoiceTranscriberError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))
     await audit_off_loop(
@@ -65,8 +65,8 @@ async def transcribe_chunk(vid: str, request: Request) -> Dict[str, Any]:
         return {"session_id": vid, "raw_bytes": 0}
     content_type = request.headers.get("content-type") or "audio/webm"
     try:
-        result = await asyncio.to_thread(
-            voice_client.send_chunk, base, vid, content, content_type
+        result = await run_on(
+            SERVICE_CALLS, voice_client.send_chunk, base, vid, content, content_type
         )
     except voice_client.VoiceTranscriberError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))
@@ -79,7 +79,7 @@ async def transcribe_finish(vid: str, request: Request) -> Dict[str, Any]:
     base = _voice_base(request)
     language = (request.query_params.get("language") or "").strip() or None
     try:
-        result = await asyncio.to_thread(voice_client.finish, base, vid, language)
+        result = await run_on(SERVICE_CALLS, voice_client.finish, base, vid, language)
     except voice_client.VoiceTranscriberError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))
     await audit_off_loop(
@@ -148,8 +148,8 @@ async def transcribe_single_shot(
     if not content:
         raise HTTPException(status_code=400, detail="empty recording")
     try:
-        result = await asyncio.to_thread(
-            voice_client.transcribe,
+        result = await run_on(
+            SERVICE_CALLS, voice_client.transcribe,
             base,
             file.filename or "recording.webm",
             content,
@@ -211,8 +211,8 @@ async def ocr_screenshot(
     if not blobs:
         raise HTTPException(status_code=400, detail="empty image")
     try:
-        result = await asyncio.to_thread(
-            photo_ocr_client.extract, base, blobs, model, prompt_id
+        result = await run_on(
+            SERVICE_CALLS, photo_ocr_client.extract, base, blobs, model, prompt_id
         )
     except photo_ocr_client.PhotoOcrError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))
@@ -253,7 +253,7 @@ async def tts_health(request: Request) -> Dict[str, Any]:
     if not base:
         return {"available": False}
     try:
-        ok = await asyncio.to_thread(tts_client.health, base)
+        ok = await run_on(SERVICE_CALLS, tts_client.health, base)
     except tts_client.TtsError as exc:
         logger.debug(f"tts health probe failed: {exc}")
         return {"available": False}
@@ -349,7 +349,7 @@ async def tts_summarize(request: Request) -> Dict[str, Any]:
     if not text:
         raise HTTPException(status_code=400, detail="empty text")
     try:
-        summary = await asyncio.to_thread(llm_client.summarize, base, text)
+        summary = await run_on(SERVICE_CALLS, llm_client.summarize, base, text)
     except llm_client.LlmError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))
     await audit_off_loop(
