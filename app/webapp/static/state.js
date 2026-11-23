@@ -579,6 +579,7 @@ export const els = {
   grokbotEnabledToggle: document.getElementById('grokbotEnabledToggle'),
   grokAutoSwitchToggle: document.getElementById('grokAutoSwitchToggle'),
   processAutoRestartToggle: document.getElementById('processAutoRestartToggle'),
+  preventLockToggle: document.getElementById('preventLockToggle'),
   processAutoRestartStart: document.getElementById('processAutoRestartStart'),
   processAutoRestartEnd: document.getElementById('processAutoRestartEnd'),
   hideChannelSessionsToggle: document.getElementById('hideChannelSessionsToggle'),

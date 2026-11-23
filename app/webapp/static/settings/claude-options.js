@@ -269,6 +269,9 @@ export async function fetchConfig(shouldApply) {
     setFieldValue(els.processAutoRestartStart, body.process_auto_restart_start || '');
     setFieldValue(els.processAutoRestartEnd, body.process_auto_restart_end || '');
   }
+  if (els.preventLockToggle) {
+    setSwitch(els.preventLockToggle, body.prevent_lock === true);
+  }
   if (els.lifeOsRefreshSkillToggle) {
     setSwitch(els.lifeOsRefreshSkillToggle, body.life_os_refresh_skill_instructions !== false);
   }

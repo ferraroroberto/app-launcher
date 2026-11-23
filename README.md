@@ -239,6 +239,10 @@ off puts the prior values back. It never changes the plan until you flip it, and
 a PC with no lid does not show it. Details and the undo by hand:
 [docs/lid-keep-awake.md](docs/lid-keep-awake.md).
 
+## Prevent lock
+
+The **Prevent lock** switch in **Settings** (off by default) keeps the PC from locking for being idle: while it is on, the launcher moves the pointer 1 px every 15 s, up and then down, and holds a keep-awake request; it never clicks, skips a beat after real input, and changes no power setting. Details: [docs/prevent-lock.md](docs/prevent-lock.md).
+
 ---
 
 ## Security notes
@@ -322,6 +326,7 @@ The gate also runs a static ratchet (new duplicate blocks and unused imports fai
 | [docs/documents.md](docs/documents.md) | Settings › Documents: the fleet's repo documents rendered live, Mermaid included |
 | [docs/remote-power-guard.md](docs/remote-power-guard.md) | Settings › Hide shut down remotely: no power options over Remote Desktop |
 | [docs/lid-keep-awake.md](docs/lid-keep-awake.md) | Settings › Awake with lid closed: the power plan's lid close action |
+| [docs/prevent-lock.md](docs/prevent-lock.md) | Settings › Prevent lock: a 1 px pointer nudge and a keep-awake request |
 | [docs/install.md](docs/install.md) | Installing on a fresh PC, updating with `git pull`, uninstalling |
 | [docs/installing-agent-clis.md](docs/installing-agent-clis.md) | Installing each coding agent's CLI |
 | [docs/run-troubleshooting.md](docs/run-troubleshooting.md) | Build identity, the watchdog, request logs |

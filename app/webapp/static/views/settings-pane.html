@@ -233,12 +233,20 @@
           <span class="settings-row-label">Awake with lid closed</span>
           <button type="button" id="lidKeepAwakeToggle" data-track="settings.lid-keep-awake" class="toggle" role="switch" aria-checked="false" aria-label="Keep the PC awake with the lid closed" aria-describedby="lidKeepAwakeHelp lidKeepAwakeStatus"><span class="knob"></span><span class="toggle-label">OFF</span></button>
         </div>
+        <!-- Prevent lock: a plain config switch, saved through POST /api/config
+             (wired in settings-sheets.js); the server is the only source of its position. -->
+        <div class="settings-row settings-row--inline">
+          <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg>
+          <span class="settings-row-label">Prevent lock</span>
+          <button type="button" id="preventLockToggle" data-track="settings.prevent-lock" class="toggle" role="switch" aria-checked="false" aria-label="Keep the PC from locking while idle" aria-describedby="preventLockHelp"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+        </div>
       </div>
       <p id="bootAutostartHelp" class="field-help settings-footnote">Start at log on starts app-launcher when you sign in to Windows, from your Startup folder; no admin rights needed.</p>
       <p id="remotePowerGuardHelp" class="field-help settings-footnote">Hide shut down remotely removes Shut down, Restart and Sleep from the Start menu while you are connected over Remote Desktop; at the PC they stay. Changing it needs an elevated terminal.</p>
       <p id="remotePowerGuardStatus" class="field-error settings-footnote" role="status" aria-live="polite" hidden></p>
       <p id="lidKeepAwakeHelp" class="field-help settings-footnote" hidden>Awake with lid closed sets the active power plan to do nothing when you close the lid, on AC and on battery. Turning it off puts back the values it replaced.</p>
       <p id="lidKeepAwakeStatus" class="field-error settings-footnote" role="status" aria-live="polite" hidden></p>
+      <p id="preventLockHelp" class="field-help settings-footnote">Prevent lock keeps the PC from locking for being idle: every 15 seconds, while the app runs, it moves the pointer 1 px up and then down, and asks Windows to keep the screen and system on. It never clicks, skips a beat when you used the PC in the last 15 seconds, and changes no power or screen-saver setting.</p>
 
       <!-- Voice: one read-only line, last so its hidden elements leave the
            spacing above untouched; shown only while the PC's session is a

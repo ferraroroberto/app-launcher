@@ -1482,6 +1482,12 @@ interval_s = 30
 why        = "turns a critical machine verdict from the LLM hub into a chief event, which must happen while nobody watches; reads through the hub health cache"
 
 [[request_budget.loops]]
+path       = "src/desktop/prevent_lock.py"
+function   = "tick_forever"
+interval_s = 15
+why        = "keeps the PC from locking while the Prevent lock switch is on, which must happen while nobody views the app; off by default, and while off each beat only reads the switch"
+
+[[request_budget.loops]]
 path       = "src/jobs/snapshot.py"
 function   = "tick_forever"
 interval_s = 3

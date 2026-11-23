@@ -1761,7 +1761,7 @@ flowchart LR
   - Life OS: Refresh skills on resume switch
   - Dictation: Auto-stop (Off, 2 s, 3 s, 5 s)
   - Connections: Telegram, Context filter, Fleet scope, Inspiration, API tokens
-  - This PC: Folders, Passkeys, Terminal, PC load, and the Start at log on, Hide shut down remotely and Awake with lid closed switches
+  - This PC: Folders, Passkeys, Terminal, PC load, and the Start at log on, Hide shut down remotely, Awake with lid closed and Prevent lock switches
   - Voice, in a Remote Desktop session only
 - **Does:**
   - a row that shows a value opens its sheet; a switch saves when you tap it
