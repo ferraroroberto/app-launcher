@@ -22,6 +22,8 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.fixtures.ui import wait_view_wired
+
 pytestmark = pytest.mark.smoke
 
 
@@ -86,6 +88,7 @@ def test_apps_life_and_jobs_panels_are_collapsible(
     # -- was test_jobs_panel_is_collapsible_and_add_button_does_not_toggle
     # (last: it opens the modal #jobDialog) --
     authed_page.locator("#tabJobs").click()
+    wait_view_wired(authed_page, "#paneJobs")
 
     jobs = authed_page.locator("#paneJobs details.jobs-card")
     jobs.wait_for(state="attached", timeout=10_000)

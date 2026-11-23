@@ -20,6 +20,7 @@ from urllib.parse import urlparse
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.fixtures.ui import wait_view_wired
 from tests.e2e.fixtures.waits import flush_requests, wait_until
 
 pytestmark = pytest.mark.smoke
@@ -103,6 +104,7 @@ def _assert_a_tracked_sheet_and_its_controls_reach_the_summary(
 ) -> None:
     """A sheet's view and the taps inside it land in ``/api/usage/summary``."""
     page.locator("#tabJobs").click()
+    wait_view_wired(page, "#paneJobs")
     page.locator('[data-track="jobs-filters"]').click()
     sheet = page.locator("#jobsSortSheet")
     expect(sheet).to_be_visible()
