@@ -52,6 +52,7 @@ from fastapi import APIRouter, FastAPI, HTTPException, Request, UploadFile, WebS
 from fastapi.responses import JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
+from app.webapp.session_host import pools
 from src import runtime_files
 from src.agents import DEFAULT_AGENT, SESSION_HOST_AGENTS, is_fullscreen
 from src.build_info import build_identity
@@ -164,8 +165,8 @@ async def _reap_loop() -> None:
             reaped = manager.reap_dead()
             if reaped:
                 logger.info(f"🧹 Reaped {len(reaped)} dead PTY session(s)")
-                await asyncio.to_thread(_cleanup_ended_sessions, reaped)
-                await asyncio.to_thread(_publish_chief_session_ends, reaped)
+                await pools.run_on(pools.HOUSEKEEPING, _cleanup_ended_sessions, reaped)
+                await pools.run_on(pools.HOUSEKEEPING, _publish_chief_session_ends, reaped)
     except asyncio.CancelledError:  # pragma: no cover
         pass
 
@@ -221,12 +222,12 @@ async def create_session(request: Request) -> Dict[str, Any]:
         # multi-session burst (a fixed-delay mitigation was already
         # ruled insufficient for the analogous readiness problem).
         if kind == "remote":
-            session = await asyncio.to_thread(
-                manager.create_remote, project_dir, name, flags, agent
+            session = await pools.run_on(
+                pools.SPAWNS, manager.create_remote, project_dir, name, flags, agent
             )
         else:
-            session = await asyncio.to_thread(
-                manager.create, project_dir, name, flags, agent,
+            session = await pools.run_on(
+                pools.SPAWNS, manager.create, project_dir, name, flags, agent,
                 rows=rows, cols=cols, history_lines=history_lines,
                 label=label,
             )
@@ -267,7 +268,7 @@ async def session_input(sid: str, request: Request) -> Dict[str, Any]:
     # writes the PTY with the framing/settle protocol, a RemoteSession
     # spawns the console-input helper against its console PID and can
     # only ever answer ``delivered: "unconfirmed"``.
-    outcome = await asyncio.to_thread(session.submit_input, data, submit)
+    outcome = await pools.run_on(pools.INPUT, session.submit_input, data, submit)
     if outcome.reason == INPUT_DROPPED:
         # The session had already exited (or the PTY write raised) — it
         # can still be sitting in manager.get() for up to the 30s reap
@@ -346,7 +347,7 @@ async def session_discard_pending_input(sid: str, entry_id: str) -> JSONResponse
         raise HTTPException(status_code=409, detail="this session tracks no pending messages")
     # The queue edit holds the write lock across timed key presses, so it
     # runs off the loop like /input.
-    status, body = await asyncio.to_thread(discard, entry_id)
+    status, body = await pools.run_on(pools.INPUT, discard, entry_id)
     return JSONResponse(status_code=status, content=body)
 
 
@@ -369,7 +370,7 @@ async def session_stop(sid: str, request: Request) -> Dict[str, Any]:
     mode = str(body.get("mode") or "quit")
     # The graceful stop polls for exit up to a few seconds — run it off
     # the event loop so the session-host stays responsive.
-    await asyncio.to_thread(session.stop, mode)
+    await pools.run_on(pools.SPAWNS, session.stop, mode)
     return {"ok": True, "mode": mode}
 
 
@@ -434,7 +435,7 @@ async def session_ws(websocket: WebSocket, sid: str) -> None:
     # empty ring at attach is expected for a session that hasn't
     # printed yet, but if a future report recurs, this timestamp +
     # ring size lets it be correlated against a concurrent create burst
-    # (see the asyncio.to_thread fix above) without guessing blind.
+    # (see the off-loop spawn in create_session) without guessing blind.
     logger.info(
         f"🔌 WS attach {sid[:8]} role={role} ring_chars={len(snapshot)}"
     )
@@ -577,7 +578,7 @@ async def _pump_from_client(
         if kind == "input":
             # Offload for the same reason as POST /sessions/{sid}/input —
             # write() blocks in real time on large payloads.
-            await asyncio.to_thread(session.write, str(msg.get("data") or ""))
+            await pools.run_on(pools.PTY_WRITES, session.write, str(msg.get("data") or ""))
         elif kind == "resize" and role != "pc":
             session.resize(int(msg.get("rows") or 40), int(msg.get("cols") or 120))
 
@@ -637,7 +638,7 @@ async def _save_image(project_dir: str, file: UploadFile) -> str:
         runtime_files.save_bytes(out, data)
     except OSError as exc:
         raise HTTPException(status_code=400, detail=f"could not save image: {exc}")
-    await asyncio.to_thread(_prune_uploads, project_dir)
+    await pools.run_on(pools.UPLOADS, _prune_uploads, project_dir)
     return str(out)
 
 
@@ -662,8 +663,8 @@ async def _save_large_upload(
     target_dir = _large_dir(project_dir, sid)
     out = target_dir / _upload_name(filename)
     try:
-        await asyncio.to_thread(target_dir.mkdir, parents=True, exist_ok=True)
-        handle = await asyncio.to_thread(open, out, "xb")
+        await pools.run_on(pools.UPLOADS, target_dir.mkdir, parents=True, exist_ok=True)
+        handle = await pools.run_on(pools.UPLOADS, open, out, "xb")
     except OSError as exc:
         raise HTTPException(status_code=400, detail=f"could not save file: {exc}")
     size = 0
@@ -676,10 +677,10 @@ async def _save_large_upload(
             buf += chunk
             if len(buf) >= _LARGE_FLUSH_BYTES:
                 data, buf = buf, bytearray()
-                await asyncio.to_thread(handle.write, data)
+                await pools.run_on(pools.UPLOADS, handle.write, data)
         if buf:
-            await asyncio.to_thread(handle.write, buf)
-        await asyncio.to_thread(handle.close)
+            await pools.run_on(pools.UPLOADS, handle.write, buf)
+        await pools.run_on(pools.UPLOADS, handle.close)
         if not size:
             raise HTTPException(status_code=400, detail="empty upload")
     except BaseException as exc:
@@ -692,7 +693,7 @@ async def _save_large_upload(
         logger.info(f"ℹ️ large upload for {sid[:8]} abandoned after {size} B: {exc!r}")
         raise
     logger.info(f"ℹ️ large upload for {sid[:8]}: {size} B → {out}")
-    await asyncio.to_thread(_prune_uploads, project_dir)
+    await pools.run_on(pools.UPLOADS, _prune_uploads, project_dir)
     return str(out), size
 
 
