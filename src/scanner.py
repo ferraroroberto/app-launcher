@@ -489,6 +489,9 @@ def classify_bat(bat_path: Path) -> Optional[str]:
       ``uvicorn`` / ``run_tunnel`` / ``cloudflared``. These are the
       only bats we surface a tunnel URL for.
     * ``webapp`` — body runs ``uvicorn`` (or imports ``app.webapp.server``).
+
+    A bat matching none of these is read one level further: the ``.py`` files
+    it runs inside its own folder get the streamlit / tunnel / webapp checks too.
     """
     try:
         text = bat_path.read_text(encoding="utf-8", errors="ignore").lower()
@@ -497,7 +500,40 @@ def classify_bat(bat_path: Path) -> Optional[str]:
     stem = bat_path.stem.lower()
     if stem == "tray" and "tray_lifecycle.ps1" in text:
         return KIND_TRAY
-    if "streamlit run" in text:
+    kind = _classify_launch_text(stem, text, is_script=False)
+    if kind is not None:
+        return kind
+    # The bat's own text matched nothing: it may hand off to a ``.py`` wrapper
+    # that starts the server. One level only, read-only, inside the bat's folder.
+    for script in _wrapper_scripts(bat_path, text):
+        script_text = _read_script_text(script)
+        if script_text is None:
+            continue
+        kind = _classify_launch_text(stem, script_text, is_script=True)
+        if kind is not None:
+            return kind
+    return None
+
+
+# A script starts Streamlit in code, not only through the ``streamlit run`` CLI.
+_SCRIPT_STREAMLIT_RE = re.compile(
+    r"""streamlit["'\s,]+run\b|streamlit\.web\b[^\n]*\b(?:cli|bootstrap)\b""",
+)
+# Matches a ``.py`` path a bat runs; ``%~dp0`` / ``%CD%`` prefixes are stripped after.
+_BAT_PY_PATH_RE = re.compile(r"""[^\s"'<>|&^=,;()]+\.py\b""", re.IGNORECASE)
+_BAT_DIR_PREFIX_RE = re.compile(r"^(?:%~dp0|%cd%)[\\/]*", re.IGNORECASE)
+_MAX_WRAPPER_SCRIPTS = 8
+# A launcher script is a few lines; a cap keeps a scan from reading a huge file.
+_MAX_SCRIPT_BYTES = 256 * 1024
+
+
+def _classify_launch_text(stem: str, text: str, *, is_script: bool) -> Optional[str]:
+    """The streamlit / tunnel / webapp signatures over lower-cased ``text``.
+
+    ``is_script`` widens the streamlit signature to the in-code ways a wrapper
+    starts it; ``uvicorn`` already covers a direct ``uvicorn.run(``.
+    """
+    if "streamlit run" in text or (is_script and _SCRIPT_STREAMLIT_RE.search(text)):
         return KIND_STREAMLIT
     has_tunnel_signal = any(
         token in text for token in ("uvicorn", "run_tunnel", "cloudflared")
@@ -511,6 +547,43 @@ def classify_bat(bat_path: Path) -> Optional[str]:
     ):
         return KIND_WEBAPP
     return None
+
+
+def _wrapper_scripts(bat_path: Path, text: str) -> List[Path]:
+    """Existing ``.py`` files ``text`` runs, kept to the bat's own folder.
+
+    A path that is absolute, climbs out with ``..`` or goes through a symlink
+    leaving the folder is dropped, so the scan never wanders outside the repo.
+    """
+    try:
+        root = bat_path.parent.resolve()
+    except OSError:
+        return []
+    scripts: List[Path] = []
+    for match in _BAT_PY_PATH_RE.findall(text):
+        rel = _BAT_DIR_PREFIX_RE.sub("", match)
+        if not rel or "%" in rel:
+            continue
+        try:
+            candidate = (root / rel).resolve()
+            inside = candidate.is_relative_to(root) and candidate.is_file()
+        except (OSError, ValueError):
+            continue
+        if inside and candidate not in scripts:
+            scripts.append(candidate)
+        if len(scripts) >= _MAX_WRAPPER_SCRIPTS:
+            break
+    return scripts
+
+
+def _read_script_text(script: Path) -> Optional[str]:
+    """Lower-cased head of ``script``, or ``None`` when it cannot be read."""
+    try:
+        with script.open("rb") as handle:
+            raw = handle.read(_MAX_SCRIPT_BYTES)
+    except OSError:
+        return None
+    return raw.decode("utf-8", errors="ignore").lower()
 
 
 def scan_app_bats(scan_root: Path) -> List[Tuple[Path, str]]:
@@ -535,6 +608,10 @@ def scan_app_bats(scan_root: Path) -> List[Tuple[Path, str]]:
             kind = classify_bat(bat)
             if kind is not None:
                 found.append((bat, kind))
+            else:
+                logger.info(
+                    f"ℹ️ Apps scan: unclassified bat {bat.relative_to(scan_root)}"
+                )
     found.sort(key=lambda pair: pair[0])
     return found
 

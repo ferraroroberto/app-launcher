@@ -63,7 +63,125 @@ class TestClassifyBat:
         assert classify_bat(bat) is None
 
 
+class TestClassifyBatWrapperScript:
+    """A bat that hands off to a ``.py`` wrapper is classified by one level of
+    that script's text; the script is read, never run."""
+
+    def test_streamlit_via_cli_module(self, tmp_path: Path):
+        _write_bat(
+            tmp_path / "scripts" / "run_streamlit.py",
+            "from streamlit.web import cli\ncli.main()\n",
+        )
+        bat = _write_bat(
+            tmp_path / "launch_app.bat",
+            r".venv\Scripts\python.exe scripts\run_streamlit.py",
+        )
+        assert classify_bat(bat) == KIND_STREAMLIT
+
+    def test_streamlit_via_subprocess_module_run(self, tmp_path: Path):
+        _write_bat(
+            tmp_path / "scripts" / "run_streamlit.py",
+            'subprocess.run([sys.executable, "-m", "streamlit", "run", "app.py"])\n',
+        )
+        bat = _write_bat(
+            tmp_path / "launch_app.bat",
+            r"%~dp0.venv\Scripts\python.exe %~dp0scripts\run_streamlit.py",
+        )
+        assert classify_bat(bat) == KIND_STREAMLIT
+
+    def test_streamlit_via_bootstrap_run(self, tmp_path: Path):
+        _write_bat(
+            tmp_path / "go.py",
+            "from streamlit.web import bootstrap\nbootstrap.run('app.py', False, [], {})\n",
+        )
+        bat = _write_bat(tmp_path / "launch_app.bat", "python go.py")
+        assert classify_bat(bat) == KIND_STREAMLIT
+
+    def test_webapp_via_uvicorn_run(self, tmp_path: Path):
+        _write_bat(
+            tmp_path / "scripts" / "serve.py",
+            "import uvicorn\nuvicorn.run(app, port=8000)\n",
+        )
+        bat = _write_bat(tmp_path / "launch_app.bat", r"python scripts\serve.py")
+        assert classify_bat(bat) == KIND_WEBAPP
+
+    def test_script_without_signature_is_none(self, tmp_path: Path):
+        _write_bat(tmp_path / "tool.py", "print('hello')\n")
+        bat = _write_bat(tmp_path / "launch_app.bat", "python tool.py")
+        assert classify_bat(bat) is None
+
+    def test_missing_script_is_none(self, tmp_path: Path):
+        bat = _write_bat(tmp_path / "launch_app.bat", r"python scripts\gone.py")
+        assert classify_bat(bat) is None
+
+    def test_script_outside_the_bat_folder_is_not_followed(self, tmp_path: Path):
+        _write_bat(tmp_path / "elsewhere" / "run.py", "streamlit run app.py\n")
+        bat = _write_bat(
+            tmp_path / "proj" / "launch_app.bat", r"python ..\elsewhere\run.py"
+        )
+        assert classify_bat(bat) is None
+
+    def test_absolute_script_path_is_not_followed(self, tmp_path: Path):
+        outside = _write_bat(tmp_path / "elsewhere" / "run.py", "streamlit run a.py\n")
+        bat = _write_bat(tmp_path / "proj" / "launch_app.bat", f'python "{outside}"')
+        assert classify_bat(bat) is None
+
+    def test_bat_text_signature_wins_without_reading_scripts(
+        self, tmp_path: Path, monkeypatch
+    ):
+        _write_bat(tmp_path / "w.py", "uvicorn.run(app)\n")
+        bat = _write_bat(tmp_path / "x.bat", "streamlit run app.py\npython w.py")
+        import src.scanner as scanner
+
+        def boom(*_a, **_k):
+            raise AssertionError("script must not be read")
+
+        monkeypatch.setattr(scanner, "_read_script_text", boom)
+        assert classify_bat(bat) == KIND_STREAMLIT
+
+    def test_script_is_never_executed_or_imported(self, tmp_path: Path):
+        marker = tmp_path / "ran.txt"
+        _write_bat(
+            tmp_path / "w.py",
+            f"open({str(marker)!r}, 'w').write('x')\n# streamlit run app.py\n",
+        )
+        bat = _write_bat(tmp_path / "launch_app.bat", "python w.py")
+        assert classify_bat(bat) == KIND_STREAMLIT
+        assert not marker.exists()
+
+
 class TestScanAppBats:
+    def test_lists_wrapper_launched_app(self, tmp_path: Path):
+        _write_bat(
+            tmp_path / "alpha" / "scripts" / "run_streamlit.py",
+            "from streamlit.web import cli\n",
+        )
+        _write_bat(
+            tmp_path / "alpha" / "launch_app.bat",
+            r".venv\Scripts\python.exe scripts\run_streamlit.py",
+        )
+        found = scan_app_bats(tmp_path)
+        assert [(p.parent.name, k) for p, k in found] == [("alpha", KIND_STREAMLIT)]
+
+    def test_logs_one_info_line_per_unclassified_bat(
+        self, tmp_path: Path, caplog
+    ):
+        _write_bat(tmp_path / "alpha" / "tool.py", "print('hi')\n")
+        _write_bat(tmp_path / "alpha" / "launch_app.bat", "python tool.py")
+        with caplog.at_level("INFO", logger="src.scanner"):
+            found = scan_app_bats(tmp_path)
+        assert found == []
+        lines = [r for r in caplog.records if r.levelname == "INFO"]
+        assert len(lines) == 1
+        assert str(Path("alpha") / "launch_app.bat") in lines[0].getMessage()
+        assert str(tmp_path) not in lines[0].getMessage()
+
+    def test_classified_bat_logs_nothing(self, tmp_path: Path, caplog):
+        _write_bat(tmp_path / "alpha" / "run.bat", "streamlit run app.py")
+        with caplog.at_level("INFO", logger="src.scanner"):
+            scan_app_bats(tmp_path)
+        assert [r for r in caplog.records if r.levelname == "INFO"] == []
+
     def test_finds_top_level_bat(self, tmp_path: Path):
         _write_bat(tmp_path / "alpha" / "run.bat", "streamlit run app.py")
         found = scan_app_bats(tmp_path)
