@@ -79,6 +79,7 @@ export function setReadout(on) {
   view.serverStats = null;
   view.readout = on ? new Readout(performance.now()) : null;
   if (readoutTimer) clearInterval(readoutTimer);
+  // request-budget-exempt: redraws the readout from stats already in memory; it never calls the server.
   readoutTimer = on ? setInterval(renderReadout, READOUT_REFRESH_MS) : null;
   sendReadoutSwitch(on);
   renderQuality();

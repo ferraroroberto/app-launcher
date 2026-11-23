@@ -62,6 +62,7 @@ export function renderStripLine() {
   parts.icon.style.display = live ? '' : 'none';
   el.hidden = !text;
   if (live && !activityTimer) {
+    // request-budget-exempt: redraws the elapsed counter from the clock; it never calls the server.
     activityTimer = window.setInterval(renderStripLine, ACTIVITY_TICK_MS);
   } else if (!live && activityTimer) {
     window.clearInterval(activityTimer);
@@ -110,6 +111,7 @@ export function syncLiveStep() {
       fmtElapsed(Date.now() - Date.parse(shown._trEntry.timestamp));
   }
   if (shown && !stepTimer) {
+    // request-budget-exempt: redraws the step's elapsed counter from the clock; it never calls the server.
     stepTimer = window.setInterval(syncLiveStep, ACTIVITY_TICK_MS);
   } else if (!shown && stepTimer) {
     window.clearInterval(stepTimer);

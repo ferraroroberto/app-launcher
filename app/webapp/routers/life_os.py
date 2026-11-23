@@ -82,6 +82,7 @@ from src.launching.flags import (
     build_codex_flags,
     build_resume_flags,
 )
+from src.life_os.stat_cache import DirListingCache
 from src.scanner import Skill, scan_skills, skills_dir_for
 from src.webapp_config import WebappConfig, update_webapp_config
 
@@ -135,6 +136,8 @@ _RECAP_COMMAND = "weekly-recap"
 _RECAP_LEDGER_REL = ".claude/skills/_recap/memory/ledger.json"
 # Headless drafts awaiting review land here (gitignored on the life-os side).
 _RECAP_PROPOSALS_REL = ".claude/skills/_recap/proposals"
+# The tile polls recap-status; the proposals folder changes once a week.
+_proposals_cache = DirListingCache()
 # Staleness thresholds in days: amber past DUE, red past OVERDUE.
 _RECAP_DUE_DAYS = 7
 _RECAP_OVERDUE_DAYS = 14
@@ -285,7 +288,9 @@ async def recap_status(request: Request) -> Dict[str, Any]:
     try:
         pdir = life_os_dir / _RECAP_PROPOSALS_REL
         if pdir.is_dir():
-            names = sorted((p.name for p in pdir.glob("*.md")), reverse=True)
+            names = _proposals_cache.get(
+                pdir, "*.md", lambda: sorted((p.name for p in pdir.glob("*.md")), reverse=True)
+            )
             proposal_name = names[0] if names else None
     except OSError:
         pass

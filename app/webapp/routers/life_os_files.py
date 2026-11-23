@@ -38,6 +38,7 @@ from src.life_os import capture as life_os_capture
 from src.life_os import delete as life_os_delete
 from src.life_os import index as life_os_index
 from src.life_os.history import read_captures
+from src.life_os.stat_cache import DirListingCache
 from src.scanner import skills_dir_for
 from src.webapp_config import WebappConfig
 
@@ -330,7 +331,29 @@ def _is_conversation_file(life_os_dir: Path, resolved: Path) -> bool:
 # --------------------------------------------------------------- walk
 
 
+_walk_cache = DirListingCache()
+
+
 def walk_files(
+    root: Path, life_os_root: Path, category: Optional[str]
+) -> List[Dict[str, str]]:
+    """The tree listing of :func:`_walk_files`, kept while no folder in it changed.
+
+    A listing only changes when an entry is added, removed or renamed, which
+    moves its folder's mtime, so an unchanged tree costs one ``stat`` per
+    folder instead of a walk. Each call gets its own copy of the rows.
+    """
+    rows = _walk_cache.get(
+        root,
+        (str(life_os_root), category),
+        lambda: _walk_files(root, life_os_root, category),
+        recursive=True,
+        skip=_BROWSE_SKIP_DIRS,
+    )
+    return [dict(row) for row in rows]
+
+
+def _walk_files(
     root: Path, life_os_root: Path, category: Optional[str]
 ) -> List[Dict[str, str]]:
     """List text files under ``root`` as ``{path, name, category}`` dicts.

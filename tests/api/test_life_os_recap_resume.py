@@ -556,3 +556,29 @@ class TestSkillIcon:
     def test_no_icon_key_is_empty(self, life_os_client):
         client, _, _ = life_os_client
         assert client.get("/api/life-os/skills").json()["skills"][0]["icon"] == ""
+
+
+class TestRecapProposalsListing:
+    def test_unchanged_proposals_folder_is_listed_once(self, life_os_client, monkeypatch):
+        client, _, overrides = life_os_client
+        life_os = overrides["life_os_dir"]
+        pdir = life_os / ".claude" / "skills" / "_recap" / "proposals"
+        pdir.mkdir(parents=True, exist_ok=True)
+        (pdir / "2026-06-12.md").write_text("newest", encoding="utf-8")
+        globs: list = []
+        real_glob = Path.glob
+
+        def counting(self, pattern, *args, **kwargs):
+            if self == pdir:
+                globs.append(pattern)
+            return real_glob(self, pattern, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "glob", counting)
+
+        names = [client.get("/api/life-os/recap-status").json()["proposal_name"] for _ in range(3)]
+        assert names == ["2026-06-12.md"] * 3
+        assert globs == ["*.md"]
+
+        (pdir / "2026-06-19.md").write_text("newer", encoding="utf-8")
+        assert client.get("/api/life-os/recap-status").json()["proposal_name"] == "2026-06-19.md"
+        assert len(globs) == 2
