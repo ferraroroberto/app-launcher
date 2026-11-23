@@ -8,13 +8,13 @@ queue;dur=1.2;desc="default+hot-poll", worker;dur=31.5;desc="default+hot-poll", 
 
 - `queue` is the time the request's work waited for a pool thread, `worker` the time it ran on one, `app` the server's whole time to the response headers (the request's `total_ms`), all in milliseconds. `desc` names the pool: `default` (the event loop's own), `hot-poll`, `session-reads`, `git-status`, `git-sync`, or `none` for a request that used no thread.
 - Parallel steps add up, so `queue + worker` can exceed `app`. A shared single-flight build is charged to the request that started it. The header carries what had finished when the response began; the log lines below carry the final figures.
-- The event loop's default executor and the four named pools are `TimedExecutor`s from `src/request_timing/__init__.py`, the same sizes as before. A background tick (no request in flight) is not timed.
+- The event loop's default executor and the four named pools are `TimedExecutor`s from the vendored `src/request_timing.py`. A background tick (no request in flight) is not timed.
 
-`webapp/slow-requests.log` repeats the split as `queue_ms= worker_ms= total_ms= pool=` on every slow-request line (past `LAUNCHER_SLOW_REQUEST_S`, default 3 s) and on every budget line.
+The vendored `RequestTimingMiddleware` writes these through the `launcher.slowreq` logger; `request_timing_options()` in `app/webapp/observability.py` wires it. `webapp/slow-requests.log` repeats the split as `queue_ms= worker_ms= total_ms= pool=` on every slow-request line (past `LAUNCHER_SLOW_REQUEST_S`, default 3 s) and on every budget line.
 
 ## Budgets
 
-Each request class has a **soft** and a **hard** limit, in seconds:
+Each request class (declared in `src/request_health/__init__.py`) has a **soft** and a **hard** limit, in seconds:
 
 | Class | Request | Soft | Hard |
 |---|---|---|---|

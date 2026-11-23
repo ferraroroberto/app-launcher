@@ -22,11 +22,11 @@ from starlette.types import Scope
 
 from app.webapp import chief_doorbell, loop_lag, quota_cache, relay_idle_close
 from app.webapp.observability import (
-    SlowRequestLogMiddleware,
     ensure_autostart_log_handler,
     ensure_doorbell_log_handler,
     ensure_slow_log_handler,
     ensure_warning_log_handler,
+    request_timing_options,
 )
 from app.webapp.restart_targets import build_restart_router
 from app.webapp.routers import (
@@ -60,7 +60,6 @@ from src import (
     app_runtime,
     instance_role,
     process_auto_restart,
-    request_timing,
     system_load,
 )
 from src.app_config import load_app_config
@@ -72,6 +71,7 @@ from src.compression import StreamSafeGZipMiddleware
 from src.jobs import snapshot as jobs_snapshot
 from src.launching import launcher
 from src.middleware import BearerTokenMiddleware
+from src.request_timing import RequestTimingMiddleware, default_executor
 from src.runtime_data import runtime_db_path
 from src.static_versioning import (
     compute_asset_hashes,
@@ -454,8 +454,8 @@ async def _channel_autostart(app: FastAPI) -> None:
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     # The loop's own default executor, swapped for one that reports queue and
-    # worker time to the request that submitted the work (src/request_timing).
-    asyncio.get_running_loop().set_default_executor(request_timing.default_executor())
+    # worker time to the request that submitted the work (src/request_timing.py).
+    asyncio.get_running_loop().set_default_executor(default_executor())
     await _reconcile_orphan_mirror_windows(app)
     # Launched apps outlive a launcher restart; take the previous launcher's
     # records back now so the line naming any that died lands at boot.
@@ -569,7 +569,7 @@ def create_app() -> FastAPI:
         get_config=lambda: app.state.webapp_config,
     )
     # Outside the auth middleware, so the timing covers it.
-    app.add_middleware(SlowRequestLogMiddleware, get_budget_overrides=_budget_overrides(app))
+    app.add_middleware(RequestTimingMiddleware, **request_timing_options(_budget_overrides(app)))
     # Added last → outermost, so an auth failure or a bodyless 304 passes
     # through it unchanged. No bypass path: the TTS proxy is `audio/L16` and
     # the SSE stream is `text/event-stream`, both skipped by content type.
