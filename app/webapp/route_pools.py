@@ -23,6 +23,9 @@ fills only the pool of its kind:
   from the reads so a fire never queues behind a stalled history walk;
 * :data:`APP_PROBES`: the Apps tab's registry reads, folder scans, listener
   scans and local health or scheme probes.
+* :data:`LIFE_OS_FILES`: Life OS's own files (skill folders, conversation
+  captures and indexes, the relay registry, channel profiles, archived
+  backups), read by the Life OS tab and by every relay call a channel bot makes.
 
 The pools are :class:`TimedExecutor`, so a request's ``Server-Timing``
 names the pool its time went to. A pool's threads start on first use.
@@ -51,6 +54,9 @@ JOBS_FILES = TimedExecutor("jobs-files", max_workers=6)
 JOB_SPAWNS = TimedExecutor("job-spawns", max_workers=4)
 # The Apps poll probes several tunnels' health at once, each up to 3 s.
 APP_PROBES = TimedExecutor("app-probes", max_workers=8)
+# A Life OS boot reads skills, conversations and channels at once, and each
+# relay bot polls on its own; a few more cover a stalled capture read.
+LIFE_OS_FILES = TimedExecutor("life-os-files", max_workers=6)
 
 
 async def run_on(pool: TimedExecutor, fn: Callable[..., T], /, *args: Any, **kwargs: Any) -> T:

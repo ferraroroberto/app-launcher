@@ -54,6 +54,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Request
 
 from app.webapp.demand_cache import DemandCache
+from app.webapp.route_pools import LIFE_OS_FILES, OUTBOUND, SESSION_HOST, run_on
 from app.webapp.routers._helpers import (
     audit_off_loop,
     cert_present,
@@ -144,8 +145,8 @@ def relay_base_url(cfg: WebappConfig) -> str:
 async def _live_profile_sessions(cfg: WebappConfig) -> Dict[str, Dict[str, Any]]:
     """Alive channel sessions by profile id. Raises ``SessionHostError`` when
     the host cannot be asked — callers must not read that as "none running"."""
-    sessions = await asyncio.to_thread(
-        session_client.list_sessions, cfg.session_host_port
+    sessions = await run_on(
+        SESSION_HOST, session_client.list_sessions, cfg.session_host_port
     )
     live: Dict[str, Dict[str, Any]] = {}
     for sess in sessions:
@@ -199,14 +200,14 @@ async def _build_channels(app: Any) -> Dict[str, Any]:
     """The list's answer. File reads, the skills scan and the ``PATH`` lookup
     run on a worker thread; only the session-host call is awaited."""
     cfg: WebappConfig = app.state.webapp_config
-    profiles, problems = await asyncio.to_thread(_profiles_of, app)
+    profiles, problems = await run_on(LIFE_OS_FILES, _profiles_of, app)
     live: Optional[Dict[str, Dict[str, Any]]] = None
     if profiles:
         try:
             live = await _live_profile_sessions(cfg)
         except session_client.SessionHostError as exc:
             logger.debug(f"channel profile session lookup failed: {exc}")
-    return await asyncio.to_thread(_channels_answer, app, cfg, profiles, problems, live)
+    return await run_on(LIFE_OS_FILES, _channels_answer, app, cfg, profiles, problems, live)
 
 
 def _channels_answer(
@@ -493,8 +494,8 @@ async def update_channel(profile_id: str, request: Request) -> Dict[str, Any]:
         {s.id for s in scan_skills(life_os_dir)} if life_os_dir.is_dir() else set()
     )
     try:
-        profile, changed = await asyncio.to_thread(
-            update_channel_profile, profile_id, body,
+        profile, changed = await run_on(
+            LIFE_OS_FILES, update_channel_profile, profile_id, body,
             skill_ids=skill_ids,
             path=getattr(request.app.state, "channel_profiles_path", None)
             or DEFAULT_PROFILES_PATH,
@@ -579,7 +580,7 @@ async def _wait_until_gone(port: int, sid: str, wait_s: float) -> bool:
     deadline = time.monotonic() + wait_s
     while True:
         try:
-            info = await asyncio.to_thread(session_client.get_session, port, sid)
+            info = await run_on(SESSION_HOST, session_client.get_session, port, sid)
         except session_client.SessionHostError as exc:
             if exc.status == 404:
                 return True
@@ -600,7 +601,7 @@ async def stop_until_gone(
     ``SessionHostError`` when the host stops answering while it is polled.
     Shared by the bot restart and the relay's stop, which only ever quits."""
     try:
-        await asyncio.to_thread(session_client.stop, port, sid, mode)
+        await run_on(SESSION_HOST, session_client.stop, port, sid, mode)
     except session_client.SessionHostError as exc:
         if exc.status == 404:
             logger.info(f"ℹ️ {what}: session {sid[:8]} already gone at {mode}")
@@ -622,7 +623,7 @@ async def _quit_and_confirm_gone(
     port = cfg.session_host_port
     # The PC mirror window, as the Coding stop route closes it. Best effort.
     try:
-        await asyncio.to_thread(close_mirror_window, sid)
+        await run_on(OUTBOUND, close_mirror_window, sid)
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"⚠️ mirror window close raised for {sid[:8]}: {exc}")
     started = time.monotonic()
@@ -677,8 +678,8 @@ async def _wait_for_session_host(cfg: WebappConfig) -> bool:
     deadline = loop.time() + AUTOSTART_HOST_WAIT_SECONDS
     while True:
         try:
-            await asyncio.to_thread(
-                session_client.list_sessions, cfg.session_host_port
+            await run_on(
+                SESSION_HOST, session_client.list_sessions, cfg.session_host_port
             )
             return True
         except session_client.SessionHostError as exc:

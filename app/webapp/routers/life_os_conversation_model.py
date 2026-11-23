@@ -11,11 +11,11 @@ via ``include_router`` like :mod:`app.webapp.routers.life_os_conversations`.
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any, Dict
 
 from fastapi import APIRouter, Request
 
+from app.webapp.route_pools import SESSION_FILES, run_on
 from app.webapp.routers.life_os_spawn import resolve_skill
 from src.session_view.conversation_model import recorded_model
 
@@ -28,5 +28,5 @@ async def conversation_model(skill_id: str, request: Request, agent: str = "", s
     the reader only builds a file name from a validated id."""
     resolve_skill(request.app.state.webapp_config, skill_id)
     known = agent if agent in ("claude", "codex") else ""
-    model = await asyncio.to_thread(recorded_model, known, sid) if known else ""
+    model = await run_on(SESSION_FILES, recorded_model, known, sid) if known else ""
     return {"agent": known, "model": model}

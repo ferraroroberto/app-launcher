@@ -20,6 +20,7 @@ from typing import Any, Dict, Tuple
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app.webapp.route_pools import LIFE_OS_FILES, run_on
 from app.webapp.routers._helpers import audit_off_loop, client_ip
 from src import audit
 from src.life_os import capture as life_os_capture
@@ -56,8 +57,8 @@ async def archived_list(request: Request) -> Dict[str, Any]:
     skill = (request.query_params.get("skill") or "").strip()
     if len(query) > _MAX_QUERY_CHARS:
         raise HTTPException(status_code=400, detail="query too long")
-    rows = await asyncio.to_thread(
-        life_os_zombie_backup.list_archived, life_os_zombie_backup.backup_root(), query, skill
+    rows = await run_on(
+        LIFE_OS_FILES, life_os_zombie_backup.list_archived, life_os_zombie_backup.backup_root(), query, skill
     )
     # The query text is the owner's own words: the hit count is all the trail needs.
     await audit_off_loop(
@@ -102,8 +103,8 @@ async def restore_archived(day: str, skill: str, capture: str, request: Request)
     cfg: WebappConfig = request.app.state.webapp_config
     async with _restore_lock:
         root, _folder = _locate(day, skill, capture)
-        outcome = await asyncio.to_thread(
-            life_os_zombie_backup.restore_one, cfg, root, day, skill, capture
+        outcome = await run_on(
+            LIFE_OS_FILES, life_os_zombie_backup.restore_one, cfg, root, day, skill, capture
         )
     await audit_off_loop(
         audit.audit_event,

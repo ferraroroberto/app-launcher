@@ -62,6 +62,7 @@ from typing import Any, Dict, List, NoReturn, Optional
 
 from fastapi import APIRouter, HTTPException, Request, Response
 
+from app.webapp.route_pools import LIFE_OS_FILES, SESSION_FILES, SESSION_HOST, run_on
 from app.webapp.routers._helpers import audit_off_loop, client_ip, maybe_json
 from app.webapp.routers.board import session_exchange
 from app.webapp.routers.life_os_channels import (
@@ -185,7 +186,7 @@ async def _caller(profile_id: str, request: Request) -> _Caller:
     except HTTPException:
         _refuse(404, RelayState.NOT_FOUND, f"{profile.label}'s skill {profile.skill!r} was not found.")
     try:
-        sessions = await asyncio.to_thread(session_client.list_sessions, cfg.session_host_port)
+        sessions = await run_on(SESSION_HOST, session_client.list_sessions, cfg.session_host_port)
     except session_client.SessionHostError as exc:
         logger.warning(f"⚠️ relay {profile.id}: session host unreachable ({exc})")
         _refuse(503, RelayState.HOST_UNREACHABLE,
@@ -207,7 +208,7 @@ async def _card_statuses(caller: _Caller, rows: Dict[str, Dict[str, Any]]) -> Di
     the hook state ``rows``. A session with no card, or one the Board cannot
     place (``unknown``), is absent: its status is not known, and the bot's
     ``read`` falls back to the quiet-time check rather than call it settled."""
-    cards = await asyncio.to_thread(board.merge_sessions, caller.sessions, rows)
+    cards = await run_on(LIFE_OS_FILES, board.merge_sessions, caller.sessions, rows)
     return {str(card.get("session_id")): card["status"] for card in cards
             if isinstance(card.get("status"), str)
             and card["status"] != card_status.UNKNOWN}
@@ -219,9 +220,9 @@ async def _turn_facts(caller: _Caller) -> Dict[str, Dict[str, Any]]:
     transcript (``None`` when that cannot be read). The PTY's own
     ``last_output_at`` is no measure here: a footer repaint moves it after
     the turn, and the capture, have ended."""
-    state = await asyncio.to_thread(
-        board.read_sessions_state, Path(caller.cfg.sessions_state_file))
-    turned = await asyncio.to_thread(board.attach_last_turn, caller.sessions, state["rows"])
+    state = await run_on(
+        LIFE_OS_FILES, board.read_sessions_state, Path(caller.cfg.sessions_state_file))
+    turned = await run_on(SESSION_FILES, board.attach_last_turn, caller.sessions, state["rows"])
     statuses = await _card_statuses(caller, state["rows"])
     return {str(sess.get("session_id")): {
                 "status": statuses.get(str(sess.get("session_id"))),
@@ -256,15 +257,15 @@ async def _target(caller: _Caller, sid: str) -> Dict[str, Any]:
             if any(str(o.get("session_id")) == sid for o in owners)}
     mine = {str(r["sid"]).lower(): r for r in await skill_conversations(caller.cfg, caller.skill)
             if r["sid"]}
-    entry = await asyncio.to_thread(relay_registry.find, caller.profile.id, sid)
+    entry = await run_on(LIFE_OS_FILES, relay_registry.find, caller.profile.id, sid)
     if relay_registry.is_unbound_new(entry):
         # Started by ``new``: it holds no capture until its first turn ends, so
         # being in the registry is the proof it is this bot's. Once that turn
         # is captured the entry is bound to it and the checks below apply.
         row = next((mine[conv] for conv in held if conv in mine), None)
         if row is not None:
-            await asyncio.to_thread(
-                relay_registry.bind, caller.profile.id, sid, row["path"],
+            await run_on(
+                LIFE_OS_FILES, relay_registry.bind, caller.profile.id, sid, row["path"],
                 str(row.get("title") or row.get("topic") or ""))
         return sess
     if not held & set(mine):
@@ -423,13 +424,13 @@ async def _open_in_chat(caller: _Caller, request: Request, chat: str,
     opened still running (one per chat), else ``None``. Counts as use of it."""
     if not chat:
         return None
-    held = await asyncio.to_thread(
-        relay_registry.entries, caller.profile.id, _live_ids(caller), chat=chat)
+    held = await run_on(
+        LIFE_OS_FILES, relay_registry.entries, caller.profile.id, _live_ids(caller), chat=chat)
     if not held:
         return None
     entry = held[-1]
     sid = str(entry.get("session_id"))
-    await asyncio.to_thread(relay_registry.touch, caller.profile.id, sid, time.time())
+    await run_on(LIFE_OS_FILES, relay_registry.touch, caller.profile.id, sid, time.time())
     await _audit(caller, request, action, session=sid, outcome=RelayState.ALREADY_OPEN)
     logger.info(f"ℹ️ relay {caller.profile.id}: this chat already has "
                 f"{sid[:8]} open; {action} launched nothing")
@@ -448,10 +449,10 @@ async def _register(caller: _Caller, state: RelayState, sid: str, chat: str,
     relay: the safe side."""
     try:
         if state == RelayState.RESUMED and sid:
-            await asyncio.to_thread(relay_registry.add, caller.profile.id, chat, sid,
+            await run_on(LIFE_OS_FILES, relay_registry.add, caller.profile.id, chat, sid,
                                     conversation, title, time.time())
             return True
-        return await asyncio.to_thread(relay_registry.touch, caller.profile.id, sid,
+        return await run_on(LIFE_OS_FILES, relay_registry.touch, caller.profile.id, sid,
                                        time.time())
     except OSError as exc:
         logger.warning(f"⚠️ relay {caller.profile.id}: registry write failed for "
@@ -503,7 +504,7 @@ async def relay_new(profile_id: str, request: Request) -> Dict[str, Any]:
                     str(exc.detail))
         sid = str((result.get("session") or {}).get("session_id") or "")
         try:
-            await asyncio.to_thread(relay_registry.add, caller.profile.id, chat, sid, "",
+            await run_on(LIFE_OS_FILES, relay_registry.add, caller.profile.id, chat, sid, "",
                                     title, time.time(), origin=relay_registry.ORIGIN_NEW)
         except OSError as exc:
             logger.warning(f"⚠️ relay {caller.profile.id}: registry write failed for new "
@@ -533,8 +534,8 @@ async def _await_first_idle(caller: _Caller, sid: str, since: float) -> bool:
     deadline = time.monotonic() + NEW_READY_WAIT_SECONDS
     while True:
         try:
-            sessions = await asyncio.to_thread(
-                session_client.list_sessions, caller.cfg.session_host_port)
+            sessions = await run_on(
+                SESSION_HOST, session_client.list_sessions, caller.cfg.session_host_port)
             facts = (await _turn_facts(replace(caller, sessions=sessions))).get(sid)
         except (session_client.SessionHostError, OSError) as exc:
             logger.info(f"ℹ️ relay {caller.profile.id}: ready wait for {sid[:8]} could not "
@@ -598,7 +599,7 @@ async def relay_steer(profile_id: str, request: Request) -> Dict[str, Any]:
         logger.warning(f"⚠️ relay {caller.profile.id}: steer to {sid[:8]} {state} "
                        f"({exc.status_code})")
         _refuse(exc.status_code, state, str(exc.detail))
-    await asyncio.to_thread(relay_registry.touch, caller.profile.id, sid, time.time())
+    await run_on(LIFE_OS_FILES, relay_registry.touch, caller.profile.id, sid, time.time())
     reason = verdict.get("reason")
     state = steer_state(deferred=reason == session_client.INPUT_DEFERRED,
                         confirmed=verdict.get("submit_state") == "confirmed")
@@ -621,8 +622,8 @@ async def relay_read(profile_id: str, request: Request) -> Dict[str, Any]:
     sid = request.query_params.get("session_id", "")
     sess = await _target(caller, sid)
     exchange = await session_exchange(sid, request)
-    state = await asyncio.to_thread(
-        board.read_sessions_state, Path(caller.cfg.sessions_state_file))
+    state = await run_on(
+        LIFE_OS_FILES, board.read_sessions_state, Path(caller.cfg.sessions_state_file))
     status = (await _card_statuses(caller, state["rows"])).get(sid)
     await _audit(caller, request, "read", session=sid)
     base = {"session_id": sid, "status": status,
@@ -650,13 +651,13 @@ async def stop_conversation(caller: _Caller, sid: str, reason: str) -> Dict[str,
     gone: the entry is kept). Only ever a graceful quit, never a kill, so the
     capture hook's delayed index can finish. Shared with the idle close.
     """
-    entry = await asyncio.to_thread(relay_registry.find, caller.profile.id, sid) if sid else None
+    entry = await run_on(LIFE_OS_FILES, relay_registry.find, caller.profile.id, sid) if sid else None
     if entry is None:
         return {"state": RelayState.NOT_RELAY_OWNED,
                 "message": f"The relay did not reopen that session for "
                            f"{caller.profile.label}; it was left alone."}
     if sid not in _live_ids(caller):
-        await asyncio.to_thread(relay_registry.forget, caller.profile.id, sid)
+        await run_on(LIFE_OS_FILES, relay_registry.forget, caller.profile.id, sid)
         return {"state": RelayState.GONE, "message": "That conversation's session already ended."}
     try:
         await _target(caller, sid)
@@ -666,7 +667,7 @@ async def stop_conversation(caller: _Caller, sid: str, reason: str) -> Dict[str,
         return {"state": RelayState.NOT_RELAY_OWNED,
                 "message": f"That session is no longer one of {caller.skill.name}'s "
                            "conversations; it was left alone."}
-    entry = await asyncio.to_thread(relay_registry.find, caller.profile.id, sid) or entry
+    entry = await run_on(LIFE_OS_FILES, relay_registry.find, caller.profile.id, sid) or entry
     facts = (await _turn_facts(caller)).get(sid, {})
     status = facts.get("status")
     if status not in card_status.QUIT_SAFE:
@@ -675,8 +676,8 @@ async def stop_conversation(caller: _Caller, sid: str, reason: str) -> Dict[str,
     conversation = str(entry.get("conversation") or "")
     # A ``new`` session still unbound has no capture to compare: not confirmed,
     # and never the Life OS folder's own mtime from an empty relative path.
-    captured = await asyncio.to_thread(
-        _capture_mtime, Path(caller.cfg.life_os_dir), conversation) if conversation else 0.0
+    captured = await run_on(
+        LIFE_OS_FILES, _capture_mtime, Path(caller.cfg.life_os_dir), conversation) if conversation else 0.0
     last_turn = facts.get("last_turn_at")
     if not captured or last_turn is None or captured < last_turn:
         logger.info(f"ℹ️ relay {caller.profile.id}: stop of {sid[:8]} waits, capture at "
@@ -699,7 +700,7 @@ async def stop_conversation(caller: _Caller, sid: str, reason: str) -> Dict[str,
         return {"state": RelayState.STOP_UNCONFIRMED,
                 "message": "Quit sent, but the session is still running."}
     try:
-        await asyncio.to_thread(relay_registry.record_stop, caller.profile.id, sid,
+        await run_on(LIFE_OS_FILES, relay_registry.record_stop, caller.profile.id, sid,
                                 reason, time.time())
     except OSError as exc:
         logger.warning(f"⚠️ {what}: closed, but the stop was not recorded "
@@ -767,8 +768,8 @@ async def relay_status(profile_id: str, request: Request) -> Dict[str, Any]:
     learns a change without a restart."""
     caller = await _caller(profile_id, request)
     chat = _chat(request.query_params.get("chat")) or None
-    held = await asyncio.to_thread(
-        relay_registry.entries, caller.profile.id, _live_ids(caller), chat=chat)
+    held = await run_on(
+        LIFE_OS_FILES, relay_registry.entries, caller.profile.id, _live_ids(caller), chat=chat)
     facts = await _turn_facts(caller) if held else {}
     by_sid = {str(s.get("session_id")): s for s in caller.sessions}
     now = time.time()
@@ -784,7 +785,7 @@ async def relay_status(profile_id: str, request: Request) -> Dict[str, Any]:
             "idle_minutes": idle,
             "minutes_to_close": max(0, limit - idle) if limit and idle is not None else None,
         })
-    stops = await asyncio.to_thread(relay_registry.take_stops, caller.profile.id, chat=chat)
+    stops = await run_on(LIFE_OS_FILES, relay_registry.take_stops, caller.profile.id, chat=chat)
     await _audit(caller, request, "status", open=len(open_rows), stops=len(stops))
     return {
         "state": RelayState.OPEN if open_rows else RelayState.NONE,
