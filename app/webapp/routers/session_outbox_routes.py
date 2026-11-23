@@ -21,7 +21,6 @@ Bodies, paths and captions are never logged; a refusal logs its reason.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -30,6 +29,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 
+from app.webapp.route_pools import SESSION_FILES, SESSION_HOST, run_on
 from app.webapp.routers.board_spawn import SESSION_HOST_UNREACHABLE, read_live_sessions
 from src.middleware import is_pc_itself
 from src.session_view import outbox as session_outbox
@@ -111,7 +111,7 @@ async def post_outbox(sid: str, request: Request) -> Dict[str, Any]:
             detail={"reason": "bad_request", "message": 'expected JSON {"path": "...", "caption": "..."}'},
         )
     cfg: WebappConfig = request.app.state.webapp_config
-    live, host_error = await asyncio.to_thread(read_live_sessions, cfg.session_host_port)
+    live, host_error = await run_on(SESSION_HOST, read_live_sessions, cfg.session_host_port)
     session = next((s for s in live if str(s.get("session_id")) == str(sid)), None)
     if session is None:
         if host_error:
@@ -126,7 +126,7 @@ async def post_outbox(sid: str, request: Request) -> Dict[str, Any]:
     project_dir = str(session.get("project_dir") or "") or None
     roots = session_outbox.allowed_roots(project_dir, cfg.outbox_scratch_roots)
     try:
-        entry = await asyncio.to_thread(
+        entry = await run_on(SESSION_FILES,
             session_outbox.post, sid, body["path"], body.get("caption"), project_dir, roots,
         )
     except session_outbox.OutboxRefusal as exc:
@@ -138,14 +138,14 @@ async def post_outbox(sid: str, request: Request) -> Dict[str, Any]:
 @router.get("/api/claude-code/sessions/{sid}/outbox")
 async def list_outbox(sid: str) -> Dict[str, Any]:
     """A session's sent files, oldest first (Tailscale + passkey)."""
-    found = await asyncio.to_thread(session_outbox.listing, sid)
+    found = await run_on(SESSION_FILES, session_outbox.listing, sid)
     return {"session_id": sid, **found}
 
 
 @router.get("/api/claude-code/sessions/{sid}/outbox/{entry_id}")
 async def outbox_file(sid: str, entry_id: str) -> Response:
     """One sent file's bytes (Tailscale + passkey)."""
-    found = await asyncio.to_thread(session_outbox.entry_file, sid, entry_id)
+    found = await run_on(SESSION_FILES, session_outbox.entry_file, sid, entry_id)
     if found is None:
         raise HTTPException(status_code=404, detail={"reason": "entry_not_found", "message": "no such file"})
     stored, entry = found

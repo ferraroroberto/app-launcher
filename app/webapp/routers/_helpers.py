@@ -14,6 +14,7 @@ from urllib.parse import urlencode
 
 from fastapi import HTTPException, Request, WebSocket
 
+from app.webapp.route_pools import AUDIT, OUTBOUND, SESSION_HOST, run_on
 from src import audit, instance_role
 from src import jobs as jobs_mod
 from src.auth.webauthn_gate import WebAuthnGate
@@ -149,7 +150,7 @@ async def audit_off_loop(
     real fault worth surfacing — the failure semantics are exactly what they
     were before the hop off the loop.
     """
-    await asyncio.to_thread(write, *args, **kwargs)
+    await run_on(AUDIT, write, *args, **kwargs)
 
 
 async def maybe_json(request: Request) -> Dict[str, Any]:
@@ -471,7 +472,7 @@ async def spawn_session_or_400(
     same contract as ``audit_mod`` / ``mirror_fn`` below.
     """
     try:
-        return await asyncio.to_thread(spawn_fn, *args, **kwargs)
+        return await run_on(SESSION_HOST, spawn_fn, *args, **kwargs)
     except SessionHostError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))
     except OSError as exc:
@@ -622,7 +623,7 @@ async def audit_session_start_and_maybe_mirror(
         # Pass sid so launcher tracks the mirror window's HWND for Stop &
         # Close to dismiss it later.
         asyncio.create_task(
-            asyncio.to_thread(mirror_fn, mirror_url(request, cfg, sid), sid)
+            run_on(OUTBOUND, mirror_fn, mirror_url(request, cfg, sid), sid)
         )
 
 

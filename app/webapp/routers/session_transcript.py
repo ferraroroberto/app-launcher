@@ -69,7 +69,8 @@ from typing import Any, Awaitable, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 
-from app.webapp.hot_poll import BuildSteps, run_on_default_executor, session_poll
+from app.webapp.hot_poll import BuildSteps, run_on_session_files, session_poll
+from app.webapp.route_pools import OUTBOUND, SESSION_FILES, run_on
 from app.webapp.routers import session_outbox_routes
 from app.webapp.routers._helpers import attach_provider_web_urls, maybe_json
 from app.webapp.routers.board_spawn import SESSION_HOST_UNREACHABLE, read_live_sessions
@@ -232,7 +233,7 @@ async def resolve_source(
     then run on the per-session pool, off the default executor. Without it
     (an on-demand route) they run on the default executor.
     """
-    run = steps.run if steps is not None else run_on_default_executor
+    run = steps.run if steps is not None else run_on_session_files
     (live, host_error), state = await asyncio.gather(
         run("read_live_sessions", read_live_sessions, cfg.session_host_port),
         run("read_sessions_state", board.read_sessions_state, Path(cfg.sessions_state_file)),
@@ -462,7 +463,7 @@ async def session_transcript_entry(
     if reason is not None:
         return _unavailable(sid, reason)
     entry, refusal = await _read_or_unavailable(
-        sid, agent, "transcript entry", asyncio.to_thread(entry_full_text, path, offset, flavor),
+        sid, agent, "transcript entry", run_on(SESSION_FILES, entry_full_text, path, offset, flavor),
     )
     if refusal is not None:
         return refusal
@@ -499,7 +500,7 @@ async def session_transcript_diff(
     if reason is not None:
         return _unavailable(sid, reason)
     found, refusal = await _read_or_unavailable(
-        sid, agent, "transcript diff", asyncio.to_thread(entry_diff, path, offset, n, flavor),
+        sid, agent, "transcript diff", run_on(SESSION_FILES, entry_diff, path, offset, n, flavor),
     )
     if refusal is not None:
         return refusal
@@ -541,7 +542,7 @@ async def session_background_tasks(
         return _unavailable(sid, reason)
     if task is not None:
         found, refusal = await _read_or_unavailable(
-            sid, agent, "background task output", asyncio.to_thread(session_tasks.task_output, path, task),
+            sid, agent, "background task output", run_on(SESSION_FILES, session_tasks.task_output, path, task),
         )
         if refusal is not None:
             return refusal
@@ -552,7 +553,7 @@ async def session_background_tasks(
                     sid[:8], agent, found["size"], found["truncated"])
         return {"available": True, "reason": None, "session_id": sid, "task": task, **found}
     found, refusal = await _read_or_unavailable(
-        sid, agent, "background tasks", asyncio.to_thread(session_tasks.background_tasks, path),
+        sid, agent, "background tasks", run_on(SESSION_FILES, session_tasks.background_tasks, path),
     )
     if refusal is not None:
         return refusal
@@ -585,7 +586,7 @@ async def session_links_list(
         return _unavailable(sid, reason)
     found, refusal = await _read_or_unavailable(
         sid, agent, "session links",
-        asyncio.to_thread(_folded_links_with_titles, path, flavor or "claude", before),
+        run_on(SESSION_FILES, _folded_links_with_titles, path, flavor or "claude", before),
     )
     if refusal is not None:
         return refusal
@@ -617,7 +618,7 @@ async def session_changed_files(
         return _unavailable(sid, reason)
     project_dir = str((session or {}).get("project_dir") or "") or None
     found, refusal = await _read_or_unavailable(
-        sid, agent, "changed files", asyncio.to_thread(changed_files, path, project_dir, flavor, before),
+        sid, agent, "changed files", run_on(SESSION_FILES, changed_files, path, project_dir, flavor, before),
     )
     if refusal is not None:
         return refusal
@@ -648,7 +649,7 @@ async def session_changed_file_diff(
     project_dir = str((session or {}).get("project_dir") or "") or None
     found, refusal = await _read_or_unavailable(
         sid, agent, "changed file diff",
-        asyncio.to_thread(file_steps, source, path, flavor=flavor, project_dir=project_dir, since=since),
+        run_on(SESSION_FILES, file_steps, source, path, flavor=flavor, project_dir=project_dir, since=since),
     )
     if refusal is not None:
         return refusal
@@ -676,7 +677,7 @@ async def _changed_file_target(
     project_dir = str((session or {}).get("project_dir") or "") or None
     target, refusal = await _read_or_unavailable(
         sid, agent, f"changed file {what}",
-        asyncio.to_thread(changed_file_path, source, requested, flavor=flavor, project_dir=project_dir, since=since),
+        run_on(SESSION_FILES, changed_file_path, source, requested, flavor=flavor, project_dir=project_dir, since=since),
     )
     if refusal is not None:
         return None, refusal, agent
@@ -705,7 +706,7 @@ async def session_changed_file_content(
         return refusal
     try:
         text, refusal = await _read_or_unavailable(
-            sid, agent, "changed file content", asyncio.to_thread(read_text_file, target),
+            sid, agent, "changed file content", run_on(SESSION_FILES, read_text_file, target),
         )
     except FileRefusal as exc:
         logger.info("ℹ️ changed file content %s (%s): %s", sid[:8], agent, exc.reason)
@@ -744,7 +745,7 @@ async def session_changed_file_open(
     target, refusal, agent = await _changed_file_target(sid, request, requested, "open", since)
     if refusal is not None:
         return {**refusal, "opened": False}
-    if not await asyncio.to_thread(os.path.isfile, target):
+    if not await run_on(SESSION_FILES, os.path.isfile, target):
         logger.info("ℹ️ changed file open %s (%s): deleted", sid[:8], agent)
         return {**_unavailable(sid, "deleted"), "opened": False}
     if instance_role.is_disposable():
@@ -754,13 +755,13 @@ async def session_changed_file_open(
     try:
         if not is_vscode_installed():
             raise OSError("the 'code' CLI is not on PATH")
-        await asyncio.to_thread(open_file, Path(target))
+        await run_on(OUTBOUND, open_file, Path(target))
     except OSError as exc:
         logger.info("ℹ️ changed file open %s (%s): VS Code unavailable (%s), Explorer instead",
                     sid[:8], agent, exc)
         opener = "explorer"
         try:
-            await asyncio.to_thread(select_in_explorer, Path(target))
+            await run_on(OUTBOUND, select_in_explorer, Path(target))
         except OSError as exc2:
             logger.warning("⚠️ changed file open %s (%s) failed: %s", sid[:8], agent, exc2)
             raise HTTPException(status_code=503, detail="could not open the file on the PC") from exc2
@@ -793,7 +794,7 @@ async def session_transcript_image(
     if reason is not None:
         raise HTTPException(status_code=404, detail=reason)
     found, refusal = await _read_or_unavailable(
-        sid, agent, "transcript image", asyncio.to_thread(transcript_image, path, offset, n, flavor),
+        sid, agent, "transcript image", run_on(SESSION_FILES, transcript_image, path, offset, n, flavor),
     )
     if refusal is not None:
         raise HTTPException(status_code=404, detail="read_failed")
@@ -832,7 +833,7 @@ async def session_transcript_file(
     if reason is not None:
         raise HTTPException(status_code=404, detail={"reason": reason, "message": "no transcript to read"})
     found, refusal = await _read_or_unavailable(
-        sid, agent, "transcript file", asyncio.to_thread(transcript_sent_file, path, offset, n, flavor),
+        sid, agent, "transcript file", run_on(SESSION_FILES, transcript_sent_file, path, offset, n, flavor),
     )
     if refusal is not None:
         raise HTTPException(
@@ -845,7 +846,7 @@ async def session_transcript_file(
     project_dir = str((session or {}).get("project_dir") or "") or None
     roots = session_outbox.allowed_roots(project_dir, cfg.outbox_scratch_roots)
     try:
-        resolved, data, _kind, media = await asyncio.to_thread(
+        resolved, data, _kind, media = await run_on(SESSION_FILES,
             session_outbox.read_source, sent, line_cwd or project_dir, roots,
         )
     except session_outbox.OutboxRefusal as exc:

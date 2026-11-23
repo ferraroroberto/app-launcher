@@ -21,13 +21,13 @@ never hides the ones that landed.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from collections import Counter
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app.webapp.route_pools import BOARD_FILES, OUTBOUND, run_on
 from app.webapp.routers._helpers import maybe_json
 from src.board import ci_dismissed, ci_runs, owner_checks
 from src.clients import github as github_client
@@ -75,7 +75,7 @@ async def post_owner_answers(request: Request) -> Dict[str, Any]:
     cfg: WebappConfig = request.app.state.webapp_config
     results: List[Dict[str, Any]] = []
     for ans in answers:
-        results.append(await asyncio.to_thread(_apply, cfg, ans))
+        results.append(await run_on(OUTBOUND, _apply, cfg, ans))
     failed = [r["ref"] for r in results if not r["ok"]]
     kinds = Counter(a["answer"] for a in answers)
     logger.info(
@@ -107,7 +107,7 @@ async def post_ci_dismiss(request: Request) -> Dict[str, Any]:
     if not ci_runs.is_red_run(ci_runs.snapshot(), repo, workflow, run_id):
         raise HTTPException(status_code=409, detail="that run is not a current red CI run")
     try:
-        await asyncio.to_thread(ci_dismissed.dismiss, repo, workflow, run_id)
+        await run_on(BOARD_FILES, ci_dismissed.dismiss, repo, workflow, run_id)
     except OSError as exc:
         logger.warning("⚠️ CI alert dismissal not written: %s", exc)
         raise HTTPException(status_code=500, detail="dismissal not written")

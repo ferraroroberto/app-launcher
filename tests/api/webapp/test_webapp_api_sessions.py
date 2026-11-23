@@ -395,8 +395,8 @@ class TestStopSessionMirrorClose:
         """close_mirror_window does the same blocking Win32
         EnumWindows/GetWindowText/PostMessage walk this file's other
         session-host calls (mirror_claude_session's own spawn/focus,
-        .stop, .submit_input, .write) are all offloaded via
-        ``asyncio.to_thread`` (issue #755) — a stall here would otherwise
+        .stop, .submit_input, .write) are all offloaded to a named pool
+        (issue #755) — a stall here would otherwise
         stall every other live session's WebSocket pump on the
         single-worker loop.
         """
@@ -410,13 +410,13 @@ class TestStopSessionMirrorClose:
         )
 
         offloaded: list = []
-        real_to_thread = sessions_router.asyncio.to_thread
+        real_run_on = sessions_router.run_on
 
-        async def spy_to_thread(func, *args, **kwargs):
+        async def spy_run_on(pool, func, *args, **kwargs):
             offloaded.append(func)
-            return await real_to_thread(func, *args, **kwargs)
+            return await real_run_on(pool, func, *args, **kwargs)
 
-        monkeypatch.setattr(sessions_router.asyncio, "to_thread", spy_to_thread)
+        monkeypatch.setattr(sessions_router, "run_on", spy_run_on)
 
         resp = client.post(
             "/api/claude-code/sessions/abc-123/stop",
@@ -425,7 +425,7 @@ class TestStopSessionMirrorClose:
 
         assert resp.status_code == 200
         assert mock_close in offloaded, (
-            "close_mirror_window must run via asyncio.to_thread, not "
+            "close_mirror_window must run on a worker pool, not "
             "directly on the event loop"
         )
 
