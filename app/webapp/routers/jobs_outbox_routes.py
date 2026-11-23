@@ -22,7 +22,6 @@ Bodies, paths and captions are never logged; a refusal logs its reason.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -30,6 +29,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 
+from app.webapp.route_pools import JOBS_FILES, run_on
 from app.webapp.routers.session_outbox_routes import file_headers, refusal_error
 from src import jobs as jobs_mod
 from src.jobs.config import get_by_id, load_jobs
@@ -77,8 +77,8 @@ async def post_job_outbox(job_id: str, run_id: str, request: Request) -> Dict[st
         body = None
     if not isinstance(body, dict) or not isinstance(body.get("path"), str):
         raise _refuse(400, "bad_request", 'expected JSON {"path": "...", "caption": "..."}')
-    run_dir = await asyncio.to_thread(_run_dir, job_id, run_id)
-    record = await asyncio.to_thread(jobs_mod.read_run, run_dir)
+    run_dir = await run_on(JOBS_FILES, _run_dir, job_id, run_id)
+    record = await run_on(JOBS_FILES, jobs_mod.read_run, run_dir)
     if run_status(record) is not RunStatus.RUNNING:
         logger.info("ℹ️ job outbox %s/%s refused: run_not_running", job_id, run_id)
         raise _refuse(409, "run_not_running", "that run has finished; only a running Job can send a file")
@@ -86,7 +86,7 @@ async def post_job_outbox(job_id: str, run_id: str, request: Request) -> Dict[st
     artifact_dir = str(run_dir / "artifacts")
     roots = session_outbox.allowed_roots(artifact_dir, cfg.outbox_scratch_roots)
     try:
-        entry = await asyncio.to_thread(
+        entry = await run_on(JOBS_FILES,
             session_outbox.store, run_dir / "outbox", body["path"], body.get("caption"), artifact_dir, roots,
         )
     except session_outbox.OutboxRefusal as exc:
@@ -101,16 +101,16 @@ async def post_job_outbox(job_id: str, run_id: str, request: Request) -> Dict[st
 @router.get("/api/jobs/{job_id}/runs/{run_id}/outbox")
 async def list_job_outbox(job_id: str, run_id: str) -> Dict[str, Any]:
     """A run's sent files, oldest first (Tailscale + passkey)."""
-    run_dir = await asyncio.to_thread(_run_dir, job_id, run_id)
-    found = await asyncio.to_thread(run_outbox_listing, run_dir)
+    run_dir = await run_on(JOBS_FILES, _run_dir, job_id, run_id)
+    found = await run_on(JOBS_FILES, run_outbox_listing, run_dir)
     return {"job_id": job_id, "run_id": run_id, **found}
 
 
 @router.get("/api/jobs/{job_id}/runs/{run_id}/outbox/{entry_id}")
 async def job_outbox_file(job_id: str, run_id: str, entry_id: str) -> Response:
     """One sent file's bytes (Tailscale + passkey)."""
-    run_dir = await asyncio.to_thread(_run_dir, job_id, run_id)
-    found: Optional[Any] = await asyncio.to_thread(
+    run_dir = await run_on(JOBS_FILES, _run_dir, job_id, run_id)
+    found: Optional[Any] = await run_on(JOBS_FILES,
         session_outbox.folder_entry_file, run_dir / "outbox", entry_id,
     )
     if found is None:

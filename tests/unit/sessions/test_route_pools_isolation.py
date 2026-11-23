@@ -1,10 +1,10 @@
-"""A stalled session read fills only its own pool: the Board's plan poll still answers.
+"""A stalled session or Jobs read fills only its own pool: the Board's plan poll still answers.
 
-Each session read below hangs on an injected event (no CPU burn), and there are
-more of them than the session-files pool has threads, so that pool is full and
-queueing. The Board's chief-plan poll reads its file on the Board's own pool and
-must answer at once, and so must a call on the loop's default executor, sized
-small here so reads left on it would fill it.
+Each read below hangs on an injected event (no CPU burn), and there are more of
+them than its pool has threads, so that pool is full and queueing. The Board's
+chief-plan poll reads its file on the Board's own pool and must answer at once,
+and so must a call on the loop's default executor, sized small here so reads
+left on it would fill it.
 """
 
 from __future__ import annotations
@@ -17,13 +17,13 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
 
 import httpx
+import pytest
 
 from app.webapp import route_pools
 
 _HANG_S = 6.0
 _BOUND_S = 1.0
 _DEFAULT_WORKERS = 2
-_STALLS = route_pools.SESSION_FILES._max_workers + 1
 
 
 class _Stall:
@@ -49,12 +49,20 @@ async def _until(check: Callable[[], bool], timeout: float = 3.0) -> None:
         await asyncio.sleep(0.01)
 
 
-def test_stalled_session_reads_leave_the_board_plan_poll_free(webapp_client, monkeypatch):
-    from src.session_view import outbox as session_outbox
-
+@pytest.mark.parametrize(
+    ("target", "url", "pool", "answer"),
+    [
+        ("src.session_view.outbox.listing", "/api/claude-code/sessions/s1/outbox",
+         route_pools.SESSION_FILES, {"entries": []}),
+        ("src.jobs.index.search_runs", "/api/jobs/runs/search?q=x", route_pools.JOBS_FILES, []),
+    ],
+    ids=["session-outbox", "jobs-search"],
+)
+def test_stalled_reads_leave_the_board_plan_poll_free(webapp_client, monkeypatch, target, url, pool, answer):
     _, app, _ = webapp_client
-    stall = _Stall({"entries": []})
-    monkeypatch.setattr(session_outbox, "listing", stall)
+    stall = _Stall(answer)
+    monkeypatch.setattr(target, stall)
+    stalls = pool._max_workers + 1
 
     async def run():
         loop = asyncio.get_running_loop()
@@ -62,11 +70,11 @@ def test_stalled_session_reads_leave_the_board_plan_poll_free(webapp_client, mon
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             reads = [
-                asyncio.create_task(client.get("/api/claude-code/sessions/s1/outbox"))
-                for _ in range(_STALLS)
+                asyncio.create_task(client.get(url))
+                for _ in range(stalls)
             ]
             try:
-                await _until(lambda: stall.entered >= _STALLS - 1)
+                await _until(lambda: stall.entered >= stalls - 1)
                 await asyncio.sleep(0.1)  # time for the last read to queue, not to enter
                 started = time.perf_counter()
                 plan = await client.get("/api/board/chief-plan")
@@ -83,13 +91,13 @@ def test_stalled_session_reads_leave_the_board_plan_poll_free(webapp_client, mon
     status, plan_s, free_s, entered = asyncio.run(run())
     assert status == 200
     assert plan_s < _BOUND_S, (
-        f"the Board's chief-plan poll took {plan_s:.2f}s behind stalled session reads"
+        f"the Board's chief-plan poll took {plan_s:.2f}s behind stalled reads on {pool.pool_name}"
     )
-    assert entered == _STALLS - 1, (
-        f"{entered} of {_STALLS} session reads ran: the session-files pool is not the one they used"
+    assert entered == stalls - 1, (
+        f"{entered} of {stalls} reads ran: {pool.pool_name} is not the pool they used"
     )
     assert free_s < _BOUND_S, (
-        f"a default-executor call waited {free_s:.2f}s behind stalled session reads"
+        f"a default-executor call waited {free_s:.2f}s behind stalled reads"
     )
 
 

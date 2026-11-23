@@ -81,5 +81,5 @@ async def test_slow_scan_walk_does_not_stall_the_save_endpoint(monkeypatch):
     assert max_gap < _SLOW_WALK_S / 2, (
         f"a slow discover_new walk stalled the event loop for {max_gap:.3f}s "
         f"(tick interval is {_TICK_INTERVAL_S}s) — save_apps is still running "
-        "the scan synchronously instead of via asyncio.to_thread"
+        "the scan synchronously instead of on the app-probes pool"
     )

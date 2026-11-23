@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import requests
 from fastapi import APIRouter, HTTPException, Request
 
+from app.webapp.route_pools import APP_PROBES, OUTBOUND, run_on
 from app.webapp.routers._helpers import (
     audit_off_loop,
     audit_session_start_and_maybe_mirror,
@@ -176,7 +177,7 @@ async def get_apps(request: Request) -> Dict[str, Any]:
     cfg: WebappConfig = request.app.state.webapp_config
     # The registry read and the projects-dir scan are disk work on every
     # 4 s poll: off the event loop, so a slow disk stalls only this reply.
-    registry, decorated = await asyncio.to_thread(_registry_rows, cfg)
+    registry, decorated = await run_on(APP_PROBES, _registry_rows, cfg)
     # Health for tunnel apps is probed here, server-side — the SPA
     # can't probe a sibling's /healthz from the browser (cross-origin,
     # no CORS headers, every probe would fail).
@@ -216,7 +217,7 @@ async def scan_apps(request: Request) -> Dict[str, Any]:
     # Walking the apps_scan_root tree is blocking I/O — keep it off the
     # event loop so the /api/apps 4 s poll and any concurrent request
     # stays responsive while a scan runs.
-    new = await asyncio.to_thread(
+    new = await run_on(APP_PROBES,
         discover_new,
         scan_root=Path(cfg.apps_scan_root),
         existing=registry,
@@ -236,7 +237,7 @@ async def save_apps(request: Request) -> Dict[str, Any]:
     registry = load_registry()
     # Same apps_scan_root walk as scan_apps above — off the event loop for
     # the same reason.
-    candidates = await asyncio.to_thread(
+    candidates = await run_on(APP_PROBES,
         discover_new,
         scan_root=Path(cfg.apps_scan_root),
         existing=registry,
@@ -364,7 +365,7 @@ async def _refuse_if_behind(entry: AppEntry, body: Dict[str, Any]) -> None:
     """
     if body.get("ignore_behind"):
         return
-    refusal = await asyncio.to_thread(_behind_refusal, Path(entry.project_dir))
+    refusal = await run_on(OUTBOUND, _behind_refusal, Path(entry.project_dir))
     if refusal:
         raise HTTPException(status_code=409, detail=f"{entry.name}: {refusal}")
 
@@ -544,12 +545,12 @@ async def get_running_apps(request: Request) -> Dict[str, Any]:
 
     running: List[Dict[str, Any]] = []
     for inst in app_runtime.list_running():
-        port = await asyncio.to_thread(listening_port_for_pid_tree, inst.pid)
+        port = await run_on(APP_PROBES, listening_port_for_pid_tree, inst.pid)
         url = None
         if port and tailnet_host:
             # The app's scheme isn't known up front — probe it so the
             # phone doesn't get an https URL for a plain-HTTP Streamlit.
-            scheme = await asyncio.to_thread(detect_local_scheme, port)
+            scheme = await run_on(APP_PROBES, detect_local_scheme, port)
             url = f"{scheme}://{tailnet_host}:{port}/"
         running.append(
             {
@@ -578,7 +579,7 @@ async def stop_app_instance(app_id: str, pid: int) -> Dict[str, Any]:
             status_code=404,
             detail=f"no tracked instance {app_id}/{pid}",
         )
-    await asyncio.to_thread(kill_process_tree, pid)
+    await run_on(OUTBOUND, kill_process_tree, pid)
     app_runtime.forget_spawn(app_id, pid)
     return {"stopped": pid}
 
@@ -622,7 +623,7 @@ async def refresh_app(app_id: str, request: Request) -> Dict[str, Any]:
     if entry is None:
         raise HTTPException(status_code=404, detail=f"unknown app {app_id}")
     app_runtime.prune_dead()
-    refusal = await asyncio.to_thread(_refresh_refusal, entry, cfg)
+    refusal = await run_on(APP_PROBES, _refresh_refusal, entry, cfg)
     if refusal:
         raise HTTPException(status_code=403, detail=refusal)
     if entry.id in _refreshing:
@@ -638,7 +639,7 @@ async def refresh_app(app_id: str, request: Request) -> Dict[str, Any]:
 
 async def _refresh(entry: AppEntry) -> Dict[str, Any]:
     instances = [i for i in app_runtime.list_running() if i.app_id == entry.id]
-    stops = [await asyncio.to_thread(app_refresh.stop_instance, i) for i in instances]
+    stops = [await run_on(OUTBOUND, app_refresh.stop_instance, i) for i in instances]
     result: Dict[str, Any] = {
         "refreshed": entry.id,
         "name": entry.name,
@@ -656,7 +657,7 @@ async def _refresh(entry: AppEntry) -> Dict[str, Any]:
     bat = Path(entry.bat_path)
     try:
         if entry.kind == KIND_TRAY:
-            code = await asyncio.to_thread(restart_tray_bat, bat)
+            code = await run_on(OUTBOUND, restart_tray_bat, bat)
             if code != 0:
                 raise HTTPException(
                     status_code=502,
@@ -664,7 +665,7 @@ async def _refresh(entry: AppEntry) -> Dict[str, Any]:
                 )
             result["restart"] = {"exit_code": code}
         else:
-            await asyncio.to_thread(_spawn_and_track, entry, True)
+            await run_on(OUTBOUND, _spawn_and_track, entry, True)
             result["launched"] = {"stealth": True}
     except subprocess.TimeoutExpired:
         raise HTTPException(
@@ -727,7 +728,7 @@ async def _health_for(urls: List[str]) -> Dict[str, str]:
             stale.append(u)
     if stale:
         results = await asyncio.gather(
-            *(asyncio.to_thread(_probe_health_sync, u) for u in stale)
+            *(run_on(APP_PROBES, _probe_health_sync, u) for u in stale)
         )
         for url, status in zip(stale, results):
             _, _prev_status, prev_failures = _health_cache.get(url, (0.0, "", 0))

@@ -21,13 +21,13 @@ route modules needs to import the other (a shared dependency, not a
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import datetime
 from typing import Any, Callable, Dict, Optional
 
 from fastapi import HTTPException
 
+from app.webapp.route_pools import JOB_SPAWNS, JOBS_FILES, run_on
 from src import jobs as jobs_mod
 from src.jobs.argv import ArgvRejected
 from src.jobs.config import Job, JobsConfig
@@ -46,7 +46,7 @@ async def _dry_run_check(job: Job, raw_params: Dict[str, Any]) -> Dict[str, Any]
     """
     from app.cli.commands.run_job_cmd import build_invocation  # local: avoids cycle
 
-    run_dir = await asyncio.to_thread(
+    run_dir = await run_on(JOBS_FILES,
         jobs_mod.new_run_dir, job.id, jobs_mod.new_run_id()
     )
     stamped = datetime.now().isoformat(timespec="seconds")
@@ -56,7 +56,7 @@ async def _dry_run_check(job: Job, raw_params: Dict[str, Any]) -> Dict[str, Any]
     if raw_params:
         meta["params"] = raw_params
     try:
-        argv, _cwd, _env = await asyncio.to_thread(
+        argv, _cwd, _env = await run_on(JOBS_FILES,
             build_invocation, job, raw_params, run_dir
         )
         if job.env:
@@ -67,7 +67,7 @@ async def _dry_run_check(job: Job, raw_params: Dict[str, Any]) -> Dict[str, Any]
             from src.jobs.secrets import resolve_env_overlay  # local: leaf util
             from src.webapp_config import load_webapp_config
 
-            wcfg = await asyncio.to_thread(load_webapp_config)
+            wcfg = await run_on(JOBS_FILES, load_webapp_config)
             resolve_env_overlay(job.env, wcfg.secrets)
         meta["status"] = RunStatus.DRY_RUN_SUCCESS
         meta["note"] = "resolved: " + " ".join(argv)
@@ -92,7 +92,7 @@ async def _dry_run_execute(job: Job, raw_params: Dict[str, Any]) -> Dict[str, An
     and suppress side effects) but skips cooldown + mutex — it is an
     explicit verification fire, not a scheduled/queued run.
     """
-    run_dir = await asyncio.to_thread(
+    run_dir = await run_on(JOBS_FILES,
         jobs_mod.new_run_dir, job.id, jobs_mod.new_run_id()
     )
     started_at = datetime.now().isoformat(timespec="seconds")
@@ -103,7 +103,7 @@ async def _dry_run_execute(job: Job, raw_params: Dict[str, Any]) -> Dict[str, An
         base_meta["params"] = raw_params
     jobs_mod.write_run_json(run_dir, **base_meta)
     try:
-        await asyncio.to_thread(
+        await run_on(JOB_SPAWNS,
             jobs_mod.spawn_run_job_detached,
             job.id,
             run_dir.name,
@@ -161,7 +161,7 @@ async def admit_and_spawn_http(
     # cooled-down mash-fire produces no on-disk record (the dir would
     # otherwise be orphaned with status=pending). See jobs.cooldown_check
     # for the anchor semantics — skipped records do not extend the window.
-    cooldown_state = await asyncio.to_thread(jobs_mod.cooldown_check, job)
+    cooldown_state = await run_on(JOBS_FILES, jobs_mod.cooldown_check, job)
     if cooldown_state is not None:
         remaining, cooldown_seconds, _anchor_id = cooldown_state
         raise HTTPException(
@@ -177,9 +177,10 @@ async def admit_and_spawn_http(
     # Mutex-group admission + spawn. Shared with the chain dispatcher and
     # the executor's own scheduled-fire gate — see
     # src.jobs.queue.admit_and_spawn for the queued-vs-spawn contract. Runs
-    # as one to_thread hop: every step in it is blocking file/subprocess
-    # work, so there is nothing for the event loop to interleave.
-    meta = await asyncio.to_thread(
+    # as one hop on the job-spawns pool: every step in it is blocking
+    # file/subprocess work, so there is nothing for the event loop to
+    # interleave, and a stalled history read never delays the fire.
+    meta = await run_on(JOB_SPAWNS,
         jobs_mod.admit_and_spawn,
         cfg.jobs,
         job,
