@@ -18,7 +18,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.webapp import server
+from app.webapp import route_pools, server
 from src import instance_role, session_retention
 from src.clients import session as session_client
 from src.webapp_config import SESSION_HOST_PORT_ENV, WebappConfig, _validate
@@ -335,21 +335,21 @@ class TestRetentionTick:
     async def test_the_sweep_runs_off_the_event_loop(self, monkeypatch):
         offloaded = []
 
-        async def _to_thread(fn, *a, **k):
-            offloaded.append((fn, a))
+        async def _run_on(pool, fn, *a, **k):
+            offloaded.append((pool, fn, a))
             raise asyncio.CancelledError  # stop after the first cycle
 
         async def _no_sleep(_s):
             return None
 
-        monkeypatch.setattr(server.asyncio, "to_thread", _to_thread)
+        monkeypatch.setattr(server, "run_on", _run_on)
         monkeypatch.setattr(server.asyncio, "sleep", _no_sleep)
 
         with pytest.raises(asyncio.CancelledError):
             await server._session_retention_tick(_app(session_retention_days=365))
 
         assert offloaded == [
-            (session_retention.run_scheduled_sweep, (8446, 365))
+            (route_pools.SESSION_FILES, session_retention.run_scheduled_sweep, (8446, 365))
         ]
 
 
