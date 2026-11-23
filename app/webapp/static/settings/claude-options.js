@@ -14,7 +14,7 @@
 import { els, state } from '../state.js';
 import { apiFailToast, jsonApi, toast } from '../api.js';
 import { wireModelCombo } from '../shared/model-combo.js';
-import { ifViewLoaded } from '../lazy-views.js';
+import { ifViewLoaded } from '../shared/lazy-views.js';
 import { setLifeOsModel, setLifeOsModelOptions } from '../life-os.js';
 import { syncLaunchPresets } from '../shared/launch-presets.js';
 import { renderLaunchPresetsEditor, wireLaunchPresets } from './launch-presets-settings.js';

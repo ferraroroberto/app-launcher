@@ -49,9 +49,9 @@ import { hasBackgroundTasks, openBackgroundTasks } from './background-tasks/back
 import { hasLinks, openLinks } from './links/links-sheet.js';
 import { syncFailed } from './life-os/title-sync.js';
 // runChiefAction (and the ensureChief it wraps) lives in board-dispatch.js,
-// part of the Board view, which loads on first open (lazy-views.js): a chief
+// part of the Board view, which loads on first open (shared/lazy-views.js): a chief
 // verb here loads it first rather than pulling the Board into the boot graph.
-import { loadView } from './lazy-views.js';
+import { loadView } from './shared/lazy-views.js';
 import { openSettingsAt } from './tabs.js';
 import { singleFlight } from './shared/poll.js';
 

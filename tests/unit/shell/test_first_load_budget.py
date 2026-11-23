@@ -85,7 +85,7 @@ def test_lazy_tab_views_stay_out_of_the_boot_graph() -> None:
     waits on.
     """
     graph = _module_graph()
-    assert STATIC_DIR / "lazy-views.js" in graph
+    assert STATIC_DIR / "shared" / "lazy-views.js" in graph
     leaked = sorted(
         str(path.relative_to(STATIC_DIR)).replace("\\", "/")
         for path in graph
@@ -93,8 +93,8 @@ def test_lazy_tab_views_stay_out_of_the_boot_graph() -> None:
         or (path.parent.name == "board" and path.name not in _BOOT_BOARD_LEAVES)
     )
     assert not leaked, f"lazy tab-view modules in the boot graph: {leaked}"
-    lazy = (STATIC_DIR / "lazy-views.js").read_text(encoding="utf-8")
-    for spec in ("./board.js", "./board/board-dispatch.js", "./jobs.js"):
+    lazy = (STATIC_DIR / "shared" / "lazy-views.js").read_text(encoding="utf-8")
+    for spec in ("../board.js", "../board/board-dispatch.js", "../jobs.js"):
         assert f"import('{spec}')" in lazy
 
 

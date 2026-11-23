@@ -26,7 +26,7 @@ import { fetchAgents, fetchApps, fetchRunningApps, wireApps } from './apps.js';
 import { refreshGitStatus } from './apps/apps-coding.js';
 import { fetchListeners } from './apps/apps-listeners.js';
 import { fetchChannels, fetchSkills, openConvoByLink, wireLifeOs } from './life-os.js';
-import { ifViewLoaded, loadView, openView, wireLazyViews } from './lazy-views.js';
+import { ifViewLoaded, loadView, openView, wireLazyViews } from './shared/lazy-views.js';
 import { wireHtmlViewer, wireImageLightbox } from './lightbox.js';
 import { openScreenWindow, wireScreenView } from './screen/screen-view.js';
 import { wireTokens } from './settings/tokens.js';

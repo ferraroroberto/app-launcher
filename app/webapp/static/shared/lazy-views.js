@@ -7,7 +7,7 @@
  * tab, and the other two serve every tab (the project list, the skills and
  * the Telegram settings).
  *
- * The specifiers stay literal `import('./x.js')` so the server stamps
+ * The specifiers stay literal `import('../x.js')` so the server stamps
  * `?v=<hash>` onto them like any static import (src/static_versioning.py):
  * an unstamped URL would load a second copy of the module, state and all.
  *
@@ -15,7 +15,7 @@
  * (the chief row's Start, a Settings change to the Board's model list)
  * goes through loadView() or ifViewLoaded(). */
 
-import { state } from './state.js';
+import { state } from '../state.js';
 
 // Each view's loader wires it once; open() is its first data read, which
 // its own tab-click listener repeats on later visits.
@@ -23,7 +23,7 @@ const VIEWS = {
   board: {
     pane: 'paneBoard',
     load: function () {
-      return Promise.all([import('./board.js'), import('./board/board-dispatch.js')])
+      return Promise.all([import('../board.js'), import('../board/board-dispatch.js')])
         .then(function (mods) {
           const view = { board: mods[0], dispatch: mods[1] };
           view.board.wireBoard();
@@ -37,7 +37,7 @@ const VIEWS = {
   jobs: {
     pane: 'paneJobs',
     load: function () {
-      return import('./jobs.js').then(function (jobs) {
+      return import('../jobs.js').then(function (jobs) {
         jobs.wireJobs();
         return { jobs: jobs };
       });
