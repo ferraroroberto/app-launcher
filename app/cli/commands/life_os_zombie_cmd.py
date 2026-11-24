@@ -5,8 +5,8 @@ and index entries into a dated backup folder; ``--mode delete`` removes them
 through the Delete endpoint's own routine; ``--mode dry-run`` classifies and
 prints counts, touching nothing and sending nothing. ``--restore <date>[/<skill>[/<file>]]``
 lists what a backup holds, and puts it back with ``--yes``. Every non-dry run
-sends one Telegram summary (counts only, to the log chat) and purges backups past
-``--retention-days``. Exit codes: 1 a capture failed, 2 bad arguments,
+sends one Telegram summary (counts only, to the log chat); backups are kept forever
+unless ``--retention-days`` is given, which purges older ones. Exit codes: 1 a capture failed, 2 bad arguments,
 3 breaker tripped (too many zombies; nothing touched), 4 session host unknown
 (nothing touched; declare it ``deferred`` in the job). The rules live in
 :mod:`src.life_os.zombies`.
@@ -26,7 +26,6 @@ from src.life_os.zombie_backup import (
 from src.life_os.zombies import (
     DEFAULT_GRACE_HOURS,
     DEFAULT_MAX_PER_RUN,
-    DEFAULT_RETENTION_DAYS,
     EXIT_FAILED,
     EXIT_OK,
     MODE_BACKUP,
@@ -58,8 +57,9 @@ class LifeOsZombieCommand(BaseCommand):
                        help="Never touch a capture younger than this (default %(default)s)")
         p.add_argument("--max-per-run", type=int, default=DEFAULT_MAX_PER_RUN,
                        help="Act on none when more zombies than this are found (default %(default)s)")
-        p.add_argument("--retention-days", type=int, default=DEFAULT_RETENTION_DAYS,
-                       help="Purge backup folders older than this (default %(default)s)")
+        p.add_argument("--retention-days", type=int, default=None,
+                       help="Purge backup folders older than this many days "
+                            "(default: keep backups forever)")
         p.add_argument("--restore", metavar="DATE[/SKILL[/FILE]]", default=None,
                        help="List a backup's conversations; add --yes to put them back")
         p.add_argument("--yes", action="store_true", help="With --restore: actually restore")
