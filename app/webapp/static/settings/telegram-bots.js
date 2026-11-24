@@ -12,6 +12,11 @@
  * record can't be read) shows nothing, never an "up to date" claim. The
  * restart runs on the owner's tap and is never started from here.
  *
+ * `health` says whether a running bot can hear its chat: 'degraded' (its
+ * Telegram plugin server is gone, with `health_reason`) reads "Not listening",
+ * and `needs_owner` (the launcher's one automatic restart did not help) adds a
+ * "Needs you" chip. 'starting' and 'unknown' claim nothing either way.
+ *
  * The sheet navigation and the channel refresh belong to other modules, so
  * main.js hands them in (wireTelegramBots) rather than this module importing
  * them back.
@@ -68,6 +73,7 @@ function summary(p) {
   if (!p.skill_found || !p.env_present) parts.push('Needs setup');
   else if (p.running === false) parts.push('Not running');
   else if (p.running == null) parts.push('Status unknown');
+  else if (p.health === 'degraded') parts.push('Not listening');
   if (p.relay) {
     parts.push(parts.length ? 'relay on' : 'Relay');
     parts.push(p.idle_close_minutes ? 'closes after ' + IDLE_LABEL[p.idle_close_minutes] + ' idle' : 'no idle close');
@@ -96,12 +102,15 @@ function botRow(p) {
   const meta = span('muted small bot-row-meta', summary(p));
   text.append(name, meta);
   row.append(avatar, text);
-  if (p.restart_needed === true) {
+  if (p.needs_owner === true) {
+    row.appendChild(span('channel-check-chip channel-check-chip-attention', 'Needs you'));
+  } else if (p.restart_needed === true) {
     row.appendChild(span('channel-check-chip channel-check-chip-attention', 'Restart to apply'));
   }
   row.appendChild(icon('chevron-right', 'settings-row-chevron'));
   row.setAttribute('aria-label', [
-    p.label, summary(p), p.restart_needed === true ? 'restart to apply' : '',
+    p.label, summary(p), p.needs_owner === true ? 'needs you' : '',
+    p.restart_needed === true ? 'restart to apply' : '',
   ].filter(Boolean).join(', '));
   row.addEventListener('click', function () { openBot(p.id); });
   return row;
@@ -156,12 +165,27 @@ function renderRestart(p) {
   }
 }
 
+// Whether the running bot can hear its chat. Degraded names why, and says
+// when the automatic restart already failed; starting and unknown stay neutral.
+function listeningRow(p) {
+  if (p.health === 'ok') return checkRow('Listening', '', 'ok', 'Yes');
+  if (p.health === 'degraded') {
+    return checkRow('Listening', p.health_reason || '', 'missing', '',
+      p.needs_owner === true ? 'Needs you' : 'No');
+  }
+  return checkRow('Listening', p.health_reason || '', 'unknown', '',
+    p.health === 'starting' ? 'Starting' : 'Unknown');
+}
+
 function renderStatus(p) {
   const list = els.botStatus;
   list.textContent = '';
   list.appendChild(p.running == null
     ? checkRow('Running', 'The session host could not be asked', 'unknown')
     : checkRow('Running', '', 'ok', p.running ? 'Yes' : 'No — start it from the Life tab'));
+  if (p.running === true && p.health) {
+    list.appendChild(listeningRow(p));
+  }
   list.appendChild(p.env_present == null
     ? checkRow('Token file', '', 'unknown')
     : checkRow('Token file', '', p.env_present ? 'ok' : 'missing', 'Present'));

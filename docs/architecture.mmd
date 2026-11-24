@@ -47,6 +47,7 @@ health probes, bounded restart"]
     SHELLHTML["shell_html.py\nsplices static/views/*.html into index.html"]
     DOORBELL["chief_doorbell.py\nrings an idle chief with pending mail (#1645)"]
     RELAYIDLE["relay_idle_close.py\ncloses relay-reopened conversations after the bot's idle timeout"]
+    CHANNELHEAL["channel_heal.py\nrestarts a bot whose plugin server is gone once, then flags the owner"]
     subgraph routers["routers/"]
       R_MISC["misc.py — /, /healthz, /api/version, /api/request-stats, /api/system/load, /api/system/health, /api/system/restart
 request stats: src/request_timing.py (vendored), src/request_health"]
@@ -255,6 +256,8 @@ one machine-critical chief mailbox event per incident"]
   WSERVER -->|"lifespan 60 s idle-close tick, canonical only"| RELAYIDLE
   RELAYIDLE -->|"the relay's own stop, registry entries only"| R_LIFEOS
   RELAYIDLE -->|"fixed notice line into the bot's session"| SESSCLIENT
+  WSERVER -->|"lifespan 60 s health tick, canonical listener owner only"| CHANNELHEAL
+  CHANNELHEAL -->|"the restart route's own restart, once per fault"| R_LIFEOS
   SESSRETENTION --> AUDIT
   SESSRETENTION -->|"live session list"| SESSCLIENT
   JOBSFACADE --> JOBSCFG

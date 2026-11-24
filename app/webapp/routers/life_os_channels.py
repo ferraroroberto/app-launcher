@@ -68,6 +68,7 @@ from app.webapp.routers.life_os_spawn import (
 )
 from src import audit
 from src.clients import session as session_client
+from src.launching import channel_health
 from src.launching.channel_profiles import (
     DEFAULT_PROFILES_PATH,
     ChannelProfile,
@@ -165,7 +166,9 @@ async def list_channels(request: Request) -> Dict[str, Any]:
     session-host cannot be reached: an unknown is not "nothing running". The
     same rule holds for ``setup.plugin`` (``None`` = Claude's install record
     could not be read), for ``restart_due`` (:func:`_restart_due`) and for
-    ``restart_needed`` (:func:`_restart_needed`). Only
+    ``restart_needed`` (:func:`_restart_needed`). ``health`` is a running
+    profile's plugin-server check (:mod:`src.launching.channel_health`) and
+    ``needs_owner`` says the health watcher's one restart did not help. Only
     booleans and names leave here: no state directory, no path, no file
     content — ``env_present`` is a stat of the token file, which is never
     opened.
@@ -220,10 +223,18 @@ def _channels_answer(
     life_os_dir = Path(cfg.life_os_dir)
     skills = scan_skills(life_os_dir) if life_os_dir.is_dir() else []
     skills_by_id = {s.id: s for s in skills}
+    procs = channel_health.snapshot() if live else None
+    servers = channel_health.server_states([p.id for p in profiles], procs or [])
+    heal = getattr(app.state, "channel_heal", None)
+    now = time.time()
     rows = []
     for profile in profiles:
         sess = (live or {}).get(profile.id)
         needed, changed = _restart_needed(cfg, profile, sess)
+        health, reason = channel_health.assess(
+            sess, servers.get(profile.id), procs is not None, now
+        )
+        flagged = heal is not None and profile.id in heal.flagged
         rows.append({
             **_settings_fields(profile),
             "skill_found": profile.skill in skills_by_id,
@@ -235,6 +246,11 @@ def _channels_answer(
             ),
             "restart_needed": needed,
             "restart_fields": changed,
+            "health": health,
+            "health_reason": reason,
+            # The health watcher's one automatic restart did not bring the
+            # plugin server back, so the owner has to look.
+            "needs_owner": flagged and health != channel_health.OK,
         })
     return {
         "profiles": rows,
@@ -538,29 +554,45 @@ async def restart_channel(profile_id: str, request: Request) -> Dict[str, Any]:
             status_code=404, detail=f"unknown channel profile: {profile_id}"
         )
     body = await maybe_json(request)
-    _agent, model = _resolve_launch_choice({"model": _profile_model(cfg, profile)})
-    life_os_dir, skill = _profile_skill(cfg, profile)
     try:
-        async with _launch_locks.setdefault(profile.id, asyncio.Lock()):
-            running = (await _live_or_503(cfg, profile)).get(profile.id)
-            old_sid = str((running or {}).get("session_id") or "")
-            if old_sid:
-                await _quit_and_confirm_gone(cfg, profile, old_sid)
-                # The old session is gone; anything still live on this profile
-                # is another session, and a start would make two.
-                _refuse_if_running(profile, await _live_or_503(cfg, profile))
-            logger.info(f"ℹ️ channel profile {profile.id} restart: starting fresh")
-            result = await _spawn_channel(
-                cfg, profile, skill, life_os_dir,
-                model=model, resume=False, body=body, request=request,
-            )
+        return await restart_channel_session(
+            cfg, profile, body=body, request=request, client=client_ip(request),
+        )
     finally:
         _mark_channels_stale(request)
+
+
+async def restart_channel_session(
+    cfg: WebappConfig,
+    profile: ChannelProfile,
+    *,
+    body: Dict[str, Any],
+    request: Optional[Request],
+    client: str,
+) -> Dict[str, Any]:
+    """The restart route's body, shared with the health watcher
+    (:mod:`app.webapp.channel_heal`), which passes no ``request``: quit,
+    confirm gone, start fresh, all under the profile's lock. Refusals raise
+    ``HTTPException`` with the status and detail the route returns."""
+    _agent, model = _resolve_launch_choice({"model": _profile_model(cfg, profile)})
+    life_os_dir, skill = _profile_skill(cfg, profile)
+    async with _launch_locks.setdefault(profile.id, asyncio.Lock()):
+        running = (await _live_or_503(cfg, profile)).get(profile.id)
+        old_sid = str((running or {}).get("session_id") or "")
+        if old_sid:
+            await _quit_and_confirm_gone(cfg, profile, old_sid)
+            # The old session is gone; anything still live on this profile
+            # is another session, and a start would make two.
+            _refuse_if_running(profile, await _live_or_503(cfg, profile))
+        logger.info(f"ℹ️ channel profile {profile.id} restart: starting fresh")
+        result = await _spawn_channel(
+            cfg, profile, skill, life_os_dir,
+            model=model, resume=False, body=body, request=request,
+        )
     new_sid = str((result.get("session") or {}).get("session_id") or "")
     await audit_off_loop(
         audit.audit_event, "channel_restart",
-        profile=profile.id, old_session=old_sid, session=new_sid,
-        client=client_ip(request),
+        profile=profile.id, old_session=old_sid, session=new_sid, client=client,
     )
     logger.info(
         f"✅ channel profile {profile.id} "

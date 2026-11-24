@@ -20,7 +20,13 @@ from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 from starlette.types import Scope
 
-from app.webapp import chief_doorbell, loop_lag, quota_cache, relay_idle_close
+from app.webapp import (
+    channel_heal,
+    chief_doorbell,
+    loop_lag,
+    quota_cache,
+    relay_idle_close,
+)
 from app.webapp.observability import (
     ensure_autostart_log_handler,
     ensure_doorbell_log_handler,
@@ -518,6 +524,13 @@ def _canonical_loops(app: FastAPI) -> List[asyncio.Task]:
     # Always started: it reads each bot's idle_close_minutes every tick and
     # touches only what the relay reopened, so a settings save applies live.
     tasks.append(asyncio.create_task(relay_idle_close.tick_forever(app)))
+    # A running bot whose plugin server is gone is restarted once, then
+    # flagged for the owner. Touches only sessions that are already running.
+    # Listener-owner only, like the autostart: two webapp processes must not
+    # both restart one bot.
+    tasks.append(asyncio.create_task(
+        channel_heal.tick_forever(app, owns_listener=_owns_listener)
+    ))
     # The Projects tiles' ahead/behind: a slow fetch round while a page
     # polls git status. Canonical only, so a gate webapp stays offline.
     tasks.append(asyncio.create_task(claude_code.fetch_tick_forever(app)))
