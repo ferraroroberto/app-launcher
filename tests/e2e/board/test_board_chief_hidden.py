@@ -109,6 +109,30 @@ def test_chief_and_job_runs_leave_the_lanes_and_the_setting_brings_the_chief_bac
     expect(authed_page.locator("#boardHeadStatus")).to_contain_text("1 needs you")
     expect(authed_page.locator("#tabBoard .tab-badge")).to_have_text("1")
 
+    # Claude's turn counts the sessions at work: a finished one folds into the
+    # shut Finished group under the lane, outside the count.
+    payload = _board_payload(with_chief=False)
+    payload["columns"]["claude_turn"] += [
+        {**_external_card("done-repo", job_run=False), "status": "idle-finished",
+         "finished": True, "age_seconds": 30000},
+        {**_external_card("old-idle", job_run=False), "status": "idle",
+         "finished": True, "age_seconds": 40000},
+    ]
+    _mock_board(authed_page, payload)
+    authed_page.route(re.compile(r".*/api/config$"), _hide_managed_sessions)
+    _open_board(authed_page, base_url)
+    lane = authed_page.locator('.board-list[data-col="claude_turn"] li.board-item')
+    expect(lane).to_have_count(1)
+    expect(authed_page.locator("#boardColClaude > summary .board-count")).to_have_text("1")
+    group = authed_page.locator("details.board-finished")
+    expect(group.locator(".board-finished-count")).to_have_text("2")
+    expect(group).not_to_have_attribute("open", "")
+    finished = group.locator("li.board-item")
+    expect(finished).to_have_count(2)
+    expect(finished.first).not_to_be_visible()
+    group.locator("summary").click()
+    expect(finished.filter(has_text="done-repo")).to_be_visible()
+
     # With the setting off the chief is back on the Board.
     _mock(authed_page, hidden=False)
     _open_board(authed_page, base_url)

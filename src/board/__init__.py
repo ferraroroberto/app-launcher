@@ -218,6 +218,34 @@ def _is_chief_card(card: Dict[str, Any]) -> bool:
     )
 
 
+# How long a session may sit ``idle`` before the Board treats it as finished.
+# A raw ``idle`` is the hook's "turn ended, nothing pending" stamp, with no
+# evidence the work is done, so a fresh one is still a worker the owner may be
+# about to prompt; two hours of silence is long enough that it has stopped
+# being one, without a git or gh call per session per poll.
+IDLE_FINISHED_AFTER_SECONDS = 2 * 60 * 60
+
+
+def is_finished_card(card: Dict[str, Any]) -> bool:
+    """Whether a Claude's turn card is a session with nothing left to do.
+
+    ``idle-finished`` always is. A plain ``idle`` is only once its last
+    activity is :data:`IDLE_FINISHED_AFTER_SECONDS` old; an ``idle`` card with
+    no age anchor stays active, because silence is not evidence. ``unknown``
+    and every other status stay active, and the standing chief never counts as
+    finished: it rests between dispatches by design.
+    """
+    if _is_chief_card(card):
+        return False
+    status = card.get("status")
+    if status == card_status.IDLE_FINISHED:
+        return True
+    if status != card_status.IDLE:
+        return False
+    age = card.get("age_seconds")
+    return isinstance(age, (int, float)) and age >= IDLE_FINISHED_AFTER_SECONDS
+
+
 def build_board(
     session_cards: List[Dict[str, Any]],
     github: Dict[str, Any],
@@ -244,6 +272,11 @@ def build_board(
     entire life between dispatches — for a long-lived chat session that's a
     resting state, not a transient alert like it is for a worker session. It
     always lands in Claude's turn instead, regardless of its raw status.
+
+    Every Claude's turn card carries ``finished`` (:func:`is_finished_card`):
+    the column keeps all of them, and the Board draws the finished ones in a
+    folded group under the lane, outside its count, so a session that ended
+    hours ago no longer reads as the bot being busy.
     """
     claude_turn = [
         c for c in session_cards
@@ -253,6 +286,8 @@ def build_board(
         c for c in session_cards
         if c["status"] in _NEEDS_YOU_STATUSES and not _is_chief_card(c)
     ]
+    for card in claude_turn:
+        card["finished"] = is_finished_card(card)
     return {
         "backlog": list(github.get("issues") or []),
         "claude_turn": claude_turn,

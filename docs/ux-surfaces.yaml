@@ -1048,7 +1048,7 @@ surfaces:
     reach:
       - the Claude's turn card on the Board
     holds:
-      - the live sessions that are working or idle, including the chief, as session rows
+      - the live sessions that are working or about to be, including the chief, as session rows, counted in the card's summary
     does:
       - tap a row opens its drawer
     states:
@@ -1056,6 +1056,25 @@ surfaces:
     links:
       - to: board.drawer
         via: tap a session
+      - to: board.finished-group
+        via: Finished fold
+
+  - id: board.finished-group
+    area: board
+    title: Finished sessions
+    root: data-surface
+    reach:
+      - the Finished fold at the bottom of Claude's turn, shown only while a session is finished
+    holds:
+      - sessions that finished or sat idle for two hours, one row each, outside the card's count
+    does:
+      - the fold opens and shuts, shut by default
+      - a row opens the drawer
+    states:
+      - hidden while no session is finished
+    links:
+      - to: board.drawer
+        via: row tap
 
   - id: board.ideas
     area: board
