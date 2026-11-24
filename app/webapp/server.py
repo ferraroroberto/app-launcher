@@ -20,7 +20,9 @@ from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 from starlette.types import Scope
 
-from app.webapp import chief_doorbell, loop_lag, quota_cache, relay_idle_close
+from app.webapp import (
+    channel_heal, chief_doorbell, loop_lag, quota_cache, relay_idle_close,
+)
 from app.webapp.observability import (
     ensure_autostart_log_handler,
     ensure_doorbell_log_handler,
@@ -491,18 +493,6 @@ async def _channel_autostart(app: FastAPI) -> None:
     )
 
 
-async def _channel_heal(app: FastAPI) -> None:
-    """Watch the running Telegram channel sessions and heal one whose plugin
-    server is gone (``app.webapp.channel_heal``). Listener-owner only, like the
-    autostart: two webapp processes must not both restart one bot."""
-    from app.webapp import channel_heal
-
-    cfg = getattr(app.state, "webapp_config", None)
-    if cfg is None or not await _owns_listener(cfg.port):
-        return
-    await channel_heal.tick_forever(app)
-
-
 def _canonical_loops(app: FastAPI) -> List[asyncio.Task]:
     """The always-on lifespan loops only the canonical checkout may run: each
     reads its own Settings switch every beat, so a save arms it live."""
@@ -532,7 +522,11 @@ def _canonical_loops(app: FastAPI) -> List[asyncio.Task]:
     tasks.append(asyncio.create_task(relay_idle_close.tick_forever(app)))
     # A running bot whose plugin server is gone is restarted once, then
     # flagged for the owner. Touches only sessions that are already running.
-    tasks.append(asyncio.create_task(_channel_heal(app)))
+    # Listener-owner only, like the autostart: two webapp processes must not
+    # both restart one bot.
+    tasks.append(asyncio.create_task(
+        channel_heal.tick_forever(app, owns_listener=_owns_listener)
+    ))
     # The Projects tiles' ahead/behind: a slow fetch round while a page
     # polls git status. Canonical only, so a gate webapp stays offline.
     tasks.append(asyncio.create_task(claude_code.fetch_tick_forever(app)))

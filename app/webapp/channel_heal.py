@@ -27,7 +27,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from fastapi import HTTPException
 
@@ -147,10 +147,17 @@ async def tick_once(
         await _heal_profile(cfg, profile, health, reason, moment, state)
 
 
-async def tick_forever(app: Any) -> None:
+async def tick_forever(
+    app: Any, owns_listener: Callable[[int], Awaitable[bool]]
+) -> None:
     """The lifespan loop; config and profiles are re-read every tick, and the
     state lives on ``app.state.channel_heal`` so the channel list can report
-    a flag."""
+    a flag. It runs only in the process that ``owns_listener`` confirms holds
+    the webapp's port."""
+    cfg = getattr(app.state, "webapp_config", None)
+    port = getattr(cfg, "port", None)
+    if not isinstance(port, int) or not await owns_listener(port):
+        return
     state = app.state.channel_heal = HealState()
     while True:
         await asyncio.sleep(TICK_SECONDS)
