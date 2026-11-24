@@ -139,6 +139,13 @@
             <div class="collapse-body">
               <ul class="card-list board-list" data-col="claude_turn"></ul>
               <div class="board-empty" data-col="claude_turn" hidden></div>
+              <details class="board-finished board-plan-group board-plan-fold" data-surface="board.finished-group" data-col="claude_finished" hidden>
+                <summary data-track="board.fold-finished" class="board-plan-heading board-plan-fold-summary">
+                  <span>Finished (<span class="board-finished-count">0</span>)</span>
+                  <span class="board-plan-fold-chevron" aria-hidden="true"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg></span>
+                </summary>
+                <ul class="card-list board-list" data-col="claude_finished"></ul>
+              </details>
             </div>
           </details>
           <!-- Ideas (board/ideas-card.js): the inspiration scan's kept ideas and

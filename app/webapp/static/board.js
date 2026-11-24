@@ -691,11 +691,39 @@ function revealDrawerSection(visible, expandedCard) {
   });
   const section = home && els[home.section];
   if (section) section.open = true;
+  // A finished card's drawer opens inside the folded Finished group.
+  if (home && home.key === 'claude_turn' && isFinishedCard(expandedCard)) {
+    const group = els.boardColumns.querySelector('details.board-finished');
+    if (group) group.open = true;
+  }
+}
+
+// The server flags a Claude's turn card `finished` (src/board/__init__.py): a
+// session with nothing left to do. A card without the flag, from an older
+// server, stays in the lane.
+function isFinishedCard(card) {
+  return card.finished === true;
+}
+
+// Claude's turn's folded Finished group: shut until opened (its markup has no
+// `open`, and the poll never sets it), with its own count. It is a list of
+// its own, so a card's drawer keeps its node here as it does in the lane.
+function renderFinishedGroup(cards, openItem) {
+  const group = els.boardColumns.querySelector('details.board-finished');
+  const list = group && group.querySelector('.board-list');
+  if (!list) return;
+  group.hidden = cards.length === 0;
+  group.querySelector('.board-finished-count').textContent = String(cards.length);
+  placeChildren(list, cards.map(function (card) { return renderSessionCard(card, openItem); }));
 }
 
 // One lane: its section's count and flags, its rows, its empty state.
 // `extra` is rows drawn outside the lane's list: Your turn's owner checks.
-function renderLane(col, cards, openItem, body, ghLoaded, liveRead, extra) {
+function renderLane(col, allCards, openItem, body, ghLoaded, liveRead, extra) {
+  // Claude's turn counts the sessions that are doing or about to do work; the
+  // finished ones sit in a folded group under it, outside the count.
+  const finished = col.key === 'claude_turn' ? allCards.filter(isFinishedCard) : [];
+  const cards = finished.length ? allCards.filter(function (c) { return !isFinishedCard(c); }) : allCards;
   // The Backlog grouped by bucket: every open issue sits in one bucket and
   // counts, the folded ones (umbrellas, records, dormant) included.
   const grouped = col.key === 'backlog' && hasBuckets(cards);
@@ -704,7 +732,7 @@ function renderLane(col, cards, openItem, body, ghLoaded, liveRead, extra) {
   // transcript) with the session-host down; those make a real lower bound,
   // so only an empty one reads as unknown.
   const unknown = (col.gh === 'all' && !ghLoaded)
-    || (col.live && !liveRead && total === 0);
+    || (col.live && !liveRead && total + finished.length === 0);
   const shown = unknown ? '—' : String(total);
   const section = els[col.section];
   if (section) {
@@ -714,7 +742,7 @@ function renderLane(col, cards, openItem, body, ghLoaded, liveRead, extra) {
     // At the wide query an empty lane is a one-line strip.
     // Done with earlier days under it is a lane, not a strip.
     section.classList.toggle('is-empty',
-      total === 0 && !(col.key === 'done' && doneEarlierLoaded()));
+      total + finished.length === 0 && !(col.key === 'done' && doneEarlierLoaded()));
     // PRs and jobs, folded, says what is wrong instead of its count.
     if (col.key === 'other') {
       const failing = cards.filter(isFailing).length;
@@ -729,6 +757,7 @@ function renderLane(col, cards, openItem, body, ghLoaded, liveRead, extra) {
   const list = els.boardColumns.querySelector('.board-list[data-col="' + col.key + '"]');
   const empty = els.boardColumns.querySelector('.board-empty[data-col="' + col.key + '"]');
   if (!list) return;
+  if (col.key === 'claude_turn') renderFinishedGroup(finished, openItem);
   placeChildren(list, grouped ? bucketNodes(cards, body, renderIssueCard) : cards.map(function (card) {
     return renderCard(col.key, card, openItem);
   }));
@@ -745,7 +774,7 @@ function renderLane(col, cards, openItem, body, ghLoaded, liveRead, extra) {
     empty.dataset.sig = sig;
     empty.replaceChildren(emptyStateEl(col.glyph, text, action));
   }
-  empty.hidden = total > 0;
+  empty.hidden = total > 0 || finished.length > 0;
 }
 
 export function renderBoard() {

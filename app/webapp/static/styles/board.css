@@ -120,6 +120,8 @@
   font-size: var(--font-body-sm);
 }
 .board-lane-foot[hidden] { display: none; }
+/* Claude's turn's folded Finished group: its heading lines up with the rows above. */
+.board-finished > .board-plan-fold-summary { padding-inline: var(--board-card-inset, 14px); }
 .board-lane-foot .icon { flex: none; width: var(--icon-inline); height: var(--icon-inline); }
 
 /* A folded lane's exception: "1 failing", "1 question for you", in
