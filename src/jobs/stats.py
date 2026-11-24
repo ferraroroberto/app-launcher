@@ -95,9 +95,15 @@ def _percentile(values: List[float], pct: float) -> Optional[float]:
     return s[idx]
 
 
-def _compute_stats(job_id: str, *, now: Optional[datetime] = None) -> Dict[str, Any]:
+def _compute_stats(
+    job_id: str,
+    *,
+    now: Optional[datetime] = None,
+    runs: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
     """Read-only computation of ``run_stats`` — see :func:`run_stats`."""
-    runs = list_runs(job_id)  # newest first
+    if runs is None:
+        runs = list_runs(job_id)  # newest first
     now = now or datetime.now()
     completed_durations: List[float] = []
     success_recent = 0
@@ -155,7 +161,12 @@ def _compute_stats(job_id: str, *, now: Optional[datetime] = None) -> Dict[str, 
     }
 
 
-def run_stats(job_id: str, *, fresh: bool = False) -> Dict[str, Any]:
+def run_stats(
+    job_id: str,
+    *,
+    fresh: bool = False,
+    runs: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
     """Return aggregated stats for ``job_id`` (process-local 30 s cache).
 
     Shape::
@@ -179,6 +190,8 @@ def run_stats(job_id: str, *, fresh: bool = False) -> Dict[str, Any]:
 
     ``fresh=True`` skips the cache — used by the stuck-run check, which
     pays the cost rarely (only when the latest run is still running).
+    ``runs`` is the job's :func:`list_runs` when the caller just read it, used
+    on a cache miss instead of reading the history again.
     """
     now = time.monotonic()
     if not fresh:
@@ -186,7 +199,7 @@ def run_stats(job_id: str, *, fresh: bool = False) -> Dict[str, Any]:
             hit = _stats_cache.get(job_id)
             if hit is not None and now - hit[0] < _STATS_TTL_SECONDS:
                 return hit[1]
-    stats = _compute_stats(job_id)
+    stats = _compute_stats(job_id, runs=runs)
     with _stats_lock:
         _stats_cache[job_id] = (now, stats)
     return stats

@@ -105,17 +105,22 @@ def compute_job(job: Any) -> JobRuntime:
     The only place the polls' old per-job walk still happens. Blocking.
     """
     from src import jobs as jobs_mod
+    from src.jobs import history as jobs_history
 
     # One job's unreadable history must not sink the whole snapshot (and with
     # it every other job on the Board), so any error is kept per job.
     try:
         # A run stranded "running" by a dead executor is
-        # reconciled here, as both polls used to do on every request.
-        jobs_mod.reap_stranded_runs(job)
-        latest = jobs_mod.latest_run(job.id)
+        # reconciled here, as both polls used to do on every request. One
+        # history read feeds the reaper, the latest run and the stats; only
+        # a reap, which rewrites a record, needs a second.
+        runs = jobs_history.list_runs(job.id)
+        if jobs_mod.reap_stranded_runs(job, runs=runs):
+            runs = jobs_history.list_runs(job.id)
+        latest = runs[0] if runs else None
         return JobRuntime(
             latest=latest,
-            stats=jobs_mod.run_stats(job.id),
+            stats=jobs_mod.run_stats(job.id, runs=runs),
             stuck=jobs_mod.is_stuck(job.id, latest=latest),
         )
     except Exception as exc:  # noqa: BLE001 — surfaced per job, never swallowed

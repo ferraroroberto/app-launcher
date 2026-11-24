@@ -105,7 +105,7 @@ def test_jobs_attention_unreadable_history_surfaces_not_skipped(
     card instead of dropping out of the check, and says so above debug —
     once per job, not once per 5 s poll. A readable quiet job beside it
     still raises nothing, and a recovery clears the card."""
-    from src import jobs as jobs_mod
+    from src.jobs import history as jobs_history
 
     _client, _app, overrides = webapp_client
     local_now = datetime.now().replace(hour=12, minute=0, second=0, microsecond=0)
@@ -113,14 +113,14 @@ def test_jobs_attention_unreadable_history_surfaces_not_skipped(
     _seed_job(overrides, "quiet", {"status": "success", "finished_at": finished})
     _seed_job(overrides, "locked", {"status": "success", "finished_at": finished})
 
-    real_latest_run = jobs_mod.latest_run
+    real_list_runs = jobs_history.list_runs
 
-    def _locked_latest_run(job_id):
+    def _locked_list_runs(job_id):
         if job_id == "locked":
             raise PermissionError(13, "Access is denied", "run.json")
-        return real_latest_run(job_id)
+        return real_list_runs(job_id)
 
-    monkeypatch.setattr(jobs_mod, "latest_run", _locked_latest_run)
+    monkeypatch.setattr(jobs_history, "list_runs", _locked_list_runs)
     with caplog.at_level(logging.DEBUG, logger="src.board"):
         cards = board.jobs_attention(now=local_now)
         board.jobs_attention(now=local_now)  # the next poll must not re-warn
@@ -133,7 +133,7 @@ def test_jobs_attention_unreadable_history_surfaces_not_skipped(
     ]
     assert len(warnings) == 1
 
-    monkeypatch.setattr(jobs_mod, "latest_run", real_latest_run)
+    monkeypatch.setattr(jobs_history, "list_runs", real_list_runs)
     caplog.clear()
     with caplog.at_level(logging.INFO, logger="src.board"):
         assert board.jobs_attention(now=local_now) == []
