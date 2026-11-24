@@ -61,7 +61,8 @@ def target_paths(bat_path: Path) -> Set[str]:
     text = re.sub(r"%~dp0\\?", lambda _m: folder + os.sep, text, flags=re.IGNORECASE)
     found: Set[str] = set()
     for match in _TARGET_RE.finditer(text):
-        token = match.group("path")
+        # A bat writes backslashes; POSIX reads them as part of a file name.
+        token = match.group("path").replace("\\", "/")
         if "%" in token:
             continue
         if Path(token).stem.lower() in _GENERIC_PROGRAMS:
