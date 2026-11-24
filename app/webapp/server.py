@@ -21,7 +21,11 @@ from starlette.responses import Response
 from starlette.types import Scope
 
 from app.webapp import (
-    channel_heal, chief_doorbell, loop_lag, quota_cache, relay_idle_close,
+    channel_heal,
+    chief_doorbell,
+    loop_lag,
+    quota_cache,
+    relay_idle_close,
 )
 from app.webapp.observability import (
     ensure_autostart_log_handler,
