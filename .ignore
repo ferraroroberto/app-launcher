@@ -68,5 +68,6 @@
 /tests/e2e/_paced_browser.py
 /tests/e2e/_shot.py
 /tests/e2e/_surface.py
+/tests/e2e/budget/_request_budget.py
 /tests/host/_synthetic_host.py
 # END vendored-copies

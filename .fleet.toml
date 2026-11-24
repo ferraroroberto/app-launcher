@@ -41,7 +41,7 @@ extra_junctions = ["webapp/certificates"]
 [vendored]
 icons = { src = "app/webapp/static/_vendored/icons", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/icons" }
 switch = { src = "app/webapp/static/_vendored/switch", sha = "8f15c49560adbc076d24a8a63dd671868ffa7a4e", dest = "app/webapp/static/_vendored/switch" }
-button = { src = "app/webapp/static/_vendored/button", sha = "f2464e89c902bd302291bb7af7b44c3ffa594323", dest = "app/webapp/static/_vendored/button" }
+button = { src = "app/webapp/static/_vendored/button", sha = "7a1a7561331edded3dc91128a42076fb3b0262f8", dest = "app/webapp/static/_vendored/button" }
 card = { src = "app/webapp/static/_vendored/card", sha = "8f15c49560adbc076d24a8a63dd671868ffa7a4e", dest = "app/webapp/static/_vendored/card" }
 disclosure = { src = "app/webapp/static/_vendored/disclosure", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/disclosure" }
 home-head = { src = "app/webapp/static/_vendored/home-head", sha = "a37f157cda14dda408c36df50335125bed8ce465", dest = "app/webapp/static/_vendored/home-head" }
