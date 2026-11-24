@@ -129,6 +129,55 @@ def test_offset_pins_query_is_cached_and_reports_failure_as_none():
     jobs_schtasks.invalidate_next_run_cache()
 
 
+_FOLDER_MISSING_STDERR = "ERROR: The system cannot find the file specified.\n"
+
+
+def _failing_runner(stderr: str, *, rc: int = 1):
+    def run(argv):
+        return subprocess.CompletedProcess(argv, rc, stdout="", stderr=stderr)
+
+    return run
+
+
+@pytest.fixture
+def _fresh_offset_state():
+    jobs_schtasks.invalidate_next_run_cache()
+    schtasks_offsets._warned.clear()
+    yield
+    jobs_schtasks.invalidate_next_run_cache()
+    schtasks_offsets._warned.clear()
+
+
+def test_missing_task_folder_is_no_tasks_and_logs_nothing(_fresh_offset_state, caplog):
+    with caplog.at_level("WARNING", logger=schtasks_offsets.logger.name):
+        pins = schtasks_offsets.registered_task_offset_pins(
+            _failing_runner(_FOLDER_MISSING_STDERR)
+        )
+    assert pins == {}
+    assert caplog.records == []
+
+
+def test_any_other_failure_is_unknown_and_logged_once(_fresh_offset_state, caplog):
+    stderr = "ERROR: Access is denied.\n"
+    with caplog.at_level("WARNING", logger=schtasks_offsets.logger.name):
+        for _ in range(3):
+            jobs_schtasks.invalidate_next_run_cache()
+            assert (
+                schtasks_offsets.registered_task_offset_pins(_failing_runner(stderr))
+                is None
+            )
+    assert len(caplog.records) == 1
+    assert "Access is denied" in caplog.records[0].getMessage()
+
+
+def test_a_different_failure_text_is_logged_again(_fresh_offset_state, caplog):
+    with caplog.at_level("WARNING", logger=schtasks_offsets.logger.name):
+        for stderr in ("ERROR: Access is denied.\n", "ERROR: The service is down.\n"):
+            jobs_schtasks.invalidate_next_run_cache()
+            schtasks_offsets.registered_task_offset_pins(_failing_runner(stderr))
+    assert len(caplog.records) == 2
+
+
 class TestCoverageOffsetPin:
     @pytest.fixture(autouse=True)
     def _no_history(self, monkeypatch):
