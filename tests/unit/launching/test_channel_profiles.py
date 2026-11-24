@@ -634,6 +634,27 @@ class TestSetupChecks:
         write([{"scope": "user"}])
         assert check(life, record) is True
 
+    @pytest.mark.windows_only
+    def test_a_record_naming_the_folder_through_a_junction_does_not_count(
+        self, tmp_path
+    ):
+        """Claude resolves its folder through links and compares the record
+        as written, so a record keyed to a junction path reads as not
+        installed and the bot starts deaf; the check must say so too."""
+        import _winapi
+
+        real = tmp_path / "real" / "life-os"
+        real.mkdir(parents=True)
+        link = tmp_path / "linked"
+        _winapi.CreateJunction(str(tmp_path / "real"), str(link))
+        record = tmp_path / "installed_plugins.json"
+        record.write_text(json.dumps({"plugins": {channel_profiles.PLUGIN_ID: [
+            {"scope": "project", "projectPath": str(link / "life-os")},
+        ]}}), encoding="utf-8")
+        check = channel_profiles.plugin_installed_for
+        assert check(link / "life-os", record) is False
+        assert check(real, record) is False
+
     def test_env_presence_is_a_stat_never_an_open(self, tmp_path, monkeypatch):
         profile = channel_profiles.ChannelProfile(
             "health", "Health", "health", _state_dir(tmp_path, "h")

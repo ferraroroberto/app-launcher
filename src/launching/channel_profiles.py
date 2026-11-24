@@ -48,6 +48,7 @@ from __future__ import annotations
 import hmac
 import json
 import logging
+import os
 import re
 import secrets
 import shutil
@@ -554,7 +555,10 @@ def plugin_installed_for(
     """Whether the Telegram channel plugin is installed for the life-os project.
 
     ``True`` for a user-scope install or a project-scope one whose
-    ``projectPath`` is ``life_os_dir``; ``False`` when it is absent or
+    ``projectPath`` is ``life_os_dir``'s real path, compared the way Claude
+    does: Claude resolves its working folder through links and compares the
+    recorded path as written, so a record naming the folder through a junction
+    does not count; ``False`` when it is absent or
     installed for other projects only; ``None`` (unknown) when Claude's install
     record cannot be read — never folded into ``False`` or ``True``.
     """
@@ -568,13 +572,15 @@ def plugin_installed_for(
         return None
     if not isinstance(entries, list):
         return None
-    target = str(Path(life_os_dir).resolve()).lower()
+    target = os.path.normcase(str(Path(life_os_dir).resolve()))
     for entry in entries:
         if not isinstance(entry, dict):
             continue
         if entry.get("scope") == "user":
             return True
         project = entry.get("projectPath")
-        if isinstance(project, str) and str(Path(project).resolve()).lower() == target:
+        if isinstance(project, str) and os.path.normcase(
+            os.path.normpath(project)
+        ) == target:
             return True
     return False
