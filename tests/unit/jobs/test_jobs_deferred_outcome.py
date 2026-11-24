@@ -186,7 +186,7 @@ class TestReadPath:
     def test_board_raises_no_attention_card_for_a_deferral(
         self, registry, monkeypatch
     ):
-        monkeypatch.setattr(jobs_mod, "reap_stranded_runs", lambda job: None)
+        monkeypatch.setattr(jobs_mod, "reap_stranded_runs", lambda job, runs=None: [])
         _write_run(SWEEP_ID, "20260929T020000", exit_code=3, minutes_ago=0)
         _write_run("plain", "20260929T020000", exit_code=3, minutes_ago=0)
         states = {c["job_id"]: c["state"] for c in board.jobs_attention()}

@@ -264,3 +264,33 @@ def test_index_is_cached_with_an_etag_and_revalidates_304(webapp_client, monkeyp
     assert revalidated.content == b""
     assert revalidated.headers["etag"] == etag
     assert client.get("/", headers={"If-None-Match": '"other"'}).status_code == 200
+
+
+def test_a_rebuild_reads_each_run_once_and_the_registry_once_per_job(
+    webapp_client, monkeypatch
+):
+    """The snapshot walk is the Board's cold-poll cost: reaping and finding the
+    latest run share one history read, and the job's adapter flag is resolved
+    once for its history, not per run."""
+    _client, _app, overrides = webapp_client
+    local_now = datetime.now().replace(hour=12, minute=0, second=0, microsecond=0)
+    _seed_job(overrides, "pipeline", _failed_today(local_now))
+    for run_id in ("20260702T100000", "20260702T110000"):
+        run_dir = overrides["tmp_jobs_runs_dir"] / "pipeline" / run_id
+        run_dir.mkdir(parents=True)
+        (run_dir / "run.json").write_text(
+            json.dumps({"run_id": run_id, "status": "success", "exit_code": 0}),
+            encoding="utf-8",
+        )
+    reads, lookups = [], []
+    real_read, real_lookup = jobs_history.read_run, jobs_history.adapter_run_for
+    monkeypatch.setattr(
+        jobs_history, "read_run", lambda *a, **kw: reads.append(a[0]) or real_read(*a, **kw))
+    monkeypatch.setattr(
+        jobs_history, "adapter_run_for", lambda j: lookups.append(j) or real_lookup(j))
+
+    snap = jobs_snapshot.rebuild("test")
+
+    assert snap.jobs["pipeline"].latest["run_id"] == "20260702T110000"
+    assert len(reads) == 3, "each run.json is read once per rebuild"
+    assert lookups == ["pipeline"], "the adapter flag is resolved once per job"

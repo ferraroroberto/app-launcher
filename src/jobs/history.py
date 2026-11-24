@@ -224,7 +224,9 @@ def read_webhook_payload(run_dir: Path) -> Optional[Dict[str, Any]]:
 
 
 def read_run(
-    run_dir: Path, exit_outcomes: Optional[Dict[int, str]] = None
+    run_dir: Path,
+    exit_outcomes: Optional[Dict[int, str]] = None,
+    adapter_run: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """Read ``run.json`` from ``run_dir``, decorated with its outcome.
 
@@ -250,6 +252,8 @@ def read_run(
     ``exit_outcomes`` is the owning job's own exit-code declaration;
     omitted, it is looked up from the registry by the run dir's parent name
     (``webapp/jobs/<job_id>/<run_id>``), so every caller gets it for free.
+    ``adapter_run`` is likewise looked up when omitted; :func:`list_runs` passes
+    both so a job's whole history resolves its registry row once, not per run.
     """
     target = run_dir / "run.json"
     if not target.exists():
@@ -263,9 +267,9 @@ def read_run(
     job_id = run_dir.parent.name
     if exit_outcomes is None:
         exit_outcomes = exit_outcomes_for(job_id)
-    outcome, reason = run_outcome(
-        record, exit_outcomes, adapter_run=adapter_run_for(job_id)
-    )
+    if adapter_run is None:
+        adapter_run = adapter_run_for(job_id)
+    outcome, reason = run_outcome(record, exit_outcomes, adapter_run=adapter_run)
     record["outcome"] = outcome
     record["outcome_reason"] = reason
     return record
@@ -277,11 +281,12 @@ def list_runs(job_id: str) -> List[Dict[str, Any]]:
     if not base.is_dir():
         return []
     exit_outcomes = exit_outcomes_for(job_id)
+    adapter_run = adapter_run_for(job_id)
     runs: List[Dict[str, Any]] = []
     for child in sorted(base.iterdir(), reverse=True):
         if not child.is_dir():
             continue
-        run = read_run(child, exit_outcomes)
+        run = read_run(child, exit_outcomes, adapter_run)
         run.setdefault("run_id", child.name)
         runs.append(run)
     return runs

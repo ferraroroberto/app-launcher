@@ -299,13 +299,19 @@ def _reap_one(job: Job, record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return read_run(run_dir)
 
 
-def finalize_dead_runs(job: Job) -> List[Dict[str, Any]]:
+def finalize_dead_runs(
+    job: Job, runs: Optional[List[Dict[str, Any]]] = None
+) -> List[Dict[str, Any]]:
     """Reap every ``job`` run stuck ``running``/``pending`` with a provably
     dead pid. Does not touch the mutex queue. Returns the reaped records
     (empty when nothing needed reaping).
+
+    ``runs`` is the job's :func:`list_runs` when the caller has just read it,
+    so a snapshot walk reads each ``run.json`` once instead of twice; each
+    candidate is re-checked on disk before it is written either way.
     """
     reaped: List[Dict[str, Any]] = []
-    for record in list_runs(job.id):
+    for record in list_runs(job.id) if runs is None else runs:
         if not is_active(record):
             continue
         updated = _reap_one(job, record)
@@ -314,7 +320,9 @@ def finalize_dead_runs(job: Job) -> List[Dict[str, Any]]:
     return reaped
 
 
-def reap_stranded_runs(job: Job) -> List[Dict[str, Any]]:
+def reap_stranded_runs(
+    job: Job, runs: Optional[List[Dict[str, Any]]] = None
+) -> List[Dict[str, Any]]:
     """:func:`finalize_dead_runs`, then drain ``job``'s mutex queue once if
     anything was reaped.
 
@@ -329,7 +337,7 @@ def reap_stranded_runs(job: Job) -> List[Dict[str, Any]]:
     module docstring) — ``mutex_collision`` uses the drain-less
     :func:`finalize_dead_runs` instead.
     """
-    reaped = finalize_dead_runs(job)
+    reaped = finalize_dead_runs(job, runs)
     if reaped and job.mutex_group:
         # Local import avoids a src.jobs.queue <-> src.jobs.reap import cycle
         # (src.jobs.queue.mutex_collision imports finalize_dead_runs from here)
