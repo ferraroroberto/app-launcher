@@ -115,6 +115,7 @@ request_budget_scan = { src = "scripts/request_budget_scan.py", sha = "5ba99b0a0
 poll = { src = "app/webapp/static/_vendored/poll", sha = "564864cb95a8b416c16d1a1e1e9f31b9d5b2ec8e", dest = "app/webapp/static/_vendored/poll" }
 request_timing = { src = "src/request_timing.py", sha = "564864cb95a8b416c16d1a1e1e9f31b9d5b2ec8e", dest = "src/request_timing.py" }
 windows_only_ratchet = { src = "scripts/windows_only_ratchet.py", sha = "5ba99b0a04b1b5d7b3689f8f7a59bd3fe625a9bc", dest = "scripts/windows_only_ratchet.py" }
+request_budget_probe = { src = "tests/e2e/budget/_request_budget.py", sha = "be7de0edb225505f0b4773736b4eaf6b34a49363", dest = "tests/e2e/budget/_request_budget.py" }
 
 # ---------------------------------------------------------------------------
 # [verify] -- the launch recipe the generated verify-app-launcher skill reads
@@ -618,7 +619,10 @@ time_budget_s         = 1200
 # for tests/e2e/shell/test_poll_single_flight.py: it wraps fetch in an init script to count requests in flight and holds
 # routes open, which would taint any page it shared with another node; the session list, Board, transcript and hidden-tab
 # checks all ride that one node.
-test_budget = 662
+# 2026-11-24: 662 -> 663, one node (one test, chromium only) for tests/e2e/budget/test_main_page_request_budget.py: the
+# runtime request check installs a fake clock before the first load and runs a visible and a hidden minute, so it cannot share a page
+# with another node; the visible budget, the zero hidden count and the one catch-up read per path all ride that one node.
+test_budget = 663
 
 # --- static assets under the webapp's static dir -> Chromium smoke ----------
 [[e2e.rule]]
@@ -1366,6 +1370,16 @@ marker   = "windows_only"
 # poll that asked within the demand window. The background tickers that idle
 # with no watcher keep tests proving it (tests/unit/jobs/test_jobs_snapshot.py,
 # tests/unit/usage/test_system_load.py, tests/api/webapp/test_demand_cache.py).
+
+# What the main page may read in a visible minute, counted by
+# tests/e2e/budget/test_main_page_request_budget.py on a fake clock. The reading is
+# the page's own polls: apps (about 5 s), the session list, rate limits and the
+# context filter (about 5 s each), the PC load and health pair (about 10 s) and the
+# sign-in status (about 20 s). A measured minute reads 63 to 67, the spread being
+# boot reads that land inside it; 70 leaves that margin and no more, so a new poll
+# or a faster interval breaks it.
+[request_budget]
+visible_requests_per_minute = 70
 
 [[request_budget.loops]]
 path       = "app/cli/commands/run_job_supervision.py"
