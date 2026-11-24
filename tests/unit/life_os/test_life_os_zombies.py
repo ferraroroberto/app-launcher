@@ -466,11 +466,19 @@ class TestRetention:
             else:
                 link.unlink()
 
-    def test_a_sweep_purges_old_backups_except_in_dry_run(self, world):
+    def test_a_sweep_with_a_retention_purges_old_backups_except_in_dry_run(self, world):
         old = world.backup / (date.today() - timedelta(days=45)).isoformat()
         old.mkdir(parents=True)
-        assert world.sweep(MODE_DRY_RUN).purged == 0 and old.exists()
+        assert world.sweep(MODE_DRY_RUN, retention_days=30).purged == 0 and old.exists()
         assert world.sweep(MODE_BACKUP, retention_days=30).purged == 1 and not old.exists()
+
+    def test_a_sweep_with_no_retention_keeps_every_backup_and_says_so(self, world):
+        old = world.backup / (date.today() - timedelta(days=4000)).isoformat()
+        old.mkdir(parents=True)
+        result = world.sweep(MODE_BACKUP)
+        assert result.purged == 0 and old.exists()
+        assert summary_text(result)[1].endswith("backups kept (no retention)")
+        assert "kept (no retention)" not in summary_text(world.sweep(MODE_BACKUP, retention_days=30))[1]
 
 
 # ------------------------------------------------------------------ summary + CLI

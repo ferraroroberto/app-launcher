@@ -51,7 +51,6 @@ MODES = (MODE_BACKUP, MODE_DELETE, MODE_DRY_RUN)
 
 DEFAULT_GRACE_HOURS = 2.0
 DEFAULT_MAX_PER_RUN = 25
-DEFAULT_RETENTION_DAYS = 30
 # A greeting is one or two blocks; a long conversation whose user turns the
 # capture pipeline swallowed is not (see the module docstring).
 MAX_ASSISTANT_BLOCKS = 2
@@ -129,6 +128,8 @@ class SweepResult:
     removed: int = 0
     failed: int = 0
     purged: int = 0
+    # None = backups are never purged, so the summary can say they were kept.
+    retention_days: Optional[int] = None
     kept: Counter = field(default_factory=Counter)
     skipped: Counter = field(default_factory=Counter)
     unconfirmed: bool = False
@@ -173,7 +174,7 @@ def _mtime(path: Path) -> Optional[float]:
 def run_sweep(
     cfg: WebappConfig, *, mode: str = MODE_BACKUP, now: Optional[float] = None,
     grace_hours: float = DEFAULT_GRACE_HOURS, max_per_run: int = DEFAULT_MAX_PER_RUN,
-    retention_days: int = DEFAULT_RETENTION_DAYS, backup_dir: Optional[Path] = None,
+    retention_days: Optional[int] = None, backup_dir: Optional[Path] = None,
 ) -> SweepResult:
     """Classify every Life OS capture and, unless ``mode`` is dry-run, act on the zombies.
 
@@ -185,13 +186,13 @@ def run_sweep(
     """
     if mode not in MODES:
         raise ValueError(f"mode must be one of {', '.join(MODES)}")
-    result = SweepResult(mode=mode, max_per_run=max_per_run)
+    result = SweepResult(mode=mode, max_per_run=max_per_run, retention_days=retention_days)
     backup_dir = backup_dir or backup_root()
     clock = time.time() if now is None else now
     try:
         _sweep(cfg, result, clock, grace_hours * 3600.0, max_per_run, backup_dir)
     finally:
-        if mode != MODE_DRY_RUN:
+        if mode != MODE_DRY_RUN and retention_days is not None:
             result.purged = purge_old_backups(backup_dir, retention_days)
     return result
 
@@ -283,6 +284,8 @@ def summary_text(result: SweepResult) -> tuple[str, str]:
         parts.append(f"{result.failed} failed")
     if result.purged:
         parts.append(f"{result.purged} old backup day(s) purged")
+    elif result.mode == MODE_BACKUP and result.retention_days is None:
+        parts.append("backups kept (no retention)")
     return title, ", ".join(parts)
 
 
