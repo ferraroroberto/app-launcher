@@ -19,7 +19,7 @@
 
 import { els } from '../state.js';
 import { terminalJsonApi } from '../webauthn.js';
-import { AuthRequiredError, apiFailToast, sessionRoute, toast } from '../api.js';
+import { AuthRequiredError, apiFailToast, sessionRoute, toast, writeClipboard } from '../api.js';
 import { setAsyncState } from '../async-state.js';
 import { hasTranscriptReader } from '../chat/session-transcript.js';
 import { icon } from '../_vendored/icons/icons.js';
@@ -45,9 +45,9 @@ export function hasLinks(s) {
 }
 
 function copyUrl(url) {
-  // iOS only allows a clipboard write inside the tap gesture: writeText is
-  // called synchronously from the click handler.
-  navigator.clipboard.writeText(url).then(
+  // iOS only allows a clipboard write inside the tap gesture: the write
+  // starts synchronously from the click handler.
+  writeClipboard(url).then(
     function () { toast('Link copied', 'good', { icon: 'link' }); },
     function (exc) { apiFailToast('Copy link failed', exc); }
   );

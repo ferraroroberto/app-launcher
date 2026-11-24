@@ -228,3 +228,59 @@ export function apiFailToast(prefix, exc, opts) {
   const msg = (exc && exc.message) || exc;
   toast(prefix ? prefix + ': ' + msg : String(msg), 'error', opts);
 }
+
+// --------------------------------------------------------------- clipboard
+// The one clipboard write: every copy button goes through it, never straight to
+// `navigator.clipboard` (`tests/unit/repo/test_clipboard_helper_gate.py`).
+// `writeText` is missing on a page served over plain http and rejects when the
+// document is unfocused, so the fallback is a selected hidden textarea copied
+// with `execCommand`, still inside the tap's user activation. It resolves once
+// the text is on the clipboard and rejects when neither path could write it.
+// `writeText` is called before any await: iOS and Chromium both refuse it
+// outside the tap that asked. `opts.host` is the toast host of a sheet.
+export async function writeClipboard(text, opts) {
+  let failure = null;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch (exc) {
+      failure = exc;
+    }
+  }
+  if (!copyWithSelection(text, opts)) {
+    throw failure || new Error('this page has no clipboard access');
+  }
+}
+
+// The fallback textarea lives inside the open modal <dialog> when there is
+// one: the rest of the page is inert while a modal is open, so a node on
+// <body> could never take focus.
+function fallbackRoot(opts) {
+  const host = opts && opts.host;
+  const active = document.activeElement;
+  const dialog = (host && host.closest && host.closest('dialog'))
+    || (active && active.closest && active.closest('dialog[open]'));
+  return dialog || document.body;
+}
+
+function copyWithSelection(text, opts) {
+  const area = document.createElement('textarea');
+  area.value = text;
+  area.readOnly = true;
+  area.setAttribute('aria-hidden', 'true');
+  area.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none';
+  const previous = document.activeElement;
+  fallbackRoot(opts).appendChild(area);
+  try {
+    area.focus();
+    area.select();
+    area.setSelectionRange(0, text.length);
+    return document.execCommand('copy');
+  } catch (exc) {
+    return false;
+  } finally {
+    area.remove();
+    if (previous && previous.focus) previous.focus();
+  }
+}

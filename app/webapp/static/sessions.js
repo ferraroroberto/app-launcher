@@ -24,7 +24,7 @@
 
 import { els, state } from './state.js';
 import {
-  apiFailToast, isDesktopClient, jsonApi, logPollFailure, opensInPcWindow, sessionRoute, toast,
+  apiFailToast, isDesktopClient, jsonApi, logPollFailure, opensInPcWindow, sessionRoute, toast, writeClipboard,
 } from './api.js';
 import { terminalJsonApi } from './webauthn.js';
 import { renderHomeHead } from './home-head.js';
@@ -470,7 +470,7 @@ async function openWindowFromMenu(s) {
 // hover) still sees the full path the row's context line now leaves out.
 async function copyProjectPath(path) {
   try {
-    await navigator.clipboard.writeText(path);
+    await writeClipboard(path);
     toast('Copied ' + path, 'good');
   } catch (exc) {
     apiFailToast('Could not copy the path', exc);
@@ -769,7 +769,7 @@ function wireSessionRenameDialog() {
   });
   els.sessionLinkCopy.addEventListener('click', async function () {
     try {
-      await navigator.clipboard.writeText(els.sessionLinkInput.value);
+      await writeClipboard(els.sessionLinkInput.value, { host: els.sessionLinkCopy });
       els.sessionLinkCopy.classList.add('is-copied');
       window.clearTimeout(sessionLinkFeedbackTimer);
       sessionLinkFeedbackTimer = window.setTimeout(function () {

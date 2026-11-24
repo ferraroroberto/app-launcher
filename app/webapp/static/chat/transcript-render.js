@@ -24,7 +24,7 @@
  */
 
 import { state } from '../state.js';
-import { jsonApi, sessionRoute, toast } from '../api.js';
+import { jsonApi, sessionRoute, toast, writeClipboard } from '../api.js';
 import { renderMarkdown } from '../markdown.js';
 import { terminalJsonApi } from '../webauthn.js';
 import { icon } from '../_vendored/icons/icons.js';
@@ -103,7 +103,7 @@ function joinTexts(texts) {
 async function copyTurn(entries, kind, sid) {
   const label = copyLabel(kind);
   try {
-    await navigator.clipboard.writeText(joinTexts(entries.map(function (e) { return e.text || ''; })));
+    await writeClipboard(joinTexts(entries.map(function (e) { return e.text || ''; })));
   } catch (exc) {
     toast('Clipboard unavailable — copy manually', 'error');
     return;
@@ -132,7 +132,7 @@ async function copyTurn(entries, kind, sid) {
     return;
   }
   try {
-    await navigator.clipboard.writeText(joinTexts(texts));
+    await writeClipboard(joinTexts(texts));
   } catch (exc) {
     fail();
     return;

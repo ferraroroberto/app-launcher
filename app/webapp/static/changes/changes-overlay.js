@@ -28,7 +28,7 @@
  */
 
 import { els } from '../state.js';
-import { apiFailToast, escapeHtml, jsonApi, sessionRoute, toast } from '../api.js';
+import { apiFailToast, escapeHtml, jsonApi, sessionRoute, toast, writeClipboard } from '../api.js';
 import { icon } from '../_vendored/icons/icons.js';
 import { emptyStateEl } from '../_vendored/empty-state/empty-state.js';
 import { diffTint, renderHunks } from './diff-view.js';
@@ -284,17 +284,13 @@ async function loadFileView(file, box, read) {
   box.innerHTML = res.text ? renderFileView(file.path, res.text) : note('Empty file');
 }
 
-// iOS allows a clipboard write only inside the tap: writeText is called
+// iOS allows a clipboard write only inside the tap: the write starts
 // synchronously from the click, never after an await.
 function copyText(text, done, failed) {
-  try {
-    navigator.clipboard.writeText(text).then(
-      function () { toast(done, 'good', { icon: 'clipboard' }); },
-      function (exc) { apiFailToast(failed, exc); }
-    );
-  } catch (exc) {
-    apiFailToast(failed, exc);
-  }
+  writeClipboard(text).then(
+    function () { toast(done, 'good', { icon: 'clipboard' }); },
+    function (exc) { apiFailToast(failed, exc); }
+  );
 }
 
 function copyPath(path) {
