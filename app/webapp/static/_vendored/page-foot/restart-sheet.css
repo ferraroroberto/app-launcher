@@ -45,3 +45,35 @@
   font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   color: var(--muted);
 }
+
+/* The on-demand update block: the check, its status line, the incoming
+   commits and the pull. Separated from the restart below by a hairline. */
+.restart-sheet-update {
+  margin: var(--space-sm, 8px) 0;
+  padding-bottom: var(--space-sm, 8px);
+  border-bottom: 1px solid var(--line);
+}
+
+.restart-sheet-update[hidden],
+.restart-sheet-commits[hidden],
+.restart-sheet-pull[hidden] {
+  display: none;
+}
+
+.restart-sheet-update-note {
+  margin: var(--space-sm, 8px) 0;
+  color: var(--ink);
+}
+
+.restart-sheet-update-note[data-tone="warning"],
+.restart-sheet-update-note[data-tone="error"] {
+  color: var(--danger-text);
+}
+
+.restart-sheet-commits {
+  margin: 0 0 var(--space-sm, 8px);
+  padding-left: 1.25em;
+  max-height: 8rem;
+  overflow: auto;
+  color: var(--muted);
+}

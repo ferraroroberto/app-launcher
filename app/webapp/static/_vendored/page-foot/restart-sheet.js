@@ -9,6 +9,11 @@
  * captured at process start, so it changes on every restart even when the
  * SHA does not) and for the server's record of the run. An unknown result is
  * never shown as success: each ending has its own outcome below.
+ *
+ * When the server offers it (`update: true` on `GET /api/restart`), the sheet
+ * also has "Check for update": nothing is fetched until it is tapped, an
+ * unknown answer is never shown as in sync, and only a checkout that is just
+ * behind is offered a pull (`POST /api/restart/check`, `/api/restart/pull`).
  */
 
 import { buildReadoutText } from './page-foot.js';
@@ -30,6 +35,51 @@ export function outcome(before, live, last, restartId, elapsedMs, timeoutMs) {
   if (newProcess && mine && mine.state === 'ok') return 'restarted';
   if (elapsedMs < timeoutMs) return 'pending';
   return (newProcess || (mine && mine.state === 'ok')) ? 'unconfirmed' : 'timed-out';
+}
+
+function commits(n) {
+  return n + (n === 1 ? ' commit' : ' commits');
+}
+
+// What the sheet says about one `POST /api/restart/check` answer. Returns
+// `{ text, tone, offerPull }`; only `behind` offers a pull, and anything the
+// page does not recognise reads as unknown, never as in sync.
+export function updateText(check) {
+  const c = check || {};
+  const behind = Number(c.behind) || 0;
+  const ahead = Number(c.ahead) || 0;
+  const branch = c.branch || 'the default branch';
+  switch (c.state) {
+    case 'up-to-date':
+      return { text: 'No new version, in sync.', tone: '', offerPull: false };
+    case 'behind':
+      return { text: behind + (behind === 1 ? ' new commit' : ' new commits') + ' on ' + branch + '.', tone: '', offerPull: true };
+    case 'ahead':
+      return { text: 'This checkout has ' + commits(ahead) + ' the remote does not. No pull offered.',
+        tone: 'warning', offerPull: false };
+    case 'diverged':
+      return { text: 'This checkout and the remote have both moved (' + behind + ' behind, ' + ahead +
+        ' ahead). No pull offered.', tone: 'warning', offerPull: false };
+    case 'dirty':
+      return { text: 'The checkout has uncommitted changes. No pull offered.' +
+        (behind ? ' ' + commits(behind) + ' waiting on ' + branch + '.' : ''), tone: 'warning', offerPull: false };
+    case 'wrong-branch':
+      return { text: 'The checkout is on ' + (c.current || 'another branch') + ', not ' + branch +
+        '. No pull offered.', tone: 'warning', offerPull: false };
+    case 'unknown':
+      return { text: 'Could not check for an update: ' + (c.reason || 'no reason given') + '.',
+        tone: 'error', offerPull: false };
+    default:
+      return { text: 'Could not check for an update: the app gave an answer this page does not know.',
+        tone: 'error', offerPull: false };
+  }
+}
+
+// Two short SHAs name the same commit when one is a prefix of the other
+// (git may abbreviate them to different lengths).
+export function shaMatches(served, expected) {
+  if (!served || !expected) return false;
+  return served.startsWith(expected) || expected.startsWith(served);
 }
 
 async function defaultFetchJson(url) {
@@ -101,6 +151,9 @@ function buildSheet(targets) {
     card.append(picker);
   }
 
+  const update = buildUpdateBlock();
+  card.append(update.block);
+
   const note = document.createElement('p');
   note.className = 'restart-sheet-note';
   note.setAttribute('aria-live', 'polite');
@@ -117,7 +170,33 @@ function buildSheet(targets) {
   actions.append(confirm);
   card.append(note, log, actions);
   dialog.append(card);
-  return { dialog, close, picker, note, log, confirm };
+  return { dialog, close, picker, note, log, confirm, update };
+}
+
+// The on-demand update: a check button, its status line, the incoming
+// commits and a pull button. Hidden until the server says it serves it.
+function buildUpdateBlock() {
+  const block = document.createElement('div');
+  block.className = 'restart-sheet-update';
+  block.hidden = true;
+  const check = document.createElement('button');
+  check.type = 'button';
+  check.className = 'button-tint restart-sheet-check';
+  check.dataset.track = 'build.restart-check';
+  check.textContent = 'Check for update';
+  const status = document.createElement('p');
+  status.className = 'restart-sheet-update-note';
+  status.setAttribute('aria-live', 'polite');
+  const list = document.createElement('ul');
+  list.className = 'restart-sheet-commits';
+  list.hidden = true;
+  const pull = document.createElement('button');
+  pull.type = 'button';
+  pull.className = 'button-tint restart-sheet-pull';
+  pull.dataset.track = 'build.restart-pull';
+  pull.hidden = true;
+  block.append(check, status, list, pull);
+  return { block, check, status, list, pull };
 }
 
 function failureText(last) {
@@ -133,7 +212,7 @@ function liveLine(live) {
 
 // Starts one restart and waits for its outcome; `ui.finish(text, tone, lines)`
 // ends a run that leaves the sheet open, `ui.done(text)` one that reloads.
-async function runRestart(deps, ui, target) {
+async function runRestart(deps, ui, target, expectedSha) {
   let before = null;
   try { before = await deps.fetchJson(deps.versionEndpoint); } catch (_) { before = null; }
   let started;
@@ -165,7 +244,10 @@ async function runRestart(deps, ui, target) {
     try { last = (await deps.fetchJson(deps.endpoint)).last; } catch (_) { last = null; }
     const result = outcome(before, live, last, restartId, deps.now() - t0, deps.timeoutMs);
     if (result === 'pending') continue;
-    if (result === 'restarted') {
+    if (result === 'restarted' && expectedSha && !shaMatches(live.git_sha, expectedSha)) {
+      ui.finish('Restarted, but the app serves ' + (live.git_sha || 'an unknown build') +
+        ', not the pulled ' + expectedSha + '.', 'warning');
+    } else if (result === 'restarted') {
       ui.done('Restarted · ' + liveLine(live));
     } else if (result === 'failed') {
       ui.finish(failureText(last), 'error', last && last.log_tail);
@@ -216,11 +298,98 @@ async function refreshTargets(deps, targets, picker) {
   }
 }
 
+function setTone(el, tone) {
+  if (tone) el.dataset.tone = tone;
+  else delete el.dataset.tone;
+}
+
+function refusalText(answer, action) {
+  if (answer.status === 401 || answer.status === 403) return 'Not allowed from here: sign in to this app first.';
+  if (answer.status === 409) return 'Another check or pull is already running.';
+  if (answer.status !== 200) return 'Could not ' + action + ' (HTTP ' + answer.status + ').';
+  return null;
+}
+
+function pullText(answer) {
+  const refused = refusalText(answer, 'pull');
+  if (refused) return refused;
+  const body = answer.body || {};
+  if (body.state === 'pulled') return null;
+  if (body.state === 'refused') return 'Pull refused: ' + body.reason + '.';
+  // state-literal-exempt: the pull ending declared by the server's state machine in src/self_restart.py
+  if (body.state === 'failed') return 'Pull failed: ' + body.reason + '.';
+  return 'Could not pull: the app gave an answer this page does not know.';
+}
+
+// The check and the pull. `isRestarting()` holds them while a restart runs;
+// the returned `state.updating` holds the restart while they run, and
+// `state.expectedSha` is the build a restart after a pull must come back on.
+function wireUpdate(u, deps, isRestarting) {
+  const state = { updating: false, expectedSha: null };
+  const say = (text, tone) => { u.status.textContent = text; setTone(u.status, tone); };
+  const showCommits = (subjects) => {
+    u.list.innerHTML = '';
+    for (const subject of subjects || []) {
+      const item = document.createElement('li');
+      item.textContent = subject;
+      u.list.append(item);
+    }
+    u.list.hidden = !(subjects && subjects.length);
+  };
+  const lock = (on) => { state.updating = on; u.check.disabled = on; u.pull.disabled = on; };
+  const post = async (url) => {
+    lock(true);
+    try { return await deps.postJson(url, {}); } catch (_) { return null; } finally { lock(false); }
+  };
+  u.check.addEventListener('click', async () => {
+    if (state.updating || isRestarting()) return;
+    u.pull.hidden = true;
+    showCommits([]);
+    say('Checking the remote…');
+    const answer = await post(deps.checkEndpoint);
+    const refused = answer ? refusalText(answer, 'check for an update') : 'Could not check for an update: the app did not answer.';
+    if (refused) {
+      say(refused, 'error');
+      return;
+    }
+    const shown = updateText(answer.body);
+    say(shown.text, shown.tone);
+    showCommits(shown.offerPull ? answer.body.subjects : []);
+    u.pull.hidden = !shown.offerPull;
+    if (shown.offerPull) u.pull.textContent = 'Pull ' + commits(Number(answer.body.behind) || 0);
+  });
+  u.pull.addEventListener('click', async () => {
+    if (state.updating || isRestarting()) return;
+    say('Pulling…');
+    const answer = await post(deps.pullEndpoint);
+    u.pull.hidden = true;
+    showCommits([]);
+    const failure = answer ? pullText(answer) : 'Could not reach the app to pull.';
+    if (failure) {
+      say(failure, 'error');
+      return;
+    }
+    state.expectedSha = answer.body.sha || null;
+    say('Pulled ' + commits(Number(answer.body.pulled) || 0) + ' · now at ' +
+      (answer.body.sha || 'an unknown commit') + '. Restart to run it.');
+  });
+  state.reset = () => {
+    if (state.updating) return;
+    u.pull.hidden = true;
+    showCommits([]);
+    say(state.expectedSha ? 'Pulled to ' + state.expectedSha + '. Restart to run it.'
+      : 'Check whether the remote has a newer version.');
+  };
+  return state;
+}
+
 // The sheet's state and handlers; returns the function that opens it.
-function wireSheet(sheet, targets, deps, reload) {
+function wireSheet(sheet, targets, deps, reload, offerUpdate) {
   let armed = false;
   let busy = false;
   let refreshing = false;
+  sheet.update.block.hidden = !offerUpdate;
+  const upd = wireUpdate(sheet.update, deps, () => busy);
   const chosen = () => {
     const id = sheet.picker ? sheet.picker.value : targets[0].id;
     return targets.find((t) => t.id === id) || targets[0];
@@ -238,6 +407,8 @@ function wireSheet(sheet, targets, deps, reload) {
     sheet.confirm.disabled = locked;
     sheet.confirm.textContent = label;
     if (sheet.picker) sheet.picker.disabled = locked;
+    // A restart and an update never run together.
+    if (!upd.updating) sheet.update.check.disabled = locked;
   };
   const reset = () => {
     armed = false;
@@ -261,7 +432,7 @@ function wireSheet(sheet, targets, deps, reload) {
   };
 
   sheet.confirm.addEventListener('click', () => {
-    if (busy || refreshing) return;
+    if (busy || refreshing || upd.updating) return;
     const target = chosen();
     if (target.warning && !armed) {
       armed = true;
@@ -273,7 +444,7 @@ function wireSheet(sheet, targets, deps, reload) {
     setLocked(true, target.label);
     showLog([]);
     say('Restarting…');
-    runRestart(deps, ui, target);
+    runRestart(deps, ui, target, upd.expectedSha);
   });
   if (sheet.picker) sheet.picker.addEventListener('change', () => { if (!busy && !refreshing) reset(); });
   sheet.close.addEventListener('click', () => sheet.dialog.close());
@@ -285,6 +456,7 @@ function wireSheet(sheet, targets, deps, reload) {
       return;
     }
     reset();
+    upd.reset();
     sheet.dialog.showModal();
     if (refreshing) return;
     refreshing = true;
@@ -308,6 +480,8 @@ export async function initRestartSheet(opts) {
     fetchJson: o.fetchJson || defaultFetchJson,
     postJson: o.postJson || defaultPostJson,
     endpoint: o.endpoint || '/api/restart',
+    checkEndpoint: o.checkEndpoint || '/api/restart/check',
+    pullEndpoint: o.pullEndpoint || '/api/restart/pull',
     versionEndpoint: o.versionEndpoint || '/api/version',
     sleep: o.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
     now: o.now || (() => Date.now()),
@@ -317,8 +491,11 @@ export async function initRestartSheet(opts) {
 
   if (!readout) return false;
   let targets;
+  let offerUpdate;
   try {
-    targets = (await deps.fetchJson(deps.endpoint)).targets || [];
+    const first = await deps.fetchJson(deps.endpoint);
+    targets = first.targets || [];
+    offerUpdate = first.update === true;
   } catch (_) {
     return false;
   }
@@ -326,6 +503,6 @@ export async function initRestartSheet(opts) {
 
   const sheet = buildSheet(targets);
   document.body.appendChild(sheet.dialog);
-  makeTappable(readout, wireSheet(sheet, targets, deps, reload));
+  makeTappable(readout, wireSheet(sheet, targets, deps, reload, offerUpdate));
   return true;
 }

@@ -107,6 +107,27 @@ Each time the sheet opens it re-reads `GET /api/restart` and takes the targets' 
 
 The sheet needs the `modal`, `button`, `icon-button` and (with a picker) `select-native` stylesheets. Add `app.restart-sheet` to the app's UX surface map.
 
+### Check for an update
+
+The sheet also offers **Check for update** (`data-track="build.restart-check"`) when `GET /api/restart` answers `"update": true`, which `restart_router` does unless the app passes `update=False`. Nothing runs until the button is tapped: no fetch at page load, on open or on a timer, so an idle app pays nothing.
+
+- **Check** (`POST /api/restart/check`, same guard and same-origin rule as the restart; a `POST` so a prefetch can never trigger it) fetches the remote default branch (`origin/HEAD`, else `main`) and answers one state, each with its own wording:
+
+  | State | When | Shown | Pull offered |
+  | --- | --- | --- | --- |
+  | `up-to-date` | nothing new on either side | "No new version, in sync." | no |
+  | `behind` | the remote has new commits, the checkout none of its own | the count and up to 20 commit subjects | yes |
+  | `ahead` | the checkout has commits the remote lacks | the count | no |
+  | `diverged` | both have moved | both counts | no |
+  | `dirty` | tracked files are changed (untracked files, such as a live config, do not count) | the waiting count | no |
+  | `wrong-branch` | the checkout is on another branch, or detached | both branch names | no |
+  | `unknown` | a git step failed or timed out | the reason | no |
+
+  An unknown answer, or one the page does not recognise, is never shown as in sync.
+- **Pull** (`POST /api/restart/pull`, `data-track="build.restart-pull"`) re-checks without fetching again and fast-forwards only a checkout that is `behind` (`git merge --ff-only`). It refuses, changing nothing, while a restart runs, while git's index lock is held (the lock is reported, never removed), and when the incoming range deletes or renames away a file that exists on disk and the remote's root `.gitignore` ignores: a live config the remote stops tracking would otherwise be deleted by the merge. A pull answers the new short SHA; the sheet then says "Restart to run it".
+- **Restart after a pull** runs the existing flow, and also compares the served `git_sha` with the pulled one: a restart that comes back on another build says so instead of "Restarted".
+- Every git call runs with `GIT_OPTIONAL_LOCKS=0`, no credential prompt, no console window and a timeout (30 s for the fetch, 60 s for the merge, 10 s otherwise). One check or pull runs at a time; a second gets `409`.
+
 ### Outcomes
 
 After the `202`, the page polls `/api/version` and `/api/restart` every 1.5 s for up to 90 s. `built_at` is captured at process start, so a new process shows even when the SHA did not change.
@@ -119,7 +140,7 @@ After the `202`, the page polls `/api/version` and `/api/restart` every 1.5 s fo
 | timed out | at 90 s: no new process and no `ok` | "The app did not come back in 90 s", with the PC command |
 | refused | `401`/`403` or `409` on the `POST` | "Not allowed from here" / "A restart is already running" |
 
-An unknown result is never shown as success. Pinned by `tests/vendored/test_restart_sheet.py` (the real module under Node) and `tests/vendored/test_self_restart.py` (the routes, every runner ending, and a runner that outlives a `taskkill /T` of its parent).
+An unknown result is never shown as success. Pinned by `tests/vendored/test_restart_sheet.py` (the real module under Node), `tests/vendored/test_self_restart.py` (the routes, every runner ending, and a runner that outlives a `taskkill /T` of its parent) and `tests/vendored/test_self_restart_update.py` (every update state and pull refusal against a real checkout with a local bare remote).
 
 ### Adopter test notes
 
@@ -140,6 +161,7 @@ With the restart on, the readout is a control, and an adopter's tests see it:
 | `--danger-text` | `#a40e26` | restart sheet warning and failure text |
 | `--hit-min` | `44px` | the tappable readout's touch target (falls back to `44px`) |
 | `--space-sm` | `8px` | restart sheet status and log spacing (falls back to `8px`) |
+| `--line` | `#d1d9e0` | the hairline between the update block and the restart |
 
 The font family has no token: design.md names it per type style (`system-ui, -apple-system, "Segoe UI", sans-serif`), so the CSS carries it literally. An app's own `--font` is deliberately not read.
 
