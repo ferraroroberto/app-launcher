@@ -50,7 +50,8 @@ class BatchKind:
         for m in _BAT_VENV_RE.finditer(text):
             ref = m.group(1)
             try:
-                ref_ok = Path(ref).is_file()
+                # A bat writes backslashes; POSIX reads them as part of a file name.
+                ref_ok = Path(ref.replace("\\", "/")).is_file()
             except OSError:
                 ref_ok = False
             if not ref_ok:

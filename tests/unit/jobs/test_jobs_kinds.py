@@ -9,11 +9,13 @@ output.log) live in ``tests/unit/jobs/test_run_job_kinds.py``.
 from __future__ import annotations
 
 import shutil
+from pathlib import Path
 
 import pytest
 
 from src.jobs.config import Job
 from src.jobs_kinds import FILE_KINDS, KINDS, resolve_kind
+from src.jobs_kinds import batch as batch_module
 from src.jobs_kinds.batch import BatchKind
 from src.jobs_kinds.http_check import HttpCheckKind
 from src.jobs_kinds.inline_shell import InlineShellKind
@@ -125,6 +127,28 @@ class TestBatchKind:
         )
         problems = BatchKind().validate(_job(script_path=str(bat)))
         assert len(problems) == 1 and problems[0].level == "warning"
+
+    def test_validate_checks_a_venv_reference_with_forward_slashes(
+        self, tmp_path, monkeypatch
+    ):
+        # POSIX reads a backslash as part of a file name, so the reference must
+        # reach the filesystem with forward slashes. Recording the paths built
+        # proves that on any OS.
+        ref = r"C:\nope\proj\.venv\Scripts\python.exe"
+        bat = tmp_path / "run.bat"
+        bat.write_text(f"@echo off\r\n{ref} app.py\r\n", encoding="utf-8")
+        built: list[str] = []
+
+        def record(*parts):
+            built.extend(str(part) for part in parts)
+            return Path(*parts)
+
+        monkeypatch.setattr(batch_module, "Path", record)
+        problems = BatchKind().validate(_job(script_path=str(bat)))
+        monkeypatch.undo()
+        venv_args = [part for part in built if ".venv" in part]
+        assert venv_args == ["C:/nope/proj/.venv/Scripts/python.exe"]
+        assert len(problems) == 1 and ref in problems[0].message
 
     @pytest.mark.parametrize(
         "bad_value",

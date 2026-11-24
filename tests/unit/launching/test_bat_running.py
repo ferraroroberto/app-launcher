@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
@@ -105,3 +105,33 @@ def test_missing_psutil_is_unknown(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(bat_running, "psutil", None)
     with pytest.raises(RuntimeError):
         bat_running.find_running_target(_bat(tmp_path, "echo hi\r\n"))
+
+
+def test_a_backslash_token_is_matched_against_generic_programs_on_posix(
+    tmp_path: Path, monkeypatch
+):
+    # POSIX reads ``tools\pythonw.exe`` as one file name, so its stem keeps the
+    # folder and the generic-program filter misses it. Running the stem through
+    # the POSIX path class proves the separator is normalised on any OS.
+    monkeypatch.setattr(bat_running, "Path", PurePosixPath)
+    bat = _bat(tmp_path, "start tools\\pythonw.exe\r\npython sub\\other.py\r\n")
+    targets = bat_running.target_paths(bat)
+    monkeypatch.undo()
+    assert not any(t.endswith("pythonw.exe") for t in targets)
+    assert bat_running._norm(str(tmp_path / "sub" / "other.py")) in targets
+
+
+def test_a_backslash_token_is_joined_with_forward_slashes(tmp_path: Path, monkeypatch):
+    joined: list[str] = []
+    original = bat_running.os.path.join
+
+    def record(*parts):
+        joined.extend(str(part) for part in parts)
+        return original(*parts)
+
+    monkeypatch.setattr(bat_running.os.path, "join", record)
+    bat = _bat(tmp_path, "python sub\\other.py\r\n")
+    bat_running.target_paths(bat)
+    monkeypatch.undo()
+    assert "sub/other.py" in joined
+    assert "sub\\other.py" not in joined
