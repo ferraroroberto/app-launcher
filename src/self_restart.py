@@ -37,6 +37,15 @@ default, so the routes cannot be mounted open. The POST also requires an
 ``Origin`` that matches the request's own host, so another site cannot post
 a restart from a signed-in browser.
 
+**Checking for an update runs only on a tap.** ``POST /api/restart/check``
+fetches the remote default branch and says where the checkout stands
+(up to date, behind, ahead, diverged, dirty, on another branch, or unknown
+with the reason); ``POST /api/restart/pull`` fast-forwards a clean checkout
+that is only behind, and refuses when the range would delete a live file it
+stops tracking. Nothing fetches at import, on a timer or on a ``GET``. Every
+git call runs with ``GIT_OPTIONAL_LOCKS=0``, no prompt, no console and a
+timeout; a held index lock is reported, never removed.
+
 Wiring (in the app, not here):
 
     from src.runtime_data import runtime_data_dir
@@ -66,14 +75,19 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
+import threading
 import time
 import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal, Optional, Union
+from typing import TYPE_CHECKING, Any, Literal, Optional, Union
 from urllib.parse import urlsplit
+
+if TYPE_CHECKING:
+    from fastapi import APIRouter
 
 logger = logging.getLogger(__name__)
 
@@ -261,6 +275,188 @@ def run_spec(spec_path: Path) -> str:
     return state
 
 
+#: Where a check stands. ``unknown`` means a git step failed or timed out: it
+#: is never read as ``up-to-date``. Only ``behind`` offers a pull.
+UpdateState = Literal["up-to-date", "behind", "ahead", "diverged", "dirty", "wrong-branch", "unknown"]
+#: A fetch crosses the network; every other git step is local.
+_FETCH_TIMEOUT_S = 30
+_GIT_TIMEOUT_S = 10
+_MERGE_TIMEOUT_S = 60
+#: Enough subjects to say what a pull brings without flooding a phone screen.
+_MAX_SUBJECTS = 20
+
+
+@dataclass(frozen=True)
+class _GitResult:
+    ok: bool
+    out: str
+    reason: str
+    #: The exit code; ``None`` when git did not run to an exit.
+    code: Optional[int] = None
+
+
+def _git(root: Path, *args: str, timeout: float = _GIT_TIMEOUT_S) -> _GitResult:
+    """One git call: no optional locks, no prompt, no console, bounded.
+
+    ``GIT_OPTIONAL_LOCKS=0`` keeps a read from leaving an index lock behind;
+    ``GIT_TERMINAL_PROMPT=0`` makes a fetch that needs credentials fail rather
+    than wait for a prompt nobody can answer.
+    """
+    env = dict(os.environ, GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0", GCM_INTERACTIVE="never")
+    try:
+        done = subprocess.run(
+            ["git", "-C", str(root), *args], stdin=subprocess.DEVNULL, capture_output=True,
+            text=True, encoding="utf-8", errors="replace", timeout=timeout, env=env,
+            creationflags=_NO_WINDOW, check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return _GitResult(False, "", f"git {args[0]} did not finish within {timeout:g}s")
+    except OSError as exc:
+        return _GitResult(False, "", f"git could not start: {exc}")
+    if done.returncode != 0:
+        lines = [line.strip() for line in (done.stderr or done.stdout).splitlines() if line.strip()]
+        detail = lines[-1] if lines else f"exit {done.returncode}"
+        return _GitResult(False, done.stdout, f"git {args[0]} failed: {detail}", done.returncode)
+    return _GitResult(True, done.stdout.strip(), "", 0)
+
+
+def default_branch(root: Path) -> str:
+    """The remote's default branch from ``origin/HEAD``, else ``main``."""
+    head = _git(root, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+    if head.ok and head.out.startswith("origin/"):
+        return head.out[len("origin/"):]
+    return "main"
+
+
+def _counts(root: Path, remote: str) -> Union[tuple[int, int], _GitResult]:
+    """``(behind, ahead)`` of HEAD against ``remote``, or the failed git result."""
+    counts = _git(root, "rev-list", "--left-right", "--count", f"HEAD...{remote}")
+    if not counts.ok:
+        return counts
+    try:
+        ahead, behind = (int(part) for part in counts.out.split())
+    except ValueError:
+        return _GitResult(False, counts.out, f"unexpected rev-list answer: {counts.out!r}")
+    return behind, ahead
+
+
+def inspect_update(root: Path, *, fetch: bool) -> dict[str, Any]:
+    """Where the checkout stands against its remote default branch.
+
+    ``fetch`` refreshes the remote branch first; the pull re-inspects without
+    it, so it acts on exactly what the user was shown. Every failed git step
+    answers ``unknown`` with its reason.
+    """
+    branch_name = default_branch(root)
+    remote = f"origin/{branch_name}"
+    base: dict[str, Any] = {"branch": branch_name, "behind": 0, "ahead": 0, "subjects": []}
+
+    def unknown(result: _GitResult) -> dict[str, Any]:
+        return dict(base, state="unknown", reason=result.reason)
+
+    if fetch:
+        fetched = _git(root, "fetch", "--quiet", "origin", branch_name, timeout=_FETCH_TIMEOUT_S)
+        if not fetched.ok:
+            return unknown(fetched)
+    current = _git(root, "rev-parse", "--abbrev-ref", "HEAD")
+    if not current.ok:
+        return unknown(current)
+    counts = _counts(root, remote)
+    if isinstance(counts, _GitResult):
+        return unknown(counts)
+    status = _git(root, "status", "--porcelain", "--untracked-files=no")
+    if not status.ok:
+        return unknown(status)
+    behind, ahead = counts
+    base.update(behind=behind, ahead=ahead, current=current.out)
+    if behind:
+        log = _git(root, "log", "--format=%s", f"-n{_MAX_SUBJECTS}", f"HEAD..{remote}")
+        if not log.ok:
+            return unknown(log)
+        base["subjects"] = log.out.splitlines()
+    # Untracked files do not count: a live config is untracked on purpose,
+    # and git itself refuses a merge that would overwrite one.
+    if current.out != branch_name:
+        state: UpdateState = "wrong-branch"
+    elif status.out:
+        state = "dirty"
+    elif behind and ahead:
+        state = "diverged"
+    elif ahead:
+        state = "ahead"
+    elif behind:
+        state = "behind"
+    else:
+        state = "up-to-date"
+    return dict(base, state=state)
+
+
+def _untracked_live_paths(root: Path, remote: str) -> Union[list[str], _GitResult]:
+    """Paths the range removes that exist on disk and the target's ignore rules ignore.
+
+    A merge that untracks a machine-local file deletes the live copy even
+    though the file is ignored afterwards; those paths refuse the pull. The
+    target's root ``.gitignore`` is checked on top of the current rules.
+    """
+    removed = _git(root, "diff", "--name-status", "-M", "--diff-filter=DR", f"HEAD..{remote}")
+    if not removed.ok:
+        return removed
+    paths = [line.split("\t")[1] for line in removed.out.splitlines() if "\t" in line]
+    on_disk = [path for path in paths if (root / path).exists()]
+    if not on_disk:
+        return []
+    target_ignore = _git(root, "show", f"{remote}:.gitignore")
+    with tempfile.TemporaryDirectory() as scratch:
+        rules = Path(scratch) / "target.gitignore"
+        # runtime-write-exempt: a throwaway file in the system temp folder
+        rules.write_text(target_ignore.out if target_ignore.ok else "", encoding="utf-8")
+        live: list[str] = []
+        for path in on_disk:
+            check = _git(
+                root, "-c", f"core.excludesFile={rules.as_posix()}", "check-ignore", "-q", "--no-index", "--", path,
+            )
+            # check-ignore answers 0 for ignored, 1 for not ignored; anything else is unknown.
+            if check.ok:
+                live.append(path)
+            elif check.code != 1:
+                return check
+    return live
+
+
+def pull_update(root: Path, restart_running: bool = False) -> dict[str, Any]:
+    """Fast-forward to the fetched remote default branch, or say why not.
+
+    Answers ``pulled`` (with the new short SHA), ``refused`` (nothing was
+    changed) or ``failed`` (git refused the merge itself, reported as is).
+    """
+    def refused(reason: str, **extra: Any) -> dict[str, Any]:
+        return dict(extra, state="refused", reason=reason)
+
+    if restart_running:
+        return refused("a restart is running")
+    check = inspect_update(root, fetch=False)
+    if check["state"] != "behind":
+        return refused(f"the checkout is {check['state']}", check=check)
+    lock = _git(root, "rev-parse", "--git-path", "index.lock")
+    if not lock.ok:
+        return refused(lock.reason, check=check)
+    if (root / lock.out).exists():
+        return refused("git's index is locked by another process; nothing was changed", check=check)
+    remote = f"origin/{check['branch']}"
+    live = _untracked_live_paths(root, remote)
+    if isinstance(live, _GitResult):
+        return refused(f"could not tell whether the pull removes a live file: {live.reason}", check=check)
+    if live:
+        return refused("the pull would delete live files it stops tracking: " + ", ".join(live), check=check)
+    merged = _git(root, "merge", "--ff-only", "--quiet", remote, timeout=_MERGE_TIMEOUT_S)
+    if not merged.ok:
+        logger.warning("⚠️ update pull failed: %s", merged.reason)
+        return {"state": "failed", "reason": merged.reason}
+    sha = _git(root, "rev-parse", "--short", "HEAD")
+    logger.info("ℹ️ update pulled %s commit(s) onto %s", check["behind"], check["branch"])
+    return {"state": "pulled", "sha": sha.out if sha.ok else None, "pulled": check["behind"]}
+
+
 def _same_origin(origin: Optional[str], host: Optional[str]) -> bool:
     if not origin or not host:
         return False
@@ -287,8 +483,13 @@ def restart_router(
     guard: Callable[..., Any],
     root: Optional[Path] = None,
     spawn: Callable[[Path, Path], None] = spawn_detached,
+    update: bool = True,
 ) -> Any:
-    """``GET``/``POST /api/restart`` behind ``guard``; see the module docstring."""
+    """``GET``/``POST /api/restart`` behind ``guard``; see the module docstring.
+
+    With ``update`` (the default) it also serves ``POST /api/restart/check``
+    and ``POST /api/restart/pull``, the sheet's on-demand update.
+    """
     from fastapi import APIRouter, Depends, Request
     from fastapi.responses import JSONResponse
 
@@ -311,6 +512,7 @@ def restart_router(
         return {
             "targets": [{"id": t.id, "label": t.label, "warning": warning_text(t)} for t in targets],
             "last": public(store.current()),
+            "update": update,
         }
 
     @router.post("/api/restart")
@@ -353,7 +555,46 @@ def restart_router(
             status_code=202,
         )
 
+    if update:
+        _mount_update_routes(router, checkout, store, threading.Lock())
     return router
+
+
+def _mount_update_routes(router: "APIRouter", checkout: Path, store: RestartStore, busy: threading.Lock) -> None:
+    """The check and the pull: POST both, so a prefetch can never fetch or merge."""
+    from fastapi import Request
+    from fastapi.responses import JSONResponse
+
+    def gate(request: Request) -> Optional[JSONResponse]:
+        if not _same_origin(request.headers.get("origin"), request.headers.get("host")):
+            return JSONResponse({"error": "origin does not match this app"}, status_code=403)
+        if not busy.acquire(blocking=False):
+            return JSONResponse({"error": "an update check or pull is already running"}, status_code=409)
+        return None
+
+    @router.post("/api/restart/check")
+    def update_check(request: Request) -> Any:
+        refused = gate(request)
+        if refused is not None:
+            return refused
+        try:
+            result = inspect_update(checkout, fetch=True)
+        finally:
+            busy.release()
+        logger.info("ℹ️ update check: %s (behind %s, ahead %s)", result["state"], result["behind"], result["ahead"])
+        return result
+
+    @router.post("/api/restart/pull")
+    def update_pull(request: Request) -> Any:
+        refused = gate(request)
+        if refused is not None:
+            return refused
+        try:
+            running = store.current()
+            result = pull_update(checkout, restart_running=running is not None and running.get("state") == "running")
+        finally:
+            busy.release()
+        return result
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:

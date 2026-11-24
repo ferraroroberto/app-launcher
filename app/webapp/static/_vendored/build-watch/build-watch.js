@@ -16,10 +16,13 @@
  * `asset_hash`, a failed read or a 401 all leave the prompt down.
  *
  * Pairs with build-watch.css, which lays the prompt out on the vendored
- * toast's glass (toast.css).
+ * toast's glass (toast.css). Polls through the vendored poll helper, so the
+ * page's `poll/` folder must ship beside this one.
  */
 
 'use strict';
+
+import { startPoll } from '../poll/poll.js';
 
 // A visibility check is skipped when the last good read is younger than this,
 // so flicking between apps does not hammer the version endpoint.
@@ -183,12 +186,11 @@ export function initBuildWatch(opts) {
     }
   }
 
-  document.addEventListener('visibilitychange', function () {
-    if (document.hidden) return;
-    if (shouldCheck(Date.now(), lastOk, CHECK_THROTTLE_MS)) check();
-  });
-  setInterval(function () {
-    if (!document.hidden) check();
+  // The poll helper arms a tick only while the page is visible and reads once
+  // on the return to the foreground. The throttle keeps that return read from
+  // hammering the version endpoint when someone flicks between apps.
+  startPoll(function () {
+    return shouldCheck(Date.now(), lastOk, CHECK_THROTTLE_MS) ? check() : undefined;
   }, CHECK_INTERVAL_MS);
   return true;
 }
