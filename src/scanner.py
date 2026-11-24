@@ -561,7 +561,8 @@ def _wrapper_scripts(bat_path: Path, text: str) -> List[Path]:
         return []
     scripts: List[Path] = []
     for match in _BAT_PY_PATH_RE.findall(text):
-        rel = _BAT_DIR_PREFIX_RE.sub("", match)
+        # A bat writes backslashes; POSIX reads them as part of a file name.
+        rel = _BAT_DIR_PREFIX_RE.sub("", match).replace("\\", "/")
         if not rel or "%" in rel:
             continue
         try:

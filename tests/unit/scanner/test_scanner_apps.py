@@ -9,6 +9,7 @@ from src.scanner import (
     KIND_TRAY,
     KIND_TUNNEL,
     KIND_WEBAPP,
+    _wrapper_scripts,
     classify_bat,
     pretty_folder_name,
     scan_app_bats,
@@ -104,6 +105,29 @@ class TestClassifyBatWrapperScript:
         )
         bat = _write_bat(tmp_path / "launch_app.bat", r"python scripts\serve.py")
         assert classify_bat(bat) == KIND_WEBAPP
+
+    def test_backslash_path_is_joined_with_forward_slashes(
+        self, tmp_path: Path, monkeypatch
+    ):
+        # POSIX treats a backslash as a file-name character, so a bat's
+        # ``scripts\run.py`` must reach the filesystem as ``scripts/run.py``.
+        # Recording what is joined proves that on any OS.
+        script = _write_bat(tmp_path / "scripts" / "run.py", "import uvicorn\n")
+        bat = _write_bat(tmp_path / "launch_app.bat", r"python scripts\run.py")
+        joined: list[str] = []
+        path_type = type(tmp_path)
+        original = path_type.__truediv__
+
+        def record(self, other):
+            joined.append(str(other))
+            return original(self, other)
+
+        monkeypatch.setattr(path_type, "__truediv__", record)
+        found = _wrapper_scripts(bat, bat.read_text(encoding="utf-8"))
+        monkeypatch.undo()
+
+        assert found == [script.resolve()]
+        assert joined and all("\\" not in part for part in joined)
 
     def test_script_without_signature_is_none(self, tmp_path: Path):
         _write_bat(tmp_path / "tool.py", "print('hello')\n")
