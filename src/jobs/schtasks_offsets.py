@@ -15,7 +15,7 @@ import re
 import subprocess
 import time
 from threading import Lock
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from src.jobs import schtasks
 
@@ -25,8 +25,16 @@ _XML_TASK_COMMENT_RE = re.compile(r"<!--\s*(\\AppLauncher\\.*?)\s*-->")
 _XML_START_BOUNDARY_RE = re.compile(r"<StartBoundary>\s*([^<]*?)\s*</StartBoundary>")
 _UTC_OFFSET_SUFFIX_RE = re.compile(r"(?:Z|[+-]\d{2}:\d{2})$")
 
+# ``schtasks /Query /TN \AppLauncher\`` exits 1 with this text when the folder
+# was never created, which is the normal state of a machine with no scheduled
+# Jobs. Matched on the English message; another locale reports unknown.
+_FOLDER_MISSING_RE = re.compile(r"cannot find the (?:file|path) specified", re.IGNORECASE)
+
 _cache: Optional[Tuple[float, Optional[Dict[str, bool]]]] = None
 _lock = Lock()
+# A dead query repeats every cache window; each distinct failure text is
+# worth one warning per process.
+_warned: Set[str] = set()
 
 
 def _parse_trigger_offsets(stdout: str) -> Dict[str, bool]:
@@ -48,7 +56,8 @@ def registered_task_offset_pins(
     """``{task_name: offset_pinned}`` for every ``\\AppLauncher\\`` task.
 
     ``None`` for the whole map = the query failed; callers treat that as
-    *unknown*, never as "no pinned triggers". Cached for the same window as
+    *unknown*, never as "no pinned triggers". A task folder that does not
+    exist holds no tasks, so it is ``{}``. Cached for the same window as
     the bulk records, so a scan costs one XML query per window.
     """
     global _cache
@@ -63,14 +72,21 @@ def registered_task_offset_pins(
         proc = (runner or schtasks._run_schtasks)(
             ["schtasks", "/Query", "/TN", schtasks.TASK_FOLDER_PREFIX, "/XML"]
         )
-        if proc.returncode != 0 or not proc.stdout:
-            logger.warning(
-                "⚠️  schtasks XML query failed (rc=%s) — pinned-offset check "
-                "reports unknown: %s",
-                proc.returncode,
-                (proc.stderr or "").strip()[:200] or "<no stderr>",
-            )
-            fresh: Optional[Dict[str, bool]] = None
+        fresh: Optional[Dict[str, bool]]
+        stderr = (proc.stderr or "").strip()
+        if proc.returncode != 0 and _FOLDER_MISSING_RE.search(stderr):
+            fresh = {}
+        elif proc.returncode != 0 or not proc.stdout:
+            detail = stderr[:200] or "<no stderr>"
+            if detail not in _warned:
+                _warned.add(detail)
+                logger.warning(
+                    "⚠️  schtasks XML query failed (rc=%s) — pinned-offset "
+                    "check reports unknown: %s",
+                    proc.returncode,
+                    detail,
+                )
+            fresh = None
         else:
             fresh = _parse_trigger_offsets(proc.stdout)
         _cache = (now, fresh)
