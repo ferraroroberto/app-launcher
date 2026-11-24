@@ -17,7 +17,7 @@
  */
 
 import { els, state } from '../state.js';
-import { apiFailToast, jsonApi, toast } from '../api.js';
+import { apiFailToast, jsonApi, toast, writeClipboard } from '../api.js';
 import { applyLaunchSizePayload } from '../shared/launch-size.js';
 import { handleLaunchResponse } from '../terminal.js';
 import { SensitiveOutcome, runSensitiveAction } from '../shared/sensitive-action.js';
@@ -605,18 +605,14 @@ function convoLinkUrl(r) {
 }
 
 function copyConvoLink(r) {
-  // iOS only allows a clipboard write inside the tap gesture: writeText is
-  // called synchronously from the click handler, never after an await.
-  try {
-    navigator.clipboard.writeText(convoLinkUrl(r)).then(
-      function () {
-        toast('Launcher link copied (tailnet only)', 'good', { icon: 'link' });
-      },
-      function (exc) { apiFailToast('Copy link failed', exc); }
-    );
-  } catch (exc) {
-    apiFailToast('Copy link failed', exc);
-  }
+  // iOS only allows a clipboard write inside the tap gesture: the write
+  // starts synchronously from the click handler, never after an await.
+  writeClipboard(convoLinkUrl(r)).then(
+    function () {
+      toast('Launcher link copied (tailnet only)', 'good', { icon: 'link' });
+    },
+    function (exc) { apiFailToast('Copy link failed', exc); }
+  );
 }
 
 // Open one capture from a ?convo= link: the field narrowed to its

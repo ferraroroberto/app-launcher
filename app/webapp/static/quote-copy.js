@@ -13,7 +13,7 @@ The clipboard write happens synchronously inside the tap, the same iOS rule
 gesture and the copy fails silently on the phone.
 */
 
-import { toast } from './api.js';
+import { toast, writeClipboard } from './api.js';
 
 export function wireQuoteCopy() {
   document.addEventListener('click', function (ev) {
@@ -22,13 +22,7 @@ export function wireQuoteCopy() {
     const what = btn.classList.contains('md-block-copy') ? 'Code' : 'Quote';
     ev.preventDefault();
     const fail = function () { toast('Clipboard unavailable — copy manually', 'error'); };
-    let write;
-    try {
-      write = navigator.clipboard.writeText(btn.getAttribute('data-copy') || '');
-    } catch (exc) {
-      fail();
-      return;
-    }
-    write.then(function () { toast(what + ' copied', 'good', { icon: 'copy' }); }, fail);
+    writeClipboard(btn.getAttribute('data-copy') || '')
+      .then(function () { toast(what + ' copied', 'good', { icon: 'copy' }); }, fail);
   });
 }

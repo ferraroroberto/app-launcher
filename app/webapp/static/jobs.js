@@ -27,6 +27,7 @@ import {
   logPollFailure,
   readToken,
   toast,
+  writeClipboard,
 } from './api.js';
 import { confirmDialog } from './confirm-dialog.js';
 import { isWideLayout } from './layout.js';
@@ -521,7 +522,7 @@ async function copyOutputTail(tail) {
   const text = tail.textContent || '';
   if (!text || text === '(no output)') return;
   try {
-    await navigator.clipboard.writeText(text);
+    await writeClipboard(text);
     toast('Copied log', 'good', { icon: 'clipboard' });
   } catch (exc) {
     toast('Clipboard unavailable — copy manually', 'error');

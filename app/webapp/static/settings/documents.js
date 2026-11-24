@@ -16,7 +16,7 @@
  */
 
 import { els } from '../state.js';
-import { apiFailToast, jsonApi, toast } from '../api.js';
+import { apiFailToast, jsonApi, toast, writeClipboard } from '../api.js';
 import { terminalJsonApi } from '../webauthn.js';
 import { renderMarkdown } from '../markdown.js';
 import { renderMermaidIn } from '../shared/mermaid-render.js';
@@ -82,18 +82,14 @@ function setRaw(text) {
   els.documentCopy.hidden = rawText === null;
 }
 
-// iOS allows a clipboard write only inside the tap: writeText is called
+// iOS allows a clipboard write only inside the tap: the write starts
 // synchronously from the click, never after an await.
 function copyRaw() {
   if (rawText === null) return;
-  try {
-    navigator.clipboard.writeText(rawText).then(
-      function () { toast('Markdown copied', 'good', { icon: 'clipboard' }); },
-      function (exc) { apiFailToast('Couldn’t copy the Markdown', exc); }
-    );
-  } catch (exc) {
-    apiFailToast('Couldn’t copy the Markdown', exc);
-  }
+  writeClipboard(rawText).then(
+    function () { toast('Markdown copied', 'good', { icon: 'clipboard' }); },
+    function (exc) { apiFailToast('Couldn’t copy the Markdown', exc); }
+  );
 }
 
 function showState(message, withRetry) {

@@ -14,7 +14,7 @@
  */
 
 import { els, state } from '../state.js';
-import { apiFailToast, jsonApi, toast } from '../api.js';
+import { apiFailToast, jsonApi, toast, writeClipboard } from '../api.js';
 import { confirmDialog } from '../confirm-dialog.js';
 import { revealInCard } from '../dom-utils.js';
 import { renderSettingsValues } from './settings-sheets.js';
@@ -201,10 +201,10 @@ async function copyShown(input) {
   const value = input.value;
   if (!value) return;
   try {
-    await navigator.clipboard.writeText(value);
+    await writeClipboard(value);
     toast('Token copied.', 'good');
   } catch (_) {
-    // Clipboard API can be denied (http, permissions) — fall back to a
+    // Both the clipboard API and the selection fallback were refused —
     // select-all so a manual copy is one keystroke away.
     input.focus();
     input.select();

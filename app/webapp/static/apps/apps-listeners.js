@@ -15,7 +15,7 @@
  */
 
 import { els, state } from '../state.js';
-import { apiFailToast, jsonApi, toast, logPollFailure } from '../api.js';
+import { apiFailToast, jsonApi, toast, logPollFailure, writeClipboard } from '../api.js';
 import { ACTION_ROW_MENU, actionRow } from '../action-rows.js';
 import { createRowMenu } from '../_vendored/row-menu/row-menu.js';
 import { confirmDialog } from '../confirm-dialog.js';
@@ -27,63 +27,25 @@ const listenerMenu = createRowMenu({ className: 'project-menu', placement: ACTIO
 // Module-level so the expand state survives the poll's re-renders.
 const expandedListenerPorts = new Set();
 
-// A hidden textarea and the legacy copy command: the path for a page with no
-// `navigator.clipboard` (plain http) or one whose writeText is refused. The
-// textarea goes inside the open modal <dialog>, which makes everything outside
-// it inert, so a node appended to <body> could not take focus.
-function execCopy(text) {
-  const active = document.activeElement;
-  const root = (active && active.closest && active.closest('dialog[open]')) || document.body;
-  const area = document.createElement('textarea');
-  area.value = text;
-  area.readOnly = true;
-  area.setAttribute('aria-hidden', 'true');
-  area.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
-  root.appendChild(area);
-  area.focus();
-  area.select();
-  area.setSelectionRange(0, text.length);
-  let ok = false;
-  try {
-    ok = document.execCommand('copy');
-  } catch (exc) {
-    ok = false;
-  }
-  area.remove();
-  if (active && active.focus) active.focus();
-  return ok;
-}
-
 // The one copy every Apps-tab menu uses: `what` names the thing copied
 // ("Link", "Path") in the toast; `opts.host` is the toast host of a sheet that
 // carries its own (a modal dialog hides the page's toast). `opts.noun` is the
 // form the failure line uses (default `what` lowercased), and `opts.byHand` is
 // the sentence that ends it when the text is on screen to copy.
-// writeText is called before any await, still inside the tap: iOS and Chromium
-// both refuse it outside a user gesture.
 export async function copyText(text, what, opts) {
-  let cause;
   try {
-    if (!navigator.clipboard || !navigator.clipboard.writeText) {
-      throw new Error('this page has no clipboard access');
+    await writeClipboard(text, opts);
+  } catch (cause) {
+    console.warn('copy failed', what, cause);
+    const noun = (opts && opts.noun) || what.toLowerCase();
+    if (opts && opts.byHand) {
+      toast('Could not copy the ' + noun + '. ' + opts.byHand, 'error', opts);
+      return;
     }
-    await navigator.clipboard.writeText(text);
-    toast(what + ' copied', 'good', opts);
-    return;
-  } catch (exc) {
-    cause = exc;
-  }
-  if (execCopy(text)) {
-    toast(what + ' copied', 'good', opts);
+    apiFailToast('Could not copy the ' + noun, cause, opts);
     return;
   }
-  console.warn('copy failed', what, cause);
-  const noun = (opts && opts.noun) || what.toLowerCase();
-  if (opts && opts.byHand) {
-    toast('Could not copy the ' + noun + '. ' + opts.byHand, 'error', opts);
-    return;
-  }
-  apiFailToast('Could not copy the ' + noun, cause, opts);
+  toast(what + ' copied', 'good', opts);
 }
 
 // The one Copy URL every Apps-tab menu uses (Running, Apps, Other ports).

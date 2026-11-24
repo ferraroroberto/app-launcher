@@ -9,7 +9,7 @@
  * instead of a failure toast.
  */
 import { els, state } from '../state.js';
-import { apiFailToast, escapeHtml, jsonApi, toast } from '../api.js';
+import { apiFailToast, escapeHtml, jsonApi, toast, writeClipboard } from '../api.js';
 import { setSwitch } from '../_vendored/switch/switch.js';
 import { showPath } from './settings-sheets.js';
 
@@ -64,7 +64,7 @@ async function copyCommand() {
   const code = document.getElementById('remotePowerGuardCommand');
   const host = document.getElementById('remotePowerGuardToast');
   try {
-    await navigator.clipboard.writeText(code ? code.textContent : '');
+    await writeClipboard(code ? code.textContent : '', { host: host });
     toast('Command copied', 'good', { host: host });
   } catch (exc) {
     toast('Could not copy: select the command and copy it by hand', 'error', { host: host });
