@@ -373,8 +373,13 @@ RELAY_SCRIPT = PROJECT_ROOT / "scripts" / "telegram_relay.py"
 ROUTER_SKILL = "general"
 
 
+# The folder of the per-profile settings files; a running bot's command line
+# carries ``<this folder>/<profile id>.json``, which is how its process is found.
+SETTINGS_DIR_NAME = "channel-settings"
+
+
 def _settings_dir() -> Path:
-    directory = runtime_data_dir("app-launcher", create=True) / "channel-settings"
+    directory = runtime_data_dir("app-launcher", create=True) / SETTINGS_DIR_NAME
     directory.mkdir(parents=True, exist_ok=True)
     return directory
 

@@ -1876,7 +1876,7 @@ flowchart LR
 - **Root:** `data-surface`
 - **Reach:** Settings › Connections › Telegram
 - **Holds:**
-  - the bots, with a green dot while one runs
+  - the bots, with a green dot while one runs, "Not listening" when a running bot's plugin server is gone and a "Needs you" chip when the automatic restart did not bring it back
   - Sessions: the switch that hides Telegram sessions from the Board and the session list
   - the checks, the profiles, the skills a bot can bind, the setup steps and what to do if the bot does not answer
 - **States:** No bots yet, with the step that adds them
@@ -1890,8 +1890,10 @@ flowchart LR
   - Restart bot
   - the bot's name, skill and model
   - Earlier conversations: Relay, Offer a resume when a chat starts and the idle close time
-  - the bot's status
-- **Does:** a running bot picks up a new skill or model when it restarts
+  - the bot's status, with a Listening check while it runs
+- **Does:**
+  - a running bot picks up a new skill or model when it restarts
+  - a running bot that stays deaf is restarted once automatically, then flagged
 
 ### `settings.context-filter` Context filter sheet
 
