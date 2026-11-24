@@ -154,3 +154,63 @@
   color: var(--muted);
   cursor: default;
 }
+
+/* Busy: a slow action is in flight (aria-busy="true", set by busy.js `runBusy`).
+   The label stays, an inline spinner leads it in place of any glyph, the button
+   takes the disabled recipe's flat control fill (never opacity on a solid fill)
+   and ignores taps. It is not `disabled`, so focus stays on it and a screen
+   reader hears the busy state instead of a control that vanished. The label is
+   --muted in light (4.93:1 on the control fill) and --ink in dark (12.88:1):
+   unlike a disabled control, a busy one is still saying what is happening, so
+   its text clears AA in both themes. The ring is currentColor. */
+.button-primary[aria-busy="true"],
+.button-tint[aria-busy="true"],
+.button-ghost[aria-busy="true"],
+.button-surface[aria-busy="true"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--input-bg, var(--card-off));
+  border-color: var(--line);
+  color: var(--muted);
+  cursor: progress;
+  pointer-events: none;
+}
+[data-theme="dark"] .button-primary[aria-busy="true"],
+[data-theme="dark"] .button-tint[aria-busy="true"],
+[data-theme="dark"] .button-ghost[aria-busy="true"],
+[data-theme="dark"] .button-surface[aria-busy="true"] { color: var(--ink); }
+
+/* The spinner replaces a leading glyph: an `.icon` svg inside the button hides
+   while busy, so the ring never sits beside the glyph it stands in for. */
+.button-primary[aria-busy="true"] > .icon,
+.button-tint[aria-busy="true"] > .icon,
+.button-ghost[aria-busy="true"] > .icon,
+.button-surface[aria-busy="true"] > .icon { display: none; }
+
+.button-primary[aria-busy="true"]::after,
+.button-tint[aria-busy="true"]::after,
+.button-ghost[aria-busy="true"]::after,
+.button-surface[aria-busy="true"]::after {
+  content: "";
+  order: -1;   /* before the label, though a pseudo-element after it in the tree */
+  flex: none;
+  box-sizing: border-box;
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: button-busy-spin 0.8s linear infinite;
+}
+@keyframes button-busy-spin { to { transform: rotate(360deg); } }
+
+/* Reduced motion: the ring stops turning; the dimmed fill and the open arc
+   still say "working". */
+@media (prefers-reduced-motion: reduce) {
+  .button-primary[aria-busy="true"]::after,
+  .button-tint[aria-busy="true"]::after,
+  .button-ghost[aria-busy="true"]::after,
+  .button-surface[aria-busy="true"]::after { animation: none; }
+}
