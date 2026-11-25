@@ -82,15 +82,16 @@ REM  session-host chain inherits it, and so does every session and app it
 REM  spawns -- where APP_NAME is another project's own config key (#963).
 set "TRAY_APP_NAME=AppLauncher"
 REM === ADAPT (2/4): the args python is started with to launch the tray,
-REM     e.g. "launcher.py tray"  or  "-m tray" ===
-set "TRAY_LAUNCH=launcher.py tray"
+REM     e.g. "scripts\launcher.py tray"  or  "-m tray" ===
+set "TRAY_LAUNCH=scripts\launcher.py tray"
 
 set "WANT_RESTART="
 if /i "%~1"=="--restart" set "WANT_RESTART=1"
 if /i "%~1"=="-r"        set "WANT_RESTART=1"
 
 REM === ADAPT (3/4): in the -TrayMatch below, replace with a regex matching
-REM     THIS app's tray invocation, e.g. launcher\.py\s+tray  or  -m\s+tray
+REM     THIS app's tray invocation, e.g. (scripts[\/]+)?launcher\.py\s+tray  or  -m\s+tray;
+REM     it matches both spellings so a tray started before the move is still found
 set "PS=C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
 set "TRAY_VENV=%SCRIPT_DIR%.venv"
 REM  ONE shared, machine-local copy owned by fleet-config (project-scaffolding#153)
@@ -134,7 +135,7 @@ REM  execution policy, and overriding the policy would weaken the machine's own
 REM  control. Values travel in the environment, so no quoting nests inside the
 REM  -Command string, and the process is powershell.exe, which the helper's tray
 REM  detection (python processes only) can never mistake for the tray.
-%PS% -NoProfile -NonInteractive -Command "$a = @{ AppName = $env:TRAY_APP_NAME; ScriptDir = $env:SCRIPT_DIR_ARG; VenvDir = $env:TRAY_VENV; TrayMatch = 'launcher\.py\s+tray'; Ports = $env:OWNED_PORTS; TrayLaunch = $env:TRAY_LAUNCH; VersionUrl = $env:VERSION_URL }; if ($env:WANT_RESTART) { $a.Restart = $true }; try { & ([scriptblock]::Create([IO.File]::ReadAllText($env:TRAY_PS))) launch @a } catch { [Console]::Error.WriteLine(($_ | Out-String)); exit 1 }; exit 0"
+%PS% -NoProfile -NonInteractive -Command "$a = @{ AppName = $env:TRAY_APP_NAME; ScriptDir = $env:SCRIPT_DIR_ARG; VenvDir = $env:TRAY_VENV; TrayMatch = '(scripts[\/]+)?launcher\.py\s+tray'; Ports = $env:OWNED_PORTS; TrayLaunch = $env:TRAY_LAUNCH; VersionUrl = $env:VERSION_URL }; if ($env:WANT_RESTART) { $a.Restart = $true }; try { & ([scriptblock]::Create([IO.File]::ReadAllText($env:TRAY_PS))) launch @a } catch { [Console]::Error.WriteLine(($_ | Out-String)); exit 1 }; exit 0"
 set "TRAY_RC=%ERRORLEVEL%"
 >>"%RESTART_LOG%" echo %DATE% %TIME% tray.bat helper exit=!TRAY_RC!
 exit /b !TRAY_RC!

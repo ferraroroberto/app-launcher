@@ -66,7 +66,7 @@ def test_real_fleet_toml_declares_usable_e2e_table(cfg: E2EConfig) -> None:
         ("src/vt_snapshot.py", Category.FULL),  # declared session-host path (#881)
         ("src/clients/session.py", Category.FULL),
         ("src/launching/launcher.py", Category.FULL),
-        ("launcher.py", Category.FULL),
+        ("scripts/launcher.py", Category.FULL),
         ("tests/e2e/board/test_board_tab.py", Category.FULL),
         ("tests/conftest.py", Category.FULL),
         (".fleet.toml", Category.FULL),  # the routing table reroutes the suite it gates
@@ -159,7 +159,7 @@ def test_session_host_reason_keeps_the_label_the_gate_warns_on(cfg: E2EConfig) -
     """verify-before-ship.ps1 prints its "not live after tray.bat --restart"
     warning when E2E_REASON matches "session-host" (#615), so the rules' labels
     are part of that contract, not decoration."""
-    for path in ("src/session_host.py", "app/webapp/session_host/server.py", "src/audit.py", "launcher.py"):
+    for path in ("src/session_host.py", "app/webapp/session_host/server.py", "src/audit.py", "scripts/launcher.py"):
         r = classify([path], cfg)
         assert any("session-host" in reason for reason in r.reasons), (path, r.reasons)
 

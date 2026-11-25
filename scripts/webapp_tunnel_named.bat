@@ -17,7 +17,8 @@ REM  Press Ctrl+C to stop both.
 REM ============================================================================
 
 setlocal
-set "SCRIPT_DIR=%~dp0"
+REM  This file lives in scripts\; the repo root is its parent.
+for %%I in ("%~dp0..") do set "SCRIPT_DIR=%%~fI\"
 set "VENV_PY=%SCRIPT_DIR%.venv\Scripts\python.exe"
 
 if not exist "%VENV_PY%" (

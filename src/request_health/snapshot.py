@@ -1,6 +1,6 @@
 """A read-only health snapshot: is this box slow, and is it the launcher or something else?
 
-``launcher.py health`` reads what a slow moment leaves behind and writes it to
+``scripts/launcher.py health`` reads what a slow moment leaves behind and writes it to
 one timestamped text file under ``webapp/health/``. It changes nothing: it
 signals no process, starts no scan, and the one request it makes to the webapp
 is a ``GET`` of ``/api/request-stats``, which reads counters and a cache and

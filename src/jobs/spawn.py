@@ -58,7 +58,7 @@ def launcher_python(*, visible: bool = False) -> str:
 
 
 def launcher_py() -> str:
-    return str(PROJECT_ROOT / "launcher.py")
+    return str(PROJECT_ROOT / "scripts" / "launcher.py")
 
 
 def spawn_run_job_detached(
@@ -68,7 +68,7 @@ def spawn_run_job_detached(
     params: Optional[Dict[str, Any]] = None,
     dry_run: bool = False,
 ) -> int:
-    """Spawn ``launcher.py run-job <id> --run-id <rid> --trigger <t>`` detached.
+    """Spawn ``scripts/launcher.py run-job <id> --run-id <rid> --trigger <t>`` detached.
 
     Used by the webapp's ``POST /api/jobs/<id>/run`` route to fire a job
     without blocking the request, plus the mutex-queue drain and DAG chain

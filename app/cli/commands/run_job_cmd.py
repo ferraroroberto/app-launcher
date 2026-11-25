@@ -2,7 +2,7 @@
 
 Every Jobs-tab trigger funnels through this one entry point:
 
-* Windows Task Scheduler fires ``pythonw launcher.py run-job <id>``
+* Windows Task Scheduler fires ``pythonw scripts/launcher.py run-job <id>``
   (scheduled runs).
 * The webapp's ``POST /api/jobs/<id>/run`` spawns the same command
   detached (manual / Stream Deck / phone tap).
@@ -635,7 +635,7 @@ def _trigger_arg(value: str) -> str:
 
 
 class RunJobCommand(BaseCommand):
-    """Argparse subcommand: ``launcher.py run-job <id>``."""
+    """Argparse subcommand: ``scripts/launcher.py run-job <id>``."""
 
     @classmethod
     def add_parser(cls, subparsers: argparse._SubParsersAction) -> None:

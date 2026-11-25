@@ -7,7 +7,7 @@ The Jobs tab's API mirrors the Apps tab's shape (see
 Trigger funnel: every run — manual (phone tap / Stream Deck via
 ``POST /api/jobs/<id>/run``), webhook (an external service via
 ``POST /api/jobs/<id>/hook``), and scheduled (Task Scheduler) —
-goes through ``launcher.py run-job <id>``. The route pre-creates the run
+goes through ``scripts/launcher.py run-job <id>``. The route pre-creates the run
 directory so it can return the new ``run_id`` immediately, then spawns
 the executor detached.
 

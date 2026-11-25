@@ -90,10 +90,10 @@ class TestNoMachinePortInLaunchers:
     """Ports come from the ignored config through ``scripts.webapp_port``; a literal is only a fallback."""
 
     def test_the_bats_read_the_port_through_the_resolver(self) -> None:
-        for name in ("tray.bat", "webapp.bat"):
-            text = (REPO_ROOT / name).read_text(encoding="utf-8")
-            assert "-m scripts.webapp_port" in text, name
-        webapp = (REPO_ROOT / "webapp.bat").read_text(encoding="utf-8")
+        for rel in ("tray.bat", "scripts/webapp.bat"):
+            text = (REPO_ROOT / rel).read_text(encoding="utf-8")
+            assert "-m scripts.webapp_port" in text, rel
+        webapp = (REPO_ROOT / "scripts" / "webapp.bat").read_text(encoding="utf-8")
         assert re.findall(r"--port (\S+)", webapp) == ["%PORT%", "%PORT%"]
 
     def test_the_session_host_restart_reads_both_ports(self) -> None:
@@ -126,7 +126,7 @@ def test_the_samples_carry_placeholder_paths_only() -> None:
 class TestAllSignedStartAndRestart:
     def test_no_launcher_overrides_the_policy_or_carries_a_signature(self) -> None:
         """A signature appended to a tracked script turns every ``git pull`` on an AllSigned PC into a conflict."""
-        scripts = [*REPO_ROOT.glob("*.bat"), *(REPO_ROOT / "scripts").glob("*.ps1"),
+        scripts = [*REPO_ROOT.glob("*.bat"), *(REPO_ROOT / "scripts").glob("*.bat"), *(REPO_ROOT / "scripts").glob("*.ps1"),
                    REPO_ROOT / "src" / "launching" / "ps_script.py", REPO_ROOT / "src" / "jobs_kinds" / "powershell.py"]
         texts = {p.name: p.read_text(encoding="utf-8") for p in scripts}
         assert [n for n, t in texts.items() if re.search(r"-ExecutionPolicy\s+Bypass|\"-ExecutionPolicy\"", t, re.I)] == []
@@ -154,9 +154,34 @@ class TestAllSignedStartAndRestart:
         command = match.group(1).replace(" launch @a ", " detect @a ")
         env = {**os.environ, "PSExecutionPolicyPreference": "AllSigned", "TRAY_PS": str(TRAY_HELPER),
                "TRAY_VENV": str(tmp_path), "TRAY_APP_NAME": "probe", "SCRIPT_DIR_ARG": str(tmp_path),
-               "OWNED_PORTS": "", "TRAY_LAUNCH": "launcher.py tray"}
+               "OWNED_PORTS": "", "TRAY_LAUNCH": "scripts/launcher.py tray"}
         env.pop("WANT_RESTART", None)
         done = subprocess.run([ps_script.POWERSHELL_EXE, "-NoProfile", "-NonInteractive", "-Command", command],
                               capture_output=True, text=True, timeout=PS_TIMEOUT_S, env=env, creationflags=NO_WINDOW)
         assert done.returncode == 0, done.stderr
         assert "cannot be loaded" not in done.stderr and done.stdout.strip() == ""
+
+
+class TestLauncherLivesUnderScripts:
+    """The launcher sits in ``scripts/``; the tray still finds one started from the old root spelling."""
+
+    def test_tray_match_covers_both_spellings(self) -> None:
+        bat = (REPO_ROOT / "tray.bat").read_text(encoding="utf-8")
+        match = re.search(r"TrayMatch = '([^']+)'", bat)
+        assert match
+        pattern = re.compile(match.group(1))
+        for cmdline in ("pythonw.exe launcher.py tray", r"pythonw.exe scripts\launcher.py tray",
+                        "pythonw.exe scripts/launcher.py tray"):
+            assert pattern.search(cmdline), cmdline
+        assert not pattern.search("pythonw.exe launcher.py webapp")
+        assert r"TRAY_LAUNCH=scripts\launcher.py tray" in bat
+
+    def test_the_root_holds_only_the_two_day_to_day_batch_files(self) -> None:
+        assert sorted(p.name for p in REPO_ROOT.glob("*.bat")) == ["setup.bat", "tray.bat"]
+        assert not (REPO_ROOT / "launcher.py").exists()
+
+    def test_a_bad_command_prints_the_usage_line(self) -> None:
+        done = subprocess.run([sys.executable, str(REPO_ROOT / "scripts" / "launcher.py"), "no-such-command"],
+                              capture_output=True, text=True, timeout=PS_TIMEOUT_S, creationflags=NO_WINDOW)
+        assert done.returncode != 0
+        assert "usage: launcher" in done.stderr

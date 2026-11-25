@@ -519,7 +519,7 @@ _INJECTION_MODULES = {"pyautogui", "pynput", "pydirectinput", "keyboard", "mouse
 def _python_files():
     for root in ("src", "app"):
         yield from (REPO / root).rglob("*.py")
-    yield REPO / "launcher.py"
+    yield REPO / "scripts" / "launcher.py"
 
 
 def _identifiers(tree: ast.AST):

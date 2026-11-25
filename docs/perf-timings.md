@@ -32,7 +32,7 @@ The browser sends the request path without its query string to this app's own se
 
 ## Reading the summary
 
-`launcher.py perf-summary [--days N] [--json]` and `GET /api/perf/summary?days=N` (1–90, default 7) give the same report: median and p95 per leg for loads and for slow API requests, per device class, then the slowest API paths (total, server and network) and how often each request was the last to land on boot. A leg that no row measured reads `unknown` (`"n": 0` in JSON), never zero. The CLI exits 6 when nothing has been recorded yet.
+`scripts/launcher.py perf-summary [--days N] [--json]` and `GET /api/perf/summary?days=N` (1–90, default 7) give the same report: median and p95 per leg for loads and for slow API requests, per device class, then the slowest API paths (total, server and network) and how often each request was the last to land on boot. A leg that no row measured reads `unknown` (`"n": 0` in JSON), never zero. The CLI exits 6 when nothing has been recorded yet.
 
 Which leg points where:
 

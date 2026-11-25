@@ -17,7 +17,7 @@ wedge for hours. So ``WebappStatus.health`` reports ``answering``,
 testing ``running`` for truth.
 
 Used by the tray so launching `tray.bat` brings the webapp up.
-Standalone `webapp.bat` is the "server only, no tray" alternative.
+Standalone `scripts/webapp.bat` is the "server only, no tray" alternative.
 """
 
 from __future__ import annotations

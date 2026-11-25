@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 _PATH_TOKEN_RE = re.compile(r"`([^`]+)`")
 _SCOPED_BULLET_PREFIXES = ("- what/why:", "- not restarted/deployed by:")
 
-#: The module the ``:8446`` process *is*. ``launcher.py session-host`` is a
+#: The module the ``:8446`` process *is*. ``scripts/launcher.py session-host`` is a
 #: thin argparse wrapper that imports it, so rooting the closure here keeps it
 #: to the session-host's own code; the shared CLI bootstrap above it is loaded
 #: identically by the tray and webapp processes and is deliberately out of

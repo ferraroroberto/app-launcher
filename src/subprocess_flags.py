@@ -2,7 +2,7 @@
 
 A console subprocess launched from a windowless parent (the ``pythonw`` tray,
 or any of its descendants — the webapp uvicorn process, a detached
-``launcher.py`` run, ...) gets a **new, visible** console window from Windows
+``scripts/launcher.py`` run, ...) gets a **new, visible** console window from Windows
 unless the child's creation flags say otherwise. This is the one place that
 combination lives, so a call site imports it instead of re-deriving its own
 module-level constant or inlining ``subprocess.CREATE_NO_WINDOW`` /

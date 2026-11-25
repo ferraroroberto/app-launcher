@@ -41,7 +41,7 @@ git pull --ff-only
 .\tray.bat --restart
 ```
 
-No other step is needed. Every file the app writes while it runs (configs, state, logs, `tmp/`, certificates, `.venv`) is gitignored, and no tracked file is rewritten at runtime, so `git status` stays clean and the pull always fast-forwards. The ports in `tray.bat`, `webapp.bat` and `scripts\restart-session-host.ps1` come from this PC's ignored config through `scripts/webapp_port.py`, so moving a port never means editing a tracked file.
+No other step is needed. Every file the app writes while it runs (configs, state, logs, `tmp/`, certificates, `.venv`) is gitignored, and no tracked file is rewritten at runtime, so `git status` stays clean and the pull always fast-forwards. The ports in `tray.bat`, `scripts/webapp.bat` and `scripts\restart-session-host.ps1` come from this PC's ignored config through `scripts/webapp_port.py`, so moving a port never means editing a tracked file.
 
 Running `setup.bat` on a configured PC is safe and is how you pick up a new setting:
 
@@ -54,7 +54,7 @@ Running `setup.bat` on a configured PC is safe and is how you pick up a new sett
 
 ## Execution policy
 
-Nothing here needs a signed script or overrides the PC's PowerShell execution policy, `AllSigned` included. `setup.bat`, `tray.bat` and `webapp.bat` are batch files. `tray.bat` loads the shared tray helper as text, and the operator-only session-host restart starts through `src/launching/ps_script.py` (`.venv\Scripts\python.exe -m src.launching.ps_script scripts\restart-session-host.ps1 -Confirm`), which falls back to that ScriptBlock launch under `AllSigned` or `Restricted`. PowerShell jobs in the Jobs tab start the same way.
+Nothing here needs a signed script or overrides the PC's PowerShell execution policy, `AllSigned` included. `setup.bat`, `tray.bat` and `scripts/webapp.bat` are batch files. `tray.bat` loads the shared tray helper as text, and the operator-only session-host restart starts through `src/launching/ps_script.py` (`.venv\Scripts\python.exe -m src.launching.ps_script scripts\restart-session-host.ps1 -Confirm`), which falls back to that ScriptBlock launch under `AllSigned` or `Restricted`. PowerShell jobs in the Jobs tab start the same way.
 
 ## Coming from the old Flask launcher
 

@@ -184,7 +184,7 @@ def test_disposable_webapp_spawns_launch_serve(relpath):
 
 
 def test_webapp_bat_launches_serve():
-    src = (_REPO_ROOT / "webapp.bat").read_text(encoding="utf-8")
+    src = (_REPO_ROOT / "scripts" / "webapp.bat").read_text(encoding="utf-8")
     assert src.count("-m app.webapp.serve") == 2
     assert src.count(f"--loop {LOOP_FACTORY}") == 2
     assert "uvicorn" not in src
@@ -209,7 +209,7 @@ def test_documented_webapp_commands_launch_serve():
 
 
 def test_named_tunnel_script_builds_the_managers_argv(monkeypatch):
-    """The documented no-tray path (``webapp_tunnel_named.bat``) once composed
+    """The documented no-tray path (``scripts/webapp_tunnel_named.bat``) once composed
     its own argv and drifted from the app's (#1003, #1007). Unlike conftest.py
     this script imports cleanly, so pin the real argv rather than its source
     text."""

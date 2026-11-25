@@ -32,7 +32,7 @@ that offer only that, such as cloudflared and the tray's probes);
 `"uvicorn"` is the HTTP/1.1-only fallback, with the same event loop, TLS,
 loopback-only proxy trust and 20 s websocket pings. Any other value stops
 the tray at boot with an error naming the key. It takes effect on
-`tray.bat --restart`. `webapp.bat`, the `webapp` CLI command and
+`tray.bat --restart`. `scripts/webapp.bat`, the `webapp` CLI command and
 `scripts/run_named_tunnel.py` always use hypercorn; run
 `python -m app.webapp.serve --server uvicorn --loop app.webapp.event_loop:selector_loop_factory ...` by hand for the fallback
 without the tray.

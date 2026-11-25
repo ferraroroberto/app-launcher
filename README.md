@@ -48,7 +48,7 @@ Each coding agent has its own CLI to install (Codex, Antigravity, Copilot, Pi, G
 
 ```powershell
 .\tray.bat           # tray icon + webapp (normal use, no console window)
-.\webapp.bat         # webapp standalone, no tray (dev / headless)
+.\scripts\webapp.bat # webapp standalone, no tray (dev / headless)
 ```
 
 Both bind `0.0.0.0` on `config/config.json`'s `webapp.port` (8445 by default). If `webapp/certificates/cert.pem` is present, the server is HTTPS — otherwise plain HTTP (fine for a fresh loopback-only clone). The cert pair is written by `scripts/gen_tailscale_cert.py` — a real Let's Encrypt cert for the tailnet name, zero per-device trust; see [HTTPS certificate](#https-certificate-tailscale).
@@ -103,7 +103,7 @@ Fleet standard (set in the `ferraroroberto/project-scaffolding` repo). Provision
 
 One-time prereq: enable **DNS → HTTPS Certificates** in the [Tailscale admin console](https://login.tailscale.com/admin/dns). The script auto-detects the MagicDNS name and writes `webapp/certificates/cert.pem` + `key.pem`. Every device on the tailnet then trusts `https://<host>.<tailnet>.ts.net:8445` natively — no CA install, no profile, no Certificate Trust toggle.
 
-**Renewal is automatic.** The LE leaf lives ~90 days, so every webapp-boot path (`tray.bat` via the webapp manager, `webapp.bat`, `run_named_tunnel.py`) runs `gen_tailscale_cert.py --check` first, which renews only a `.ts.net` cert expiring within 30 days and no-ops on any other cert. No calendar entry needed.
+**Renewal is automatic.** The LE leaf lives ~90 days, so every webapp-boot path (`tray.bat` via the webapp manager, `scripts/webapp.bat`, `run_named_tunnel.py`) runs `gen_tailscale_cert.py --check` first, which renews only a `.ts.net` cert expiring within 30 days and no-ops on any other cert. No calendar entry needed.
 
 > **Loopback and LAN URLs:** the Tailscale cert is issued *only* for the ts.net name, so `https://127.0.0.1:8445` and LAN-IP URLs show a hostname-mismatch warning by design — open the launcher via the ts.net URL on the PC too. The **PC mirror windows adapt automatically**: with a Tailscale cert active they open the ts.net URL carrying their own credentials (`?token=` bearer bootstrap + a server-minted `?tt=` terminal token when the passkey gate is configured); with no Tailscale cert they keep the loopback URL and its auth bypass. The Cloudflare tunnel (`noTLSVerify`) and the e2e suite are unaffected either way. With no cert at all the server runs plain HTTP on loopback — fine for a fresh clone, but iOS Safari needs HTTPS for the PWA + mic features, so provision the Tailscale cert before phone use.
 
@@ -168,7 +168,7 @@ cloudflared tunnel route dns launcher launcher.<your-domain>
 copy webapp\cloudflared.sample.yml webapp\cloudflared.yml
 REM ...then edit webapp\cloudflared.yml: tunnel UUID + hostname
 
-.\webapp_tunnel_named.bat
+.\scripts\webapp_tunnel_named.bat
 ```
 
 Or do nothing — `tray.bat` reads the same `webapp/cloudflared.yml` and spawns cloudflared alongside the webapp automatically. The tunnel URL is written to `webapp/last_tunnel_url.txt` (with `?token=…` appended when `auth_token` is set).
@@ -262,7 +262,7 @@ What is stored, and nothing else: event kind (`session_start`, `view`, `tap`, `s
 
 ## Real-device timings
 
-Every page load and every `/api/` request slower than 800 ms on the real device writes one timing row, so a slow moment can be traced to the connection, the server or the page; `/api` responses carry `Server-Timing` (`queue`, `worker`, `app`) to split server from network and thread-pool queueing from work. Rows hold route templates and milliseconds only, in `perf.sqlite3` beside the usage log, pruned at 90 days. Read them with `launcher.py perf-summary [--days N] [--json]` or `GET /api/perf/summary?days=N`: [docs/perf-timings.md](docs/perf-timings.md). The server's own side (queue vs worker time per request class, budgets that log `over budget` / `budget breach`, `GET /api/request-stats`, `scripts/bench_requests.py`, `launcher.py health`): [docs/request-timing.md](docs/request-timing.md).
+Every page load and every `/api/` request slower than 800 ms on the real device writes one timing row, so a slow moment can be traced to the connection, the server or the page; `/api` responses carry `Server-Timing` (`queue`, `worker`, `app`) to split server from network and thread-pool queueing from work. Rows hold route templates and milliseconds only, in `perf.sqlite3` beside the usage log, pruned at 90 days. Read them with `scripts/launcher.py perf-summary [--days N] [--json]` or `GET /api/perf/summary?days=N`: [docs/perf-timings.md](docs/perf-timings.md). The server's own side (queue vs worker time per request class, budgets that log `over budget` / `budget breach`, `GET /api/request-stats`, `scripts/bench_requests.py`, `scripts/launcher.py health`): [docs/request-timing.md](docs/request-timing.md).
 
 ## First load
 
@@ -276,9 +276,9 @@ The Apps tab's Performance card shows each measured app's latest `/perf-review` 
 
 The Screen time numbers go to task-os's Time tracker as **one duration-only entry per local day**, all devices merged (a minute on the phone and the PC at once counts once), with the device split in the entry's note (`Launcher screen time: PC 2 h 50 m, Phone 1 h 10 m`). Each day is keyed `usage:app-launcher:<YYYY-MM-DD>` through task-os's idempotent `PUT /api/time/entries/by-source/{source_id}`, so a resend replaces the day instead of duplicating it; a day that now rounds to 0 minutes is a `DELETE` of its key. Today goes as a running total under its own key, replaced on every send and finalised by the next run. `screen-time-export.json` keeps each day's last-sent minutes and device split (integers, no usage rows) per task-os target, so a day that has not changed is skipped with no request and every send can say what it changed. The code is `src/usage/export.py`; nothing new is recorded.
 
-- **Command:** `launcher.py usage-export [--since YYYY-MM-DD] [--dry-run]`. Bare, it covers the last 7 completed days and today, which absorbs late events and rule changes; `--since` covers every day from that date through today (the backfill); `--dry-run` prints the per-day minutes and sends nothing, needing no config. Exit codes name the failure: `2` not set up, `3` category missing, `4` task-os unreachable, `5` task-os refused the data, `6` no usage log yet.
+- **Command:** `scripts/launcher.py usage-export [--since YYYY-MM-DD] [--dry-run]`. Bare, it covers the last 7 completed days and today, which absorbs late events and rule changes; `--since` covers every day from that date through today (the backfill); `--dry-run` prints the per-day minutes and sends nothing, needing no config. Exit codes name the failure: `2` not set up, `3` category missing, `4` task-os unreachable, `5` task-os refused the data, `6` no usage log yet.
 - **On demand:** the Screen time sheet's **Send to task-os** (`POST /api/screen-time/export`, the same code; its answer's `result.summary` is the toast). `GET /api/screen-time/export` reads the last success and the last failure, kept in `screen-time-export.json` in the runtime-data folder (dates, counts and the error message only).
-- **Nightly:** a Job running `launcher.py usage-export`; the sample is `screen-time-export` in `config/jobs.sample.json` (daily 03:30, alert on failure).
+- **Nightly:** a Job running `scripts/launcher.py usage-export`; the sample is `screen-time-export` in `config/jobs.sample.json` (daily 03:30, alert on failure).
 - **Config** (`config/webapp_config.json`): `task_os_url` (default `https://127.0.0.1:8448`), `task_os_person` (a task-os person id, from its `time.people`; empty keeps the export off), and the category as `task_os_area` / `task_os_category` slugs (default `work` / `launcher`), resolved through task-os's `GET /api/time/meta` on every send. The category must exist first: create **Work › Launcher** in task-os's Time tab (Settings › Tools › Time categories). A missing or archived one is its own error, never created from here.
 - **First run:** `usage-export --since <first day> --dry-run`, check the table against the sheet, then the same command without `--dry-run`.
 
@@ -293,7 +293,7 @@ A nightly Job finds Life OS skill sessions opened by mistake and removes them, s
 ## Verify
 
 ```powershell
-& .\.venv\Scripts\python.exe -m py_compile launcher.py
+& .\.venv\Scripts\python.exe -m py_compile scripts/launcher.py
 & .\.venv\Scripts\python.exe -m app.webapp.serve --host 127.0.0.1 --port 8445 --loop app.webapp.event_loop:selector_loop_factory
 # then in another terminal:
 curl http://127.0.0.1:8445/healthz
