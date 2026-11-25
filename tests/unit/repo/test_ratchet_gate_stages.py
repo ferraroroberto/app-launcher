@@ -82,6 +82,7 @@ def _stage(name: str) -> str:
 def test_stage_verdict(tmp_path, name: str, files: dict[str, str], code: int, expected: list[str]) -> None:
     (tmp_path / "scripts").mkdir()
     shutil.copy2(REPO_ROOT / "scripts" / f"{name}_ratchet.py", tmp_path / "scripts")
+    shutil.copy2(REPO_ROOT / "scripts" / "ratchet_baseline.py", tmp_path / "scripts")
     if name == "structure":
         for sibling in ("structure_layout.py", "structure_band.py"):
             shutil.copy2(REPO_ROOT / "scripts" / sibling, tmp_path / "scripts")
@@ -95,7 +96,7 @@ def test_stage_verdict(tmp_path, name: str, files: dict[str, str], code: int, ex
         shutil.copy2(REPO_ROOT / "scripts" / "runtime_write_resolve.py", tmp_path / "scripts")
     if name == "request_budget":
         shutil.copy2(REPO_ROOT / "scripts" / "request_budget_scan.py", tmp_path / "scripts")
-    files = {f".{name.replace('_', '-')}-ratchet-baseline.json": '{"version": 1, "entries": []}\n', **files}
+    files = {f".ratchets/{name.replace('_', '-')}.json": '{"version": 1, "entries": []}\n', **files}
     files[".fleet.toml"] = files.get(".fleet.toml", "") + f"[{name}_ratchet]\nenabled = true\n{_EXTRA_KEYS.get(name, '')}"
     for path, text in files.items():
         (tmp_path / path).parent.mkdir(exist_ok=True)

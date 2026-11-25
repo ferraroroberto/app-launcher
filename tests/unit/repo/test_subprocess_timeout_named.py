@@ -15,7 +15,7 @@ Scope
 -----
 ``src/`` and ``app/`` — the runtime trees. Pre-existing bare timeouts this
 issue did not touch are grandfathered in ``BASELINE`` (ratchet style, as
-``.static-ratchet-baseline.json`` does for ``scripts/static_ratchet.py``):
+``.ratchets/static.json`` does for ``scripts/static_ratchet.py``):
 shrink it by naming one and deleting its entry, never grow it silently.
 
 Deliberately literal-only: a ``timeout=`` built from an expression (a name, an

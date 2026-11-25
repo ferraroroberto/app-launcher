@@ -137,7 +137,7 @@ function Invoke-RatchetStage($stage) {
 $ratchetStages = @(
     @{ Name = "comment"; Argv = @("scripts/comment_ratchet.py")
        NotConfirmed = "a file could not be scanned or git was unusable"
-       Failed = "a file has more #NNN comment references than .comment-ratchet-baseline.json." }
+       Failed = "a file has more #NNN comment references than .ratchets/comment.json." }
     # tests/ lines over src/ + app/ lines may not rise above .fleet.toml [test_weight] ratio_ceiling.
     @{ Name = "suite weight"; Argv = @("-m", "scripts.suite_weight_ratchet")
        NotConfirmed = "git was unusable or a file could not be read"
@@ -145,39 +145,39 @@ $ratchetStages = @(
     # Duplicate blocks (jscpd via npx) and unused imports/variables (ruff).
     @{ Name = "static"; Argv = @("scripts/static_ratchet.py")
        NotConfirmed = "a detector could not run: Node/npx or ruff missing, or output unparseable"
-       Failed = "a new duplicate block or unused import/variable, or a baseline problem; see .static-ratchet-baseline.json." }
+       Failed = "a new duplicate block or unused import/variable, or a baseline problem; see .ratchets/static.json." }
     # README size and history markers (issue references, dated and changelog headings).
     @{ Name = "docs"; Argv = @("scripts/docs_ratchet.py")
        NotConfirmed = "git was unusable, or a doc is not UTF-8 or has a fence/comment that never closes"
-       Failed = "README.md grew past its size budget, or a doc gained an issue reference or dated/changelog heading; see .docs-ratchet-baseline.json." }
+       Failed = "README.md grew past its size budget, or a doc gained an issue reference or dated/changelog heading; see .ratchets/docs.json." }
     # File size, function length, flat directories, the src -> app layer contract and the root layout.
     @{ Name = "structure"; Argv = @("scripts/structure_ratchet.py")
        NotConfirmed = "git was unusable, a file could not be read or parsed, or the declared shape is unknown"
-       Failed = "a new or grown file, function or directory, a src -> app import, or a root folder the shape does not list; see docs/layout.md and .structure-ratchet-baseline.json." }
+       Failed = "a new or grown file, function or directory, a src -> app import, or a root folder the shape does not list; see docs/layout.md and .ratchets/structure.json." }
     # Lint rules over CLAUDE.md, AGENTS.md and every SKILL.md: AGENTS.md decides how CLAUDE.md is read.
     @{ Name = "instruction"; Argv = @("scripts/instruction_ratchet.py")
        NotConfirmed = "git was unusable, or an instruction file is not UTF-8, has a fence that never closes, or a skill description that cannot be read"
-       Failed = "an instruction file gained a lint hit or passed its size cap beyond .instruction-ratchet-baseline.json; see the named rule and lines above." }
+       Failed = "an instruction file gained a lint hit or passed its size cap beyond .ratchets/instruction.json; see the named rule and lines above." }
     # A code change can strand a doc reference without touching the doc.
     @{ Name = "doc refs"; Argv = @("scripts/doc_refs_ratchet.py")
        NotConfirmed = "git was unusable, or a doc is not UTF-8 or has a fence or HTML comment that never closes"
-       Failed = "a doc names a repo path, module, link or port that does not exist beyond .doc-refs-ratchet-baseline.json; see the named reference above." }
+       Failed = "a doc names a repo path, module, link or port that does not exist beyond .ratchets/doc-refs.json; see the named reference above." }
     # Deleting the last caller in one file strands a definition in another.
     @{ Name = "dead code"; Argv = @("scripts/dead_code_ratchet.py")
        NotConfirmed = "git was unusable, or a tracked .py file cannot be read or does not parse"
-       Failed = "a function, class or method nothing refers to is not in .dead-code-ratchet-baseline.json; see the named definition above." }
+       Failed = "a function, class or method nothing refers to is not in .ratchets/dead-code.json; see the named definition above." }
     # A rule added to .fleet.toml must see every file.
     @{ Name = "conventions"; Argv = @("scripts/conventions_ratchet.py")
        NotConfirmed = "git was unusable, or a tracked .py file cannot be read or does not parse"
-       Failed = "a file's count for a convention rule rose above .conventions-ratchet-baseline.json; see the named rule and lines above." }
+       Failed = "a file's count for a convention rule rose above .ratchets/conventions.json; see the named rule and lines above." }
     # Writes resolving under a code folder: runtime output belongs under the runtime root.
     @{ Name = "runtime write"; Argv = @("scripts/runtime_write_ratchet.py")
        NotConfirmed = "a new write target could not be resolved, git was unusable, or a tracked .py file does not parse"
-       Failed = "a file gained a write target resolving under a code folder beyond .runtime-write-ratchet-baseline.json; see the named target above." }
+       Failed = "a file gained a write target resolving under a code folder beyond .ratchets/runtime-write.json; see the named target above." }
     # Every UX control tracked in the usage log: a new untracked control or sheet fails the ship.
     @{ Name = "usage track"; Argv = @("scripts/usage_track_ratchet.py")
        NotConfirmed = "a web file could not be read or its JS never closed, so it was not checked"
-       Failed = "a rule's hits rose above .usage-track-ratchet-baseline.json, or the usage log is not wired; see the named control above." }
+       Failed = "a rule's hits rose above .ratchets/usage-track.json, or the usage log is not wired; see the named control above." }
     # Every surface a person can reach carries a data-surface id with one entry in docs/ux-surfaces.yaml, and the generated page is current.
     @{ Name = "ux surface"; Argv = @("scripts/ux_surface_ratchet.py")
        NotConfirmed = "a web file could not be read, its JS never closed, git was unusable, or docs/ux-surfaces.yaml is outside the strict subset"
@@ -185,11 +185,11 @@ $ratchetStages = @(
     # Polling and background-loop waste only goes down: a new fixed-rate poll, sub-2 s poll, fast server loop, shared-pool submit or handler scan fails the ship.
     @{ Name = "request budget"; Argv = @("scripts/request_budget_ratchet.py")
        NotConfirmed = "a browser or Python file could not be read or parsed, its JS never closed, or git was unusable"
-       Failed = "a file's count for a request budget rule rose above .request-budget-ratchet-baseline.json; see the named rule and lines above." }
+       Failed = "a file's count for a request budget rule rose above .ratchets/request-budget.json; see the named rule and lines above." }
     # A test that needs Windows but carries no windows_only marker passes here and turns the Mac nightly red a day later.
     @{ Name = "windows only"; Argv = @("scripts/windows_only_ratchet.py")
        NotConfirmed = "a test module could not be read or parsed, or git was unusable"
-       Failed = "a test touches a Windows-only API without the windows_only marker beyond .windows-only-ratchet-baseline.json; mark it, or see the named test above." }
+       Failed = "a test touches a Windows-only API without the windows_only marker beyond .ratchets/windows-only.json; mark it, or see the named test above." }
 )
 # ratchet-stages:end
 

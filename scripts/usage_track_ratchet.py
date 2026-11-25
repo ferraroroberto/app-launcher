@@ -37,7 +37,7 @@ Opt-in, per adopter, in its own `.fleet.toml`:
 
     [usage_track_ratchet]
     enabled  = true
-    baseline = ".usage-track-ratchet-baseline.json"           # default
+    baseline = ".ratchets/usage-track.json"           # default
     rules    = ["untracked-control", "untracked-sheet", "dynamic-id", "usage-log-wired"]
     paths    = ["app/webapp/static/**", "app/webapp/templates/**"]  # default
     exclude  = ["app/webapp/static/vendor/**"]                 # globs; never scanned
@@ -83,12 +83,13 @@ def _load_sibling(name: str) -> ModuleType:
         spec.loader.exec_module(module)
         return module
     except (ImportError, OSError, SyntaxError):
-        print(f"usage track ratchet: NOT CONFIRMED: {name}.py is missing beside this script -- vendor both "
-              "(manifest keys usage_track_ratchet and usage_track_scan)")
+        print(f"usage track ratchet: NOT CONFIRMED: {name}.py is missing beside this script -- vendor all three "
+              "(manifest keys usage_track_ratchet, usage_track_scan and ratchet_baseline)")
         sys.exit(3)
 
 
 scan = _load_sibling("usage_track_scan")
+_baseline = _load_sibling("ratchet_baseline")  # where the baseline lives, and its move into .ratchets/
 ConfigError: type[RuntimeError] = scan.ConfigError
 NotConfirmed: type[RuntimeError] = scan.NotConfirmed
 HTML_SUFFIXES: tuple[str, ...] = scan.HTML_SUFFIXES
@@ -97,7 +98,7 @@ JS_SUFFIXES: tuple[str, ...] = scan.JS_SUFFIXES
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 BASELINE_VERSION = 1
-DEFAULT_BASELINE = ".usage-track-ratchet-baseline.json"
+DEFAULT_BASELINE = ".ratchets/usage-track.json"
 DEFAULT_PATHS = ("app/webapp/static/**", "app/webapp/templates/**")
 #: Always excluded, whatever the adopter's own `exclude` adds; a minified file is third-party output.
 BUILTIN_EXCLUDES = ("**/node_modules/**", "**/.venv/**", "**/venv/**", "**/*.min.js")
@@ -178,7 +179,7 @@ def parse_config(toml_text: str) -> Config | None:
         raise ConfigError("[usage_track_ratchet] enabled must be true or false")
     if not enabled:
         return None
-    baseline = table.get("baseline", DEFAULT_BASELINE)
+    baseline = _baseline.configured(table.get("baseline", DEFAULT_BASELINE), DEFAULT_BASELINE)
     if not isinstance(baseline, str) or not baseline:
         raise ConfigError("[usage_track_ratchet] baseline must be a non-empty string")
     rules = _str_list(table, "rules", ())
@@ -501,7 +502,9 @@ def run(root: Path, *, init: bool, update: bool, allow_additions: bool) -> int:
             return EXIT_CONFIG
         print("usage track ratchet: not enabled (no [usage_track_ratchet] enabled = true in .fleet.toml)")
         return EXIT_PASS
-    baseline_path = root / cfg.baseline
+    baseline_path = _baseline.resolve(root, cfg.baseline, DEFAULT_BASELINE, "usage track ratchet")
+    if baseline_path is None:
+        return EXIT_CONFIG
     baseline = _load_baseline(baseline_path, cfg, init)
     if isinstance(baseline, int):
         return baseline
