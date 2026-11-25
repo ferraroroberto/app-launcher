@@ -280,6 +280,10 @@ class WebappConfig:
     # session, and the chief only understands the line once fleet-config
     # ships its side, which is what turns this on.
     chief_doorbell: bool = False
+    # The launcher's fallback wake in minutes, 0 = off: it rings the chief when
+    # a mailbox event, or a free slot beside queued work, has waited this long,
+    # so a missed doorbell never strands it (app.webapp.chief_fallback).
+    chief_fallback_minutes: int = 30
     # Queue drain for unattended audit issues. On by default: the chief
     # adds them to its plan and dispatches into a free worker slot.
     # Settings > Chief turns it off; readers take auto_drain from the
@@ -969,19 +973,10 @@ def _validate(cfg: WebappConfig) -> None:
             f"Codex effort {cfg.codex_effort!r} is not supported by {cfg.codex_model}"
         )
     validate_window(cfg.process_auto_restart_start, cfg.process_auto_restart_end)
-    if cfg.notify_failure_streak < 0:
-        raise ValueError(
-            f"notify_failure_streak must be >= 0; got {cfg.notify_failure_streak}"
-        )
-    if cfg.jobs_coverage_interval_minutes < 0:
-        raise ValueError(
-            "jobs_coverage_interval_minutes must be >= 0; got "
-            f"{cfg.jobs_coverage_interval_minutes}"
-        )
-    if cfg.session_retention_days < 0:
-        raise ValueError(
-            f"session_retention_days must be >= 0; got {cfg.session_retention_days}"
-        )
+    for name in ("notify_failure_streak", "jobs_coverage_interval_minutes",
+                 "session_retention_days", "chief_fallback_minutes"):
+        if getattr(cfg, name) < 0:
+            raise ValueError(f"{name} must be >= 0; got {getattr(cfg, name)}")
     if not (MIN_CHIEF_WORKER_CAP <= cfg.chief_worker_cap <= MAX_CHIEF_WORKER_CAP):
         raise ValueError(
             f"chief_worker_cap must be between {MIN_CHIEF_WORKER_CAP} and "

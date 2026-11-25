@@ -1880,7 +1880,11 @@ flowchart LR
   - the chief's model and the worker cap
   - Count only chief-dispatched sessions
   - Automations, one switch each: Doorbell, Auto-drain queue, Chief job failures, Chief CI failures, Job self-heal, Weekly proposals, Grok Bot and Grok auto-switch
-- **Does:** each switch saves when tapped and needs no restart
+  - Fallback check (minutes, 0 = off): the launcher's backup wake for the chief
+  - a one-line explanation under every control
+- **Does:**
+  - each switch saves when tapped and needs no restart
+  - the fallback minutes save on change and are read by the next 30 s check
 
 ### `settings.channels` Telegram sheet
 

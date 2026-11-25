@@ -50,7 +50,7 @@ import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from app.webapp.route_pools import BOARD_FILES, SESSION_FILES, SESSION_HOST, run_on
 from app.webapp.routers import board_chief
@@ -98,7 +98,7 @@ def doorbell_on(cfg: object) -> bool:
     return getattr(cfg, "chief_doorbell", False) is True
 
 
-def _is_counted_name(entry: Any) -> bool:
+def is_counted_name(entry: Any) -> bool:
     return (
         entry.name.endswith(".json")
         and not entry.name.startswith(".")
@@ -116,7 +116,7 @@ def count_pending(inbox_dir: Path, now_ms: int) -> Optional[int]:
     """
     try:
         with os.scandir(inbox_dir) as entries:
-            root = sum(1 for e in entries if _is_counted_name(e))
+            root = sum(1 for e in entries if is_counted_name(e))
     except FileNotFoundError:
         return 0
     except OSError:
@@ -124,7 +124,7 @@ def count_pending(inbox_dir: Path, now_ms: int) -> Optional[int]:
     claimed_dir = inbox_dir / ".claimed"
     try:
         with os.scandir(claimed_dir) as entries:
-            names = [e.name for e in entries if _is_counted_name(e)]
+            names = [e.name for e in entries if is_counted_name(e)]
     except FileNotFoundError:
         return root
     except OSError:
@@ -189,16 +189,26 @@ async def observe(cfg: Any) -> Observation:
     )
     if not pending:
         return Observation(pending=pending)
+    obs, _cards = await read_chief(cfg, pending)
+    return obs
+
+
+async def read_chief(
+    cfg: Any, pending: Optional[int]
+) -> Tuple[Observation, List[Dict[str, Any]]]:
+    """The chief's facts beside ``pending``, plus every Board card they were
+    read from (the fallback wake counts busy worker slots over them). A host
+    that cannot be read, or no live chief, is ``blocked`` with no cards."""
     (live, host_error), state = await asyncio.gather(
         run_on(SESSION_HOST, read_live_sessions, cfg.session_host_port),
         run_on(BOARD_FILES, board.read_sessions_state, Path(cfg.sessions_state_file)),
     )
     if host_error is not None:
-        return Observation(pending=pending, blocked=f"session-host unreadable: {host_error}")
+        return Observation(pending=pending, blocked=f"session-host unreadable: {host_error}"), []
     live = board_chief._reconcile_chief_labels(live, state["rows"])
     chief = board_chief._find_chief(live)
     if not chief:
-        return Observation(pending=pending, blocked="no live chief")
+        return Observation(pending=pending, blocked="no live chief"), []
     sid = str(chief.get("session_id") or "")
     # A session-host that predates the composer field sends none: unknown.
     dirty = chief.get("composer_dirty")
@@ -216,7 +226,7 @@ async def observe(cfg: Any) -> Observation:
         status=status,
         dirty=dirty,
         output_age=_output_age(chief.get("last_output_at"), time.time()),
-    )
+    ), cards
 
 
 class Doorbell:
@@ -262,13 +272,15 @@ class Doorbell:
         return "ring"
 
 
-class _SkipLog:
+class SkipLog:
     """Log a skip reason when it changes, and again every
     :data:`SKIP_REPEAT_SECONDS` while it holds."""
 
-    def __init__(self) -> None:
+    def __init__(self, what: str = "doorbell", log: logging.Logger = logger) -> None:
         self._last: Optional[str] = None
         self._logged_at: float = 0.0
+        self._what = what
+        self._log = log
 
     def note(self, reason: str, obs: Optional[Observation], now: float) -> None:
         if reason == self._last and now - self._logged_at < SKIP_REPEAT_SECONDS:
@@ -276,7 +288,7 @@ class _SkipLog:
         self._last = reason
         self._logged_at = now
         detail = f" ({obs.summary()})" if obs is not None else ""
-        logger.info("🔕 chief doorbell skip: %s%s", reason, detail)
+        self._log.info("🔕 chief %s skip: %s%s", self._what, reason, detail)
 
     def reset(self) -> None:
         self._last = None
@@ -285,7 +297,7 @@ class _SkipLog:
 async def tick_once(
     cfg: Any,
     bell: Doorbell,
-    skips: _SkipLog,
+    skips: SkipLog,
     *,
     now: Callable[[], float] = time.monotonic,
     observe_fn: Callable[[Any], Awaitable[Observation]] = observe,
@@ -308,6 +320,23 @@ async def tick_once(
         skips.note(decision, obs, tick_now)
         return decision
     skips.reset()
+    # The back-off already started: a host that refuses the write is retried
+    # in BACKOFF_SECONDS, not hammered every tick.
+    return await ring(cfg, obs, "doorbell", send_fn=send_fn, record_fn=record_fn)
+
+
+async def ring(
+    cfg: Any,
+    obs: Observation,
+    why: str,
+    *,
+    send_fn: Callable[..., Dict[str, Any]] = session_client.send_input,
+    record_fn: Callable[..., bool] = record_injected,
+    log: logging.Logger = logger,
+) -> str:
+    """Type :data:`DOORBELL_LINE` into the chief and record it: ``"ring"``,
+    or ``"ring failed"`` when the session-host refuses the write. ``why``
+    names the bell in the log line."""
     # Taken before the send: the transcript line can land before send_input
     # returns, and the ledger row must not be later than the line it matches.
     sent_at = time.time()
@@ -316,17 +345,16 @@ async def tick_once(
             SESSION_HOST, send_fn, cfg.session_host_port, obs.chief_sid, DOORBELL_LINE, True
         )
     except session_client.SessionHostError as exc:
-        # The back-off already started: a host that refuses the write is
-        # retried in BACKOFF_SECONDS, not hammered every tick.
-        logger.warning("⚠️ chief doorbell ring failed: %s (%s)", exc, obs.summary())
+        log.warning("⚠️ chief %s ring failed: %s (%s)", why, exc, obs.summary())
         return "ring failed"
     # The Chat pane folds this turn from the row; a failed write is logged by
     # the ledger and only leaves the turn to the fixed-line match.
     await run_on(
         SESSION_FILES, record_fn, obs.chief_sid, DOORBELL_LINE, ORIGIN_DOORBELL, now=sent_at
     )
-    logger.info(
-        "🔔 chief doorbell rang (%s) reason=%s",
+    log.info(
+        "🔔 chief %s rang (%s) reason=%s",
+        why,
         obs.summary(),
         (result or {}).get("reason"),
     )
@@ -336,7 +364,7 @@ async def tick_once(
 async def tick_forever(app: Any) -> None:
     """The lifespan loop. Reads ``app.state.webapp_config`` every tick."""
     bell = Doorbell()
-    skips = _SkipLog()
+    skips = SkipLog()
     while True:
         try:
             await tick_once(getattr(app.state, "webapp_config", None), bell, skips)

@@ -593,6 +593,7 @@ export const els = {
   channelListClose: document.getElementById('channelListClose'),
   channelListDone: document.getElementById('channelListDone'),
   chiefAutoCompactThreshold: document.getElementById('chiefAutoCompactThreshold'),
+  chiefFallbackMinutes: document.getElementById('chiefFallbackMinutes'),
   listenersList: document.getElementById('listenersList'),
   listenersEmpty: document.getElementById('listenersEmpty'),
   listenersState: document.getElementById('listenersState'),

@@ -337,6 +337,7 @@
             <span>Model</span>
             <span id="chiefModelSelect" class="model-combo model-combo--settings" data-value="fable">
             <button data-track="chief.model" type="button" class="model-combo-trigger" aria-label="Chief model"
+                    aria-describedby="chiefModelHelp"
                     aria-haspopup="listbox" aria-expanded="false" aria-controls="chiefModelMenu">Fable</button>
             <span id="chiefModelMenu" class="model-combo-menu" role="listbox"
                   aria-label="Chief model" hidden>
@@ -346,6 +347,7 @@
             </span>
           </span>
           </div>
+          <p id="chiefModelHelp" class="field-help">The model the chief itself runs on. It applies the next time the chief starts; its workers pick their own model per lane.</p>
           <label class="row">
             <span>Worker cap</span>
             <input id="chiefWorkerCap" type="number" class="input-native" inputmode="numeric" step="1" aria-describedby="chiefWorkerCapHelp">
@@ -362,12 +364,17 @@
             <span>Doorbell</span>
             <button data-track="chief.doorbell" type="button" id="chiefDoorbellToggle" class="toggle" role="switch" aria-checked="false" aria-label="Chief doorbell" aria-describedby="chiefDoorbellHelp" title="Wake the chief when workers leave it mail"><span class="knob"></span><span class="toggle-label">OFF</span></button>
           </div>
-          <p id="chiefDoorbellHelp" class="field-help">Wakes the idle chief when its mailbox has worker news, by typing one fixed line into its terminal. Off, nothing is typed and the chief arms its own waiter at its next turn.</p>
+          <p id="chiefDoorbellHelp" class="field-help">Wakes the idle chief within seconds when its mailbox has worker news, by typing one fixed line into its terminal. It never types while the chief is busy or you have a message half-typed. Off, only the fallback check below wakes it.</p>
+          <label class="row">
+            <span>Fallback check (minutes, 0 = off)</span>
+            <input id="chiefFallbackMinutes" type="number" class="input-native" inputmode="numeric" min="0" max="1440" step="1" aria-describedby="chiefFallbackMinutesHelp">
+          </label>
+          <p id="chiefFallbackMinutesHelp" class="field-help">A backup for the doorbell, on even when the doorbell is off. Every this many minutes the launcher wakes the chief once if a mailbox event has waited that long, or a worker slot is free while plan items are queued. It follows the doorbell's rules, except that an input line that stays unreadable that long no longer holds it back. 0 turns it off.</p>
           <div class="row">
             <span>Auto-drain queue</span>
             <button data-track="chief.auto-drain" type="button" id="chiefAutoDrainToggle" class="toggle" role="switch" aria-checked="true" aria-label="Auto-drain queue" aria-describedby="chiefAutoDrainHelp" title="Let the chief start unattended audit fixes when a worker slot frees"><span class="knob"></span><span class="toggle-label">ON</span></button>
           </div>
-          <p id="chiefAutoDrainHelp" class="field-help">The chief starts unattended audit fixes when a worker slot frees.</p>
+          <p id="chiefAutoDrainHelp" class="field-help">The chief adds unattended audit fixes to its plan and starts one whenever a worker slot frees. Off, those issues wait until you ask for them.</p>
           <div class="row">
             <span>Auto-compact</span>
             <button data-track="chief.auto-compact" type="button" id="chiefAutoCompactToggle" class="toggle" role="switch" aria-checked="true" aria-label="Chief auto-compact" aria-describedby="chiefAutoCompactHelp" title="Let the chief compact itself when its context fills"><span class="knob"></span><span class="toggle-label">ON</span></button>
@@ -409,7 +416,7 @@
           <p id="grokbotEnabledHelp" class="field-help">Lets the Grok Bot ensure Job keep it running and lets its relay send. Off, the Job does nothing, the digest says disabled and the relay refuses to send; reads still work.</p>
           <div class="row">
             <span>Grok Bot directive</span>
-            <button data-track="chief.grokbot-directive" type="button" class="button-ghost" data-open-document="grok-bot-skill-pack" aria-haspopup="dialog">Open</button>
+            <button data-track="chief.grokbot-directive" type="button" class="button-ghost" data-open-document="grok-bot-skill-pack" aria-haspopup="dialog" aria-describedby="grokbotDirectiveHelp">Open</button>
           </div>
           <p id="grokbotDirectiveHelp" class="field-help">The directive Grok Bot runs from, read live from the fleet. Copy it into Grok Bot when its updated time is newer than your pasted copy.</p>
         </div>

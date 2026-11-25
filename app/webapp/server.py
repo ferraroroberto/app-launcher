@@ -25,6 +25,7 @@ from starlette.types import Scope
 from app.webapp import (
     channel_heal,
     chief_doorbell,
+    chief_fallback,
     loop_lag,
     quota_cache,
     relay_idle_close,
@@ -537,6 +538,9 @@ def _canonical_loops(app: FastAPI) -> List[asyncio.Task]:
     # Always started: it re-reads the chief_doorbell toggle every tick and
     # does nothing while it is off, so a Settings save arms it live.
     tasks.append(asyncio.create_task(chief_doorbell.tick_forever(app)))
+    # Always started, independent of the doorbell switch: it reads
+    # chief_fallback_minutes every check and does nothing at 0.
+    tasks.append(asyncio.create_task(chief_fallback.tick_forever(app)))
     # Always started: it reads the night auto-restart switch every tick and does
     # nothing while it is off. Canonical instance only, so a disposable gate
     # webapp never restarts a real process.

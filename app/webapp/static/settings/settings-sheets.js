@@ -398,6 +398,7 @@ const TEXT_FIELDS = [
 const NUMBER_FIELDS = [
   ['terminalHistoryLines', 'terminal_history_lines', 'Terminal history'],
   ['largeUploadMaxMb', 'large_upload_max_mb', 'Large file limit'],
+  ['chiefFallbackMinutes', 'chief_fallback_minutes', 'Fallback check'],
 ];
 
 // `change` fires once an edited field loses focus (or on Enter), never per

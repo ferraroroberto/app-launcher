@@ -113,9 +113,9 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "chief_auto_compact_threshold": cfg.chief_auto_compact_threshold,
         "chief_auto_compact_threshold_min": MIN_CHIEF_AUTO_COMPACT_THRESHOLD,
         "chief_auto_compact_threshold_max": MAX_CHIEF_AUTO_COMPACT_THRESHOLD,
-        # The chief doorbell, off by default; Settings > Chief's
-        # Doorbell switch saves it here.
+        # The chief doorbell (off by default) and its fallback wake (minutes, 0 = off).
         "chief_doorbell": cfg.chief_doorbell,
+        "chief_fallback_minutes": cfg.chief_fallback_minutes,
         # Queue drain, on by default; Settings > Chief's Auto-drain switch.
         "chief_auto_drain": cfg.chief_auto_drain,
         # Failed Job runs and red main-branch CI reach the chief mailbox; on by default.
@@ -367,6 +367,7 @@ _PATCH_KEYS = frozenset({
     "prevent_lock",
     "chief_auto_compact_threshold",
     "chief_doorbell",
+    "chief_fallback_minutes",
     "chief_auto_drain",
     "chief_job_failures",
     "chief_ci_failures",
@@ -471,12 +472,12 @@ async def patch_config(request: Request) -> Dict[str, Any]:
                 status_code=400,
                 detail="chief_auto_compact_threshold must be an integer percent",
             )
-    # The large-file limit is whole MB, refused the same way.
-    if "large_upload_max_mb" in patch:
-        value = patch["large_upload_max_mb"]
-        if isinstance(value, bool) or not isinstance(value, int):
+    # The large-file limit and the fallback wake are whole numbers, refused the same way.
+    for key, unit in (("large_upload_max_mb", "MB"), ("chief_fallback_minutes", "minutes")):
+        value = patch.get(key)
+        if key in patch and (isinstance(value, bool) or not isinstance(value, int)):
             raise HTTPException(
-                status_code=400, detail="large_upload_max_mb must be a whole number of MB"
+                status_code=400, detail=f"{key} must be a whole number of {unit}"
             )
     # The switches: anything but a real boolean is a client bug.
     for key in _SWITCH_KEYS:
