@@ -1836,7 +1836,7 @@ surfaces:
       - "Life OS: Refresh skills on resume switch"
       - "Dictation: Auto-stop (Off, 2 s, 3 s, 5 s)"
       - "Connections: Telegram, Context filter, Fleet scope, Inspiration, API tokens"
-      - "This PC: Folders, Passkeys, Terminal, PC load, and the Start at log on, Hide shut down remotely, Awake with lid closed and Prevent lock switches"
+      - "This PC: Folders, Passkeys, Terminal, PC load, Local hub, and the Start at log on, Hide shut down remotely, Awake with lid closed and Prevent lock switches"
       - Voice, in a Remote Desktop session only
     does:
       - a row that shows a value opens its sheet; a switch saves when you tap it
@@ -1873,6 +1873,8 @@ surfaces:
         via: Terminal
       - to: settings.pc-load
         via: PC load
+      - to: settings.hub
+        via: Local hub
       - to: settings.remote-power-guard
         via: Hide shut down remotely, when Windows needs administrator rights
 
@@ -2140,6 +2142,21 @@ surfaces:
       none: the same sheet with the switch on and the window shown.
     states:
       - the row in Settings reads Night restart with the window, 21:00 to 06:30 by default
+
+  - id: settings.hub
+    area: settings
+    title: Local hub sheet
+    root: data-surface
+    reach:
+      - Settings › This PC › Local hub
+    holds:
+      - the hub's address, empty to turn the hub off, with a Use the local hub button that fills the local address
+    does:
+      - an address is checked against the hub before it is saved; a refused one says why and changes nothing
+      - a saved address applies at once, with no restart
+    states:
+      - the row in Settings reads the hub's host and port, or Off
+      - the PC health dot reads unknown, with its reason, while the address is empty or nothing answers
 
   - id: settings.remote-power-guard
     area: settings

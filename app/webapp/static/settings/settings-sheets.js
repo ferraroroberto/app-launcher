@@ -28,6 +28,7 @@ import { revealInCard } from '../dom-utils.js';
 import { wireModelCombo } from '../shared/model-combo.js';
 import { fetchConfig, patchConfig, USAGE_PROVIDER_LABELS, wireConfigSwitch } from './claude-options.js';
 import { wireDictationAutoStop } from './dictation-autostop.js';
+import { wireHubUrl } from './hub-url.js';
 import { wireMirrorBrowser } from './mirror-browser.js';
 import { terminalJsonApi } from '../webauthn.js';
 import { setSwitch } from '../_vendored/switch/switch.js';
@@ -574,6 +575,7 @@ export function wireSettingsSheets() {
     { label: 'Skill refresh on resume' });
   wireDictationAutoStop();
   wireMirrorBrowser();
+  wireHubUrl();
   document.querySelectorAll('#paneSettings [data-sheet]').forEach(function (btn) {
     btn.addEventListener('click', function () { showPath([btn.dataset.sheet]); });
   });

@@ -24,6 +24,7 @@ import { CHIEF_TIMING_FIELDS, renderSettingsValues } from './settings-sheets.js'
 import { renderRemotePowerGuard } from './remote-power-guard.js';
 import { renderLidKeepAwake } from './lid-keep-awake.js';
 import { renderDictationAutoStop } from './dictation-autostop.js';
+import { renderHubUrl } from './hub-url.js';
 import { renderMirrorBrowser } from './mirror-browser.js';
 import { renderPrivateLan, wirePrivateLan } from './private-lan.js';
 
@@ -275,6 +276,7 @@ export async function fetchConfig(shouldApply) {
   }
   renderDictationAutoStop(body);
   renderMirrorBrowser(body);
+  renderHubUrl(body);
   renderPrivateLan(body);
   renderUsageShows(body);
   if (els.hideChannelSessionsToggle) {

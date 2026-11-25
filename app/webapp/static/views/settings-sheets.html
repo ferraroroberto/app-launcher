@@ -740,6 +740,30 @@
       </div>
     </dialog>
 
+    <dialog id="hubSheet" class="detail-dialog settings-sheet" data-surface="settings.hub" data-track-view="sheet.hub" aria-labelledby="hubSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header settings-sheet-head">
+          <button data-track="hub.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <h2 id="hubSheetTitle" tabindex="-1" autofocus>Local hub</h2>
+          <button data-track="hub.close" type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div class="settings-sheet-body">
+          <label class="stacked">
+            <span>Hub address</span>
+            <input id="llmHubUrl" type="url" class="input-native" inputmode="url" placeholder="http://127.0.0.1:8000" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="llmHubUrlHelp">
+          </label>
+          <p id="llmHubUrlHelp" class="field-help">Where the local LLM hub runs, on this PC or your home network. It feeds the PC health dot and the Read aloud voice. Checked against the hub before it is saved; leave it empty to turn the hub off.</p>
+          <p id="llmHubUrlError" class="field-error" role="alert" hidden></p>
+          <button data-track="hub.use-local" id="llmHubUseLocal" type="button" class="button-tint">Use the local hub</button>
+        </div>
+        <div class="detail-actions">
+          <button data-track="hub.done" type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+        </div>
+      </div>
+    </dialog>
+
     <dialog id="terminalSheet" class="detail-dialog settings-sheet" data-surface="settings.terminal" data-track-view="sheet.terminal" aria-labelledby="terminalSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">

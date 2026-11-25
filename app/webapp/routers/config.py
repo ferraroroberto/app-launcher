@@ -21,6 +21,7 @@ from app.webapp.routers._helpers import (
 )
 from src import boot_autostart, password, remote_power_guard, system_load
 from src.agents import AGENTS, DEFAULT_AGENT, is_installed
+from src.clients import hub_health, hub_url
 from src.desktop import lid_keep_awake, prevent_lock
 from src.launching.flags import (
     build_antigravity_flags,
@@ -170,8 +171,11 @@ async def _power_payloads() -> Dict[str, Any]:
 def _preferences_payload(cfg: WebappConfig) -> Dict[str, Any]:
     """Settings > Sessions, Life OS and Dictation: the browser a session window opens in,
     the skill refresh switch and the quiet seconds that end a dictation take (0 = off).
-    Also the Prevent lock switch (off by default), the stored value only."""
+    Also the Prevent lock switch (off by default), the stored value only, and
+    Local hub's address (empty = off) with the one its one-tap button fills."""
     return {
+        "llm_hub_url": cfg.llm_hub_url,
+        "llm_hub_local_url": hub_url.LOCAL_HUB_URL,
         "prevent_lock": cfg.prevent_lock,
         "mirror_browser": cfg.mirror_browser,
         "life_os_refresh_skill_instructions": cfg.life_os_refresh_skill_instructions,
@@ -304,6 +308,24 @@ def _checked_presets(raw: Any) -> List[Dict[str, str]]:
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+async def _checked_hub_url(raw: Any) -> str:
+    """The hub URL to store, or a 400 saying why not: its shape first, then a
+    live ``/healthz`` so a URL nothing answers on is never saved. Empty turns the
+    hub off, which needs no check."""
+    if not isinstance(raw, str):
+        raise HTTPException(status_code=400, detail="llm_hub_url must be text")
+    try:
+        url = hub_url.normalize(raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    if url:
+        try:
+            await run_on(OUTBOUND, hub_url.check, url)
+        except hub_url.HubUrlError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
+    return url
+
+
 def _checked_usage_providers(raw: Any) -> List[str]:
     """The written provider list in card order, whatever order the client
     sent; 400 on an unknown name. Checked here rather than in _validate: the
@@ -359,6 +381,7 @@ _PATCH_KEYS = frozenset({
     "apps_scan_root",
     "life_os_dir",
     "fleet_config_dir",
+    "llm_hub_url",
     "terminal_history_lines",
     "large_upload_max_mb",
     "usage_providers",
@@ -435,6 +458,25 @@ def _guard_private_lan_patch(
         )
 
 
+def _refuse_mistyped_scalars(patch: Dict[str, Any]) -> None:
+    """A 400 for a whole-number setting that is not an int (the large-file limit
+    and the chief's minutes and seconds) or a switch that is not a real boolean:
+    either is a client bug."""
+    whole_numbers = {"large_upload_max_mb": "MB", "chief_fallback_minutes": "minutes",
+                     **{name: spec.unit for name, spec in CHIEF_TIMINGS.items()}}
+    for key, unit in whole_numbers.items():
+        value = patch.get(key)
+        if key in patch and (isinstance(value, bool) or not isinstance(value, int)):
+            raise HTTPException(
+                status_code=400, detail=f"{key} must be a whole number of {unit}"
+            )
+    for key in _SWITCH_KEYS:
+        if key in patch and not isinstance(patch[key], bool):
+            raise HTTPException(
+                status_code=400, detail=f"{key} must be true or false"
+            )
+
+
 @router.post("/api/config")
 async def patch_config(request: Request) -> Dict[str, Any]:
     cfg: WebappConfig = request.app.state.webapp_config
@@ -463,6 +505,8 @@ async def patch_config(request: Request) -> Dict[str, Any]:
             patch[key] = [str(p).strip() for p in (patch[key] or []) if str(p).strip()]
     if "launch_presets" in patch:
         patch["launch_presets"] = _checked_presets(patch["launch_presets"])
+    if "llm_hub_url" in patch:
+        patch["llm_hub_url"] = await _checked_hub_url(patch["llm_hub_url"])
     if "usage_providers" in patch:
         patch["usage_providers"] = _checked_usage_providers(patch["usage_providers"])
     # The threshold is a whole percent. A bool is an int in Python
@@ -475,21 +519,7 @@ async def patch_config(request: Request) -> Dict[str, Any]:
                 status_code=400,
                 detail="chief_auto_compact_threshold must be an integer percent",
             )
-    # The large-file limit and the chief's minutes and seconds are whole numbers, refused the same way.
-    whole_numbers = {"large_upload_max_mb": "MB", "chief_fallback_minutes": "minutes",
-                     **{name: spec.unit for name, spec in CHIEF_TIMINGS.items()}}
-    for key, unit in whole_numbers.items():
-        value = patch.get(key)
-        if key in patch and (isinstance(value, bool) or not isinstance(value, int)):
-            raise HTTPException(
-                status_code=400, detail=f"{key} must be a whole number of {unit}"
-            )
-    # The switches: anything but a real boolean is a client bug.
-    for key in _SWITCH_KEYS:
-        if key in patch and not isinstance(patch[key], bool):
-            raise HTTPException(
-                status_code=400, detail=f"{key} must be true or false"
-            )
+    _refuse_mistyped_scalars(patch)
     _guard_private_lan_patch(request, patch, cfg)
     # The favourite agent must name a registered agent. An unknown
     # id — a typo, a stale client, an agent dropped from the registry — is
@@ -528,6 +558,9 @@ async def patch_config(request: Request) -> Dict[str, Any]:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     request.app.state.webapp_config = new_cfg
+    if "llm_hub_url" in patch:
+        # The cached verdict belongs to the old address (or to none).
+        hub_health.invalidate()
     if "prevent_lock" in patch:
         # The loop applies the switch at once, so off releases the keep-awake request now.
         prevent_lock.poke()
