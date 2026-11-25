@@ -211,8 +211,9 @@
       </div>
     </dialog>
 
-    <!-- Sync all's report (Projects toolbar): one line per repo, pulled with
-         its commit count, up to date, or skipped with the reason. Read-only,
+    <!-- Sync all (Projects toolbar): "Syncing 3 of 26 · project" while it runs,
+         then a summary and one line per repo, pulled with its commit count, up
+         to date, skipped with the reason or failed with its error. Read-only,
          so its one action is Done. Driven by apps/git-sync.js. -->
     <dialog id="gitSyncSheet" class="detail-dialog" data-surface="code.git-sync-sheet" data-track-view="sheet.git-sync" aria-labelledby="gitSyncTitle">
       <div class="detail-card">
@@ -223,6 +224,7 @@
           </button>
         </div>
         <div id="gitSyncState" class="bg-tasks-state" role="status" aria-live="polite" hidden></div>
+        <p id="gitSyncSummary" class="git-sync-summary" role="status" hidden></p>
         <ul id="gitSyncBody" class="git-sync-body"></ul>
         <div class="detail-actions">
           <button data-track="git-sync.done" type="button" id="gitSyncDone" class="button-primary detail-save-btn">Done</button>

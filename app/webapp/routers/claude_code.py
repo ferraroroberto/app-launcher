@@ -12,7 +12,7 @@ import functools
 import logging
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -20,6 +20,7 @@ from app.webapp.hot_poll import start_or_join
 from app.webapp.route_pools import OUTBOUND, SESSION_FILES, run_on
 from app.webapp.routers._helpers import maybe_json
 from src import git_upstream
+from src.git_upstream.sync_run import SyncRun
 from src.launching.vscode_workspace import (
     ensure_workspace_file,
     is_vscode_installed,
@@ -318,6 +319,10 @@ _SYNC_POOL = TimedExecutor("git-sync", max_workers=8)
 # twice and could race two fast-forwards on one checkout.
 _SYNC_LOCK = asyncio.Lock()
 _SYNC_BUSY = "a fetch or Sync all is already running"
+# The Sync all run the page is counting along with, and the task that owns it
+# (held so the event loop cannot drop a task nobody awaits).
+_SYNC_RUN = SyncRun()
+_sync_task: "Optional[asyncio.Task[None]]" = None
 # The slow fetch cadence, and how recently a page must have asked for git
 # status for it to run: nobody looking means no network traffic.
 GIT_FETCH_INTERVAL_S = 15 * 60
@@ -377,23 +382,67 @@ async def pull_project(project_id: str, request: Request) -> Dict[str, Any]:
     return result
 
 
+def _sync_one_reported(project: ProjectDir) -> None:
+    """One worker's turn: sync a project and record how it ended, never raising."""
+    _SYNC_RUN.started(project.name)
+    try:
+        result = _sync_one(project)
+    except Exception as exc:  # noqa: BLE001 -- one project's failure is its line in the report
+        slow_logger.warning("❌ sync-all: %s failed: %s", project.name, exc)
+        result = {
+            "id": project.id, "name": project.name, "outcome": git_upstream.FAILED,
+            "reason": f"{type(exc).__name__}: {exc}", "commits": 0, "restored": [], "kept_aside": [],
+        }
+    _SYNC_RUN.record(result)
+
+
+async def _run_sync_all(repos: List[ProjectDir], status_cache: Any) -> None:
+    """Sync every repo on the pool, then release the lock the request took."""
+    error = None
+    try:
+        loop = asyncio.get_running_loop()
+        await asyncio.gather(*(loop.run_in_executor(_SYNC_POOL, _sync_one_reported, p) for p in repos))
+    except asyncio.CancelledError:
+        # The server is stopping mid-run: say so rather than report a clean finish.
+        error = "interrupted"
+        raise
+    except Exception as exc:  # noqa: BLE001 -- the run must end so the page stops waiting
+        slow_logger.exception("❌ sync-all run failed")
+        error = f"{type(exc).__name__}: {exc}"
+    finally:
+        _SYNC_RUN.finish(error)
+        status_cache.clear()
+        _SYNC_LOCK.release()
+
+
 @router.post("/api/claude-code/sync-all")
 async def sync_all_projects(request: Request) -> Dict[str, Any]:
-    """Fetch every repo, fast-forward each clean, on-default, behind-only one.
+    """Start Sync all: fetch every repo, fast-forward each clean, on-default, behind-only one.
 
-    One result per git repo: pulled with its commit count, already up to
-    date, or skipped with the reason (no remote, fetch failed, dirty, not on
-    the default branch, ahead, diverged). Never stashes, resets, rebases or
-    merges; a running app is not restarted, its tile says it needs one.
+    Answers at once with the run's progress; ``GET`` follows it. One result per
+    git repo: pulled with its commit count, already up to date, or skipped with
+    the reason (no remote, fetch failed, dirty, not on the default branch,
+    ahead, diverged), or failed with its error. Never stashes, resets, rebases
+    or merges; a running app is not restarted, its tile says it needs one.
     """
+    global _sync_task
     if _SYNC_LOCK.locked():
         raise HTTPException(status_code=409, detail=_SYNC_BUSY)
-    async with _SYNC_LOCK:
-        loop = asyncio.get_running_loop()
+    await _SYNC_LOCK.acquire()
+    try:
         repos = _git_repos(_projects(request))
-        results = await asyncio.gather(*(loop.run_in_executor(_SYNC_POOL, _sync_one, p) for p in repos))
-    _git_status_cache(request).clear()
-    return {"results": list(results)}
+        _SYNC_RUN.begin(len(repos))
+        _sync_task = asyncio.create_task(_run_sync_all(repos, _git_status_cache(request)))
+    except BaseException:
+        _SYNC_LOCK.release()
+        raise
+    return {"run": _SYNC_RUN.snapshot()}
+
+
+@router.get("/api/claude-code/sync-all")
+async def sync_all_progress() -> Dict[str, Any]:
+    """The Sync all run in flight, or the last one finished (``null`` before the first)."""
+    return {"run": _SYNC_RUN.snapshot()}
 
 
 async def fetch_tick_forever(app: Any) -> None:
