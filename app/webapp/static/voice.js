@@ -26,9 +26,12 @@ import { state } from './state.js';
 import { readTerminalToken } from './webauthn.js';
 import { trackFeature } from './settings/feature-track.js';
 import { usage } from './usage.js';
+import { syncTrackId, watchWithheldClick } from './shared/voice-tap.js';
 import { attachMicNotice } from './_vendored/mic-notice/mic-notice.js';
 import { REMOTE_MIC_HINT, inRemoteDesktopSession } from './voice-remote.js';
 import { watchForPause } from './voice-autostop.js';
+import { abandonPcm, closeQuietly, openPcmContext, startPcmCapture } from './shared/voice-pcm.js';
+import { uploadForm } from './shared/voice-upload.js';
 
 const _CHUNK_MS = 1000;
 // A chunk upload that fails (network error or non-2xx) is retried this many
@@ -127,6 +130,10 @@ function newDictationState(opts) {
     api: null,
     recorder: null,
     recordChunks: [],
+    // The take's PCM capture (shared/voice-pcm.js): the audio context opened in
+    // the tap, then the capture's promise; `streaming` once its chunks, not the
+    // recorder's, feed the streamed session.
+    pcm: { ctx: null, start: null, streaming: false },
     // The live getUserMedia stream, held from the moment it's granted until
     // the recorder's own 'stop' handler releases its tracks. Lets dispose()
     // release the mic even in the narrow window after permission is
@@ -215,96 +222,6 @@ function releaseLabel(d) {
   else button.setAttribute('aria-label', d.idleLabel);
   button.title = d.idleTitle;
   d.idleLabel = null;
-}
-
-// What a tap on the mic would do right now, as the usage log's `data-track`
-// control id. The log's click listener reads the attribute when the tap lands,
-// before toggle() runs, so the id is kept in step with the state: each tap is
-// then logged under what it did. A phone's console is out of reach; the
-// server-side log is not. Constant ids only (the usage-log privacy contract):
-// nothing about the take is recorded.
-function tapState(d) {
-  if (d.lateClick) return 'late-click';
-  if (d.arming) return 'arming';
-  if (d.finishOp) return 'finalizing';
-  if (d.recorder && d.recorder.state === 'recording') return 'stop';
-  return 'start';
-}
-
-function syncTrackId(d) {
-  const button = d.button;
-  if (!button) return;
-  switch (tapState(d)) {
-    case 'late-click': button.setAttribute('data-track', 'mic.late-click'); break;
-    case 'arming': button.setAttribute('data-track', 'mic.ignored-arming'); break;
-    case 'finalizing': button.setAttribute('data-track', 'mic.cancel-finalizing'); break;
-    case 'stop': button.setAttribute('data-track', 'mic.stop'); break;
-    default: button.setAttribute('data-track', 'mic.start');
-  }
-}
-
-// A touch that ended on the mic with no click after it. iOS can withhold the
-// click (its hover heuristics), and a withheld click reaches neither toggle()
-// nor the usage log's click listener, so the tap was lost and the mic needed
-// a second one. When no click follows in time the tap is run here instead,
-// logged as `mic.no-click` plus what it did.
-// iOS fires a click it means to send within tens of ms of touchend; half a
-// second is past it yet still reads as one tap.
-const _NO_CLICK_MS = 500;
-// A click iOS delivers after the fallback already ran belongs to the same
-// touch; swallowing clicks this long after touchend keeps it from undoing it.
-const _LATE_CLICK_MS = 1500;
-
-// The fallback tap's outcome, one row per tap as the click path logs it.
-function trackFallbackTap(d) {
-  switch (tapState(d)) {
-    case 'arming': usage.track('mic.ignored-arming'); break;
-    case 'finalizing': usage.track('mic.cancel-finalizing'); break;
-    case 'stop': usage.track('mic.stop'); break;
-    default: usage.track('mic.start');
-  }
-}
-
-function watchWithheldClick(d) {
-  const button = d.button;
-  let timer = null;
-  let lateTimer = null;
-  function endLateWindow() {
-    clearTimeout(lateTimer);
-    lateTimer = null;
-    if (!d.lateClick) return;
-    d.lateClick = false;
-    syncTrackId(d);
-  }
-  button.addEventListener('pointerup', function (ev) {
-    if (ev.pointerType !== 'touch' || button.disabled) return;
-    // A touch pointer stays captured by the button, so a finger that slid off
-    // still ends here; no click is due then.
-    const hit = document.elementFromPoint(ev.clientX, ev.clientY);
-    if (!hit || !button.contains(hit)) return;
-    clearTimeout(timer);
-    timer = setTimeout(function () {
-      timer = null;
-      // The composer may have closed or locked the mic in the meantime.
-      if (button.disabled || !button.isConnected) return;
-      console.info('[dictation] the touch ended on the mic but the browser sent no click: running the tap');
-      usage.track('mic.no-click');
-      trackFallbackTap(d);
-      d.lateClick = true;
-      syncTrackId(d);
-      lateTimer = setTimeout(endLateWindow, _LATE_CLICK_MS - _NO_CLICK_MS);
-      toggleDictation(d);
-    }, _NO_CLICK_MS);
-  });
-  // Registered before any caller's click handler, so it runs first.
-  button.addEventListener('click', function (ev) {
-    clearTimeout(timer);
-    timer = null;
-    if (!d.lateClick) return;
-    endLateWindow();
-    console.info('[dictation] late click ignored: the fallback already ran this tap');
-    ev.stopImmediatePropagation();
-  }, true);
 }
 
 function setArmingUI(d) {
@@ -548,7 +465,27 @@ function watchTakePause(d, stream) {
   if (!d.pauseWatch) console.info('[dictation] auto-stop off for this take: the input level cannot be measured');
 }
 
+// Releases the take's audio context when no capture will use it.
+function dropPcm(d) { closeQuietly(d.pcm.ctx); d.pcm.ctx = null; }
+
+// Hands the capture's chunks to the streamed session in place of the
+// recorder's. False when no capture is running: the recorder feeds it then.
+async function streamPcm(d) {
+  const capture = d.pcm.start ? await d.pcm.start.catch(function () { return null; }) : null;
+  if (!capture) return false;
+  capture.streamTo(function (blob) {
+    if (d.aborted) return;
+    d.chunkQueue.push(blob);
+    drainChunks(d);
+  });
+  return true;
+}
+
 function handleRecorderStop(d, stream, mime) {
+  const pcm = d.pcm.start;
+  const pcmStreaming = d.pcm.streaming;
+  d.pcm.start = null;
+  d.pcm.streaming = false;
   clearInputNotice(d);
   stream.getTracks().forEach(function (tr) { tr.stop(); });
   setRecordingUI(d, false);
@@ -563,16 +500,18 @@ function handleRecorderStop(d, stream, mime) {
     closeVoiceEvents(d);
     d.voiceSession = null;
     d.streaming = false;
+    abandonPcm(pcm);
     return;
   }
   if (d.streaming) {
-    finishStreaming(d);
+    finishStreaming(d, pcmStreaming ? pcm : null);
   } else {
     const type = d.recorder ? d.recorder.mimeType : (mime || 'audio/webm');
     const blob = new Blob(d.recordChunks, { type: type });
     d.recordChunks = [];
     d.recorder = null;
-    if (blob.size) sendBufferedRecording(d, blob);
+    if (blob.size) sendBufferedRecording(d, blob, pcm);
+    else abandonPcm(pcm);
   }
 }
 
@@ -599,20 +538,30 @@ async function startRecording(d) {
   const signal = d.takeCtrl.signal;
   setArmingUI(d);
   d.onStart();
+  // iOS starts an audio context only from the tap's own turn, so before any await.
+  d.pcm.ctx = openPcmContext();
   const stream = await acquireStream(d);
-  if (!stream) return;
+  if (!stream) { dropPcm(d); return; }
   const mime = pickAudioMime();
-  if (!createRecorder(d, stream, mime)) return;
+  if (!createRecorder(d, stream, mime)) { dropPcm(d); return; }
   d.recordChunks = [];
   d.chunkQueue = [];
   d.drain = null;
   d.chunksLost = 0;
   d.voiceSession = null;
   d.streaming = false;
+  // The capture owns the context from here and closes it when it ends.
+  d.pcm.start = startPcmCapture(d.pcm.ctx, stream);
+  d.pcm.ctx = null;
+  d.pcm.streaming = false;
 
   await openStreamSession(d, signal);
+  if (d.streaming && !d.aborted) d.pcm.streaming = await streamPcm(d);
 
   if (d.aborted) {
+    abandonPcm(d.pcm.start);
+    d.pcm.start = null;
+    d.pcm.streaming = false;
     // dispose() ran while the session POST was in flight — the recorder
     // was constructed but never started, so no 'stop' event will ever
     // fire to release it; release here instead.
@@ -631,6 +580,7 @@ async function startRecording(d) {
 
   d.recorder.addEventListener('dataavailable', function (ev) {
     if (!ev.data || !ev.data.size) return;
+    if (d.pcm.streaming) return;
     if (d.streaming) {
       d.chunkQueue.push(ev.data);
       drainChunks(d);
@@ -639,9 +589,9 @@ async function startRecording(d) {
     }
   });
   d.recorder.addEventListener('stop', function () { handleRecorderStop(d, stream, mime); });
-  // Timeslice only matters when streaming — it forces periodic
-  // dataavailable so chunks flow during the take.
-  d.recorder.start(d.streaming ? _CHUNK_MS : undefined);
+  // Timeslice only matters when the recorder feeds a streamed session — it
+  // forces periodic dataavailable so chunks flow during the take.
+  d.recorder.start(d.streaming && !d.pcm.streaming ? _CHUNK_MS : undefined);
   setRecordingUI(d, true);
   watchTakePause(d, stream);
   watchTakeLevel(d, stream);
@@ -699,7 +649,7 @@ function dropFinishing(d) {
 
 // Streamed stop: flush remaining chunks, ask the voice-transcriber
 // for the canonical transcript, settle the dictated span, tear down.
-async function finishStreaming(d) {
+async function finishStreaming(d, pcm) {
   const sid = d.voiceSession;
   const signal = d.takeCtrl.signal;
   d.recorder = null;
@@ -710,8 +660,13 @@ async function finishStreaming(d) {
   // getTextarea() now resolves to.
   const gone = function () { return d.aborted || d.finishOp !== op; };
   try {
-    // The recorder's last dataavailable (the flush on stop) has just been
-    // queued; wait until it and every chunk before it reached the server.
+    // The capture's last partial second joins the queue when it stops; a
+    // recorder-fed take already has its last chunk (the flush on stop) queued.
+    if (pcm) {
+      await pcm.then(function (capture) { return capture && capture.stop(); })
+        .catch(function (exc) { console.warn('[dictation] PCM capture did not stop cleanly', exc); });
+    }
+    // Wait until the last chunk and every one before it reached the server.
     await drainChunks(d);
     if (gone()) return;
     const body = await apiRawJson(
@@ -752,10 +707,7 @@ async function finishStreaming(d) {
 }
 
 // Single-shot fallback: the whole take in one POST to /api/transcribe.
-async function sendBufferedRecording(d, blob) {
-  const ext = (blob.type && blob.type.indexOf('mp4') >= 0) ? 'mp4' : 'webm';
-  const fd = new FormData();
-  fd.append('file', blob, 'recording.' + ext);
+async function sendBufferedRecording(d, blob, pcm) {
   const signal = d.takeCtrl.signal;
   const op = beginFinishing(d);
   // A dispose() or a cancel that lands mid-request must not
@@ -763,6 +715,8 @@ async function sendBufferedRecording(d, blob) {
   // resolves to.
   const gone = function () { return d.aborted || d.finishOp !== op; };
   try {
+    const fd = await uploadForm(blob, pcm);
+    if (gone()) return;
     const body = await apiRawJson('/api/transcribe', {
       method: 'POST', terminalToken: readTerminalToken(), body: fd, signal: signal,
     });
@@ -872,7 +826,7 @@ function toggleDictation(d) {
 export function createDictation(opts) {
   const d = newDictationState(opts);
   syncTrackId(d);
-  if (d.button) watchWithheldClick(d);
+  if (d.button) watchWithheldClick(d, toggleDictation);
   d.api = {
     toggle: function () { toggleDictation(d); },
     stop: function () { stopRecording(d); },

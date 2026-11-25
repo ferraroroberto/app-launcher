@@ -159,10 +159,10 @@ class TestMarkup:
         assert not offenders, f"control ids that are not literals: {offenders}"
 
     def test_the_mic_ids_are_literals_and_nothing_fakes_a_click(self):
-        """``voice.js`` keeps the dictation mic's id in step with its state from
+        """``voice-tap.js`` keeps the dictation mic's id in step with its state from
         literal ids only, and a withheld click is recorded through the usage
         log's direct call: no hidden element is created and clicked."""
-        code = re.sub(r"/\*.*?\*/|//[^\n]*", "", (_STATIC / "voice.js").read_text(encoding="utf-8"), flags=re.S)
+        code = re.sub(r"/\*.*?\*/|//[^\n]*", "", (_STATIC / "shared" / "voice-tap.js").read_text(encoding="utf-8"), flags=re.S)
         ids = re.findall(r"setAttribute\('data-track', '([^']*)'\)", code)
         assert ids == ["mic.late-click", "mic.ignored-arming", "mic.cancel-finalizing", "mic.stop", "mic.start"], ids
         assert all(ID_PATTERN.fullmatch(i) for i in ids), ids
