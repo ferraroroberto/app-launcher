@@ -18,6 +18,8 @@ import httpx
 
 from app.webapp.routers import misc
 from src.diagnostics import PortOwner
+from src.ports.listeners import ListenerSampler, _Snapshot
+from src.request_timing import TimedExecutor
 
 
 def _owners():
@@ -35,7 +37,10 @@ def _probe_calls(monkeypatch):
         return "https" if port == 8443 else "http"
 
     monkeypatch.setattr(misc, "detect_local_scheme", fake_scheme)
-    monkeypatch.setattr(misc, "list_app_listeners", _owners)
+    # The route reads the sampler's cache; a fresh scan landed just now.
+    sampler = ListenerSampler(_owners)
+    sampler._snapshot = _Snapshot(tuple(_owners()), sampler._clock())
+    monkeypatch.setattr(misc, "SAMPLER", sampler)
     monkeypatch.setattr(misc, "_LISTENER_SCHEMES", {})
     return calls
 
@@ -67,18 +72,17 @@ def test_no_tailnet_host_means_no_url_and_no_probe(webapp_client, monkeypatch):
     assert calls == []
 
 
-def test_probe_scan_leaves_the_event_loop_free(webapp_client, monkeypatch):
-    """#1262: psutil's listener scan takes ~1 s and ran on the event loop, so
-    every other request on the webapp waited for it, and the Apps poll calls
-    this every 5 s. Off the loop, a cheap request answers mid-scan."""
+def test_probe_never_runs_the_scan_itself(webapp_client, monkeypatch):
+    """The scan takes seconds on a slow box. The route answers from the
+    sampler's cache; a scan that has not landed reads unknown with its reason,
+    never an empty list."""
     _, app, _ = webapp_client
     monkeypatch.setattr(misc, "_LISTENER_SCHEMES", {})
     app.state.app_config = replace(app.state.app_config, tailnet_host="")
 
-    # Ordered by events, not a wall-clock budget (#1512): the scan holds until
-    # the test releases it, so on a loaded box /healthz either answers while
-    # the scan is provably still running or the test fails. On the loop, the
-    # scan would block it for its whole 5 s wait and finish before /healthz.
+    # Ordered by events, not a wall-clock budget: the scan holds until the test
+    # releases it, so the route either answers while the scan is provably still
+    # running or the test fails.
     scan_started = threading.Event()
     release = threading.Event()
     scan_finished = threading.Event()
@@ -89,12 +93,14 @@ def test_probe_scan_leaves_the_event_loop_free(webapp_client, monkeypatch):
         scan_finished.set()
         return _owners()
 
-    monkeypatch.setattr(misc, "list_app_listeners", slow_scan)
+    pool = TimedExecutor("test-probe-scan", max_workers=1)
+    sampler = ListenerSampler(slow_scan, pool=pool)
+    monkeypatch.setattr(misc, "SAMPLER", sampler)
 
     async def run():
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            probe = asyncio.create_task(client.get("/api/ports/probe"))
+            probe = await client.get("/api/ports/probe")
             for _ in range(500):
                 if scan_started.is_set():
                     break
@@ -102,11 +108,31 @@ def test_probe_scan_leaves_the_event_loop_free(webapp_client, monkeypatch):
             health = await client.get("/healthz")
             answered_mid_scan = scan_started.is_set() and not scan_finished.is_set()
             release.set()
-            return health.status_code, answered_mid_scan, (await probe).status_code
+            await sampler.tick_once()
+            landed = await client.get("/api/ports/probe")
+            return probe, health, answered_mid_scan, landed
 
-    health, answered_mid_scan, probe_status = asyncio.run(run())
-    assert health == 200 and probe_status == 200
-    assert answered_mid_scan, (
-        "/healthz did not answer while the listener scan was still running: "
-        "the scan is blocking the event loop"
-    )
+    try:
+        probe, health, answered_mid_scan, landed = asyncio.run(run())
+    finally:
+        release.set()
+        pool.shutdown(wait=True, cancel_futures=True)
+    assert health.status_code == 200
+    assert answered_mid_scan, "the route waited for the scan instead of answering from the cache"
+    body = probe.json()
+    assert probe.status_code == 200
+    assert (body["state"], body["reason"], body["listeners"]) == ("unknown", "warming", None)
+    assert landed.json()["state"] == "ok"
+    assert sorted(r["port"] for r in landed.json()["listeners"]) == [8443, 8501]
+
+
+def test_stopping_a_port_marks_the_cached_list_dirty(monkeypatch):
+    monkeypatch.setattr(misc, "listener_pids", lambda port: [4242])
+    monkeypatch.setattr(misc, "kill_pids", lambda pids: (list(pids), []))
+    sampler = ListenerSampler(_owners)
+    sampler._snapshot = _Snapshot(tuple(_owners()), sampler._clock())
+    monkeypatch.setattr(misc, "SAMPLER", sampler)
+
+    assert asyncio.run(misc.kill_port(8501))["killed"] == [4242]
+
+    assert sampler._snapshot.at <= sampler._dirty_at

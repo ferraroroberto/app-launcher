@@ -69,6 +69,12 @@ export async function fetchListeners() {
   if (state.tab !== 'apps' || document.hidden) return;
   try {
     const body = await jsonApi('/api/ports/probe');
+    // The server scans in the background: `unknown` (no list at all, never an
+    // empty one) means the scan has not landed or ran past its budget.
+    if (body.state === 'unknown') {
+      showListenersUnavailable(body);
+      return;
+    }
     state.listeners = body.listeners || [];
     listenersReadAt = Date.now();
     listenersFailed = false;
@@ -77,16 +83,38 @@ export async function fetchListeners() {
   } catch (exc) {
     // Best-effort poll — don't spam toasts.
     logPollFailure('listeners fetch failed', exc);
-    listenersFailed = true;
-    if (listenersReadAt) {
-      setAsyncState(els.listenersState, 'stale', { message: staleMessage(listenersReadAt) });
-    } else {
-      setAsyncState(els.listenersState, 'error', {
-        message: 'Could not check the ports.', retry: retryListeners,
-      });
+    showListenersUnavailable(null);
+  }
+}
+
+// The first scan after the tab opens, or the rescan after a stop, lands a
+// moment later: ask once more instead of reporting a failure.
+const WARMING_RECHECK_MS = 2000;
+let warmingRecheck = 0;
+
+function showListenersUnavailable(body) {
+  const transient = body && (body.reason === 'warming' || body.reason === 'refreshing');
+  if (transient) {
+    listenersFailed = false;
+    // Nothing read yet: say so. A list already on screen stays as it is.
+    if (!listenersReadAt) {
+      setAsyncState(els.listenersState, 'loading', { message: 'Checking the ports…' });
     }
     renderOtherPortsRow();
+    clearTimeout(warmingRecheck);
+    warmingRecheck = setTimeout(retryListeners, WARMING_RECHECK_MS);
+    return;
   }
+  listenersFailed = true;
+  if (listenersReadAt) {
+    setAsyncState(els.listenersState, 'stale', { message: staleMessage(listenersReadAt) });
+  } else {
+    const why = body && body.detail ? ' (' + body.detail + ')' : '';
+    setAsyncState(els.listenersState, 'error', {
+      message: 'Could not check the ports' + why + '.', retry: retryListeners,
+    });
+  }
+  renderOtherPortsRow();
 }
 
 // Group helper services (parent_port set, parent present) under their
