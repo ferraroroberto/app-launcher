@@ -29,7 +29,7 @@ from app.webapp.chief_doorbell import (
     STALE_WORKING_SECONDS,
     Doorbell,
     Observation,
-    _SkipLog,
+    SkipLog,
     count_pending,
     observe,
     tick_once,
@@ -303,7 +303,7 @@ async def _run_ticks(cfg, obs, *, ticks=3, send=None, records=None):
         rows.append((sid, text, origin, now))
         return True
 
-    bell, skips = Doorbell(), _SkipLog()
+    bell, skips = Doorbell(), SkipLog()
     decisions = []
     for _ in range(ticks):
         decisions.append(await tick_once(
@@ -382,7 +382,7 @@ class TestTickOnce:
         async def boom(c):
             raise RuntimeError("state file locked")
 
-        decision = await tick_once(_cfg(), Doorbell(), _SkipLog(), observe_fn=boom)
+        decision = await tick_once(_cfg(), Doorbell(), SkipLog(), observe_fn=boom)
         assert decision.startswith("observe failed")
 
 
@@ -405,7 +405,7 @@ class TestLogging:
         assert "idle=True" in rang and "dirty=False" in rang and "pending=2" in rang
 
     async def test_an_unchanged_skip_is_logged_again_every_interval(self, caplog):
-        skips = _SkipLog()
+        skips = SkipLog()
         obs = _obs(status="working", output_age=5.0)
         with caplog.at_level(logging.INFO, logger=bell_mod.logger.name):
             for t in (0.0, 3.0, SKIP_REPEAT_SECONDS - 1):
@@ -419,14 +419,14 @@ class TestLogging:
             assert len(caplog.records) == 3
 
     async def test_a_changed_reason_logs_at_once(self, caplog):
-        skips = _SkipLog()
+        skips = SkipLog()
         with caplog.at_level(logging.INFO, logger=bell_mod.logger.name):
             skips.note("debouncing", None, 0.0)
             skips.note("backing off after ring", None, 3.0)
         assert len(caplog.records) == 2
 
     async def test_a_long_hold_through_tick_once_leaves_a_line_per_interval(self, caplog):
-        clock, skips, bell = _Clock(), _SkipLog(), Doorbell()
+        clock, skips, bell = _Clock(), SkipLog(), Doorbell()
 
         async def fake_observe(c):
             return _obs(status="working", output_age=5.0)

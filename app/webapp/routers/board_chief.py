@@ -495,6 +495,7 @@ def _chief_settings_payload(cfg: WebappConfig) -> Dict[str, Any]:
         "auto_drain": cfg.chief_auto_drain,
         "chief_job_self_heal": cfg.chief_job_self_heal,
         "chief_weekly_proposals": cfg.chief_weekly_proposals,
+        "chief_fallback_minutes": cfg.chief_fallback_minutes,
     }
 
 

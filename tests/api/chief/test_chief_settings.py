@@ -70,6 +70,7 @@ class TestChiefSettings:
             "auto_drain": True,
             "chief_job_self_heal": False,
             "chief_weekly_proposals": False,
+            "chief_fallback_minutes": 30,
         }
 
     @pytest.mark.parametrize("key", ["chief_job_self_heal", "chief_weekly_proposals"])
@@ -133,7 +134,24 @@ class TestChiefSettings:
             "auto_drain": True,
             "chief_job_self_heal": False,
             "chief_weekly_proposals": False,
+            "chief_fallback_minutes": 30,
         }
+
+    def test_fallback_minutes_round_trip_and_are_whole_and_non_negative(
+        self, webapp_client, _bypass_gate,
+    ):
+        """Settings > Chief > Fallback check saves through /api/config, and
+        the chief reads it back from its settings block."""
+        client, _, _ = webapp_client
+        assert client.post("/api/config", json={"chief_fallback_minutes": 0}).status_code == 200
+        assert client.get("/api/config").json()["chief_fallback_minutes"] == 0
+        assert client.get(
+            "/api/board/chief/settings"
+        ).json()["settings"]["chief_fallback_minutes"] == 0
+        for bad in (-1, "30", 2.5, True):
+            assert client.post(
+                "/api/config", json={"chief_fallback_minutes": bad}
+            ).status_code == 400, bad
 
     def test_auto_drain_follows_the_config_switch(self, webapp_client, _bypass_gate):
         """A fresh config reports auto_drain true. Turning the switch off

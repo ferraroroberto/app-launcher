@@ -243,6 +243,9 @@ export async function fetchConfig(shouldApply) {
   if (els.chiefDoorbellToggle) {
     setSwitch(els.chiefDoorbellToggle, body.chief_doorbell === true);
   }
+  if (els.chiefFallbackMinutes && body.chief_fallback_minutes != null) {
+    setFieldValue(els.chiefFallbackMinutes, String(body.chief_fallback_minutes));
+  }
   if (els.chiefAutoDrainToggle) {
     setSwitch(els.chiefAutoDrainToggle, body.chief_auto_drain !== false);
   }
