@@ -152,6 +152,7 @@ Screen clipboard: the one clipboard seam, text to the PC only,
 reached through the input session, never logged (#1719)"]
     DESKCUR["desktop/cursor.py\nScreen cursor: GetCursorInfo to 0-1 + shape name,\nsent on change, never a bitmap (#1598)"]
     SYSLOAD["system_load.py\nheader CPU reading: one shared sampler,\none-syscall process snapshot,\ncached behind /api/system/load (#1522)"]
+    PORTLIST["ports/listeners.py\nApps tab other-ports list: one background scan,\ncached behind /api/ports/probe (#2634)"]
     HUBHEALTH["clients/hub_health.py
 the hub PC health verdict (ok / watch / act / unknown),
 read over loopback and cached behind /api/system/health"]
@@ -236,6 +237,8 @@ one machine-critical chief mailbox event per incident"]
   R_JOBS --> JOBSSNAPSHOT
   WSERVER -->|"lifespan load sampler, while polled (#1522)"| SYSLOAD
   R_MISC --> SYSLOAD
+  WSERVER -->|"lifespan listener sampler, while polled (#2634)"| PORTLIST
+  R_MISC --> PORTLIST
   R_MISC --> PROCRESTART
   WSERVER -->|"lifespan 60 s tick, canonical only,\nno-op while the night restart switch is off"| AUTORESTART
   AUTORESTART -->|"flagged + allowlisted + in window"| PROCRESTART

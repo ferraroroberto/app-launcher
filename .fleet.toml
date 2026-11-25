@@ -1483,6 +1483,12 @@ interval_s = 1
 why        = "bounded post-restart check that the new build answers; a command-line tool that ends at its timeout"
 
 [[request_budget.loops]]
+path       = "src/ports/listeners.py"
+function   = "ListenerSampler.tick_forever"
+interval_s = 10
+why        = "scans the machine's listening ports only while the Apps tab read the list within the demand window, one scan at a time on its own thread; an idle wake only reads a timestamp"
+
+[[request_budget.loops]]
 path       = "src/process_restart.py"
 function   = "_wait_for"
 interval_s = 0.5

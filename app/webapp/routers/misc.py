@@ -38,13 +38,13 @@ from src.desktop.browser import is_web_url, open_url
 from src.diagnostics import (
     detect_local_scheme,
     kill_pids,
-    list_app_listeners,
     listener_pids,
 )
 from src.git_utils import resolve_deployed_sha
 from src.health_routes import health_router
 from src.launching.vscode_workspace import is_vscode_installed
 from src.middleware import is_pc_itself, via_cloudflare
+from src.ports.listeners import SAMPLER
 from src.registry import load_registry
 from src.request_health import BUDGETS, STATS
 from src.request_timing import resolve_budgets
@@ -508,12 +508,23 @@ async def probe_ports(request: Request) -> Dict[str, Any]:
     listener is labelled with the app it belongs to (matched on the
     process's working directory) so you know what you're killing, and
     carries the ``url`` its row's Open uses.
+
+    The scan takes seconds on a slow box, so it runs in a background sampler
+    (``src/ports/listeners.py``) and this route only reads its last result. A
+    scan that has not landed or ran past its budget answers ``state:
+    "unknown"`` with a reason and no ``listeners``, never an empty list.
     """
+    reading = SAMPLER.read()
+    if reading.owners is None:
+        return {
+            "state": "unknown",
+            "reason": reading.reason,
+            "detail": reading.detail,
+            "listeners": None,
+            "age_seconds": reading.age_seconds,
+        }
+    owners = list(reading.owners)
     dir_names = _registered_dir_names()
-    # psutil's socket + process scan takes ~1 s. On the event loop it stalled
-    # every other request the webapp was serving, and the Apps tab polls
-    # this route every 5 s.
-    owners = await run_on(APP_PROBES, list_app_listeners)
     pid_to_port = {o.pid: o.port for o in owners}
     tailnet_host = (request.app.state.app_config.tailnet_host or "").strip()
     live = {(o.pid, o.port) for o in owners}
@@ -538,7 +549,7 @@ async def probe_ports(request: Request) -> Dict[str, Any]:
         }
         for owner, url in zip(owners, urls)
     ]
-    return {"listeners": out}
+    return {"state": "ok", "listeners": out, "age_seconds": reading.age_seconds}
 
 
 @router.post("/api/ports/{port}/kill")
@@ -556,6 +567,8 @@ async def kill_port(port: int) -> Dict[str, Any]:
     if not pids:
         return {"port": port, "killed": [], "detail": "nothing was listening"}
     killed, errors = await run_on(OUTBOUND, kill_pids, pids)
+    # The next listing must not still show what was just stopped.
+    SAMPLER.mark_dirty()
     return {"port": port, "killed": killed, "errors": errors}
 
 

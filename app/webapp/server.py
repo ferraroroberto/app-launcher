@@ -89,6 +89,7 @@ from src.desktop import prevent_lock
 from src.jobs import snapshot as jobs_snapshot
 from src.launching import launcher
 from src.middleware import BearerTokenMiddleware
+from src.ports import listeners as port_listeners
 from src.request_timing import RequestTimingMiddleware, default_executor
 from src.runtime_data import runtime_db_path
 from src.static_bundles.js_bundle import BUNDLE_DIR, ENTRY, BundleError, build_js_bundle
@@ -590,6 +591,9 @@ async def _lifespan(app: FastAPI):
     # The header's CPU reading: one shared sampler, awake only while
     # a page polls /api/system/load.
     tasks.append(asyncio.create_task(system_load.tick_forever()))
+    # The Apps tab's port listeners: one shared scan, awake only while the
+    # list is read; /api/ports/probe never scans.
+    tasks.append(asyncio.create_task(port_listeners.SAMPLER.tick_forever()))
     # The snapshot behind /api/version, rebuilt only while that route is polled.
     tasks.append(asyncio.create_task(misc.version_cache(app).tick_forever()))
     # The Settings card's channel list, rebuilt only while it is polled.
