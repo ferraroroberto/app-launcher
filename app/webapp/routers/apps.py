@@ -57,6 +57,7 @@ from src.launching.launcher import (
     spawn_claude_session,
 )
 from src.registry import (
+    AmbiguousAppId,
     AppEntry,
     decorate_for_api,
     discover_new,
@@ -248,6 +249,15 @@ async def save_apps(request: Request) -> Dict[str, Any]:
     return {"added": [decorate_for_api(a) for a in added]}
 
 
+def _by_id(fn: Any, *args: Any) -> Any:
+    """Run a registry by-id helper, answering 409 when the id names several rows."""
+    try:
+        return fn(*args)
+    except AmbiguousAppId as exc:
+        logger.warning(f"⚠️ {exc}")
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @router.patch("/api/apps/{app_id}")
 async def patch_app(app_id: str, request: Request) -> Dict[str, Any]:
     """Rename and/or flip the autostart flag of a tray or mini app.
@@ -263,12 +273,14 @@ async def patch_app(app_id: str, request: Request) -> Dict[str, Any]:
         new_name = str(body.get("name") or "").strip()
         if not new_name:
             raise HTTPException(status_code=400, detail="name is required")
-        entry = rename_by_id(registry, app_id, new_name)
+        entry = _by_id(rename_by_id, registry, app_id, new_name)
         if entry is None:
             raise HTTPException(status_code=404, detail=f"unknown app {app_id}")
 
     if "autostart" in body:
-        entry = set_autostart_by_id(registry, app_id, bool(body.get("autostart")))
+        entry = _by_id(
+            set_autostart_by_id, registry, app_id, bool(body.get("autostart"))
+        )
         if entry is None:
             raise HTTPException(status_code=404, detail=f"unknown app {app_id}")
 
@@ -282,7 +294,7 @@ async def patch_app(app_id: str, request: Request) -> Dict[str, Any]:
 @router.delete("/api/apps/{app_id}")
 async def delete_app(app_id: str) -> Dict[str, Any]:
     registry = load_registry()
-    removed = remove_by_id(registry, app_id)
+    removed = _by_id(remove_by_id, registry, app_id)
     if removed is None:
         raise HTTPException(status_code=404, detail=f"unknown app {app_id}")
     return {"removed": removed.id}
@@ -296,7 +308,7 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
     # directory scan first; bat-based rows come from the registry.
     entry = next(
         (e for e in _claude_code_entries(cfg) if e.id == app_id), None
-    ) or get_by_id(registry, app_id)
+    ) or _by_id(get_by_id, registry, app_id)
     if entry is None:
         raise HTTPException(status_code=404, detail=f"unknown app {app_id}")
 
@@ -619,7 +631,7 @@ async def refresh_app(app_id: str, request: Request) -> Dict[str, Any]:
     here and is restarted through its own ``tray.bat --restart`` instead.
     """
     cfg: WebappConfig = request.app.state.webapp_config
-    entry = get_by_id(load_registry(), app_id)
+    entry = _by_id(get_by_id, load_registry(), app_id)
     if entry is None:
         raise HTTPException(status_code=404, detail=f"unknown app {app_id}")
     app_runtime.prune_dead()
