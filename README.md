@@ -38,7 +38,7 @@ cd app-launcher
 .\setup.bat
 ```
 
-`setup.bat` creates `.venv`, installs requirements, creates each missing config from its sample and ends with a checklist of what still needs you; it never overwrites what a PC has configured, a second run reports `unchanged`, and `-WhatIf` lists the changes without making them. Updating a configured PC is `git pull --ff-only` then `tray.bat --restart`, nothing else. Fresh PC, already-configured PC, execution policy and uninstall: [docs/install.md](docs/install.md).
+`setup.bat` needs Python 3.11 or newer. It creates `.venv`, installs requirements, creates each missing config from its sample and ends with a checklist of what still needs you; it never overwrites what a PC has configured, a second run reports `unchanged`, and `-WhatIf` lists the changes without making them. Updating a configured PC is `git pull --ff-only` then `tray.bat --restart`. Fresh PC, update, migrating from an existing install and uninstall: the [install playbook](docs/install.md).
 
 Each coding agent has its own CLI to install (Codex, Antigravity, Copilot, Pi, Grok Build): [docs/installing-agent-clis.md](docs/installing-agent-clis.md).
 
@@ -327,7 +327,7 @@ The gate also runs a static ratchet (new duplicate blocks and unused imports fai
 | [docs/remote-power-guard.md](docs/remote-power-guard.md) | Settings › Hide shut down remotely: no power options over Remote Desktop |
 | [docs/lid-keep-awake.md](docs/lid-keep-awake.md) | Settings › Awake with lid closed: the power plan's lid close action |
 | [docs/prevent-lock.md](docs/prevent-lock.md) | Settings › Prevent lock: a 1 px pointer nudge and a keep-awake request |
-| [docs/install.md](docs/install.md) | Installing on a fresh PC, updating with `git pull`, uninstalling |
+| [docs/install.md](docs/install.md) | Fresh PC, update, migrating from an existing install, uninstall |
 | [docs/installing-agent-clis.md](docs/installing-agent-clis.md) | Installing each coding agent's CLI |
 | [docs/run-troubleshooting.md](docs/run-troubleshooting.md) | Build identity, the watchdog, request logs |
 | [docs/restart-and-liveness.md](docs/restart-and-liveness.md) | Restarting and proving the new build is live |
