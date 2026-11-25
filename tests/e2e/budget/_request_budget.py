@@ -18,6 +18,13 @@ to finish before the next, so a self-scheduling poll (next tick armed when the
 read settles) is measured at its real cadence. Boot reads are not counted: the
 minute starts once the page has loaded and gone quiet.
 
+A long-lived response (an `EventSource` stream) never finishes, so a path prefix
+named in `stream_paths` is counted when it opens but not waited for, and a stream
+still open at the end of the hidden minute that was open when the page hid counts
+as a hidden request:
+
+    reading = measure_request_budget(page, url, stream_paths=("/api/events",))
+
 A count the probe cannot establish raises `RequestBudgetUnknown`, never a
 pass: no `.fleet.toml`, no usable `visible_requests_per_minute`, or a request
 that never settles. pytest reports it as an error, apart from a broken budget's
@@ -42,6 +49,10 @@ MINUTE_MS = 60_000
 DEFAULT_STEP_MS = 500
 # How long one step may wait, in real time, for the requests it started.
 SETTLE_TIMEOUT_S = 10.0
+# WebKit announces a held stream's `request` event 0.1 to 0.2 s of real time after the
+# load settles, where Chromium announces it before: wait this long so a stream the page
+# opens at boot is not counted as a request of the visible minute.
+STREAM_BOOT_GRACE_S = 1.0
 
 # Makes `document.hidden` and `visibilityState` writable from the test and fires
 # the same `visibilitychange` a real tab switch or screen lock would.
@@ -81,9 +92,11 @@ class BudgetReading:
 class _Counter:
     """Counts API requests into the current phase and tracks the ones still out."""
 
-    def __init__(self, page: Page, api_prefix: str) -> None:
+    def __init__(self, page: Page, api_prefix: str, stream_paths: tuple[str, ...] = ()) -> None:
         self.page = page
         self.api_prefix = api_prefix
+        self.stream_paths = stream_paths
+        self.streams: set[Request] = set()
         self.phase: Counter[str] | None = None
         self.pending: set[Request] = set()
         page.on("request", self._started)
@@ -94,12 +107,17 @@ class _Counter:
         path = urlsplit(request.url).path
         if not path.startswith(self.api_prefix):
             return
-        self.pending.add(request)
+        # A stream never finishes: count it, but settle() must not wait for it.
+        if path.startswith(self.stream_paths):
+            self.streams.add(request)
+        else:
+            self.pending.add(request)
         if self.phase is not None:
             self.phase[path] += 1
 
     def _settled(self, request: Request) -> None:
         self.pending.discard(request)
+        self.streams.discard(request)
 
     def settle(self) -> None:
         """Wait (real time) until every request out has finished, then let the page's promises run."""
@@ -119,22 +137,38 @@ class _Counter:
 
 
 def measure_request_budget(
-    page: Page, url: str, *, api_prefix: str = "/api/", step_ms: int = DEFAULT_STEP_MS, minute_ms: int = MINUTE_MS
+    page: Page,
+    url: str,
+    *,
+    api_prefix: str = "/api/",
+    stream_paths: tuple[str, ...] = (),
+    step_ms: int = DEFAULT_STEP_MS,
+    minute_ms: int = MINUTE_MS,
 ) -> BudgetReading:
-    """Load `url` on a fake clock and count its API requests: a minute visible, a minute hidden, the return."""
+    """Load `url` on a fake clock and count its API requests: a minute visible, a minute hidden, the return.
+
+    A request whose path starts with one of `stream_paths` is a long-lived stream: it is
+    counted in the phase it opens in and never waited for. A stream that was open when
+    the page hid and is still open when the hidden minute ends counts once as hidden.
+    """
     page.clock.install()
     page.add_init_script(_HIDE_SCRIPT)
-    counter = _Counter(page, api_prefix)
+    counter = _Counter(page, api_prefix, stream_paths)
     page.goto(url)
     page.wait_for_load_state("load")
     counter.settle()
+    if stream_paths:
+        page.wait_for_timeout(int(STREAM_BOOT_GRACE_S * 1000))
     reading = BudgetReading()
 
     counter.phase = reading.visible
     counter.advance(minute_ms, step_ms)
     counter.phase = reading.hidden
     page.evaluate("() => window.__requestBudgetSetHidden(true)")
+    open_at_hide = set(counter.streams)
     counter.advance(minute_ms, step_ms)
+    for stream in open_at_hide & counter.streams:
+        reading.hidden[urlsplit(stream.url).path] += 1
     counter.phase = reading.catch_up
     page.evaluate("() => window.__requestBudgetSetHidden(false)")
     counter.settle()

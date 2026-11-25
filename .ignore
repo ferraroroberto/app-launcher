@@ -47,6 +47,7 @@
 /scripts/structure_band.py
 /scripts/structure_layout.py
 /scripts/structure_ratchet.py
+/scripts/tools/webkit_budget_check.py
 /scripts/usage_track_ratchet.py
 /scripts/usage_track_scan.py
 /scripts/ux_surface_map.py
