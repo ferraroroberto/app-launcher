@@ -55,7 +55,10 @@ def browser_type_launch_args(browser_type_launch_args: dict, browser_name: str) 
     if browser_name != "chromium":
         return browser_type_launch_args
     extra = list(browser_type_launch_args.get("args") or [])
-    return {**browser_type_launch_args, "args": extra + ["--ignore-certificate-errors", *CHROMIUM_CAPTURE_ARGS]}
+    # A fake microphone, granted without a prompt, so a dictation test records a
+    # real MediaStream. A test that stubs getUserMedia is not affected.
+    fake_mic = ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"]
+    return {**browser_type_launch_args, "args": extra + ["--ignore-certificate-errors", *fake_mic, *CHROMIUM_CAPTURE_ARGS]}
 
 
 # The readout only shows the server's constant `git_sha` and `built_at`, but

@@ -614,7 +614,10 @@ time_budget_s         = 1200
 # 2026-11-24: 662 -> 663, one node (one test, chromium only) for tests/e2e/budget/test_main_page_request_budget.py: the
 # runtime request check installs a fake clock before the first load and runs a visible and a hidden minute, so it cannot share a page
 # with another node; the visible budget, the zero hidden count and the one catch-up read per path all ride that one node.
-test_budget = 663
+# 2026-11-25: 663 -> 664, one node (one test, chromium only) for tests/e2e/compose/test_dictation_wav.py: the fake microphone
+# records a real MediaStream, so it cannot share a page with the stubbed-recorder dictation tests; the streamed WAV chunks, the
+# single-shot recording.wav and both no-Web-Audio fallbacks ride that one node.
+test_budget = 664
 
 # --- static assets under the webapp's static dir -> Chromium smoke ----------
 [[e2e.rule]]
