@@ -19,6 +19,7 @@ import { ACTION_ROW_MENU, actionRow } from '../action-rows.js';
 import { listFilter } from '../list-filter.js';
 import { openChanges } from '../changes/changes-overlay.js';
 import { icon } from '../_vendored/icons/icons.js';
+import { runBusy } from '../_vendored/button/busy.js';
 import { setSwitch, switchEl } from '../_vendored/switch/switch.js';
 import { patchConfig } from '../settings/claude-options.js';
 import { fetchApps, launchApp, renderApps } from '../apps.js';
@@ -541,21 +542,23 @@ export async function refreshGitStatus(options) {
 // The Projects toolbar's refresh: fetch every remote, then re-run git now.
 // The footer's "Git checked just now" is the confirmation. A fetch that
 // fails still re-reads status, so its repos show as unknown.
-async function checkGitNow() {
-  const btn = els.gitRefreshBtn;
-  if (btn) btn.disabled = true;
-  try {
+function checkGitNow() {
+  return runBusy(els.gitRefreshBtn, async function () {
+    let fetchFailure = '';
     try {
       await fetchAll();
     } catch (exc) {
-      apiFailToast('Fetch failed', exc);
+      fetchFailure = (exc && exc.message) || String(exc);
     }
     await refreshGitStatus({ fresh: true });
-  } catch (exc) {
-    apiFailToast('Git status check failed', exc);
-  } finally {
-    if (btn) btn.disabled = false;
-  }
+    return fetchFailure;
+  }, {
+    start: 'Checking git…',
+    done: function (fetchFailure) {
+      return fetchFailure ? 'Checked, but the fetch failed: ' + fetchFailure : 'Git up to date';
+    },
+    fail: 'Git status check failed',
+  });
 }
 
 // The Projects card's controls, wired from apps.js::wireApps so this
@@ -568,7 +571,7 @@ export function wireCoding() {
       openSettingsAt('projectsDir');
     });
   }
-  if (els.gitRefreshBtn) els.gitRefreshBtn.addEventListener('click', checkGitNow);
+  if (els.gitRefreshBtn) els.gitRefreshBtn.addEventListener('click', function () { checkGitNow(); });
   const syncBtn = document.getElementById('gitSyncAllBtn');
   if (syncBtn) {
     syncBtn.addEventListener('click', function () {

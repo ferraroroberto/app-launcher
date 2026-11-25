@@ -31,6 +31,9 @@ from playwright.sync_api import Page, expect
 from tests.e2e import _fake_clock
 from tests.e2e._contrast import contrast_ratio
 from tests.e2e._surface import surface
+from tests.e2e.board._refresh_busy import (
+    assert_refresh_buttons_share_one_busy_state_and_toast,
+)
 from tests.e2e.board._support import (
     _FAKE_BOARD,
     _board_payload,
@@ -446,6 +449,7 @@ def test_board_poll_heals_an_unfetched_github_that_renders_unknown_not_zero(
         "Not loaded from GitHub yet.")
     # The lane's one next action is a real control now (#1238 J-09).
     expect(backlog_empty.locator(".empty-state-action")).to_have_text("Refresh")
+    assert_refresh_buttons_share_one_busy_state_and_toast(authed_page)
 
     loaded_empty = _unfetched_payload()
     loaded_empty["github"] = {

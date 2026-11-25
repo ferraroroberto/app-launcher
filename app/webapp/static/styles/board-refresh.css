@@ -1,0 +1,29 @@
+/* The Board's Refresh in flight. The header Refresh takes the vendored
+   button's busy state. A lane's empty-state Refresh is the vendored
+   empty-state's own button, outside the button tiers, so it gets the same look
+   here: label kept (--muted light, --ink dark, both AA), the ring before it,
+   no taps. The ring reuses the vendored `button-busy-spin` keyframes. */
+.empty-state-action.board-refresh-action[aria-busy="true"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--muted);
+  cursor: progress;
+  pointer-events: none;
+}
+[data-theme="dark"] .empty-state-action.board-refresh-action[aria-busy="true"] { color: var(--ink); }
+.empty-state-action.board-refresh-action[aria-busy="true"]::before {
+  content: "";
+  flex: none;
+  box-sizing: border-box;
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: button-busy-spin 0.8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .empty-state-action.board-refresh-action[aria-busy="true"]::before { animation: none; }
+}
