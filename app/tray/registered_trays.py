@@ -33,9 +33,13 @@ import time
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
+
+import requests
 
 from src import runtime_files
+from src.clients._loopback_http import pooled_request
+from src.git_utils import run_git
 from src.launching.bat_running import find_running_target
 from src.registry import RegistryReadError, load_registry
 from src.scanner import KIND_MINI, KIND_TRAY
@@ -68,6 +72,19 @@ _REGISTRY_LOAD_ATTEMPTS = 3
 _REGISTRY_LOAD_RETRY_DELAY_S = 1.0
 
 
+# What a tray probe could establish. An open port alone proves nothing: a wedged
+# or half-started webapp still accepts the connection, so only /healthz plus
+# /api/version answering counts as ready.
+TRAY_ANSWERING = "answering"                       # /healthz 200, /api/version answers, build matches
+TRAY_STALE = "stale"                               # answers, but serves a git_sha other than its repo's HEAD
+TRAY_BOUND_NOT_ANSWERING = "bound_not_answering"   # the port accepts, /healthz or /api/version does not
+TRAY_DOWN = "down"                                 # nothing is listening
+
+# A wedged listener holds each request for the full timeout and the wait polls
+# every half second: short enough that one poll stays well under the 30 s budget.
+_PROBE_TIMEOUT_S = 1.5
+
+
 def _log_path() -> Path:
     """The gitignored boot breadcrumb log this repo writes at each autostart.
 
@@ -98,6 +115,78 @@ def port_listening(port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(0.3)
         return s.connect_ex(("127.0.0.1", port)) == 0
+
+
+@dataclass(frozen=True)
+class TrayProbe:
+    """One readiness probe: the ``TRAY_*`` state and a line saying why."""
+
+    state: str
+    detail: str
+
+
+def _fetch_ok(url: str) -> tuple[Optional[Any], str]:
+    """``(body, "")`` for a 200 (``body`` is the parsed JSON, or ``True`` when it
+    is not JSON), ``(None, reason)`` for anything else."""
+    try:
+        resp = pooled_request("GET", url, timeout=_PROBE_TIMEOUT_S, verify=False)
+    except requests.RequestException as exc:
+        return None, type(exc).__name__
+    if resp.status_code != 200:
+        return None, f"HTTP {resp.status_code}"
+    try:
+        return resp.json(), ""
+    except ValueError:
+        return True, ""
+
+
+def _sha_matches(served: str, head: str) -> bool:
+    return head.startswith(served) or served.startswith(head)
+
+
+def probe_tray(port: int, repo_dir: Optional[Path] = None) -> TrayProbe:
+    """Whether the tray on ``127.0.0.1:<port>`` is serving, and its build when it says.
+
+    ``/healthz`` must answer 200 and ``/api/version`` must answer, trying HTTPS
+    then HTTP (the webapp serves plain HTTP when it has no certificate). When
+    the version reports a ``git_sha`` and ``repo_dir`` has a readable HEAD, the
+    two must agree: a mismatch is ``stale``, an old build still serving. An
+    unreadable HEAD or an absent ``git_sha`` leaves the build uncompared and
+    says so in the detail; it is not a mismatch.
+    """
+    if not port_listening(port):
+        return TrayProbe(TRAY_DOWN, f":{port} not listening")
+    miss = "no answer"
+    for scheme in ("https", "http"):
+        base = f"{scheme}://127.0.0.1:{port}"
+        _health, why = _fetch_ok(f"{base}/healthz")
+        if why:
+            miss = f"{scheme} /healthz: {why}"
+            continue
+        body, why = _fetch_ok(f"{base}/api/version")
+        if why:
+            miss = f"{scheme} /api/version: {why}"
+            continue
+        return _judge_build(scheme, body, repo_dir)
+    return TrayProbe(TRAY_BOUND_NOT_ANSWERING, f":{port} accepts connections but {miss}")
+
+
+def _judge_build(scheme: str, body: Any, repo_dir: Optional[Path]) -> TrayProbe:
+    served = ""
+    if isinstance(body, dict):
+        served = str(body.get("git_sha") or body.get("gitSha") or "")
+    if not served or served == "unknown":
+        return TrayProbe(TRAY_ANSWERING, f"{scheme} answering, no git_sha reported")
+    head = run_git(repo_dir, ["rev-parse", "HEAD"]) if repo_dir is not None else None
+    if not head:
+        return TrayProbe(
+            TRAY_ANSWERING, f"{scheme} answering, git_sha {served} not compared (HEAD unreadable)"
+        )
+    if not _sha_matches(served, head):
+        return TrayProbe(
+            TRAY_STALE, f"{scheme} answering but serves git_sha {served}, HEAD is {head[:12]}"
+        )
+    return TrayProbe(TRAY_ANSWERING, f"{scheme} answering, git_sha {served}")
 
 
 def _fleet_toml_port(repo_dir: Path) -> Optional[int]:
@@ -165,7 +254,9 @@ def _spawn_tray_bat_detached(bat_path: Path) -> Optional[int]:
 
 
 def _wait_for_tray_ready(repo_dir: Path) -> bool:
-    """Best-effort readiness wait for a just-launched sister tray.
+    """Best-effort readiness wait for a just-launched sister tray: its ``/healthz``
+    and ``/api/version`` answering on the build its repo is at (see
+    :func:`probe_tray`).
 
     See :func:`_fleet_toml_port` for why this is `.fleet.toml`-port
     based rather than PID-tree port discovery. No/malformed port
@@ -178,7 +269,7 @@ def _wait_for_tray_ready(repo_dir: Path) -> bool:
         return False
     deadline = time.monotonic() + _TRAY_READY_TIMEOUT_S
     while time.monotonic() < deadline:
-        if port_listening(port):
+        if probe_tray(port, repo_dir).state == TRAY_ANSWERING:
             return True
         time.sleep(_TRAY_READY_POLL_S)
     return False
@@ -265,9 +356,10 @@ def _launch_and_wait(name: str, bat_path: Path, port: Optional[int]) -> bool:
             logging.WARNING,
         )
     else:
+        last = probe_tray(port, bat_path.parent)
         _record(
-            f"{name}: readiness timeout (:{port} closed after "
-            f"{_TRAY_READY_TIMEOUT_S:.0f}s)",
+            f"{name}: readiness timeout after {_TRAY_READY_TIMEOUT_S:.0f}s "
+            f"({last.state}: {last.detail})",
             logging.WARNING,
         )
     return False
@@ -288,20 +380,39 @@ def _first_pass(entries: list) -> list:
                 _spawn(entry.name, bat_path)
             continue
         port = _fleet_toml_port(bat_path.parent)
-        if port is not None and port_listening(port):
-            _record(f"{entry.name}: ready (:{port} already answering) — not launched")
-            continue
+        if port is not None:
+            probe = probe_tray(port, bat_path.parent)
+            if probe.state == TRAY_ANSWERING:
+                _record(f"{entry.name}: ready (:{port} already answering) — not launched")
+                continue
+            if probe.state != TRAY_DOWN:
+                # A bound port belongs to another process: launching over it would
+                # start a second copy, so report it (and wait on it) instead.
+                _record(f"{entry.name}: {probe.state}: {probe.detail} — not launched", logging.WARNING)
+                if probe.state == TRAY_BOUND_NOT_ANSWERING:
+                    pending.append(_Pending(entry.name, bat_path, port))
+                continue
         if not _launch_and_wait(entry.name, bat_path, port) and port is not None:
             pending.append(_Pending(entry.name, bat_path, port))
     return pending
 
 
-def _came_up(item: _Pending) -> bool:
-    """True when a retry must not launch: the port answers, the target is
-    running, or the process table cannot rule out that it is."""
-    if port_listening(item.port):
+def _came_up(item: _Pending) -> Optional[bool]:
+    """Whether a retry may launch. ``True``: it needs no further retry (the tray
+    answers, is stale and only its own repo's restart can replace it, its target
+    is running, or the process table cannot rule that out). ``None``: the port is
+    bound but not answering, so keep waiting without launching over it.
+    ``False``: nothing holds the port and nothing is running it; launch."""
+    probe = probe_tray(item.port, item.bat_path.parent)
+    if probe.state == TRAY_ANSWERING:
         _record(f"{item.name}: ready (:{item.port} answering) — not relaunched")
         return True
+    if probe.state == TRAY_STALE:
+        _record(f"{item.name}: {probe.detail} — not relaunched, restart it by hand", logging.WARNING)
+        return True
+    if probe.state == TRAY_BOUND_NOT_ANSWERING:
+        _record(f"{item.name}: {probe.state}: {probe.detail} — not relaunched", logging.WARNING)
+        return None
     try:
         pid = find_running_target(item.bat_path)
     except RuntimeError as exc:
@@ -328,7 +439,11 @@ def _reconcile(pending: list, stop: Optional[threading.Event]) -> None:
             return
         still: list = []
         for item in pending:
-            if _came_up(item):
+            came_up = _came_up(item)
+            if came_up:
+                continue
+            if came_up is None:
+                still.append(item)
                 continue
             _record(f"{item.name}: retry {attempt}/{budget}")
             if not _launch_and_wait(item.name, item.bat_path, item.port):
