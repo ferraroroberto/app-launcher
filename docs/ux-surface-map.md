@@ -361,9 +361,12 @@ flowchart LR
   - tiles and charts for lines of code, PRs merged, issues and tokens, with an In and Out switch on tokens
   - a per-repo table sortable by added lines, removed lines, PRs, opened and closed
   - the token split by agent and the age of each data source
-  - a Refresh button and a toast while it runs
+  - a line saying when the figures were last refreshed
+  - a Refresh button; a toast counts the projects while it runs and ends as a summary
 - **States:**
-  - answers at once from the cache however old, then refreshes in place
+  - answers at once from the cache however old and never refreshes on open
+  - a refresh runs only on a tap of Refresh and updates the figures in place
+  - a skipped project is counted in the summary; only a read that failed turns it red and names the projects
   - a figure that could not be read says so instead of showing zero
 
 ### `code.sessions` Sessions card

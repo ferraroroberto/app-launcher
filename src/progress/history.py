@@ -85,6 +85,7 @@ def _github(
             "refreshing": bool(snap["in_flight"]) or started,
             "unknown_repos": sorted(n for n, r in repos.items() if r["state"] == totals.UNKNOWN),
             "skipped": snap["skipped"],
+            "run": snap["run"],
         },
         "buckets": per_bucket,
         "repos": rows,
@@ -96,6 +97,7 @@ def _github_unreadable(exc: Exception, buckets_count: int) -> Dict[str, Any]:
         "half": {
             "state": UNAVAILABLE, "reason": f"{type(exc).__name__}: {exc}", "refreshed_at": None,
             "age_seconds": None, "refreshing": False, "unknown_repos": [], "skipped": [],
+            "run": None,
         },
         "buckets": [None] * buckets_count,
         "repos": [],

@@ -65,6 +65,7 @@ def _isolated(tmp_path, monkeypatch):
     started: List[tuple] = []
     monkeypatch.setattr(totals, "start_refresh", lambda *a, **k: started.append(a) or True)
     monkeypatch.setattr(totals, "_in_flight", False)
+    monkeypatch.setattr(totals, "_run", None)
     yield started
     tokens.reset()
 
@@ -282,6 +283,21 @@ class TestDegradedHalves:
         assert [r["repo"] for r in out["repos"]] == ["alpha"]
 
 
+class TestRun:
+    def test_the_refresh_progress_rides_the_github_half(self, monkeypatch):
+        _save(_store({"alpha": {"2026-11-04": _day(2)}}))
+        run = {"started_at": "2026-11-04T11:59:00Z", "finished_at": None, "total": 3, "done": 1,
+               "current": "beta", "error": None, "results": []}
+        monkeypatch.setattr(totals, "_run", run)
+        out = _read(FakeHub(_hub({"2026-11-04": {}})), monkeypatch)
+        assert out["github"]["run"]["done"] == 1 and out["github"]["run"]["total"] == 3
+
+    def test_no_run_since_start_is_null(self, monkeypatch):
+        _save(_store({"alpha": {"2026-11-04": _day(2)}}))
+        out = _read(FakeHub(_hub({"2026-11-04": {}})), monkeypatch)
+        assert out["github"]["run"] is None
+
+
 class TestRoute:
     def test_it_answers_with_both_halves(self, webapp_client, monkeypatch):
         client, _app, _ = webapp_client
@@ -292,6 +308,16 @@ class TestRoute:
         body = resp.json()
         assert body["bucket"] == "week" and body["github"]["state"] == "ok"
         assert body["buckets"][0]["github"]["lines_added"] == 3
+
+    def test_opening_the_sheet_never_starts_a_refresh(self, webapp_client, monkeypatch, _isolated):
+        """The sheet's open is a plain read: a refresh is one GitHub read per project and waits for a tap."""
+        client, _app, _ = webapp_client
+        monkeypatch.setattr(hub_token_history, "fetch", FakeHub(_hub({"2026-11-04": {}})))
+        assert client.get("/api/progress").status_code == 200
+        assert client.get("/api/progress", params={"bucket": "week"}).status_code == 200
+        assert _isolated == []
+        client.get("/api/progress", params={"refresh": "true"})
+        assert len(_isolated) == 1
 
     def test_it_defaults_to_thirty_daily_buckets(self, webapp_client, monkeypatch):
         client, _app, _ = webapp_client

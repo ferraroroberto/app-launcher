@@ -66,6 +66,16 @@ _GITHUB_REMOTE = re.compile(
 _run_lock = threading.Lock()
 _in_flight = False
 
+# The current (or last finished) refresh's progress and per-project results. A
+# reader gets a copy under the lock; it is in memory only, since it describes
+# the run a person is watching, not the saved totals.
+_run_state_lock = threading.Lock()
+_run: Optional[Dict[str, Any]] = None
+
+OK_RESULT = "ok"
+SKIPPED_RESULT = "skipped"
+FAILED_RESULT = "failed"
+
 Reader = Callable[[str, str, Optional[datetime]], Dict[str, Any]]
 
 
@@ -100,8 +110,39 @@ def _state(entry: Dict[str, Any]) -> str:
     return STALE if entry.get("error") else OK
 
 
+def _run_copy() -> Optional[Dict[str, Any]]:
+    with _run_state_lock:
+        if _run is None:
+            return None
+        return {**_run, "results": [dict(r) for r in _run["results"]]}
+
+
+def _run_begin(started: str, total: int, skipped: List[Dict[str, str]]) -> None:
+    """Start a run: every project is counted in ``total``; a skip is a result from the first moment."""
+    global _run
+    with _run_state_lock:
+        _run = {
+            "started_at": started, "finished_at": None, "total": total, "done": 0,
+            "current": None, "error": None,
+            "results": [{"repo": s["repo"], "status": SKIPPED_RESULT, "detail": s["reason"]} for s in skipped],
+        }
+
+
+def _run_update(**changes: Any) -> None:
+    with _run_state_lock:
+        if _run is not None:
+            _run.update(changes)
+
+
+def _run_result(repo: str, status: str, detail: Optional[str] = None) -> None:
+    with _run_state_lock:
+        if _run is not None:
+            _run["results"].append({"repo": repo, "status": status, "detail": detail})
+            _run["done"] += 1
+
+
 def snapshot(path: Optional[Path] = None) -> Dict[str, Any]:
-    """The saved totals with each repo's state; never calls GitHub."""
+    """The saved totals with each repo's state and the last refresh's progress; never calls GitHub."""
     store, problem = _load(path or TOTALS_FILE)
     repos = {
         name: {
@@ -119,6 +160,7 @@ def snapshot(path: Optional[Path] = None) -> Dict[str, Any]:
         "error": problem or store["error"],
         "repos": repos,
         "skipped": list(store["skipped"]),
+        "run": _run_copy(),
     }
 
 
@@ -225,6 +267,7 @@ def refresh(
     try:
         _refresh_locked(fleet_config_dir, projects_dir, target, now, tz, reader or github_client.repo_history)
     finally:
+        _run_update(finished_at=_stamp(datetime.now(timezone.utc)), current=None)
         _in_flight = False
         _run_lock.release()
     return snapshot(target)
@@ -245,18 +288,23 @@ def _refresh_locked(
     except TotalsError as exc:
         logger.warning("⚠️ progress totals: %s", exc)
         store["error"] = str(exc)
+        _run_begin(started, 0, [])
+        _run_update(error=str(exc))
         _save(path, store)
         return
     store["error"] = None
     store["skipped"] = skipped
+    _run_begin(started, len(repos) + len(skipped), skipped)
     failed = 0
     low_points = False
     for repo in repos:
         entry = store["repos"].setdefault(repo["name"], {"days": {}})
         entry.update(owner=repo["owner"], repo=repo["repo"])
+        _run_update(current=repo["name"])
         if low_points:
             entry["error"] = "GitHub rate limit is low; read again later."
             failed += 1
+            _run_result(repo["name"], FAILED_RESULT, entry["error"])
             _save(path, store)
             continue
         try:
@@ -266,8 +314,10 @@ def _refresh_locked(
             level("⚠️ progress totals: %s failed: %s", repo["name"], exc)
             entry["error"] = f"{type(exc).__name__}: {exc}"
             failed += 1
+            _run_result(repo["name"], FAILED_RESULT, entry["error"])
         else:
             low_points = remaining is not None and remaining < MIN_REMAINING_POINTS
+            _run_result(repo["name"], OK_RESULT)
         _save(path, store)
     if failed < len(repos) or not repos:
         store["refreshed_at"] = started

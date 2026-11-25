@@ -1,8 +1,8 @@
     <!-- The History sheet, behind the Usage card's ⋮ menu: what the fleet shipped
          (lines, PRs, issues) and the tokens spent, by day, week or month.
-         progress/progress-sheet.js opens it on the cached GET /api/progress at
-         once, then asks for a refresh and updates in place; the toast rides
-         the footer while the refresh runs. -->
+         progress/progress-sheet.js opens it on the cached GET /api/progress and
+         never refreshes on open; the Refresh button does, and the toast rides
+         the footer while it runs. -->
     <dialog id="progressSheet" class="detail-dialog progress-dialog" data-surface="code.history-sheet" data-track-view="sheet.progress" aria-labelledby="progressSheetTitle">
       <div class="detail-card">
         <div class="detail-header">
@@ -12,6 +12,7 @@
           </button>
         </div>
         <p id="progressSheetSub" class="progress-sub"></p>
+        <p id="progressRefreshed" class="progress-sub progress-refreshed"></p>
         <div class="progress-body">
           <div class="progress-controls">
             <div class="segmented" role="group" aria-label="Group by">
@@ -77,7 +78,7 @@
             </div>
 
             <section class="card progress-table-card" aria-labelledby="progressReposTitle">
-              <div class="card-head"><h3 id="progressReposTitle" class="card-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"></use></svg> By repo</h3><span id="progressReposMeta" class="card-head-meta"></span></div>
+              <div class="card-head progress-head-stack"><h3 id="progressReposTitle" class="card-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"></use></svg> By repo</h3><span id="progressReposMeta" class="card-head-meta"></span></div>
               <div class="progress-table-wrap">
                 <table id="progressRepos" class="progress-table">
                   <thead>
