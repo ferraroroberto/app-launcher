@@ -27,7 +27,11 @@ The rules (docs/usage-track-ratchet.md quotes the convention each one holds):
   * `usage-log-wired` -- repo level and never baselined: `[vendored]` declares
     `usage-log` and `usage_log`, a file in scope calls `initUsageLog(`, and a
     tracked Python file calls `usage_router(` (the vendored `usage_log_starlette`
-    adapter counts when `[vendored]` declares it).
+    adapter counts when `[vendored]` declares it);
+  * `health-routes-wired` -- repo level and never baselined: `[vendored]`
+    declares `health_routes` and a tracked Python file outside the vendored
+    copies calls `health_router(`, so the app answers `GET /healthz` and
+    `GET /api/version`.
 
 A single hit keeps its exception with a `<rule>-exempt: <reason>` comment (`//`
 in JS, `<!-- -->` in HTML) on its own line or in the comment block right above
@@ -38,8 +42,8 @@ Opt-in, per adopter, in its own `.fleet.toml`:
     [usage_track_ratchet]
     enabled  = true
     baseline = ".ratchets/usage-track.json"           # default
-    rules    = ["untracked-control", "untracked-sheet", "dynamic-id", "usage-log-wired"]
-    paths    = ["app/webapp/static/**", "app/webapp/templates/**"]  # default
+    rules    = ["untracked-control", "untracked-sheet", "dynamic-id", "usage-log-wired", "health-routes-wired"]
+    paths   = ["app/webapp/static/**", "app/webapp/templates/**"]  # default
     exclude  = ["app/webapp/static/vendor/**"]                 # globs; never scanned
     builders = ["app/webapp/static/row.js:row"]                # control builders whose callers pass `track:`
 
@@ -104,13 +108,16 @@ DEFAULT_PATHS = ("app/webapp/static/**", "app/webapp/templates/**")
 BUILTIN_EXCLUDES = ("**/node_modules/**", "**/.venv/**", "**/venv/**", "**/*.min.js")
 GIT_TIMEOUT_S = 120
 
-RULES = ("untracked-control", "untracked-sheet", "dynamic-id", "usage-log-wired")
-#: Counted per file against the baseline; `usage-log-wired` is a fact about the repo and never baselined.
+RULES = ("untracked-control", "untracked-sheet", "dynamic-id", "usage-log-wired", "health-routes-wired")
+#: Counted per file against the baseline; the two `-wired` rules are facts about the repo and never baselined.
 FILE_RULES = ("untracked-control", "untracked-sheet", "dynamic-id")
 WIRED = "usage-log-wired"
+HEALTH_WIRED = "health-routes-wired"
 
 _CLIENT_KEY, _SERVER_KEY, _ADAPTER_KEY = "usage-log", "usage_log", "usage_log_starlette"
 _ROUTER_CALL = re.compile(r"(?<!def )\busage_router\(")
+_HEALTH_KEY = "health_routes"
+_HEALTH_CALL = re.compile(r"(?<!def )\bhealth_router\(")
 
 EXIT_PASS, EXIT_RISE, EXIT_CONFIG, EXIT_NOT_CONFIRMED = 0, 1, 2, 3
 
@@ -322,15 +329,16 @@ def _read_text(root: Path, path: str) -> str | None:
 
 @dataclass
 class Tree:
-    """One scan of the repo: hits per in-scope file (only files with one), and what the wiring rule needs."""
+    """One scan of the repo: hits per in-scope file (only files with one), and what the wiring rules need."""
 
     found: dict[str, list[Hit]]
     inits: bool
     router: bool
+    health: bool = False
 
 
 def scan_tree(root: Path, cfg: Config, vendored: tuple[str, ...], adapter: str | None = None) -> Tree:
-    """Every in-scope HTML/JS file, plus the tracked Python files the wiring rule reads for `usage_router(`.
+    """Every in-scope HTML/JS file, plus the tracked Python files the wiring rules read for their router calls.
 
     The vendored Starlette adapter (`adapter`, its `[vendored]` dest) is the one vendored
     file read for that call: it mounts the router on behalf of an app that has no FastAPI.
@@ -353,11 +361,33 @@ def scan_tree(root: Path, cfg: Config, vendored: tuple[str, ...], adapter: str |
             tree.inits |= inits
             if hits:
                 tree.found[path] = hits
-        elif (WIRED in cfg.rules and path.endswith(".py") and not tree.router and not is_test_path(path)
-              and (path == adapter or not any(_under(path, d) for d in vendored))):
-            text = _read_text(root, path)
-            tree.router = text is not None and _ROUTER_CALL.search(text) is not None
+        elif path.endswith(".py") and not is_test_path(path):
+            _read_wiring(root, path, cfg, tree, vendored, adapter)
     return tree
+
+
+def _read_wiring(root: Path, path: str, cfg: Config, tree: Tree, vendored: tuple[str, ...],
+                 adapter: str | None) -> None:
+    """Record whether one tracked Python file mounts the usage router or the health routes."""
+    is_vendored = any(_under(path, d) for d in vendored)
+    want_router = WIRED in cfg.rules and not tree.router and (path == adapter or not is_vendored)
+    want_health = HEALTH_WIRED in cfg.rules and not tree.health and not is_vendored
+    if not (want_router or want_health):
+        return
+    text = _read_text(root, path)
+    if text is None:
+        return
+    tree.router = tree.router or (want_router and _ROUTER_CALL.search(text) is not None)
+    tree.health = tree.health or (want_health and _HEALTH_CALL.search(text) is not None)
+
+
+def health_problems(tree: Tree, vendored_keys: frozenset[str]) -> list[str]:
+    """Why the app does not serve the standard health routes; empty when it does."""
+    problems = [] if _HEALTH_KEY in vendored_keys else [f"`[vendored]` does not declare `{_HEALTH_KEY}`"]
+    if not tree.health:
+        problems.append("no tracked Python file calls `health_router(`, so `/healthz` and `/api/version` "
+                        "are not mounted")
+    return problems
 
 
 def wiring_problems(tree: Tree, vendored_keys: frozenset[str]) -> list[str]:
@@ -457,12 +487,18 @@ def _check(cfg: Config, tree: Tree, current: Counts, baseline: Counts, vendored_
         print(f"usage track ratchet: [{WIRED}] the app does not reach its usage log:")
         for message in problems:
             print(f"  {message}")
+    health = health_problems(tree, vendored_keys) if HEALTH_WIRED in cfg.rules else []
+    if health:
+        print(f"usage track ratchet: [{HEALTH_WIRED}] the app does not serve the standard health routes "
+              "(mount the vendored `src/health_routes.py`, docs/webapp-pwa-conventions.md):")
+        for message in health:
+            print(f"  {message}")
     if added:
         _report_added(added, tree.found, baseline)
         print("  Give each control a constant `data-track` id and each <dialog> a `data-track-view` "
               "(docs/usage-track-ratchet.md). A hit that must stay carries `<rule>-exempt: <reason>`; "
               "or (reviewed) raise the baseline with `--update-baseline --allow-additions`.")
-    if added or problems:
+    if added or problems or health:
         return EXIT_RISE
     print(f"usage track ratchet: PASS ({_total(current)} baselined hit(s) in {len(current)} file(s), none new; "
           f"rules: {', '.join(cfg.rules)})")

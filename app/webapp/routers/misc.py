@@ -42,6 +42,7 @@ from src.diagnostics import (
     listener_pids,
 )
 from src.git_utils import resolve_deployed_sha
+from src.health_routes import health_router
 from src.launching.vscode_workspace import is_vscode_installed
 from src.middleware import is_pc_itself, via_cloudflare
 from src.registry import load_registry
@@ -57,6 +58,8 @@ from src.webapp_config import WebappConfig
 _log = logging.getLogger(__name__)
 
 router = APIRouter()
+# The fleet's standard liveness and build identity routes (vendored).
+router.include_router(health_router(service="launcher", version=False))
 
 _IDENTITY = build_identity()
 _GIT_SHA = _IDENTITY["git_sha"]
@@ -336,11 +339,6 @@ async def agents() -> Dict[str, Any]:
     agents_found, vscode = await asyncio.gather(
         run_on(OUTBOUND, detect_agents), run_on(OUTBOUND, is_vscode_installed))
     return {"agents": agents_found, "vscode_available": vscode}
-
-
-@router.get("/healthz")
-async def healthz() -> Dict[str, Any]:
-    return {"ok": True, "service": "launcher"}
 
 
 @router.get("/api/system/load")
