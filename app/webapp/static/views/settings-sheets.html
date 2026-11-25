@@ -419,6 +419,43 @@
             <button data-track="chief.grokbot-directive" type="button" class="button-ghost" data-open-document="grok-bot-skill-pack" aria-haspopup="dialog" aria-describedby="grokbotDirectiveHelp">Open</button>
           </div>
           <p id="grokbotDirectiveHelp" class="field-help">The directive Grok Bot runs from, read live from the fleet. Copy it into Grok Bot when its updated time is newer than your pasted copy.</p>
+          <h3 class="opt-group-title" id="chiefTimingsTitle">Timings</h3>
+          <p class="opt-hint">How long the chief's helpers wait. Each saves when you leave the field, and the defaults are the values the chief has always used. The re-ring and re-offer times apply at once; the hold and stall times apply once the chief's own tools read them.</p>
+          <label class="row">
+            <span>Re-ring after (seconds)</span>
+            <input id="chiefReringSeconds" type="number" class="input-native" inputmode="numeric" min="30" max="600" step="1" aria-describedby="chiefReringSecondsHelp">
+          </label>
+          <p id="chiefReringSecondsHelp" class="field-help">After the doorbell rings, it waits this long. If the chief is still idle with mail waiting, the ring did not land, so it rings again. 30 to 600, default 60.</p>
+          <label class="row">
+            <span>Re-offer mail after (minutes)</span>
+            <input id="chiefReofferMinutes" type="number" class="input-native" inputmode="numeric" min="10" max="120" step="1" aria-describedby="chiefReofferMinutesHelp">
+          </label>
+          <p id="chiefReofferMinutesHelp" class="field-help">Mail the chief took but never finished is offered again after this long, because whatever took it is assumed gone. Keep it longer than a busy chief turn. 10 to 120, default 15.</p>
+          <label class="row">
+            <span>Hold turn end once per (minutes)</span>
+            <input id="chiefHoldMinutes" type="number" class="input-native" inputmode="numeric" min="5" max="60" step="1" aria-describedby="chiefHoldMinutesHelp">
+          </label>
+          <p id="chiefHoldMinutesHelp" class="field-help">When the chief tries to stop while it should compact, or while worker slots sit free beside queued work, it is held back at most once in this window, so a hold can never loop. 5 to 60, default 10.</p>
+          <label class="row">
+            <span>Stall watchdog (minutes)</span>
+            <input id="chiefStallMinutes" type="number" class="input-native" inputmode="numeric" min="15" max="240" step="1" aria-describedby="chiefStallMinutesHelp">
+          </label>
+          <p id="chiefStallMinutesHelp" class="field-help">An unattended run that prints nothing for this long is stopped as stuck. Long enough for a slow test run. 15 to 240, default 45.</p>
+          <h3 class="opt-group-title" id="chiefRulesTitle">How the chief works</h3>
+          <p class="opt-hint">Fixed safety rules. They are shown here so you know what to expect, and cannot be changed.</p>
+          <ul class="channel-steps chief-rules" aria-labelledby="chiefRulesTitle">
+            <li>The doorbell looks every 3 seconds and rings only after the reason has held for 3 seconds, so workers that finish together cause one ring.</li>
+            <li>It types only into a chief idle at its prompt with nothing half-typed, and its line carries no data. A chief that says it is working but has printed nothing for 10 minutes counts as idle.</li>
+            <li>The fallback check looks every 30 seconds.</li>
+            <li>A message sent to a worker is resent only when its conversation shows it never arrived, and never after every send failed, because a repeated message could run a merge twice.</li>
+            <li>One live session per repo. The chief itself never counts against the worker cap (1 to 10).</li>
+            <li>A yolo start needs an explicit confirmation.</li>
+            <li>One session per Telegram bot.</li>
+            <li>A chief restart waits up to 8 seconds for the old chief to quit, so two chiefs never run.</li>
+            <li>The chief compacts itself only when its handover notes and plan were written in the last 10 minutes, so nothing is lost.</li>
+            <li>Mail older than 24 hours is dropped. A worker start still pending after 30 minutes shows as stalled on the Board.</li>
+            <li>Resume offers a chief conversation up to 7 days old.</li>
+          </ul>
         </div>
         <div class="detail-actions">
           <button data-track="chief.done" type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>

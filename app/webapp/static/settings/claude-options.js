@@ -20,7 +20,7 @@ import { syncLaunchPresets } from '../shared/launch-presets.js';
 import { renderLaunchPresetsEditor, wireLaunchPresets } from './launch-presets-settings.js';
 import { setSwitch, switchEl } from '../_vendored/switch/switch.js';
 import { setUsageShows } from '../usage-meter.js';
-import { renderSettingsValues } from './settings-sheets.js';
+import { CHIEF_TIMING_FIELDS, renderSettingsValues } from './settings-sheets.js';
 import { renderRemotePowerGuard } from './remote-power-guard.js';
 import { renderLidKeepAwake } from './lid-keep-awake.js';
 import { renderDictationAutoStop } from './dictation-autostop.js';
@@ -349,8 +349,12 @@ function renderChiefAutoCompact(body) {
   field.disabled = value === 0;
 }
 
-// Settings › Chief's two wakes: the doorbell switch and the fallback minutes.
+// Settings › Chief's two wakes (the doorbell switch, the fallback minutes) and its timings.
 function renderChiefWake(body) {
+  CHIEF_TIMING_FIELDS.forEach(function (f) {
+    const input = document.getElementById(f[0]);
+    if (input && body[f[1]] != null) setFieldValue(input, String(body[f[1]]));
+  });
   if (els.chiefDoorbellToggle) {
     setSwitch(els.chiefDoorbellToggle, body.chief_doorbell === true);
   }

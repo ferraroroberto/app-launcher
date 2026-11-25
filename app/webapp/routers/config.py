@@ -60,6 +60,7 @@ from src.webapp_config import (
     WebappConfig,
     update_webapp_config,
 )
+from src.webapp_settings.chief_timings import CHIEF_TIMINGS, chief_timings_payload
 
 router = APIRouter()
 
@@ -113,9 +114,10 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "chief_auto_compact_threshold": cfg.chief_auto_compact_threshold,
         "chief_auto_compact_threshold_min": MIN_CHIEF_AUTO_COMPACT_THRESHOLD,
         "chief_auto_compact_threshold_max": MAX_CHIEF_AUTO_COMPACT_THRESHOLD,
-        # The chief doorbell (off by default) and its fallback wake (minutes, 0 = off).
+        # The chief doorbell (off by default), its fallback wake (minutes, 0 = off) and timings.
         "chief_doorbell": cfg.chief_doorbell,
         "chief_fallback_minutes": cfg.chief_fallback_minutes,
+        **chief_timings_payload(cfg),
         # Queue drain, on by default; Settings > Chief's Auto-drain switch.
         "chief_auto_drain": cfg.chief_auto_drain,
         # Failed Job runs and red main-branch CI reach the chief mailbox; on by default.
@@ -368,6 +370,7 @@ _PATCH_KEYS = frozenset({
     "chief_auto_compact_threshold",
     "chief_doorbell",
     "chief_fallback_minutes",
+    *CHIEF_TIMINGS,
     "chief_auto_drain",
     "chief_job_failures",
     "chief_ci_failures",
@@ -472,8 +475,10 @@ async def patch_config(request: Request) -> Dict[str, Any]:
                 status_code=400,
                 detail="chief_auto_compact_threshold must be an integer percent",
             )
-    # The large-file limit and the fallback wake are whole numbers, refused the same way.
-    for key, unit in (("large_upload_max_mb", "MB"), ("chief_fallback_minutes", "minutes")):
+    # The large-file limit and the chief's minutes and seconds are whole numbers, refused the same way.
+    whole_numbers = {"large_upload_max_mb": "MB", "chief_fallback_minutes": "minutes",
+                     **{name: spec.unit for name, spec in CHIEF_TIMINGS.items()}}
+    for key, unit in whole_numbers.items():
         value = patch.get(key)
         if key in patch and (isinstance(value, bool) or not isinstance(value, int)):
             raise HTTPException(

@@ -24,7 +24,9 @@ its terminal (:data:`DOORBELL_LINE`):
 The ring is level-triggered. The condition must hold for :data:`DEBOUNCE_SECONDS`
 first, so lanes that finish together become one ring. After a ring the bell
 waits :data:`BACKOFF_SECONDS`; a chief still idle with pending events after
-that never got the ring, so it rings again. Seeing the chief busy, or the
+that never got the ring, so it rings again. The back-off and the claim re-offer
+age are the ``chief_rering_seconds`` and ``chief_reoffer_minutes`` settings,
+read every tick like the switch. Seeing the chief busy, or the
 mailbox empty, means the ring landed, and the back-off ends early.
 
 Off unless ``WebappConfig.chief_doorbell`` is on (default off; the owner turns
@@ -63,12 +65,14 @@ from src.session_view.automatic_turns import (
     ORIGIN_DOORBELL,
     record_injected,
 )
+from src.webapp_settings.chief_timings import CHIEF_TIMINGS
 
 logger = logging.getLogger(__name__)
 
 TICK_SECONDS = 3.0
 DEBOUNCE_SECONDS = 3.0
-BACKOFF_SECONDS = 60.0
+#: The re-ring back-off when no setting is stored (``chief_rering_seconds``).
+BACKOFF_SECONDS = float(CHIEF_TIMINGS["chief_rering_seconds"].default)
 
 #: A ``working`` chief whose terminal has been silent this long is a stuck
 #: label, not a busy chief: a real turn repaints its spinner many times a
@@ -79,9 +83,9 @@ STALE_WORKING_SECONDS = 600.0
 #: in ``chief-doorbell.log`` instead of vanishing after its first line.
 SKIP_REPEAT_SECONDS = 600.0
 
-#: A ``.claimed/`` claim older than this counts as pending again
-#: (``chief_ops.CLAIM_STALE_SECONDS``).
-CLAIM_STALE_MS = 900_000
+#: A ``.claimed/`` claim older than this counts as pending again, when no
+#: ``chief_reoffer_minutes`` is stored (``chief_ops.CLAIM_STALE_SECONDS``).
+CLAIM_STALE_MS = CHIEF_TIMINGS["chief_reoffer_minutes"].default * 60_000
 
 _CLAIM_NAME = re.compile(r"^(\d+)-(.+)\.json$")
 
@@ -98,6 +102,16 @@ def doorbell_on(cfg: object) -> bool:
     return getattr(cfg, "chief_doorbell", False) is True
 
 
+def rering_seconds(cfg: object) -> float:
+    """The back-off after a ring; a config without the key uses today's value."""
+    return float(getattr(cfg, "chief_rering_seconds", BACKOFF_SECONDS))
+
+
+def claim_stale_ms(cfg: object) -> int:
+    """The claim re-offer age in ms; a config without the key uses today's value."""
+    return int(getattr(cfg, "chief_reoffer_minutes", CLAIM_STALE_MS // 60_000)) * 60_000
+
+
 def is_counted_name(entry: Any) -> bool:
     return (
         entry.name.endswith(".json")
@@ -106,7 +120,9 @@ def is_counted_name(entry: Any) -> bool:
     )
 
 
-def count_pending(inbox_dir: Path, now_ms: int) -> Optional[int]:
+def count_pending(
+    inbox_dir: Path, now_ms: int, stale_ms: int = CLAIM_STALE_MS
+) -> Optional[int]:
     """Pending events in ``inbox_dir`` by the mailbox contract's counting rule.
 
     ``R + S``: regular, non-dot ``*.json`` files in the root, plus those in
@@ -132,7 +148,7 @@ def count_pending(inbox_dir: Path, now_ms: int) -> Optional[int]:
     stale = 0
     for name in names:
         match = _CLAIM_NAME.match(name)
-        if match is None or now_ms - int(match.group(1)) >= CLAIM_STALE_MS:
+        if match is None or now_ms - int(match.group(1)) >= stale_ms:
             stale += 1
     return root + stale
 
@@ -185,7 +201,8 @@ async def observe(cfg: Any) -> Observation:
     chief-pointer write with ``create_task``.
     """
     pending = await run_on(
-        BOARD_FILES, count_pending, Path(cfg.chief_inbox_dir), int(time.time() * 1000)
+        BOARD_FILES, count_pending, Path(cfg.chief_inbox_dir), int(time.time() * 1000),
+        claim_stale_ms(cfg),
     )
     if not pending:
         return Observation(pending=pending)
@@ -237,8 +254,8 @@ class Doorbell:
         self._eligible_since: Optional[float] = None
         self._last_ring: Optional[float] = None
 
-    def decide(self, obs: Observation, now: float) -> str:
-        """``"ring"``, or the reason not to."""
+    def decide(self, obs: Observation, now: float, backoff: float = BACKOFF_SECONDS) -> str:
+        """``"ring"``, or the reason not to. ``backoff`` is the re-ring wait."""
         if obs.blocked:
             self._eligible_since = None
             return obs.blocked
@@ -261,7 +278,7 @@ class Doorbell:
         if obs.dirty is not False:
             self._eligible_since = None
             return "composer dirty" if obs.dirty else "composer unknown"
-        if self._last_ring is not None and now - self._last_ring < BACKOFF_SECONDS:
+        if self._last_ring is not None and now - self._last_ring < backoff:
             return "backing off after ring"
         if self._eligible_since is None:
             self._eligible_since = now
@@ -315,13 +332,13 @@ async def tick_once(
         reason = f"observe failed: {exc}"
         skips.note(reason, None, tick_now)
         return reason
-    decision = bell.decide(obs, tick_now)
+    decision = bell.decide(obs, tick_now, rering_seconds(cfg))
     if decision != "ring":
         skips.note(decision, obs, tick_now)
         return decision
     skips.reset()
     # The back-off already started: a host that refuses the write is retried
-    # in BACKOFF_SECONDS, not hammered every tick.
+    # after the back-off, not hammered every tick.
     return await ring(cfg, obs, "doorbell", send_fn=send_fn, record_fn=record_fn)
 
 

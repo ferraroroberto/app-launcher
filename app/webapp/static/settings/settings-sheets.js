@@ -395,10 +395,19 @@ const TEXT_FIELDS = [
   ['lifeOsDir', 'life_os_dir', 'Life OS folder', function () { return fetchSkills(); }],
   ['fleetConfigDir', 'fleet_config_dir', 'fleet-config folder', null],
 ];
+// Settings › Chief › Timings: input id, config key, label. The ranges live on
+// the inputs and in src/webapp_settings/chief_timings.py, which refuses the rest.
+export const CHIEF_TIMING_FIELDS = [
+  ['chiefReringSeconds', 'chief_rering_seconds', 'Re-ring after'],
+  ['chiefReofferMinutes', 'chief_reoffer_minutes', 'Re-offer mail after'],
+  ['chiefHoldMinutes', 'chief_hold_minutes', 'Hold turn end'],
+  ['chiefStallMinutes', 'chief_stall_minutes', 'Stall watchdog'],
+];
 const NUMBER_FIELDS = [
   ['terminalHistoryLines', 'terminal_history_lines', 'Terminal history'],
   ['largeUploadMaxMb', 'large_upload_max_mb', 'Large file limit'],
   ['chiefFallbackMinutes', 'chief_fallback_minutes', 'Fallback check'],
+  ...CHIEF_TIMING_FIELDS,
 ];
 
 // `change` fires once an edited field loses focus (or on Enter), never per

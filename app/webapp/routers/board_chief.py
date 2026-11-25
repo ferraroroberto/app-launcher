@@ -89,6 +89,7 @@ from src.launching.flags import build_resume_flags
 from src.launching.launcher import open_local_terminal_window, spawn_claude_session
 from src.subprocess_flags import NO_WINDOW
 from src.webapp_config import WebappConfig, update_webapp_config
+from src.webapp_settings.chief_timings import chief_timings_payload
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -496,6 +497,7 @@ def _chief_settings_payload(cfg: WebappConfig) -> Dict[str, Any]:
         "chief_job_self_heal": cfg.chief_job_self_heal,
         "chief_weekly_proposals": cfg.chief_weekly_proposals,
         "chief_fallback_minutes": cfg.chief_fallback_minutes,
+        **chief_timings_payload(cfg),
     }
 
 
