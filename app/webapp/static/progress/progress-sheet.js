@@ -2,10 +2,13 @@
  *
  * Opened from the Usage card's ⋮ menu. It reads GET /api/progress, which
  * answers from its cache at once, so the sheet draws the cached figures the
- * moment it opens, however old, and says how old they are. Opening also asks
- * for a refresh (?refresh=true); while the server recalculates, a toast rides
- * the sheet's footer and the sheet polls the cache, then updates in place.
- * Changing the bucket or the range re-reads the cache only.
+ * moment it opens, however old, and says when they were last refreshed.
+ * Opening never refreshes: a refresh makes one read per project, so it starts
+ * only when the owner taps Refresh (?refresh=true). While the server
+ * recalculates, a neutral toast on the sheet's footer counts the projects and
+ * the sheet polls the cache; the toast ends as a summary that counts a
+ * skipped project and turns red only for a read that failed. Changing the
+ * bucket or the range re-reads the cache only.
  *
  * A figure that was not measured shows its word (unknown, unavailable, stale,
  * not measured), never zero. The maths is progress-model.js; the drawing of a
@@ -20,15 +23,20 @@ import { chip } from '../glance.js';
 import { drawChart } from './progress-charts.js';
 import {
   DEFAULT_RANGE, agentShares, fmtN, githubSeries, githubTotal, halfStatus, progressUrl,
-  rangeDays, rangeText, repoRows, reposCaption, summary, tiles, tokenSeries,
+  rangeDays, rangeText, refreshProgress, refreshSummary, refreshedLine, repoRows, reposCaption, summary, tiles,
+  tokenSeries,
 } from './progress-model.js';
 
-// How often the cache is re-read while a refresh runs, and how many times
-// before the sheet stops waiting (a first backfill can take minutes).
-const POLL_MS = 4000;
-const MAX_POLLS = 150;
-// The refresh toast stays until the sheet hides it.
+// How often the cache is re-read while a refresh runs (the count in the toast
+// moves at this pace), and how many times before the sheet stops waiting (a
+// first backfill can take minutes).
+const POLL_MS = 2000;
+const MAX_POLLS = 300;
+// The progress toast stays until the sheet replaces or hides it; the summary
+// that ends a refresh stays long enough to read, and longer when it is red.
 const TOAST_HOLD_MS = 10 * 60 * 1000;
+const SUMMARY_MS = 8000;
+const SUMMARY_ERROR_MS = 15000;
 
 const view = {
   bucket: 'day',
@@ -72,10 +80,14 @@ function hideToast() {
   if (host) host.hidden = true;
 }
 
-function showToast(message, kind) {
+function showToast(message, kind, ms) {
   const host = node('progressToast');
   if (!host) return;
-  toast(message, kind || '', { host: host, icon: kind === 'error' ? 'triangle-alert' : 'refresh-cw', ms: TOAST_HOLD_MS });
+  toast(message, kind || '', { host: host, icon: kind === 'error' ? 'triangle-alert' : 'refresh-cw', ms: ms || TOAST_HOLD_MS });
+}
+
+function runOf(data) {
+  return data && data.github ? data.github.run || null : null;
 }
 
 // One read of the cache, drawn. A failed read leaves the last good figures up
@@ -112,16 +124,20 @@ async function load(refresh) {
 
 // Ask the server to recalculate, then follow the cache until it says it is
 // done. The answer to the ask is still the cache, so nothing waits on it.
+// `before` is the run the sheet held when the owner tapped Refresh, so the
+// toast never counts or sums up an earlier run.
 async function refresh() {
   if (view.refreshing) return;
   view.refreshing = true;
   syncRefreshButton();
-  showToast('Refreshing GitHub and token totals…');
+  const before = (runOf(view.data) || {}).started_at || null;
+  showToast(refreshProgress(null, before));
   stopPolling();
   await load(true);
   // A read the user's own change superseded still updates view.data, so the
   // loop follows the sheet's latest answer, not one call's return value.
   for (let n = 0; view.data && view.data.refreshing && !view.failed && n < MAX_POLLS && isOpen(); n += 1) {
+    showToast(refreshProgress(runOf(view.data), before));
     await new Promise(function (resolve) { view.timer = setTimeout(resolve, POLL_MS); });
     if (!isOpen()) break;
     await load(false);
@@ -129,9 +145,17 @@ async function refresh() {
   view.refreshing = false;
   syncRefreshButton();
   if (!isOpen()) return;
-  if (view.failed || !view.data) showToast('Could not refresh. Showing the last figures.', 'error');
-  else if (view.data.refreshing) showToast('Still refreshing. The figures update when it finishes.');
-  else hideToast();
+  if (view.failed || !view.data) {
+    showToast('Could not refresh. Showing the last figures.', 'error', SUMMARY_ERROR_MS);
+    return;
+  }
+  if (view.data.refreshing) {
+    showToast('Still refreshing. The figures update when it finishes.');
+    return;
+  }
+  const done = refreshSummary(runOf(view.data), before);
+  if (!done) hideToast();
+  else showToast(done.text, done.kind, done.kind === 'error' ? SUMMARY_ERROR_MS : SUMMARY_MS);
 }
 
 function syncRefreshButton() {
@@ -431,6 +455,7 @@ function render() {
   const range = currentRange();
   node('progressSheetSub').textContent = rangeText(data.from || range.from, data.to || range.to) +
     (sum.stale ? ' · some figures are stale' : '');
+  node('progressRefreshed').textContent = refreshedLine(data.github);
   renderTiles(data);
   renderCharts(data, sum);
   renderRepos(data);
@@ -494,7 +519,7 @@ export function openProgressSheet() {
   if (!d) return;
   if (!d.open) d.showModal();
   syncCustomInputs();
-  load(false).then(function () { if (isOpen()) refresh(); });
+  load(false);
 }
 
 export function wireProgressSheet() {

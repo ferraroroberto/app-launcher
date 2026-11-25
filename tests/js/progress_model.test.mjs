@@ -6,7 +6,8 @@
 import assert from 'node:assert/strict';
 import {
   agentInfo, agentShares, bucketLabel, fmtN, githubSeries, githubTotal, halfStatus,
-  progressUrl, rangeDays, repoRows, summary, tiles, tokenAgents, tokenSeries, tokenTotals,
+  progressUrl, rangeDays, refreshProgress, refreshSummary, refreshedLine, repoRows, summary, tiles,
+  tokenAgents, tokenSeries, tokenTotals,
 } from '../../app/webapp/static/progress/progress-model.js';
 
 const cell = (tin, tout, unknown = 0) => ({ state: 'measured', tokens_in: tin, tokens_out: tout, unknown_days: unknown });
@@ -134,5 +135,39 @@ assert.equal(agentInfo('mystery').name, 'Mystery');
 const brandColours = ['claude', 'codex', 'copilot', 'antigravity', 'pi', 'grok'].map((id) => agentInfo(id).color);
 brandColours.forEach((c) => assert.match(c, /^--brand-/));
 assert.equal(new Set(brandColours).size, 6);
+
+// A refresh: the toast counts every project, and the last run's numbers are
+// never shown as this run's.
+const run = (over) => ({
+  started_at: '2026-11-04T10:00:00Z', finished_at: null, total: 26, done: 0, current: 'a', error: null,
+  results: [{ repo: 'local-only', status: 'skipped', detail: 'no GitHub remote' }], ...over,
+});
+assert.equal(refreshProgress(run({ done: 0 }), null), 'Checking 1 of 26');
+assert.equal(refreshProgress(run({ done: 1 }), null), 'Checking 2 of 26');
+assert.equal(refreshProgress(run({ done: 25 }), null), 'Checking 26 of 26');
+assert.equal(refreshProgress(run(), '2026-11-04T10:00:00Z'), 'Refreshing GitHub and token totals…');
+assert.equal(refreshProgress(null, null), 'Refreshing GitHub and token totals…');
+
+// A skip is counted and named, never an error.
+const okRows = Array.from({ length: 25 }, (_, i) => ({ repo: 'r' + i, status: 'ok', detail: null }));
+const skipOnly = refreshSummary(run({ finished_at: '2026-11-04T10:01:00Z', done: 25, results: [
+  { repo: 'local-only', status: 'skipped', detail: 'no GitHub remote' }, ...okRows] }), null);
+assert.deepEqual(skipOnly, { text: 'Refreshed 25 of 26 · 1 skipped (no GitHub remote)', kind: '' });
+// Still running, or the previous run: nothing to report yet.
+assert.equal(refreshSummary(run(), null), null);
+assert.equal(refreshSummary(run({ finished_at: '2026-11-04T10:01:00Z' }), '2026-11-04T10:00:00Z'), null);
+// A read that failed names its projects and is the only red case.
+const failedRun = refreshSummary(run({ finished_at: '2026-11-04T10:01:00Z', total: 6, results: [
+  { repo: 'a', status: 'ok', detail: null }, { repo: 'b', status: 'failed', detail: 'boom' },
+  { repo: 'c', status: 'failed', detail: 'boom' }, { repo: 'd', status: 'failed', detail: 'boom' },
+  { repo: 'e', status: 'failed', detail: 'boom' }, { repo: 'f', status: 'ok', detail: null }] }), null);
+assert.equal(failedRun.kind, 'error');
+assert.equal(failedRun.text, 'Refreshed 2 of 6 · could not read b, c, d and 1 more');
+assert.equal(refreshSummary(run({ finished_at: 'x', error: 'no registry' }), null).kind, 'error');
+
+// The last-refreshed line: its age, or the invitation to refresh.
+const T = Date.parse('2026-11-04T12:00:00Z');
+assert.equal(refreshedLine({ refreshed_at: '2026-11-04T09:00:00Z' }, T), 'Last refreshed 3 h ago');
+assert.match(refreshedLine({ refreshed_at: null }, T), /^Never refreshed/);
 
 console.log('OK');

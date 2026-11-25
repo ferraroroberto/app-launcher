@@ -11,7 +11,7 @@
  * measured".
  */
 
-import { agoFromSeconds, nameLabel } from '../shared/format.js';
+import { agoFromSeconds, agoText, nameLabel } from '../shared/format.js';
 
 export const BUCKETS = ['day', 'week', 'month'];
 
@@ -306,4 +306,56 @@ export function reposCaption(data) {
   const n = data && Array.isArray(data.repos) ? data.repos.length : 0;
   const unread = data && data.github && Array.isArray(data.github.unknown_repos) ? data.github.unknown_repos.length : 0;
   return n + (n === 1 ? ' repo' : ' repos') + (unread ? ' · ' + unread + ' not read yet' : '');
+}
+
+// ------------------------------------------------------------ refreshing
+
+const NAMES_SHOWN = 3;
+
+// "alpha, beta and 2 more": a long list of projects stays one readable line.
+function nameList(names) {
+  if (names.length <= NAMES_SHOWN) return names.join(', ');
+  return names.slice(0, NAMES_SHOWN).join(', ') + ' and ' + (names.length - NAMES_SHOWN) + ' more';
+}
+
+// The line under the sheet's title saying when the saved figures were read.
+// Opening the sheet never refreshes, so the age is what tells the owner
+// whether to tap Refresh.
+export function refreshedLine(github, now) {
+  const at = github && github.refreshed_at;
+  const ago = at ? agoText(at, now) : '';
+  return ago ? 'Last refreshed ' + ago : 'Never refreshed. Tap Refresh to read the totals.';
+}
+
+// The toast while a refresh runs. `run` is the server's progress for the run
+// in flight; `previousStart` is the `started_at` of the run the sheet already
+// held, so the last run's numbers are never shown as this one's.
+export function refreshProgress(run, previousStart) {
+  if (!run || run.started_at === previousStart || run.finished_at || !(run.total > 0)) {
+    return 'Refreshing GitHub and token totals…';
+  }
+  return 'Checking ' + Math.min(run.done + 1, run.total) + ' of ' + run.total;
+}
+
+// How a finished refresh reads: `{ text, kind }`, kind '' (neutral) or
+// 'error'. A skipped project (no remote on the forge) is counted and named but
+// is not a failure; only a read that failed turns the toast red, and it names
+// the projects. null when there is no finished run of this refresh to report.
+export function refreshSummary(run, previousStart) {
+  if (!run || run.started_at === previousStart || !run.finished_at) return null;
+  if (run.error) return { text: 'Could not refresh: ' + run.error, kind: 'error' };
+  const results = run.results || [];
+  const by = function (status) { return results.filter(function (r) { return r.status === status; }); };
+  const ok = by('ok');
+  const skipped = by('skipped');
+  const failed = by('failed');
+  let text = 'Refreshed ' + ok.length + ' of ' + run.total;
+  if (skipped.length) {
+    const reasons = Array.from(new Set(skipped.map(function (r) { return r.detail; }).filter(Boolean)));
+    text += ' · ' + skipped.length + ' skipped' + (reasons.length ? ' (' + reasons.join(', ') + ')' : '');
+  }
+  if (failed.length) {
+    text += ' · could not read ' + nameList(failed.map(function (r) { return r.repo; }));
+  }
+  return { text: text, kind: failed.length ? 'error' : '' };
 }

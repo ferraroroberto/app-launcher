@@ -176,6 +176,49 @@ def test_skipped_repos_are_listed_with_their_reason(tmp_path, registry):
     assert "local-only" not in snap["repos"]
 
 
+def test_a_skipped_project_is_counted_in_the_run_and_is_not_a_failure(tmp_path, registry):
+    snap = _refresh(tmp_path, FakeReader({"alpha": _raw(), "beta": _raw()}))
+    run = snap["run"]
+    assert run["total"] == 4 and run["done"] == 2 and run["finished_at"] and run["error"] is None
+    by_status = {}
+    for r in run["results"]:
+        by_status.setdefault(r["status"], []).append(r["repo"])
+    assert by_status == {"skipped": ["local-only", "ghost"], "ok": ["alpha", "beta"]}
+    assert {r["detail"] for r in run["results"] if r["status"] == "skipped"} == {"no GitHub remote", "no checkout"}
+    assert snap["refreshed_at"]
+
+
+def test_a_failed_read_is_a_failed_result_naming_the_project(tmp_path, registry):
+    reader = FakeReader({"alpha": _raw(), "beta": _raw()})
+    reader.fail.add("beta")
+    run = _refresh(tmp_path, reader)["run"]
+    failed = [r for r in run["results"] if r["status"] == "failed"]
+    assert [r["repo"] for r in failed] == ["beta"] and "boom" in failed[0]["detail"]
+    assert [r["repo"] for r in run["results"] if r["status"] == "ok"] == ["alpha"]
+
+
+def test_progress_counts_each_project_as_it_is_read(tmp_path, registry):
+    seen = []
+
+    class Watching(FakeReader):
+        def __call__(self, owner, repo, since):
+            run = totals.snapshot(tmp_path / "t.json")["run"]
+            seen.append((repo, run["done"], run["current"], run["total"], run["finished_at"]))
+            return super().__call__(owner, repo, since)
+
+    _refresh(tmp_path, Watching({"alpha": _raw(), "beta": _raw()}))
+    assert seen == [("alpha", 0, "alpha", 4, None), ("beta", 1, "beta", 4, None)]
+
+
+def test_an_unreadable_registry_ends_the_run_with_its_error(tmp_path, monkeypatch):
+    def _broken(*_a):
+        raise totals.TotalsError("The fleet-config folder is not set in Settings.")
+
+    monkeypatch.setattr(totals, "resolve_repos", _broken)
+    run = _refresh(tmp_path, FakeReader({}))["run"]
+    assert "fleet-config folder" in run["error"] and run["finished_at"]
+
+
 def test_low_rate_limit_stops_reading_and_marks_the_rest(tmp_path, registry):
     reader = FakeReader({"alpha": _raw(remaining=50), "beta": _raw()})
     snap = _refresh(tmp_path, reader)

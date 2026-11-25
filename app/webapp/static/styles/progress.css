@@ -37,6 +37,8 @@
   font-size: var(--font-body-sm);
   color: var(--muted);
 }
+/* The "last refreshed" line sits right under the range line. */
+.progress-refreshed { margin-top: -10px; }
 .progress-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -205,6 +207,15 @@
 .progress-token-seg .segmented-item { min-width: 44px; padding: 0 10px; }
 
 /* ------------------------------------------------------- repo table */
+/* The title keeps one line and its meta ("26 repos · 1 not read yet") is a
+   subtitle under it, so a narrow phone never draws one over the other. */
+.progress-head-stack {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.progress-head-stack .card-title { white-space: nowrap; }
+.progress-head-stack .card-head-meta { font-size: var(--font-body-sm); }
 .progress-table-wrap { margin-top: 8px; overflow-x: auto; }
 .progress-table {
   width: 100%;

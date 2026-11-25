@@ -2,9 +2,12 @@
 
 The kebab holds two items: Usage details (what a tap on the card has always
 opened) and History, the progress dashboard. The sheet answers from
-``/api/progress``'s cache at once, however old, says how old it is, shows a
-toast while the on-demand refresh runs, and updates in place when it ends. A
-figure that was not measured shows its word (unknown, unavailable), never zero.
+``/api/progress``'s cache at once, however old, says when it was last
+refreshed and never refreshes on open. A tap on Refresh starts one: a neutral
+toast counts the projects while it runs, the figures update in place, and the
+toast ends as a summary (a skipped project is counted, a failed read is red and
+named). A figure that was not measured shows its word (unknown, unavailable),
+never zero.
 
 Hermetic: ``/api/progress``, the sessions list and the quota are route-mocked
 before ``goto()`` with invented numbers, so nothing reads GitHub or the hub.
@@ -66,13 +69,29 @@ def _payload(*, added: int, refreshing: bool = False, tokens_state: str = "ok", 
     }
 
 
+def _run(*, done: int, total: int = 26, finished: bool = False, results: Optional[List[Dict[str, Any]]] = None,
+         started_at: str = "2026-11-04T10:00:00Z") -> Dict[str, Any]:
+    """The server's progress for one refresh: the skipped project first, then each read."""
+    return {
+        "started_at": started_at, "finished_at": "2026-11-04T10:01:00Z" if finished else None,
+        "total": total, "done": done, "current": f"project-{done}", "error": None,
+        "results": results if results is not None else
+        [{"repo": "local-only", "status": "skipped", "detail": "no GitHub remote"}],
+    }
+
+
 class _Progress:
-    """Stands in for ``GET /api/progress``: the cache, a refresh that runs until released."""
+    """Stands in for ``GET /api/progress``: the cache, a refresh that runs until released.
+
+    ``run`` is the progress a polling read sees while the refresh is running, so a test
+    moves the count by setting it; the released answer carries the finished run.
+    """
 
     def __init__(self, cached: Dict[str, Any], refreshed: Dict[str, Any]) -> None:
         self.cached = cached
         self.refreshed = refreshed
         self.released = False
+        self.run: Optional[Dict[str, Any]] = None
         self.requests: List[str] = []
 
     def __call__(self, route) -> None:
@@ -83,7 +102,10 @@ class _Progress:
         elif "refresh=true" in url:
             body = dict(self.cached, refreshing=True)
         else:
-            body = dict(self.cached, refreshing=self.cached.get("refreshing", False) or self._running())
+            running = self.cached.get("refreshing", False) or self._running()
+            body = dict(self.cached, refreshing=running)
+            if running and self.run is not None:
+                body["github"] = dict(self.cached["github"], refreshing=True, run=self.run)
         route.fulfill(status=200, content_type="application/json", body=_json.dumps(body))
 
     def _running(self) -> bool:
@@ -139,7 +161,11 @@ def test_kebab_menu_keeps_usage_details_and_history_rereads_the_cache_by_bucket_
 
     _open_history(page)
     expect(page.locator("#progressSheetTitle")).to_have_text("History")
-    wait_until(page, lambda: any("refresh=true" in u for u in progress.requests), "the opening refresh")
+    expect(page.locator("#progressRefreshed")).to_contain_text("Last refreshed")
+    # Opening is a plain read: no refresh call, and no toast.
+    expect(_tile(page, "lines")).to_contain_text("+150")
+    assert [u for u in progress.requests if "refresh=true" in u] == [], progress.requests
+    expect(page.locator("#progressToast")).to_be_hidden()
 
     before = len(progress.requests)
     page.locator('#progressSheet [data-bucket="week"]').click()
@@ -155,36 +181,84 @@ def test_kebab_menu_keeps_usage_details_and_history_rereads_the_cache_by_bucket_
     expect(page.locator("#progressSheet")).not_to_be_visible()
 
 
-def test_cached_figures_show_at_once_then_update_in_place(authed_page: Page, base_url: str) -> None:
+def _tap_refresh(page: Page, progress: _Progress) -> None:
+    page.locator("#progressRefresh").click()
+    wait_until(page, lambda: any("refresh=true" in u for u in progress.requests), "the refresh ask")
+
+
+def _poll(page: Page, done) -> None:
+    """Jump the fake clock past a poll until ``done()`` holds."""
+    def landed() -> bool:
+        _fake_clock.advance(page, 2000)
+        return done()
+    wait_until(page, landed, "the sheet to read the next poll")
+
+
+def test_refresh_counts_projects_then_ends_in_a_neutral_summary_that_counts_the_skip(
+    authed_page: Page, base_url: str
+) -> None:
+    """A tap on Refresh shows the count while it runs; the summary counts the skipped
+    project and is not an error. Updates in place; opening asked for nothing."""
     page = authed_page
     _fake_clock.install(page)
     progress = _Progress(_payload(added=100), _payload(added=250, age=5.0))
     _boot(page, base_url, progress)
 
     _open_history(page)
-    # The cached figures, however old, with their age; the refresh toast rides along.
     expect(_tile(page, "lines")).to_contain_text("+150")
+    expect(page.locator('#progressSources li[data-source="github"]')).to_contain_text("GitHub")
     toast = page.locator("#progressToast")
-    expect(toast).to_be_visible()
-    expect(toast).to_contain_text("Refreshing")
-    expect(page.locator('#progressSources li[data-source="github"]')).to_contain_text("1 h ago")
-    expect(page.locator("#progressRefresh")).to_be_disabled()
-
-    # The refresh ends: the sheet updates in place, the toast goes.
-    progress.released = True
-
-    def next_poll_landed() -> bool:
-        _fake_clock.advance(page, 4000)
-        return "+300" in _tile(page, "lines").inner_text()
-
-    wait_until(page, next_poll_landed, "the sheet to read the finished refresh")
     expect(toast).to_be_hidden()
-    expect(page.locator("#progressRefresh")).to_be_enabled()
-    expect(page.locator('#progressSources li[data-source="github"]')).to_contain_text("just now")
+    assert [u for u in progress.requests if "refresh=true" in u] == []
 
-    # Opening asked for exactly one recalculation.
+    progress.run = _run(done=0)
+    _tap_refresh(page, progress)
+    expect(toast).to_be_visible()
+    expect(toast).to_contain_text("Checking 1 of 26")
+    expect(toast).not_to_have_class(re.compile(r"\berror\b"))
+    expect(page.locator("#progressRefresh")).to_be_disabled()
+    # The sheet is not held: the cached figures stay readable and the controls work.
+    expect(_tile(page, "lines")).to_contain_text("+150")
+
+    progress.run = _run(done=1)
+    _poll(page, lambda: "Checking 2 of 26" in toast.inner_text())
+    progress.run = _run(done=24)
+    _poll(page, lambda: "Checking 25 of 26" in toast.inner_text())
+
+    # It ends: the figures update in place and the toast sums up, neutral.
+    refreshed = _payload(added=250, age=5.0)
+    ok = [{"repo": f"p{i}", "status": "ok", "detail": None} for i in range(25)]
+    refreshed["github"]["run"] = _run(done=25, finished=True, results=[
+        {"repo": "local-only", "status": "skipped", "detail": "no GitHub remote"}, *ok])
+    progress.refreshed = refreshed
+    progress.released = True
+    _poll(page, lambda: "+300" in _tile(page, "lines").inner_text())
+    expect(toast).to_have_text(re.compile(r"Refreshed 25 of 26 · 1 skipped \(no GitHub remote\)"))
+    expect(toast).not_to_have_class(re.compile(r"\berror\b"))
+    expect(page.locator("#progressRefresh")).to_be_enabled()
+    expect(page.locator("#progressRefreshed")).to_contain_text("Last refreshed")
+
+    # One tap, one recalculation.
     asks = [u for u in progress.requests if "refresh=true" in u]
     assert len(asks) == 1, asks
+
+    # A second refresh where reads really failed: red, naming the projects.
+    progress.released = False
+    progress.cached = progress.refreshed
+    progress.run = _run(done=0, started_at="2026-11-04T11:00:00Z")
+    _tap_refresh(page, progress)
+    failed = _payload(added=250, age=5.0)
+    failed["github"]["run"] = _run(done=2, total=4, finished=True, started_at="2026-11-04T11:00:00Z", results=[
+        {"repo": "local-only", "status": "skipped", "detail": "no GitHub remote"},
+        {"repo": "atlas-web", "status": "ok", "detail": None},
+        {"repo": "beacon-api", "status": "failed", "detail": "GhError: boom"},
+        {"repo": "cinder-cli", "status": "failed", "detail": "GhError: boom"}])
+    progress.refreshed = failed
+    progress.released = True
+    _poll(page, lambda: "could not read" in toast.inner_text())
+    expect(toast).to_have_class(re.compile(r"\berror\b"))
+    expect(toast).to_have_text(re.compile(
+        r"Refreshed 1 of 4 · 1 skipped \(no GitHub remote\) · could not read beacon-api, cinder-cli"))
 
 
 def test_unmeasured_figures_say_so_and_never_read_zero(authed_page: Page, base_url: str) -> None:
@@ -214,7 +288,9 @@ def test_sheet_fits_a_phone_and_legend_marks_are_the_agents_brand_colour_alone(
 ) -> None:
     page = authed_page
     page.set_viewport_size({"width": 390, "height": 844})
-    progress = _Progress(_payload(added=100), _payload(added=100))
+    cached = _payload(added=100)
+    cached["github"]["unknown_repos"] = ["one", "two", "three", "four", "five"]
+    progress = _Progress(cached, cached)
     progress.released = True
     _boot(page, base_url, progress)
     _open_history(page)
@@ -248,3 +324,20 @@ def test_sheet_fits_a_phone_and_legend_marks_are_the_agents_brand_colour_alone(
     assert swatch == probe, (swatch, probe)
     # The per-agent rows keep their icon.
     expect(page.locator('#progressAgents .progress-agent-row[data-agent="claude"] .agent-icon')).to_have_count(1)
+
+    # At 360 px, in both themes, the By repo title keeps one line with its meta
+    # below it as a subtitle, never drawn over it (the Android report).
+    page.set_viewport_size({"width": 360, "height": 740})
+    for theme in ("light", "dark"):
+        page.emulate_media(color_scheme=theme)
+        title = page.locator("#progressReposTitle")
+        meta = page.locator("#progressReposMeta")
+        title.scroll_into_view_if_needed()
+        expect(meta).to_contain_text("not read yet")
+        t, m = title.bounding_box(), meta.bounding_box()
+        assert t is not None and m is not None
+        assert m["y"] >= t["y"] + t["height"] - 1, (theme, t, m)
+        line = title.evaluate("e => parseFloat(getComputedStyle(e).lineHeight) || e.getBoundingClientRect().height")
+        assert t["height"] <= line * 1.5, (theme, t, line)
+        host = dialog.bounding_box()
+        assert host is not None and m["x"] + m["width"] <= host["x"] + host["width"] + 1, (theme, m, host)
