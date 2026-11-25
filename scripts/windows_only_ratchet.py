@@ -43,7 +43,7 @@ Opt-in, per adopter, in its own `.fleet.toml` (adopt it alongside `[ci.nightly]`
 
     [windows_only_ratchet]
     enabled    = true
-    baseline   = ".windows-only-ratchet-baseline.json"  # default
+    baseline   = ".ratchets/windows-only.json"  # default
     rules      = [...]                                 # default: all
     marker     = "windows_only"                        # default
     test_paths = ["tests/**"]                          # default
@@ -62,6 +62,8 @@ from __future__ import annotations
 
 import argparse
 import ast
+import importlib
+import importlib.util
 import io
 import json
 import os
@@ -73,12 +75,32 @@ import tomllib
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
+from types import ModuleType
+
+
+def _load_sibling(name: str) -> ModuleType:
+    """A sibling module, loaded by path so `python -P` (scripts/ off `sys.path`) finds it."""
+    try:
+        if __package__:  # imported as a package member (the tests)
+            return importlib.import_module(f"{__package__}.{name}")
+        spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name(f"{name}.py"))
+        assert spec is not None and spec.loader is not None
+        module = sys.modules[spec.name] = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    except (ImportError, OSError, SyntaxError):
+        print(f"windows only ratchet: NOT CONFIRMED: {name}.py is missing beside this script -- vendor both "
+              "(manifest keys windows_only_ratchet and ratchet_baseline)")
+        sys.exit(3)
+
+
+_baseline = _load_sibling("ratchet_baseline")  # where the baseline lives, and its move into .ratchets/
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 RULES: tuple[str, ...] = ("win-module", "win-api", "win-env-read", "win-exe-lookup", "bare-exempt")
 BASELINE_VERSION = 1
-DEFAULT_BASELINE = ".windows-only-ratchet-baseline.json"
+DEFAULT_BASELINE = ".ratchets/windows-only.json"
 DEFAULT_MARKER = "windows_only"
 DEFAULT_TEST_PATHS = ("tests/**",)
 BUILTIN_EXCLUDES = ("**/node_modules/**", "**/.venv/**", "**/venv/**")
@@ -165,7 +187,7 @@ def parse_config(toml_text: str) -> Config | None:
         raise ConfigError("[windows_only_ratchet] enabled must be true or false")
     if not enabled:
         return None
-    baseline = table.get("baseline", DEFAULT_BASELINE)
+    baseline = _baseline.configured(table.get("baseline", DEFAULT_BASELINE), DEFAULT_BASELINE)
     if not isinstance(baseline, str) or not baseline:
         raise ConfigError("[windows_only_ratchet] baseline must be a non-empty string")
     marker = table.get("marker", DEFAULT_MARKER)
@@ -761,7 +783,9 @@ def run(root: Path, *, init: bool, update: bool, allow_additions: bool) -> int:
             return EXIT_CONFIG
         print("windows only ratchet: not enabled (no [windows_only_ratchet] enabled = true in .fleet.toml)")
         return EXIT_PASS
-    baseline_path = root / cfg.baseline
+    baseline_path = _baseline.resolve(root, cfg.baseline, DEFAULT_BASELINE, "windows only ratchet")
+    if baseline_path is None:
+        return EXIT_CONFIG
     baseline = _load_baseline(baseline_path, cfg, init)
     if isinstance(baseline, int):
         return baseline
