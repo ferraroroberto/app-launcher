@@ -51,6 +51,7 @@ import { applyLaunchSizePayload } from './shared/launch-size.js';
 import { SensitiveOutcome, runSensitiveAction } from './shared/sensitive-action.js';
 import { openTerminal } from './terminal.js';
 import { emptyStateEl } from './_vendored/empty-state/empty-state.js';
+import { runBusy } from './_vendored/button/busy.js';
 import { icon } from './_vendored/icons/icons.js';
 import { terminalJsonApi } from './webauthn.js';
 import { isOffBoard } from './channel-sessions.js';
@@ -561,9 +562,7 @@ function emptyAction(col, liveRead) {
   if (col.live) return { actionLabel: 'Start work', onAction: function () { setTab('claude'); } };
   return {
     actionLabel: 'Refresh',
-    onAction: function () {
-      refreshGithub().catch(function (exc) { apiFailToast('GitHub refresh failed', exc); });
-    },
+    onAction: function (event) { refreshGithub(event.currentTarget); },
   };
 }
 
@@ -773,6 +772,11 @@ function renderLane(col, allCards, openItem, body, ghLoaded, liveRead, extra) {
   if (empty.dataset.sig !== sig) {
     empty.dataset.sig = sig;
     empty.replaceChildren(emptyStateEl(col.glyph, text, action));
+    if (action.actionLabel === 'Refresh') {
+      empty.querySelector('.empty-state-action').classList.add('board-refresh-action');
+      // A rebuild mid-refresh must not draw an idle twin of the busy header button.
+      if (refreshInFlight) markRefreshBusy(true);
+    }
   }
   empty.hidden = total > 0 || finished.length > 0;
 }
@@ -929,29 +933,34 @@ export async function openBoardCard(sid) {
   });
 }
 
-// While a refresh runs the ↻ spins (COLOR-02): aria-busy, never the
-// disabled look, whose line colour measured 1.55:1 on dark. A second tap is
-// a no-op (refreshInFlight).
-function setRefreshBusy(busy) {
-  els.boardRefresh.setAttribute('aria-busy', busy ? 'true' : 'false');
-  if (busy) els.boardRefresh.setAttribute('aria-disabled', 'true');
-  else els.boardRefresh.removeAttribute('aria-disabled');
+// Every control that starts the GitHub refresh (the header Refresh and the
+// empty Backlog/Done lanes' Refresh) shows the one in-flight state together:
+// runBusy marks the tapped one, the rest follow here.
+function markRefreshBusy(busy) {
+  document.querySelectorAll('#boardRefresh, .board-refresh-action').forEach(function (btn) {
+    if (busy) btn.setAttribute('aria-busy', 'true');
+    else btn.removeAttribute('aria-busy');
+  });
 }
 
-async function refreshGithub() {
-  if (refreshInFlight) return;
+// `button` is the control that was tapped. A tap while a refresh runs does
+// nothing: no second POST and no second toast.
+function refreshGithub(button) {
+  if (refreshInFlight) return Promise.resolve({ ok: false, ignored: true });
   refreshInFlight = true;
-  setRefreshBusy(true);
-  try {
-    const github = await jsonApi('/api/board/github/refresh', { method: 'POST' });
-    if (github && github.error) {
-      toast('GitHub refresh failed: ' + github.error, 'error');
+  return runBusy(button, async function () {
+    markRefreshBusy(true);
+    try {
+      const github = await jsonApi('/api/board/github/refresh', { method: 'POST' });
+      // The cache is re-read even when the fetch failed, so the lanes show
+      // what the failed fetch left behind.
+      await fetchBoard.fresh();
+      if (github && github.error) throw new Error(github.error);
+    } finally {
+      refreshInFlight = false;
+      markRefreshBusy(false);
     }
-    await fetchBoard.fresh();
-  } finally {
-    refreshInFlight = false;
-    setRefreshBusy(false);
-  }
+  }, { start: 'Refreshing GitHub…', done: 'Up to date', fail: 'GitHub refresh failed' });
 }
 
 // --------------------------------------------------------- column sections
@@ -984,9 +993,5 @@ export function wireBoard() {
   wireJournal();
   openDesktopColumns();
   wireFoldAll(els.boardFoldAll, els.boardColumns);
-  els.boardRefresh.addEventListener('click', function () {
-    refreshGithub().catch(function (exc) {
-      apiFailToast('GitHub refresh failed', exc);
-    });
-  });
+  els.boardRefresh.addEventListener('click', function () { refreshGithub(els.boardRefresh); });
 }

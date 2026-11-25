@@ -27,6 +27,7 @@ import { apiFailToast, toast } from '../api.js';
 import { terminalJsonApi } from '../webauthn.js';
 import { confirmDialog } from '../confirm-dialog.js';
 import { setSwitch } from '../_vendored/switch/switch.js';
+import { runBusy } from '../_vendored/button/busy.js';
 import { patchConfig } from './claude-options.js';
 import { checkRow } from './telegram-setup.js';
 
@@ -265,19 +266,18 @@ async function restartBot() {
     action: 'Restart',
   });
   if (!ok) return;
-  els.botRestartBtn.disabled = true;
-  try {
-    const body = await terminalJsonApi(
+  await runBusy(els.botRestartBtn, function () {
+    return terminalJsonApi(
       '/api/life-os/channels/' + encodeURIComponent(p.id) + '/restart',
       { method: 'POST', body: {} }
     );
-    toast((body.restarted ? 'Restarted ' : 'Started ') + p.label + ' on Telegram', 'good',
-      { icon: 'refresh-cw' });
-  } catch (exc) {
-    apiFailToast('Telegram restart failed', exc);
-  } finally {
-    els.botRestartBtn.disabled = false;
-  }
+  }, {
+    start: 'Restarting ' + p.label + '…',
+    done: function (body) {
+      return (body.restarted ? 'Restarted ' : 'Started ') + p.label + ' on Telegram';
+    },
+    fail: 'Telegram restart failed',
+  });
   await hooks.refresh().catch(function () {});
   renderBotSheet();
 }

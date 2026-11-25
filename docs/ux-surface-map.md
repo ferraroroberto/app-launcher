@@ -929,7 +929,8 @@ flowchart LR
   - the cards Backlog, Since you last looked, Chief's plan, Claude's turn, Ideas, Your turn, PRs and jobs and Done today
 - **Does:**
   - the cards are computed from GitHub, the sessions and the jobs; nothing is dragged
-  - Refresh asks GitHub again
+  - Refresh asks GitHub again, in the header and in an empty Backlog or Done lane
+- **States:** while a refresh runs every Refresh shows a spinner and ignores taps, a toast says it started, and a second toast says Up to date or why it failed
 - **Desktop:** on a wide window the Board spans everything to the right of the rail
 - **Why:** one screen answering what needs me now, across everything
 - **Leads to:**

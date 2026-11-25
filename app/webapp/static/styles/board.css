@@ -846,15 +846,6 @@ span.chief-answer-ref { color: var(--muted); }
   transform: none;
 }
 
-/* The GitHub refresh in flight (COLOR-02): the ↻ spins at full
-   strength instead of a disabled "…" (1.55:1 on dark). Still, under reduced
-   motion. */
-.board-refresh[aria-busy="true"] .icon { animation: board-refresh-spin 0.9s linear infinite; }
-@keyframes board-refresh-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) {
-  .board-refresh[aria-busy="true"] .icon { animation: none; }
-}
-
 /* Desktop / wide: all five column sections side by side.
    Board (only) also breaks out of the phone-first `.app` 720px cap —
    full-bleed to the viewport, since `.app`'s horizontal centering makes

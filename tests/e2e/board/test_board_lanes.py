@@ -128,10 +128,10 @@ def test_desktop_project_filter_is_as_wide_as_the_backlog_column(
 def test_refresh_in_flight_spins_at_full_strength(
     authed_page: Page, base_url: str
 ) -> None:
-    """#1502 (COLOR-02): while a GitHub refresh runs, ↻ keeps its glyph and
-    colour and says it is busy (aria-busy), instead of a disabled "…" whose
-    line colour measured 1.55:1 on dark; at least 3:1 in both themes. A
-    second tap meanwhile sends nothing."""
+    """#1502 (COLOR-02): while a GitHub refresh runs, Refresh says it is busy
+    (aria-busy, the vendored busy look: a ring in place of the glyph, the label
+    kept) instead of a disabled "…" whose line colour measured 1.55:1 on dark;
+    at least 3:1 in both themes. A second tap meanwhile sends nothing."""
     _mock_board(authed_page)
     held: list = []
     authed_page.route(re.compile(r".*/api/board/github/refresh$"), lambda route: held.append(route))
@@ -141,7 +141,7 @@ def test_refresh_in_flight_spins_at_full_strength(
     refresh.click()
     wait_until(authed_page, lambda: len(held) >= 1, "the refresh POST")
     expect(refresh).to_have_attribute("aria-busy", "true")
-    expect(refresh.locator("svg.icon")).to_have_count(1)
+    expect(refresh.locator("svg.icon")).to_be_hidden()
     expect(refresh).not_to_have_attribute("disabled", "")
     for theme in ("light", "dark"):
         authed_page.evaluate(f"document.documentElement.dataset.theme = '{theme}'")
@@ -149,14 +149,15 @@ def test_refresh_in_flight_spins_at_full_strength(
         assert ratio >= 3, f"{theme}: refresh in flight at {ratio:.2f}:1, under 3:1"
     authed_page.evaluate("delete document.documentElement.dataset.theme")
 
-    # aria-disabled keeps it reachable; Playwright treats it as not enabled.
+    # A busy button takes no pointer events; force the tap anyway.
     refresh.click(force=True)
     flush_requests(authed_page)
     assert len(held) == 1, "a tap during the refresh sent a second one"
 
     held[0].fulfill(status=200, content_type="application/json", body=_json.dumps(
         {"fetched_at": _iso_utc(datetime.now(timezone.utc)), "error": None}))
-    expect(refresh).to_have_attribute("aria-busy", "false")
+    expect(refresh).not_to_have_attribute("aria-busy", "true")
+    expect(refresh.locator("svg.icon")).to_be_visible()
 
 
 def test_the_disposable_webapp_refreshes_github_from_the_synthetic_gh(
