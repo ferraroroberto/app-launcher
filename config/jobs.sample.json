@@ -79,7 +79,7 @@
     {
       "id": "screen-time-export",
       "name": "Screen time to task-os (nightly)",
-      "script_path": "C:\\path\\to\\your\\projects-root\\app-launcher\\launcher.py",
+      "script_path": "C:\\path\\to\\your\\projects-root\\app-launcher\\scripts\\launcher.py",
       "args": "usage-export",
       "schedule": { "type": "daily", "at": "03:30" },
       "visible": true,
@@ -88,7 +88,7 @@
     {
       "id": "life-os-zombie-cleanup",
       "name": "Life OS zombie cleanup (nightly, backup mode)",
-      "script_path": "C:\\path\\to\\your\\projects-root\\app-launcher\\launcher.py",
+      "script_path": "C:\\path\\to\\your\\projects-root\\app-launcher\\scripts\\launcher.py",
       "args": "life-os-zombie-cleanup --mode backup",
       "schedule": { "type": "daily", "at": "04:00" },
       "visible": true,

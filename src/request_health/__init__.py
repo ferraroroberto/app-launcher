@@ -2,7 +2,7 @@
 
 The timing machinery itself is the scaffold's vendored ``src/request_timing.py``;
 this package holds the launcher's own request classes (here) and the read-only
-``launcher.py health`` report (:mod:`src.request_health.snapshot`).
+``scripts/launcher.py health`` report (:mod:`src.request_health.snapshot`).
 
 The phone's hot paths each get a soft and a hard limit. Over soft is an "over
 budget" line in ``webapp/slow-requests.log``, over hard a "budget breach" line.

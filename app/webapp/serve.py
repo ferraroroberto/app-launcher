@@ -7,7 +7,7 @@ cold load event from ~2.3 s to ~1.0 s with the same build and no bundling step.
 Browsers only speak HTTP/2 over TLS, so the gain needs ``--ssl-certfile`` and
 ``--ssl-keyfile``; without them the server is plain HTTP/1.1 either way.
 
-Every launch path (the tray's spawn, ``webapp.bat``, a CLI command, the e2e
+Every launch path (the tray's spawn, ``scripts/webapp.bat``, a CLI command, the e2e
 autoboot) goes through here so a server setting lands everywhere at once::
 
     python -m app.webapp.serve --host H --port P [--ssl-keyfile K --ssl-certfile C]

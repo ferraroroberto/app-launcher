@@ -239,7 +239,7 @@ def boot_session_host(iso: Isolation, servers: Servers) -> int:
 
     def _spawn_session_host(port: int) -> subprocess.Popen:
         return spawn(
-            [sys.executable, str(REPO_ROOT / "launcher.py"),
+            [sys.executable, str(REPO_ROOT / "scripts" / "launcher.py"),
              "session-host", "--port", str(port)],
             sh_log,
             extra_env={

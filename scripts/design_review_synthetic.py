@@ -348,7 +348,7 @@ def run() -> int:
         env = isolated_env(p, session_host_port)
 
         host_env = {**env, "PATH": f"{p.shim_dir}{os.pathsep}{env.get('PATH', '')}"}
-        host = _spawn([sys.executable, str(app / "launcher.py"), "session-host", "--port", str(session_host_port)],
+        host = _spawn([sys.executable, str(app / "scripts" / "launcher.py"), "session-host", "--port", str(session_host_port)],
                       app, host_env, p.logs / "session-host.log")
         procs.append((host, "session-host"))
         _wait(lambda: _listening(session_host_port), "session-host", host)

@@ -8,7 +8,7 @@
 %% for the general convention (companion to `ferraroroberto/fleet-config#256`).
 
 flowchart TB
-  ENTRY["launcher.py (root)\nputs repo root on sys.path"] --> CLIMAIN["app/cli/main.py"]
+  ENTRY["scripts/launcher.py\nputs repo root on sys.path"] --> CLIMAIN["app/cli/main.py"]
 
   subgraph cli["app/cli/commands/"]
     TRAYCMD["tray_cmd.py"]

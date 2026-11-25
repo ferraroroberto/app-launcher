@@ -12,7 +12,7 @@ The deterministic "next fire" arithmetic (:func:`next_fire` /
 
 The single executor that ever runs a job is
 :class:`~app.cli.commands.run_job_cmd.RunJobCommand`. Task Scheduler
-calls it with ``pythonw launcher.py run-job <id>``; the webapp's
+calls it with ``pythonw scripts/launcher.py run-job <id>``; the webapp's
 ``POST /api/jobs/<id>/run`` route spawns the same command detached and
 returns the new ``run_id`` immediately.
 

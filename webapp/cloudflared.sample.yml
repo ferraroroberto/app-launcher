@@ -12,7 +12,7 @@
 #   3. cloudflared tunnel route dns launcher launcher.<your-domain>
 #   4. Copy this file to webapp/cloudflared.yml and edit `tunnel:` and
 #      `hostname:` to match.
-#   5. webapp_tunnel_named.bat (or just tray.bat — the tray adopts the
+#   5. scripts/webapp_tunnel_named.bat (or just tray.bat — the tray adopts the
 #      same config on startup)
 #
 # See README → "Persistent URL via named Cloudflare tunnel" for the

@@ -273,7 +273,7 @@ _CLIPBOARD_COMMANDS = ("Set-Clipboard", "Get-Clipboard", "clip.exe", "pbcopy", "
 def _python_files():
     for root in ("src", "app"):
         yield from (REPO / root).rglob("*.py")
-    yield REPO / "launcher.py"
+    yield REPO / "scripts" / "launcher.py"
 
 
 def _imported_modules(tree: ast.AST):

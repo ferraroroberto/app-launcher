@@ -724,7 +724,7 @@ path = "src/subprocess_flags.py"
 label = "session-host/launcher"
 [[e2e.rule]]
 tier = "full"
-path = "launcher.py"
+path = "scripts/launcher.py"
 label = "session-host/launcher"
 # A prefix, not a list, so a future split of the session host
 # (e.g. src/session_host_pty.py) routes full without an edit here.
@@ -735,7 +735,7 @@ extensions = ["py"]
 label      = "session-host/launcher"
 
 # --- the CLI dispatcher and the dependency pins -> full ---------------------
-# The e2e session-host starts as `launcher.py session-host`, and the webapp's
+# The e2e session-host starts as `scripts/launcher.py session-host`, and the webapp's
 # jobs router imports app.cli.commands.run_job_cmd. Either import runs
 # app/cli/commands/__init__.py, which imports every command module, so a broken
 # one stops the disposable stack booting. A pin bump is installed into the venv

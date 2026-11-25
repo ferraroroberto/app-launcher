@@ -2,9 +2,7 @@
 
 ```
 app-launcher/
-├── launcher.py                # thin entry point — sys.path shim → app/cli/main
-├── webapp.bat / tray.bat      # the two day-to-day .bat entrypoints
-├── webapp_tunnel_named.bat    # uvicorn + cloudflared (named tunnel)
+├── tray.bat                   # the day-to-day entrypoint (tray icon + webapp)
 ├── setup.bat                  # install or update this PC; runs scripts/install.py (docs/install.md)
 │
 ├── app/
@@ -57,7 +55,7 @@ app-launcher/
 │   ├── session_retention.py    # daily webapp/sessions retention sweep (session_retention_days)
 │   ├── diagnostics.py          # log ring buffer + port-owner introspection
 │   ├── request_timing.py       # vendored: per-request queue/worker time, the timing middleware, in-flight peaks
-│   ├── request_health/         # `__init__.py`: the launcher's request classes and their limits; snapshot.py: the read-only `launcher.py health` report
+│   ├── request_health/         # `__init__.py`: the launcher's request classes and their limits; snapshot.py: the read-only `scripts/launcher.py health` report
 │   ├── static_versioning.py    # content-hash query strings for asset cache-busting
 │   ├── stylesheet_bundle.py    # the linked stylesheets concatenated into the one /static/bundle.css
 │   ├── static_bundles/         # js_bundle.py: main.js's module graph bundled at start by a pinned esbuild into /static/js-bundle/
@@ -111,6 +109,9 @@ app-launcher/
 │                               #   (batch/http_check/inline_shell/powershell/python/shell_wsl)
 │
 ├── scripts/
+│   ├── launcher.py             # thin entry point — sys.path shim → app/cli/main (`scripts/launcher.py <command>`)
+│   ├── webapp.bat              # webapp standalone, no tray (dev / headless)
+│   ├── webapp_tunnel_named.bat # uvicorn + cloudflared (named tunnel)
 │   ├── gen_icons.py            # thin caller onto project-scaffolding's shared brand_gen.py (rocket master);
 │   │                           #   finds that checkout as this repo's sibling — PROJECT_SCAFFOLDING_DIR overrides
 │   ├── gen_tailscale_cert.py   # tailscale cert (real LE) + --check auto-renew
@@ -192,7 +193,7 @@ app-launcher/
 `scripts/structure_ratchet.py` (vendored byte-for-byte from project-scaffolding, recorded in `.fleet.toml` `[vendored]`) runs in the pre-ship gate. It fails a new file over 1,000 lines, a new function over 100 lines, a directory past 40 modules, a `src` file that imports `app`, and a root folder the declared shape does not list. A finding already in `.ratchets/structure.json` may not grow past its recorded size. Shrinking one means lowering the baseline with `--update-baseline`; raising or adding an entry needs `--allow-additions`, which shows in review.
 
 - **Where new code goes:** a view's browser code in `app/webapp/static/`, its API in `app/webapp/routers/`, logic with no UI import in `src/`, tests under `tests/unit/<domain>/` (logic), `tests/api/<router>/` (routers) or `tests/e2e/<tab>/` (browser), never loose in `tests/` or `tests/e2e/`, which hold only shared helpers and the conftests. A new module in a full directory goes in a subpackage (`src/notify/`, `src/jobs_kinds/` and `src/transcript_flavors/` are the pattern), never loose in the directory.
-- **Second HTTP surface:** the session-host is `app/webapp/session_host/`, the shape's home for a separately bound listener: it has its own `server.py` and entry point (`launcher.py session-host`), and the webapp only reaches it over loopback HTTP through `src/clients/session.py`.
+- **Second HTTP surface:** the session-host is `app/webapp/session_host/`, the shape's home for a separately bound listener: it has its own `server.py` and entry point (`scripts/launcher.py session-host`), and the webapp only reaches it over loopback HTTP through `src/clients/session.py`.
 - **Declared shape:** `webapp-tray`, with `webapp/` as the one extra root. It is the tray's runtime-state folder: only the two `*.sample.*` files in it are tracked, and the rest is gitignored. The preset itself lists `assets/` and `config/`.
 - **Flat directories:** `tests/` and `tests/e2e/` hold only helpers and conftests, so a test module never goes loose in either. `src/` is under the limit because its domains sit in subpackages; a new module goes in its domain's package, not loose in `src/`. `app/webapp/static/` is under the limit because its views' modules sit in the subfolders above; a new module goes in its view's folder, not loose beside `main.js`.
 - **The e2e conftest is a registrar.** `tests/e2e/conftest.py` holds the pytest hooks, the `_autoboot_server` session fixture and the fixtures it re-exports; the code behind them is in `tests/e2e/fixtures/`: `env.py` (paths, env-var names, run state), `waits.py` (waiting helpers and timeout budgets), `ui.py` (page-driving helpers), `processes.py` (spawning and leak scans), `autoboot.py` (the disposable servers' boot and isolation checks), `launch_target.py`, `sessions.py` and `pages.py`.

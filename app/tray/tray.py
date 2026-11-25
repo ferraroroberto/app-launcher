@@ -290,7 +290,7 @@ class TrayApp:
         # anyway). CREATE_NO_WINDOW hides the transient cmd.
         cmd = [
             "cmd", "/c", "start", "", "/b",
-            sys.executable, str(PROJECT_ROOT / "launcher.py"), "session-host",
+            sys.executable, str(PROJECT_ROOT / "scripts" / "launcher.py"), "session-host",
             "--port", str(port),
         ]
         # Log to a file, not DEVNULL. The CLI configures logging with a
@@ -587,7 +587,7 @@ class TrayApp:
         if not TUNNEL_URL_FILE.exists():
             _notify(
                 "No tunnel URL yet",
-                "Run webapp_tunnel_named.bat to bring up the Cloudflare tunnel.",
+                "Run scripts/webapp_tunnel_named.bat to bring up the Cloudflare tunnel.",
             )
             return
         try:

@@ -413,7 +413,7 @@ class WebappConfig:
     process_auto_restart_end: str = DEFAULT_END
     prevent_lock: bool = False  # Settings > Prevent lock (src/desktop/prevent_lock.py): pointer nudge + keep-awake, off
     # --- Screen time export to task-os ---------------------
-    # Where `launcher.py usage-export` and the Screen time sheet's Send to
+    # Where `scripts/launcher.py usage-export` and the Screen time sheet's Send to
     # task-os put each completed day's minutes (src/usage/export.py): the
     # sibling task-os's loopback URL, the task-os person id the entries
     # belong to, and the target category as area/category slugs, resolved
