@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 
 import pytest
@@ -137,13 +138,20 @@ def test_the_pinned_esbuild_bundles_a_lazy_view_as_its_own_chunk(tmp_path: Path)
                 assert f'"./{other}"' not in body.decode(), f"{name} imports {other} unstamped"
 
 
-def test_the_server_serves_the_bundle_and_404s_the_rest(monkeypatch: pytest.MonkeyPatch) -> None:
-    bundle = {"main.js": (b"export {};\n", "text/javascript")}
-    monkeypatch.setattr(server_mod, "build_js_bundle", lambda *args: bundle)
+def _start(monkeypatch: pytest.MonkeyPatch, build) -> tuple:
+    monkeypatch.setattr(server_mod, "build_js_bundle", build)
     app = FastAPI()
     app.state.asset_fleet_hash = _FLEET
     hashes = {"main.js": _FLEET}
-    assert server_mod._load_js_bundle(app, hashes) is bundle
+    thread = server_mod._start_js_bundle_build(app, hashes)
+    return app, hashes, thread
+
+
+def test_the_server_serves_the_bundle_and_404s_the_rest(monkeypatch: pytest.MonkeyPatch) -> None:
+    bundle = {"main.js": (b"export {};\n", "text/javascript")}
+    app, hashes, thread = _start(monkeypatch, lambda *args: bundle)
+    thread.join(timeout=10)
+    assert app.state.js_bundle is bundle
     assert hashes[f"{js_bundle.BUNDLE_DIR}/main.js"] == _FLEET
     client = TestClient(app)
     resp = client.get(f"/static/{js_bundle.BUNDLE_DIR}/main.js")
@@ -157,9 +165,43 @@ def test_a_failed_build_falls_back_to_the_separate_modules(monkeypatch: pytest.M
     def fail(*args):
         raise BundleError("npx not found on PATH")
 
-    monkeypatch.setattr(server_mod, "build_js_bundle", fail)
-    app = FastAPI()
-    app.state.asset_fleet_hash = _FLEET
-    hashes = {"main.js": _FLEET}
-    assert server_mod._load_js_bundle(app, hashes) is None
+    app, hashes, thread = _start(monkeypatch, fail)
+    thread.join(timeout=10)
+    assert app.state.js_bundle is None
     assert list(hashes) == ["main.js"]
+    assert TestClient(app).get(f"/static/{js_bundle.BUNDLE_DIR}/main.js").status_code == 404
+
+
+def test_a_crashing_build_is_logged_and_leaves_the_modules_in_use(monkeypatch: pytest.MonkeyPatch) -> None:
+    def crash(*args):
+        raise RuntimeError("boom")
+
+    app, hashes, thread = _start(monkeypatch, crash)
+    thread.join(timeout=10)
+    assert app.state.js_bundle is None
+    assert list(hashes) == ["main.js"]
+
+
+def test_the_app_answers_while_a_slow_bundle_build_is_still_running(monkeypatch: pytest.MonkeyPatch) -> None:
+    release = threading.Event()
+    bundle = {"main.js": (b"export {};\n", "text/javascript")}
+
+    def slow(*args):
+        assert release.wait(timeout=30), "the build was never released"
+        return bundle
+
+    app, hashes, thread = _start(monkeypatch, slow)
+    try:
+        assert thread.is_alive()
+        client = TestClient(app)
+        # A retryable 503 meanwhile, and no page links the bundle yet.
+        pending = client.get(f"/static/{js_bundle.BUNDLE_DIR}/main.js")
+        assert pending.status_code == 503
+        assert pending.headers["cache-control"] == "no-store"
+        assert app.state.js_bundle is None
+        assert f"{js_bundle.BUNDLE_DIR}/main.js" not in hashes
+    finally:
+        release.set()
+    thread.join(timeout=10)
+    assert app.state.js_bundle is bundle
+    assert TestClient(app).get(f"/static/{js_bundle.BUNDLE_DIR}/main.js").status_code == 200

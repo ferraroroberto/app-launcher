@@ -11,6 +11,8 @@ import asyncio
 import logging
 import mimetypes
 import os
+import threading
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -211,34 +213,65 @@ def _load_stylesheet_bundle(app: FastAPI, asset_hashes: Dict[str, str]) -> Optio
     return bundle
 
 
-def _load_js_bundle(app: FastAPI, asset_hashes: Dict[str, str]) -> Optional[Dict[str, Tuple[bytes, str]]]:
-    """Bundle the ES modules and register the route that serves them, or ``None``.
+def _start_js_bundle_build(app: FastAPI, asset_hashes: Dict[str, str]) -> Optional[threading.Thread]:
+    """Register the bundle route and build the ES-module bundle off the start path.
 
-    Built (or read from its cache) under ``webapp/js-bundle/``. On ``None``
-    the index keeps loading ``main.js`` and its graph module by module.
+    A cold esbuild run takes up to ``BUILD_TIMEOUT_S``, longer than the tray's
+    readiness deadline, so ``create_app`` must not wait for it. Until the build
+    lands ``app.state.js_bundle`` stays ``None`` and the index links ``main.js``
+    and its modules separately; a failed build leaves it ``None`` for good.
+    Publishing is ordered (asset hash first, bundle last) so a page that links
+    the bundle always finds its files. Returns the build thread, or ``None``
+    when there is nothing to bundle.
     """
+    app.state.js_bundle = None
     if not asset_hashes:
         return None
     fleet = app.state.asset_fleet_hash
-    try:
-        bundle = build_js_bundle(STATIC_DIR, PROJECT_ROOT / "webapp" / BUNDLE_DIR, fleet)
-    except (BundleError, OSError, ValueError) as exc:
-        _log.warning("⚠️ could not bundle the ES modules; serving them separately: %s", exc)
-        return None
-    if bundle is None:
-        return None
-    asset_hashes[f"{BUNDLE_DIR}/{ENTRY}"] = fleet
+    finished = threading.Event()
 
     def _serve_js_bundle(name: str) -> Response:
+        bundle = app.state.js_bundle
+        if bundle is None:
+            if finished.is_set():
+                return Response(status_code=404)
+            # A page from the previous process can ask for a chunk while the
+            # build runs; a retryable answer, never cached, keeps it from
+            # reading as a missing file.
+            return Response(status_code=503, headers={"Retry-After": "2", "Cache-Control": "no-store"})
         if name not in bundle:
             return Response(status_code=404)
         body, media_type = bundle[name]
         return Response(body, media_type=media_type, headers={"Cache-Control": _LONG_CACHE})
 
     app.add_api_route(f"/static/{BUNDLE_DIR}/{{name}}", _serve_js_bundle, include_in_schema=False)
-    size = sum(len(body) for name, (body, _) in bundle.items() if name.endswith(".js"))
-    _log.info("ℹ️ ES modules bundled into /static/%s/ (%d files, %d bytes of JS)", BUNDLE_DIR, len(bundle), size)
-    return bundle
+
+    def _build() -> None:
+        try:
+            _publish()
+        except (BundleError, OSError, ValueError) as exc:
+            _log.warning("⚠️ could not bundle the ES modules; serving them separately: %s", exc)
+        except Exception:  # noqa: BLE001 - a thread's escape would only reach stderr
+            _log.exception("❌ ES-module bundle build crashed; serving the modules separately")
+        finally:
+            finished.set()
+
+    def _publish() -> None:
+        started = time.monotonic()
+        bundle = build_js_bundle(STATIC_DIR, PROJECT_ROOT / "webapp" / BUNDLE_DIR, fleet)
+        if bundle is None:
+            return
+        asset_hashes[f"{BUNDLE_DIR}/{ENTRY}"] = fleet
+        app.state.js_bundle = bundle
+        size = sum(len(body) for name, (body, _) in bundle.items() if name.endswith(".js"))
+        _log.info(
+            "ℹ️ ES modules bundled into /static/%s/ (%d files, %d bytes of JS) in %.1f s",
+            BUNDLE_DIR, len(bundle), size, time.monotonic() - started,
+        )
+
+    thread = threading.Thread(target=_build, name="js-bundle-build", daemon=True)
+    thread.start()
+    return thread
 
 
 async def _reconcile_orphan_mirror_windows(app: FastAPI) -> None:
@@ -656,7 +689,7 @@ def create_app() -> FastAPI:
         )
 
     app.state.stylesheet_bundle = _load_stylesheet_bundle(app, asset_hashes)
-    app.state.js_bundle = _load_js_bundle(app, asset_hashes)
+    app.state.js_bundle_build = _start_js_bundle_build(app, asset_hashes)
 
     if STATIC_DIR.exists():
         app.mount(

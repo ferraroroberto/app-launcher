@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import os
 import re
+import threading
 
 import pytest
+from fastapi.testclient import TestClient
 
+from app.webapp import server as server_mod
 from src.static_bundles.js_bundle import BUNDLE_DIR as JS_BUNDLE_DIR
 from src.static_bundles.js_bundle import UNBUNDLED_COOKIE
 from src.static_versioning import compute_asset_hashes, fleet_hash_of
@@ -22,6 +25,40 @@ class TestHealthz:
         body = resp.json()
         assert body["ok"] is True
         assert body["service"] == "launcher"
+
+    def test_healthz_answers_before_a_slow_bundle_build_finishes(self, webapp_client, monkeypatch):
+        release = threading.Event()
+        monkeypatch.setattr(
+            server_mod, "build_js_bundle",
+            lambda *args: release.wait(timeout=30) and {"main.js": (b"", "text/javascript")},
+        )
+        try:
+            app = server_mod.create_app()  # returns without waiting for the build
+            assert app.state.js_bundle_build.is_alive()
+            client = TestClient(app)
+            assert client.get("/healthz").status_code == 200
+            # Early page loads use the separate modules, not a half-built bundle.
+            page = client.get("/").text
+            assert re.search(r'<script type="module" src="/static/main\.js\?v=[a-f0-9]{8}">', page)
+        finally:
+            release.set()
+        app.state.js_bundle_build.join(timeout=10)
+        assert app.state.js_bundle is not None
+        assert "/static/js-bundle/main.js" in TestClient(app).get("/").text
+
+    def test_a_failed_bundle_leaves_the_module_page_usable(self, webapp_client, monkeypatch):
+        def fail(*args):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(server_mod, "build_js_bundle", fail)
+        app = server_mod.create_app()
+        app.state.js_bundle_build.join(timeout=10)
+        client = TestClient(app)
+        assert app.state.js_bundle is None
+        page = client.get("/")
+        assert page.status_code == 200
+        assert re.search(r'<script type="module" src="/static/main\.js\?v=[a-f0-9]{8}">', page.text)
+        assert client.get("/static/main.js").status_code == 200
 
 
 class TestIndex:
