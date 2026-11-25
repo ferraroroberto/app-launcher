@@ -16,7 +16,9 @@ foreground is counted on its own. The fleet's rules (docs/polling-budget.md):
 The clock advances in steps, and each step waits for the requests it started
 to finish before the next, so a self-scheduling poll (next tick armed when the
 read settles) is measured at its real cadence. Boot reads are not counted: the
-minute starts once the page has loaded and gone quiet.
+minute starts once the page has loaded and its API traffic has been quiet for
+`BOOT_QUIET_S` of real time, so an app that boots in two waves (the second
+starting when the first has answered) is out of both before the count begins.
 
 A long-lived response (an `EventSource` stream) never finishes, so a path prefix
 named in `stream_paths` is counted when it opens but not waited for, and a stream
@@ -26,8 +28,8 @@ as a hidden request:
     reading = measure_request_budget(page, url, stream_paths=("/api/events",))
 
 A count the probe cannot establish raises `RequestBudgetUnknown`, never a
-pass: no `.fleet.toml`, no usable `visible_requests_per_minute`, or a request
-that never settles. pytest reports it as an error, apart from a broken budget's
+pass: no `.fleet.toml`, no usable `visible_requests_per_minute`, a request
+that never settles, or a page whose API traffic never goes quiet. pytest reports it as an error, apart from a broken budget's
 failure.
 
 Vendor-verbatim (manifest key `request_budget_probe`); needs Playwright 1.45+
@@ -49,6 +51,13 @@ MINUTE_MS = 60_000
 DEFAULT_STEP_MS = 500
 # How long one step may wait, in real time, for the requests it started.
 SETTLE_TIMEOUT_S = 10.0
+# Real-time quiet that ends a boot. WebKit announces a second wave's requests to the driver
+# after the first wave's last `requestfinished`, so "nothing in flight" can be a gap between
+# waves; the driver's own `networkidle` uses the same 500 ms. It is measured on the probe's
+# own API requests, not the page's, because a held stream keeps `networkidle` from ever firing.
+BOOT_QUIET_S = 0.5
+# How long a boot may keep making API requests before the probe gives up on it.
+BOOT_TIMEOUT_S = 15.0
 # WebKit announces a held stream's `request` event 0.1 to 0.2 s of real time after the
 # load settles, where Chromium announces it before: wait this long so a stream the page
 # opens at boot is not counted as a request of the visible minute.
@@ -99,6 +108,7 @@ class _Counter:
         self.streams: set[Request] = set()
         self.phase: Counter[str] | None = None
         self.pending: set[Request] = set()
+        self.last_activity = time.monotonic()
         page.on("request", self._started)
         page.on("requestfinished", self._settled)
         page.on("requestfailed", self._settled)
@@ -107,6 +117,7 @@ class _Counter:
         path = urlsplit(request.url).path
         if not path.startswith(self.api_prefix):
             return
+        self.last_activity = time.monotonic()
         # A stream never finishes: count it, but settle() must not wait for it.
         if path.startswith(self.stream_paths):
             self.streams.add(request)
@@ -116,6 +127,8 @@ class _Counter:
             self.phase[path] += 1
 
     def _settled(self, request: Request) -> None:
+        if request in self.pending:
+            self.last_activity = time.monotonic()
         self.pending.discard(request)
         self.streams.discard(request)
 
@@ -129,6 +142,17 @@ class _Counter:
                 )
             self.page.wait_for_timeout(10)
         self.page.evaluate("() => new Promise((resolve) => queueMicrotask(resolve))")
+
+    def wait_for_boot(self) -> None:
+        """Wait (real time) until no API request has started or finished for `BOOT_QUIET_S`."""
+        deadline = time.monotonic() + BOOT_TIMEOUT_S
+        while self.pending or time.monotonic() - self.last_activity < BOOT_QUIET_S:
+            if time.monotonic() > deadline:
+                raise RequestBudgetUnknown(
+                    f"NOT CONFIRMED: the page's API traffic was not quiet for {BOOT_QUIET_S}s within {BOOT_TIMEOUT_S}s"
+                )
+            self.page.wait_for_timeout(10)
+        self.settle()
 
     def advance(self, total_ms: int, step_ms: int) -> None:
         for _ in range(total_ms // step_ms):
@@ -156,7 +180,7 @@ def measure_request_budget(
     counter = _Counter(page, api_prefix, stream_paths)
     page.goto(url)
     page.wait_for_load_state("load")
-    counter.settle()
+    counter.wait_for_boot()
     if stream_paths:
         page.wait_for_timeout(int(STREAM_BOOT_GRACE_S * 1000))
     reading = BudgetReading()

@@ -24,8 +24,13 @@ The last stdout line is the verdict, one of:
                                         here, so nothing ran (never a pass:
                                         `python -m playwright install webkit`)
   WEBKIT_BUDGET=no-tests        exit 5  the repo has no request-budget test
+  WEBKIT_BUDGET=no-browser-option exit 6 the repo's pytest has no `--browser`
+                                        option (no pytest-playwright, its fixtures
+                                        drive raw `playwright.sync_api`), so the
+                                        tests cannot be pointed at WebKit from
+                                        here; nothing ran
 
-A caller treats 0 as the only pass; 4 and 5 are "not run" states it prints as
+A caller treats 0 as the only pass; 4, 5 and 6 are "not run" states it prints as
 such, and 1 and 3 fail the gate.
 
 Vendor-verbatim (manifest key `webkit_budget_check`), stdlib-only apart from the
@@ -35,6 +40,7 @@ Playwright the repo's e2e suite already needs.
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 import sys
 import tomllib
@@ -45,10 +51,17 @@ EXIT_FAIL = 1
 EXIT_UNKNOWN = 3
 EXIT_NOT_INSTALLED = 4
 EXIT_NO_TESTS = 5
+EXIT_NO_BROWSER_OPTION = 6
 
 PROBE_HELPER = "_request_budget.py"
 # The probe runs a fake-clock minute per case; a hung browser must end the gate, not stall it.
 RUN_TIMEOUT_S = 900
+# `pytest --help` only imports the plugins and conftests, so it ends in seconds; a hang is "cannot say".
+PROBE_TIMEOUT_S = 120
+# The probe's output is captured and never shown, so its child gets no console window of its own.
+NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+# `--browser` exactly: pytest-playwright also registers `--browser-channel`, which must not count.
+_BROWSER_OPTION = re.compile(r"(?<![\w-])--browser(?![\w-])")
 _MARKER = "measure_request_budget("
 _SKIP_DIRS = frozenset({".venv", "venv", "node_modules", ".git", "__pycache__", ".tox"})
 
@@ -110,6 +123,24 @@ def webkit_installed() -> bool | None:
         return None
 
 
+def has_browser_option(root: Path, python: str, targets: list[str]) -> bool | None:
+    """Whether the repo's pytest accepts `--browser`; None when `pytest --help` cannot answer.
+
+    The targets ride along so a `--browser` that a conftest next to them registers is listed too.
+    """
+    try:
+        result = subprocess.run(  # noqa: S603
+            [python, "-m", "pytest", *targets, "--help"], cwd=root, check=False, capture_output=True,
+            text=True, timeout=PROBE_TIMEOUT_S, creationflags=NO_WINDOW)
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        print(f"⚠️ could not ask pytest for its options: {exc}", file=sys.stderr)
+        return None
+    if result.returncode != 0:
+        print(f"⚠️ `pytest --help` ended with exit {result.returncode}", file=sys.stderr)
+        return None
+    return bool(_BROWSER_OPTION.search(result.stdout or ""))
+
+
 def run(root: Path, python: str) -> int:
     try:
         targets = declared_targets(root)
@@ -125,6 +156,16 @@ def run(root: Path, python: str) -> int:
     if missing:
         _verdict("unknown", f"❌ NOT CONFIRMED: declared [webkit_budget] targets that do not exist: {', '.join(missing)}")
         return EXIT_UNKNOWN
+
+    browser_option = has_browser_option(root, python, targets)
+    if browser_option is None:
+        _verdict("unknown", "❌ NOT CONFIRMED: `pytest --help` did not answer, so the harness's `--browser` option is unknown")
+        return EXIT_UNKNOWN
+    if not browser_option:
+        _verdict("no-browser-option",
+                 "⚠️ this repo's pytest has no --browser option (no pytest-playwright): "
+                 "the request budget was NOT run on WebKit")
+        return EXIT_NO_BROWSER_OPTION
 
     installed = webkit_installed()
     if installed is None:
@@ -155,6 +196,10 @@ def run(root: Path, python: str) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Status lines carry emoji; a cp1252 pipe (a gate capturing without PYTHONUTF8) would crash instead of giving a verdict.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0] if __doc__ else None)
     parser.add_argument("--root", type=Path, default=Path.cwd(), help="the repo root (default: the current directory)")
     args = parser.parse_args(argv)
