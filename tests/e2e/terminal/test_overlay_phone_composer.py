@@ -474,6 +474,11 @@ def test_overlay_keeps_composer_reachable_on_a_phone(
     page.set_viewport_size({"width": _GEOMETRIES[0][0], "height": _GEOMETRIES[0][1]})
     page.goto(f"{base_url}/?terminal={sid}", wait_until="load")
     page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
+    # The overlay shows before the pane attaches. attachTerminalPane then sets
+    # the compose bar's `hidden` for this loopback (PC mirror) open, so the
+    # un-hide in _check_mode has to come after it. xterm opens straight after
+    # that step, which makes its viewport the signal that the step has run.
+    page.wait_for_selector("#terminalOverlay .xterm-viewport", timeout=OVERLAY_OPEN_MS)
 
     for geometry in _GEOMETRIES:
         page.set_viewport_size({"width": geometry[0], "height": geometry[1]})
