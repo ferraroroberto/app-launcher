@@ -117,7 +117,8 @@ poll = { src = "app/webapp/static/_vendored/poll", sha = "564864cb95a8b416c16d1a
 request_timing = { src = "src/request_timing.py", sha = "564864cb95a8b416c16d1a1e1e9f31b9d5b2ec8e", dest = "src/request_timing.py" }
 windows_only_ratchet = { src = "scripts/windows_only_ratchet.py", sha = "7c49213a6df844dc30987037913ba54e09de35d9", dest = "scripts/windows_only_ratchet.py" }
 ratchet_baseline = { src = "scripts/ratchet_baseline.py", sha = "7c49213a6df844dc30987037913ba54e09de35d9", dest = "scripts/ratchet_baseline.py" }
-request_budget_probe = { src = "tests/e2e/budget/_request_budget.py", sha = "be7de0edb225505f0b4773736b4eaf6b34a49363", dest = "tests/e2e/budget/_request_budget.py" }
+request_budget_probe = { src = "tests/e2e/budget/_request_budget.py", sha = "7c49213a6df844dc30987037913ba54e09de35d9", dest = "tests/e2e/budget/_request_budget.py" }
+webkit_budget_check = { src = "scripts/tools/webkit_budget_check.py", sha = "7c49213a6df844dc30987037913ba54e09de35d9", dest = "scripts/tools/webkit_budget_check.py" }
 
 # ---------------------------------------------------------------------------
 # [verify] -- the launch recipe the generated verify-app-launcher skill reads
@@ -618,7 +619,10 @@ time_budget_s         = 1200
 # 2026-11-25: 663 -> 664, one node (one test, chromium only) for tests/e2e/compose/test_dictation_wav.py: the fake microphone
 # records a real MediaStream, so it cannot share a page with the stubbed-recorder dictation tests; the streamed WAV chunks, the
 # single-shot recording.wav and both no-Web-Audio fallbacks ride that one node.
-test_budget = 664
+# 2026-11-25: 664 -> 665, one node (the existing request-budget test gains the iphone marker, so its WebKit node is now kept):
+# the gate's WebKit request-budget stage reruns exactly that test on the Mac nightly's engine, and the conftest drops a WebKit
+# node without the marker, so the stage would select nothing; no new test, the same visible, hidden and catch-up checks.
+test_budget = 665
 
 # --- static assets under the webapp's static dir -> Chromium smoke ----------
 [[e2e.rule]]
@@ -1338,11 +1342,12 @@ marker   = "windows_only"
 # tests/e2e/budget/test_main_page_request_budget.py on a fake clock. The reading is
 # the page's own polls: apps (about 5 s), the session list, rate limits and the
 # context filter (about 5 s each), the PC load and health pair (about 10 s) and the
-# sign-in status (about 20 s). A measured minute reads 63 to 67, the spread being
-# boot reads that land inside it; 70 leaves that margin and no more, so a new poll
-# or a faster interval breaks it.
+# sign-in status (about 20 s). A measured minute reads 63 to 67 on Chromium and 67 to 71
+# on WebKit (the high end under a loaded box), which also lands the one-off per-load
+# reads (apps perf, the timing flush, a second git-status) inside the minute; 74 leaves
+# a few requests of that spread and no more, so a new poll or a faster interval breaks it.
 [request_budget]
-visible_requests_per_minute = 70
+visible_requests_per_minute = 74
 
 [[request_budget.loops]]
 path       = "app/cli/commands/run_job_supervision.py"

@@ -374,6 +374,31 @@ try {
             }
             if ($e2eExit -ne 0) { Fail "Playwright e2e suite failed." }
 
+            # The Mac nightly runs the request-budget tests on WebKit, which the
+            # Chromium slice above never does. Exit 0 passes; 4 (WebKit not installed)
+            # and 5 (no budget test) are "not run", printed as such and never as a
+            # pass; anything else, 3 (not confirmed) included, fails the gate.
+            if ($tier -eq "static") {
+                Phase "request budget on webkit: SKIP (an inert-asset diff runs only the smoke target)"
+            } else {
+                $env:LAUNCHER_E2E_AUTOBOOT = "1"
+                try {
+                    Phase "request budget on webkit..."
+                    & $python scripts/tools/webkit_budget_check.py
+                    $webkitBudget = $LASTEXITCODE
+                }
+                finally {
+                    Remove-Item Env:\LAUNCHER_E2E_AUTOBOOT -ErrorAction SilentlyContinue
+                }
+                if ($webkitBudget -eq 4) {
+                    Write-Host "[NOT RUN] request budget on webkit - WebKit is not installed here, so the nightly's engine was not checked" -ForegroundColor Yellow
+                } elseif ($webkitBudget -eq 5) {
+                    Write-Host "[NOT RUN] request budget on webkit - no request-budget test in this repo" -ForegroundColor Yellow
+                } elseif ($webkitBudget -ne 0) {
+                    Fail "request budget on webkit failed (exit $webkitBudget): a budget test failed on WebKit, or the run could not be confirmed."
+                }
+            }
+
             # Screenshot baseline (scaffold docs/playwright-ui-testing.md): the
             # last stage. A slice that ran the whole suite or the capture test just
             # recaptured the shots, so only compare; a narrower slice did not, so the stage

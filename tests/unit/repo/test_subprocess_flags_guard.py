@@ -32,7 +32,13 @@ _SPAWN_ATTRS = {"run", "Popen", "call", "check_output", "check_call"}
 #: meant to be visible to the user (rare — e.g. a deliberately-opened
 #: interactive terminal)". Keyed by ``path::function`` rather than line so it
 #: survives edits above it; adding an entry is a deliberate, reviewable act.
-_VISIBLE_CONSOLE_EXEMPT: Dict[str, str] = {}
+_VISIBLE_CONSOLE_EXEMPT: Dict[str, str] = {
+    "scripts/tools/webkit_budget_check.py::run": (
+        "The scaffold's WebKit budget stage, vendored byte-for-byte; the gate runs it and "
+        "its pytest child streams into the gate's own console, which a windowless child "
+        "would not share. Nothing in the tray reaches it."
+    ),
+}
 
 #: Files copied byte-verbatim from project-scaffolding, which cannot import this
 #: repo's ``src.subprocess_flags``. They derive the same flag locally instead,
