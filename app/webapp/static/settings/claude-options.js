@@ -240,12 +240,7 @@ export async function fetchConfig(shouldApply) {
   renderRemotePowerGuard(body);
   renderLidKeepAwake(body);
   renderChiefAutoCompact(body);
-  if (els.chiefDoorbellToggle) {
-    setSwitch(els.chiefDoorbellToggle, body.chief_doorbell === true);
-  }
-  if (els.chiefFallbackMinutes && body.chief_fallback_minutes != null) {
-    setFieldValue(els.chiefFallbackMinutes, String(body.chief_fallback_minutes));
-  }
+  renderChiefWake(body);
   if (els.chiefAutoDrainToggle) {
     setSwitch(els.chiefAutoDrainToggle, body.chief_auto_drain !== false);
   }
@@ -352,6 +347,16 @@ function renderChiefAutoCompact(body) {
   setSwitch(els.chiefAutoCompactToggle, value > 0);
   setFieldValue(field, String(value > 0 ? value : _DEFAULT_CHIEF_AUTO_COMPACT));
   field.disabled = value === 0;
+}
+
+// Settings › Chief's two wakes: the doorbell switch and the fallback minutes.
+function renderChiefWake(body) {
+  if (els.chiefDoorbellToggle) {
+    setSwitch(els.chiefDoorbellToggle, body.chief_doorbell === true);
+  }
+  if (els.chiefFallbackMinutes && body.chief_fallback_minutes != null) {
+    setFieldValue(els.chiefFallbackMinutes, String(body.chief_fallback_minutes));
+  }
 }
 
 // Telegram's shared model select: a stored value the list doesn't offer (an

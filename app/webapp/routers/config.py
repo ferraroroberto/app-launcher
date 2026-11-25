@@ -113,10 +113,8 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "chief_auto_compact_threshold": cfg.chief_auto_compact_threshold,
         "chief_auto_compact_threshold_min": MIN_CHIEF_AUTO_COMPACT_THRESHOLD,
         "chief_auto_compact_threshold_max": MAX_CHIEF_AUTO_COMPACT_THRESHOLD,
-        # The chief doorbell, off by default; Settings > Chief's
-        # Doorbell switch saves it here.
+        # The chief doorbell (off by default) and its fallback wake (minutes, 0 = off).
         "chief_doorbell": cfg.chief_doorbell,
-        # The launcher's fallback wake, minutes, 0 = off.
         "chief_fallback_minutes": cfg.chief_fallback_minutes,
         # Queue drain, on by default; Settings > Chief's Auto-drain switch.
         "chief_auto_drain": cfg.chief_auto_drain,
