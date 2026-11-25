@@ -200,16 +200,23 @@ ready-wait (a slow cold-boot import) writes the reason to
 `webapp/registered_trays.log`, and the sister trays launch anyway.
 They launch in the registry's existing
 alphabetical order, no reordering UI yet — waiting for each to report
-ready (via its `.fleet.toml`'s declared `port`, or a fixed delay if that's
-missing) before starting the next. This avoids a boot-time CPU/disk spike
-from launching several sister Python processes concurrently. One tray
-failing to start doesn't block the rest. A tray whose port already
-answers is not launched. A tray with a declared port that is still closed
-after the walk is retried after 30 s, 60 s and 120 s while the tray runs,
-then given up on. Before each retry the port is probed again and the
-tray's process is looked for, and a tray found either way is never
-started twice. Each step leaves a line in `webapp/registered_trays.log`:
-`spawn ok` or `spawn failed`, `ready` or `readiness timeout`,
-`retry n/3` and `failed after 3 retries`. A tray launched this way is
+ready before starting the next. Ready means its `/healthz` and `/api/version`
+answer on its `.fleet.toml`'s declared `port` (HTTPS, then HTTP), serving
+the `git_sha` its repo is at when it reports one; with no port declared, a
+fixed delay stands in. This avoids a boot-time CPU/disk spike from
+launching several sister Python processes concurrently. One tray failing
+to start doesn't block the rest. Each tray is reported in one of four
+states: `answering` (not launched), `stale` (answering another build:
+reported, never launched over, restart it with its own `tray.bat
+--restart`), `bound_not_answering` (the port accepts connections but
+`/healthz` or `/api/version` does not: never launched over, retried) and
+`down`. A tray with a declared port that is still `down` or
+`bound_not_answering` after the walk is retried after 30 s, 60 s and 120 s
+while the tray runs, then given up on. Before each retry the port is
+probed again and the tray's process is looked for, and a tray found either
+way is never started twice. Each step leaves a line in
+`webapp/registered_trays.log`: `spawn ok` or `spawn failed`, `ready` or
+`readiness timeout` (with the last state and why), `retry n/3` and
+`failed after 3 retries`. A tray launched this way is
 started, not managed — `tray.bat --restart` on THIS machine never touches
 another repo's tray process.
