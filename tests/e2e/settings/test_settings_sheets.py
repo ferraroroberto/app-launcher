@@ -39,7 +39,7 @@ _GROUPS = ["Activity", "Appearance", "Agents", "Sessions", "Life OS", "Dictation
 _SHEETS = [
     "screenTimeSheet", "usageShowsSheet", "launchDefaultsSheet", "chiefSheet",
     "channelsSheet", "contextFilterSheet", "fleetScopeSheet", "inspirationSheet", "tokensSheet", "foldersSheet",
-    "passkeysSheet", "terminalSheet", "pcLoadSheet",
+    "passkeysSheet", "terminalSheet", "pcLoadSheet", "hubSheet",
 ]
 # The design inventory's name for each sheet (surface() wants lowercase).
 _SURFACE_NAMES = {
@@ -48,7 +48,7 @@ _SURFACE_NAMES = {
     "channelsSheet": "channels", "contextFilterSheet": "context-filter",
     "fleetScopeSheet": "fleet-scope", "inspirationSheet": "inspiration",
     "tokensSheet": "tokens", "foldersSheet": "folders",
-    "passkeysSheet": "passkeys", "terminalSheet": "terminal", "pcLoadSheet": "pc-load",
+    "passkeysSheet": "passkeys", "terminalSheet": "terminal", "pcLoadSheet": "pc-load", "hubSheet": "hub",
 }
 # A sheet's one primary: Done, unless it has a job of its own.
 _PRIMARY = {"screenTimeSheet": "Send to task-os"}
@@ -352,8 +352,9 @@ def _assert_pc_load_saves_the_night_restart_switch_and_window(
 def test_pc_load_passkeys_and_telegram_sheets(
     authed_page: Page, base_url: str, auth_token: str
 ) -> None:
-    """Three sheets on one page load, each closed before the next opens:
-    PC load saves as it changes, Passkeys remove and enrol, and Telegram reads
+    """Four sheets on one page load, each closed before the next opens:
+    PC load saves as it changes, Local hub refuses an unreachable address,
+    Passkeys remove and enrol, and Telegram reads
     plain with only its exceptions chipped (last: it flips the theme)."""
     page = authed_page
     passkeys = _route_passkeys(page)
@@ -364,8 +365,44 @@ def test_pc_load_passkeys_and_telegram_sheets(
     surface(page, "settings.pc-load-on")
     close_settings_sheets(page)
     expect(_value(page, "pc-load")).to_have_text("Night restart 21:00–06:30")
+    _assert_local_hub_refuses_an_unreachable_address_and_turns_the_hub_off(page, base_url, auth_token)
     _assert_passkeys_list_remove_and_enrol(page, passkeys)
     _assert_telegram_reads_plain_and_only_exceptions_wear_a_chip(page, channels)
+
+
+def _assert_local_hub_refuses_an_unreachable_address_and_turns_the_hub_off(
+    page: Page, base_url: str, auth_token: str
+) -> None:
+    """Local hub: an address nothing answers on is refused under the field with
+    its reason and the stored one stays; the Use the local hub button asks for
+    the local address; clearing the field turns the hub off (the autouse fixture
+    puts the config back)."""
+    before = _config(base_url, auth_token)["llm_hub_url"]
+    open_settings_sheet(page, "hubSheet")
+    field = page.locator("#llmHubUrl")
+    expect(field).to_have_value(before)
+
+    field.fill("http://127.0.0.1:1")
+    field.dispatch_event("change")
+    expect(page.locator("#llmHubUrlError")).to_contain_text("Nothing answered")
+    expect(field).to_have_value(before)
+    assert _config(base_url, auth_token)["llm_hub_url"] == before
+
+    sent: list[str] = []
+    page.route("**/api/config", lambda route: (
+        sent.append(route.request.post_data or ""), route.fulfill(json={"ok": True}))
+        if route.request.method == "POST" else route.continue_())
+    page.locator("#llmHubUseLocal").click()
+    expect(page.locator("#toast")).to_contain_text("Local hub saved.")
+    assert sent == ['{"llm_hub_url":"http://127.0.0.1:8000"}']
+    page.unroute("**/api/config")
+
+    field.fill("")
+    field.dispatch_event("change")
+    expect(page.locator("#toast")).to_contain_text("Local hub off.")
+    assert _config(base_url, auth_token)["llm_hub_url"] == ""
+    close_settings_sheets(page)
+    expect(_value(page, "hub")).to_have_text("Off")
 
 
 @pytest.mark.iphone

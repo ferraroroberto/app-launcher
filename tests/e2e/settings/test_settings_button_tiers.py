@@ -35,7 +35,7 @@ pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 _SHEETS = [
     "screenTimeSheet", "usageShowsSheet", "launchDefaultsSheet", "chiefSheet",
     "channelsSheet", "contextFilterSheet", "tokensSheet", "foldersSheet",
-    "passkeysSheet", "terminalSheet", "pcLoadSheet",
+    "passkeysSheet", "terminalSheet", "pcLoadSheet", "hubSheet",
 ]
 
 # WCAG relative luminance / contrast, computed on the composited colours.

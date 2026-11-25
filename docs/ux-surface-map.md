@@ -42,7 +42,7 @@ Walked 2026-11-18 against build `e6da4359`, at widths 390, 1280, themes light, d
 | [Jobs tab](#jobs-tab) | 11 |
 | [Apps tab](#apps-tab) | 13 |
 | [Life tab](#life-tab) | 14 |
-| [Settings](#settings) | 22 |
+| [Settings](#settings) | 23 |
 | [Gestures and keys](#gestures-and-keys) | 6 |
 
 ## Chrome
@@ -815,12 +815,12 @@ flowchart LR
   s47["Quality sheet"]
   s48["Readout"]
   s2(["PC load sheet · Chrome"])
-  s129(["Screen control gestures · Gestures and keys"])
+  s130(["Screen control gestures · Gestures and keys"])
   s2 -->|"Screen"| s44
   s44 -->|"keyboard"| s45
   s44 -->|"quality"| s47
   s44 -->|"Paste to PC"| s46
-  s44 -->|"touch in Control"| s129
+  s44 -->|"touch in Control"| s130
   s47 -->|"Readout on"| s48
 ```
 
@@ -1524,7 +1524,7 @@ flowchart LR
   s103["File viewer"]
   s104["Weekly recap card"]
   s0(["Nav · Chrome"])
-  s127(["Skill row swipe · Gestures and keys"])
+  s128(["Skill row swipe · Gestures and keys"])
   s120(["Folders sheet · Settings"])
   s3(["Confirm dialog · Chrome"])
   s0 -->|"Life"| s91
@@ -1533,7 +1533,7 @@ flowchart LR
   s91 -->|"Weekly recap"| s104
   s92 -->|"model picker"| s93
   s92 -->|"row kebab"| s94
-  s92 -->|"swipe a row"| s127
+  s92 -->|"swipe a row"| s128
   s92 -->|"Open Settings"| s120
   s94 -->|"Read"| s102
   s94 -->|"Conversations"| s95
@@ -1740,7 +1740,8 @@ flowchart LR
   s123["Terminal sheet"]
   s124["PC load sheet"]
   s125["PC load, night restart on"]
-  s126["Admin rights needed sheet"]
+  s126["Local hub sheet"]
+  s127["Admin rights needed sheet"]
   s1(["Page header · Chrome"])
   s16(["Chief row menu · Code tab"])
   s18(["Projects card · Code tab"])
@@ -1766,7 +1767,8 @@ flowchart LR
   s105 -->|"Passkeys"| s122
   s105 -->|"Terminal"| s123
   s105 -->|"PC load"| s124
-  s105 -->|"Hide shut down remotely, when Windows needs administrator rights"| s126
+  s105 -->|"Local hub"| s126
+  s105 -->|"Hide shut down remotely, when Windows needs administrator rights"| s127
   s109 -->|"an agent"| s111
   s109 -->|"preset kebab"| s110
   s113 -->|"a bot"| s114
@@ -1788,7 +1790,7 @@ flowchart LR
   - Life OS: Refresh skills on resume switch
   - Dictation: Auto-stop (Off, 2 s, 3 s, 5 s)
   - Connections: Telegram, Context filter, Fleet scope, Inspiration, API tokens
-  - This PC: Folders, Passkeys, Terminal, PC load, and the Start at log on, Hide shut down remotely, Awake with lid closed and Prevent lock switches
+  - This PC: Folders, Passkeys, Terminal, PC load, Local hub, and the Start at log on, Hide shut down remotely, Awake with lid closed and Prevent lock switches
   - Voice, in a Remote Desktop session only
 - **Does:**
   - a row that shows a value opens its sheet; a switch saves when you tap it
@@ -1811,6 +1813,7 @@ flowchart LR
   - [Passkeys sheet](#settingspasskeys-passkeys-sheet) (Passkeys)
   - [Terminal sheet](#settingsterminal-terminal-sheet) (Terminal)
   - [PC load sheet](#settingspc-load-pc-load-sheet) (PC load)
+  - [Local hub sheet](#settingshub-local-hub-sheet) (Local hub)
   - [Admin rights needed sheet](#settingsremote-power-guard-admin-rights-needed-sheet) (Hide shut down remotely, when Windows needs administrator rights)
 
 ### `settings.screen-time` Screen time sheet
@@ -2011,6 +2014,18 @@ flowchart LR
 - **Root:** none — the same sheet with the switch on and the window shown.
 - **States:** the row in Settings reads Night restart with the window, 21:00 to 06:30 by default
 
+### `settings.hub` Local hub sheet
+
+- **Root:** `data-surface`
+- **Reach:** Settings › This PC › Local hub
+- **Holds:** the hub's address, empty to turn the hub off, with a Use the local hub button that fills the local address
+- **Does:**
+  - an address is checked against the hub before it is saved; a refused one says why and changes nothing
+  - a saved address applies at once, with no restart
+- **States:**
+  - the row in Settings reads the hub's host and port, or Off
+  - the PC health dot reads unknown, with its reason, while the address is empty or nothing answers
+
 ### `settings.remote-power-guard` Admin rights needed sheet
 
 - **Root:** `data-surface`
@@ -2024,16 +2039,16 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  s127["Skill row swipe"]
-  s128["Long-press hint"]
-  s129["Screen control gestures"]
-  s130["Hardware keyboard in Control"]
-  s131["Escape and arrow keys"]
-  s132["Composer send key"]
+  s128["Skill row swipe"]
+  s129["Long-press hint"]
+  s130["Screen control gestures"]
+  s131["Hardware keyboard in Control"]
+  s132["Escape and arrow keys"]
+  s133["Composer send key"]
   s44(["Screen view · Screen view"])
   s92(["Skills card · Life tab"])
-  s44 -->|"touch in Control"| s129
-  s92 -->|"swipe a row"| s127
+  s44 -->|"touch in Control"| s130
+  s92 -->|"swipe a row"| s128
 ```
 
 ### `input.swipe-row` Skill row swipe
@@ -2242,6 +2257,7 @@ flowchart LR
 | [Settings pane](#settingspane-settings-pane) | Passkeys | [Passkeys sheet](#settingspasskeys-passkeys-sheet) |
 | [Settings pane](#settingspane-settings-pane) | Terminal | [Terminal sheet](#settingsterminal-terminal-sheet) |
 | [Settings pane](#settingspane-settings-pane) | PC load | [PC load sheet](#settingspc-load-pc-load-sheet) |
+| [Settings pane](#settingspane-settings-pane) | Local hub | [Local hub sheet](#settingshub-local-hub-sheet) |
 | [Settings pane](#settingspane-settings-pane) | Hide shut down remotely, when Windows needs administrator rights | [Admin rights needed sheet](#settingsremote-power-guard-admin-rights-needed-sheet) |
 | [Launch defaults sheet](#settingslaunch-defaults-launch-defaults-sheet) | an agent | [Agent sheet](#settingsagent-agent-sheet) |
 | [Launch defaults sheet](#settingslaunch-defaults-launch-defaults-sheet) | preset kebab | [Launch preset menu](#settingspreset-menu-launch-preset-menu) |
