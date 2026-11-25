@@ -329,7 +329,7 @@ def test_sheet_fits_a_phone_and_legend_marks_are_the_agents_brand_colour_alone(
     # below it as a subtitle, never drawn over it (the Android report).
     page.set_viewport_size({"width": 360, "height": 740})
     for theme in ("light", "dark"):
-        page.emulate_media(color_scheme=theme)
+        page.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
         title = page.locator("#progressReposTitle")
         meta = page.locator("#progressReposMeta")
         title.scroll_into_view_if_needed()
