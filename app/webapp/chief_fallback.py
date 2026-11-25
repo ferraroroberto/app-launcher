@@ -31,7 +31,6 @@ a child of the doorbell's logger.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import re
@@ -43,6 +42,7 @@ from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Set
 from app.webapp import chief_doorbell
 from app.webapp.chief_doorbell import Observation
 from app.webapp.route_pools import BOARD_FILES, run_on
+from src._json_io import read_json_or
 from src.chief.plan import read_plan_index
 from src.chief.queue_status import QueueStatus, queue_status
 
@@ -111,13 +111,10 @@ def queued_rows(plan_file: Path) -> Optional[int]:
 def managed_sids(managed_file: Path) -> Optional[Set[str]]:
     """Session ids the chief recorded at dispatch; ``None`` when the registry
     is present but unreadable. A missing registry is an empty set."""
-    try:
-        rows = json.loads(managed_file.read_text(encoding="utf-8"))
-    except FileNotFoundError:
+    if not managed_file.exists():
         return set()
-    except (OSError, ValueError):
-        return None
-    return set(rows) if isinstance(rows, dict) else None
+    rows = read_json_or(managed_file, None, "chief-managed registry", expect=dict)
+    return None if rows is None else set(rows)
 
 
 def busy_workers(
