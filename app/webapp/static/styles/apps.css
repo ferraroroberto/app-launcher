@@ -235,10 +235,14 @@
 .projects-toolbar .git-refresh-btn { --icon-btn-box: var(--control-h); }
 .git-toolbar-actions { display: inline-flex; gap: 8px; }
 
-/* Sync all's report: one line per repo, its outcome as a chip. */
+/* Sync all's report: a summary line, then one line per repo, its outcome as a
+   chip; a failure's error wraps onto its own line below the name. */
+.git-sync-summary { margin: 0 0 12px; font-size: var(--font-label); overflow-wrap: anywhere; }
+.git-sync-summary[data-kind="error"] { color: var(--danger); }
 .git-sync-body { list-style: none; margin: 0 0 12px; padding: 0; max-height: 60vh; overflow-y: auto; }
 .git-sync-body li {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -248,6 +252,7 @@
 }
 .git-sync-body li:last-child { border-bottom: 0; }
 .git-sync-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.git-sync-why { flex-basis: 100%; padding-bottom: 8px; color: var(--muted); overflow-wrap: anywhere; }
 
 /* The launch toolbar (launch-toolbar.js): the model row (the combo, a
    trailing control pinned right), then the switch pair, each switch with

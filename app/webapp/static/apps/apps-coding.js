@@ -574,12 +574,9 @@ export function wireCoding() {
   if (els.gitRefreshBtn) els.gitRefreshBtn.addEventListener('click', function () { checkGitNow(); });
   const syncBtn = document.getElementById('gitSyncAllBtn');
   if (syncBtn) {
+    // A tap while it runs brings the dialog back, so the button stays live.
     syncBtn.addEventListener('click', function () {
-      syncBtn.disabled = true;
-      syncAll(function () {
-        syncBtn.disabled = false;
-        refreshGitStatus({ quiet: true, fresh: true });
-      });
+      syncAll(function () { refreshGitStatus({ quiet: true, fresh: true }); });
     });
   }
   wireGitSync();

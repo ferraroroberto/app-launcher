@@ -488,9 +488,16 @@ flowchart LR
 
 - **Root:** `data-surface`
 - **Reach:** the Sync all button on the Projects toolbar
-- **Holds:** one line per project saying whether it was fast-forwarded or skipped and why
-- **Does:** Done closes
-- **States:** a state line while it runs and when nothing needed pulling
+- **Holds:**
+  - a summary line counting what was fast-forwarded, already current, skipped and failed
+  - one line per project, failures first, saying whether it was fast-forwarded, skipped and why, or failed with its error
+- **Does:**
+  - Done closes
+  - tapping Sync all again while it runs brings the sheet back
+- **States:**
+  - a state line "Syncing 3 of 26 · project" while it runs, mirrored in a toast that stays when the sheet is closed
+  - the report stays until Done; a run the server could not finish shows its error
+  - a state line when there are no git repos
 
 ### `code.changes-overlay` Changed files overlay
 

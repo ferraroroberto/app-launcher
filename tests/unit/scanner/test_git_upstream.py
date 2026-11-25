@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import threading
+import time
 from pathlib import Path
 from typing import Tuple
 
@@ -233,25 +235,98 @@ def _point_projects_at(app, folder: Path) -> None:
     app.state.webapp_config.projects_ignore = []
 
 
-def test_sync_all_route_reports_every_repo(webapp_client, repos, tmp_path):
-    client, app, _ = webapp_client
+@pytest.fixture
+def live_client(webapp_client):
+    """The webapp client with its event loop kept alive between requests.
+
+    Sync all runs as a background task; a bare TestClient tears its loop down
+    after each request, which would cancel it before the next poll.
+    """
+    client, app, overrides = webapp_client
+    with client:
+        yield client, app, overrides
+
+
+def _finished_run(client, timeout_s: float = 30.0) -> dict:
+    """Poll Sync all's progress until the run ends, as the dialog does."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        run = client.get("/api/claude-code/sync-all").json()["run"]
+        if run and run["finished_at"]:
+            return run
+        time.sleep(0.05)
+    raise AssertionError("Sync all did not finish")
+
+
+def _two_projects(app, repos, tmp_path):
     _, mine, theirs = repos
-    _push_from(theirs, "a.txt")
-    (theirs / "local.txt").write_text("dirt\n", encoding="utf-8")
     projects = tmp_path / "projects"
     projects.mkdir()
     shutil.move(str(mine), str(projects / "mine"))
     shutil.move(str(theirs), str(projects / "theirs"))
     _point_projects_at(app, projects)
 
-    res = client.post("/api/claude-code/sync-all")
-    assert res.status_code == 200
-    by_name = {r["name"]: r for r in res.json()["results"]}
+
+def test_sync_all_route_reports_every_repo(live_client, repos, tmp_path):
+    client, app, _ = live_client
+    _, _, theirs = repos
+    _push_from(theirs, "a.txt")
+    (theirs / "local.txt").write_text("dirt\n", encoding="utf-8")
+    _two_projects(app, repos, tmp_path)
+
+    started = client.post("/api/claude-code/sync-all")
+    assert started.status_code == 200
+    assert started.json()["run"]["total"] == 2
+
+    run = _finished_run(client)
+    assert (run["total"], run["done"], run["current"], run["error"]) == (2, 2, None, None)
+    by_name = {r["name"]: r for r in run["results"]}
     assert by_name["mine"]["outcome"] == "pulled" and by_name["mine"]["commits"] == 1
     assert (by_name["theirs"]["outcome"], by_name["theirs"]["reason"]) == ("skipped", "dirty")
 
     rows = {p["id"]: p for p in client.get("/api/claude-code/git-status").json()["projects"]}
     assert rows["mine"]["upstream"]["state"] == "up-to-date"
+
+
+def test_sync_all_reports_a_repo_that_raised_as_failed_with_its_error(live_client, repos, tmp_path, monkeypatch):
+    client, app, _ = live_client
+    _two_projects(app, repos, tmp_path)
+    real = git_upstream.sync_repo
+
+    def boom(repo, default_branch, **kwargs):
+        if Path(repo).name == "theirs":
+            raise OSError("disk exploded")
+        return real(repo, default_branch, **kwargs)
+
+    monkeypatch.setattr(git_upstream, "sync_repo", boom)
+    assert client.post("/api/claude-code/sync-all").status_code == 200
+
+    run = _finished_run(client)
+    by_name = {r["name"]: r for r in run["results"]}
+    assert (by_name["theirs"]["outcome"], by_name["theirs"]["reason"]) == ("failed", "OSError: disk exploded")
+    assert by_name["mine"]["outcome"] == "up-to-date"
+    assert run["error"] is None and run["done"] == 2
+
+
+def test_sync_all_refuses_a_second_run_while_one_is_going(live_client, repos, tmp_path, monkeypatch):
+    client, app, _ = live_client
+    _two_projects(app, repos, tmp_path)
+    release = threading.Event()
+    real = git_upstream.sync_repo
+
+    def slow(repo, default_branch, **kwargs):
+        release.wait(10)
+        return real(repo, default_branch, **kwargs)
+
+    monkeypatch.setattr(git_upstream, "sync_repo", slow)
+    try:
+        assert client.post("/api/claude-code/sync-all").status_code == 200
+        running = client.get("/api/claude-code/sync-all").json()["run"]
+        assert running["finished_at"] is None and running["done"] == 0 and running["current"]
+        assert client.post("/api/claude-code/sync-all").status_code == 409
+    finally:
+        release.set()
+    assert _finished_run(client)["done"] == 2
 
 
 def test_git_status_poll_does_no_network_io(webapp_client, repos, tmp_path, monkeypatch):
