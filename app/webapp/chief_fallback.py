@@ -80,7 +80,9 @@ def _event_names(directory: Path) -> List[str]:
         return [e.name for e in entries if chief_doorbell.is_counted_name(e)]
 
 
-def oldest_pending_age(inbox_dir: Path, now_ms: int) -> Optional[float]:
+def oldest_pending_age(
+    inbox_dir: Path, now_ms: int, stale_ms: int = chief_doorbell.CLAIM_STALE_MS
+) -> Optional[float]:
     """Seconds the oldest pending event has waited, or ``None`` when none is
     pending. Pending is the doorbell's rule: root events plus stale claims.
     A file name without a time stamp carries no age and is skipped. Raises
@@ -93,9 +95,9 @@ def oldest_pending_age(inbox_dir: Path, now_ms: int) -> Optional[float]:
         claimed = _event_names(inbox_dir / ".claimed")
     except FileNotFoundError:
         claimed = []
-    stale_ms = chief_doorbell.CLAIM_STALE_MS / 1000.0
+    stale_s = stale_ms / 1000.0
     ages = _stamped_ages(root, now_ms)
-    ages += [age for age in _stamped_ages(claimed, now_ms) if age >= stale_ms]
+    ages += [age for age in _stamped_ages(claimed, now_ms) if age >= stale_s]
     return max(ages) if ages else None
 
 
@@ -162,7 +164,7 @@ async def observe(cfg: Any) -> Facts:
     gives a reason to ring, so the steady state reads no sessions."""
     oldest, queued = await asyncio.gather(
         run_on(BOARD_FILES, oldest_pending_age, Path(cfg.chief_inbox_dir),
-               int(time.time() * 1000)),
+               int(time.time() * 1000), chief_doorbell.claim_stale_ms(cfg)),
         run_on(BOARD_FILES, queued_rows, Path(cfg.chief_plan_file)),
     )
     period = fallback_minutes(cfg) * 60

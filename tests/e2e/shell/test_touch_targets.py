@@ -105,11 +105,15 @@ _AGENTS = ("claude", "codex", "antigravity", "copilot", "pi", "grok")
 _SHEET_DATA_CONTROL = {"passkeysSheet": "#webauthnDevices .icon-button"}
 
 # Every settings sheet the markup declares, for the header-fit leg.
-_SHEETS_HTML = Path(__file__).resolve().parents[3] / "app/webapp/static/views/settings-sheets.html"
-_SHEET_IDS = re.findall(
-    r'<dialog id="(\w+)" class="detail-dialog settings-sheet"',
-    _SHEETS_HTML.read_text(encoding="utf-8"),
-)
+_VIEWS = Path(__file__).resolve().parents[3] / "app/webapp/static/views"
+_SHEET_IDS = [
+    sheet_id
+    for name in ("settings-sheets.html", "chief-sheet.html")
+    for sheet_id in re.findall(
+        r'<dialog id="(\w+)" class="detail-dialog settings-sheet"',
+        (_VIEWS / name).read_text(encoding="utf-8"),
+    )
+]
 
 # (dialog, title): one settings sheet plus every titled dialog that sits
 # outside ``.settings-sheet-head`` (#1537).

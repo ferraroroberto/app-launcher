@@ -10,7 +10,7 @@ from __future__ import annotations
 from html.parser import HTMLParser
 from pathlib import Path
 
-SHEET = Path(__file__).resolve().parents[3] / "app/webapp/static/views/settings-sheets.html"
+SHEET = Path(__file__).resolve().parents[3] / "app/webapp/static/views/chief-sheet.html"
 
 
 class _ChiefSheet(HTMLParser):

@@ -56,6 +56,13 @@ class TestChiefAutoCompactThreshold:
         assert ok.status_code == 200 and ok.json() == {"auto_compact_threshold": 30}
 
 
+# Today's hard-coded chief timings: the defaults must not change behaviour (#2619).
+TODAY_TIMINGS = {
+    "chief_rering_seconds": 60, "chief_reoffer_minutes": 15,
+    "chief_hold_minutes": 10, "chief_stall_minutes": 45,
+}
+
+
 class TestChiefSettings:
 
     def test_get_returns_defaults(self, webapp_client, _bypass_gate):
@@ -71,6 +78,7 @@ class TestChiefSettings:
             "chief_job_self_heal": False,
             "chief_weekly_proposals": False,
             "chief_fallback_minutes": 30,
+            **TODAY_TIMINGS,
         }
 
     @pytest.mark.parametrize("key", ["chief_job_self_heal", "chief_weekly_proposals"])
@@ -135,7 +143,28 @@ class TestChiefSettings:
             "chief_job_self_heal": False,
             "chief_weekly_proposals": False,
             "chief_fallback_minutes": 30,
+            **TODAY_TIMINGS,
         }
+
+    @pytest.mark.parametrize(("key", "low", "high"), [
+        ("chief_rering_seconds", 30, 600), ("chief_reoffer_minutes", 10, 120),
+        ("chief_hold_minutes", 5, 60), ("chief_stall_minutes", 15, 240),
+    ])
+    def test_timings_are_stored_in_range_and_returned(
+        self, webapp_client, _bypass_gate, key, low, high,
+    ):
+        """Settings > Chief > Timings (#2619): each edge saves, persists and
+        reaches the chief's block; anything else is a 400 that changes nothing."""
+        client, app, _ = webapp_client
+        for good in (low, high):
+            assert client.post("/api/config", json={key: good}).status_code == 200
+            assert client.get("/api/board/chief/settings").json()["settings"][key] == good
+        from src.webapp_config import load_webapp_config
+        assert getattr(load_webapp_config(), key) == high
+        for bad in (low - 1, high + 1, "30", 20.5, True, None):
+            resp = client.post("/api/config", json={key: bad})
+            assert resp.status_code == 400 and key in resp.json()["detail"], bad
+        assert client.get("/api/config").json()[key] == high
 
     def test_fallback_minutes_round_trip_and_are_whole_and_non_negative(
         self, webapp_client, _bypass_gate,

@@ -66,6 +66,7 @@ from src.webapp_settings.values import (  # noqa: F401 — re-exported for webap
     WEBAPP_CONFIG_PATH_ENV, valid_claude_efforts_for, check_dictation_auto_stop,
     check_mirror_browser,
 )
+from src.webapp_settings.chief_timings import CHIEF_TIMINGS, check_chief_timings
 # isort: on
 
 logger = logging.getLogger(__name__)
@@ -275,15 +276,18 @@ class WebappConfig:
     # Auto-compact threshold in percent, 0 = off. Set in Settings'
     # Chief card; served to the chief by GET /api/board/chief-settings.
     chief_auto_compact_threshold: int = DEFAULT_CHIEF_AUTO_COMPACT_THRESHOLD
-    # The chief doorbell: type one fixed line into an idle chief whose
-    # mailbox holds pending events. Off by default: it types into a live
-    # session, and the chief only understands the line once fleet-config
-    # ships its side, which is what turns this on.
+    # The chief doorbell: type one fixed line into an idle chief whose mailbox
+    # holds pending events. Off by default, because it types into a live session.
     chief_doorbell: bool = False
     # The launcher's fallback wake in minutes, 0 = off: it rings the chief when
     # a mailbox event, or a free slot beside queued work, has waited this long,
     # so a missed doorbell never strands it (app.webapp.chief_fallback).
     chief_fallback_minutes: int = 30
+    # The chief's tunable timings; defaults and ranges: src.webapp_settings.chief_timings.
+    chief_rering_seconds: int = CHIEF_TIMINGS["chief_rering_seconds"].default
+    chief_reoffer_minutes: int = CHIEF_TIMINGS["chief_reoffer_minutes"].default
+    chief_hold_minutes: int = CHIEF_TIMINGS["chief_hold_minutes"].default
+    chief_stall_minutes: int = CHIEF_TIMINGS["chief_stall_minutes"].default
     # Queue drain for unattended audit issues. On by default: the chief
     # adds them to its plan and dispatches into a free worker slot.
     # Settings > Chief turns it off; readers take auto_drain from the
@@ -984,6 +988,7 @@ def _validate(cfg: WebappConfig) -> None:
         )
     check_dictation_auto_stop(cfg.dictation_auto_stop_seconds)
     check_mirror_browser(cfg.mirror_browser)
+    check_chief_timings(cfg)
     threshold = cfg.chief_auto_compact_threshold
     if threshold != 0 and not (
         MIN_CHIEF_AUTO_COMPACT_THRESHOLD <= threshold <= MAX_CHIEF_AUTO_COMPACT_THRESHOLD

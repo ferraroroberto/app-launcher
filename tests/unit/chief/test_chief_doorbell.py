@@ -95,6 +95,17 @@ class TestCountPending:
         assert count_pending(inbox, NOW_MS) is None
 
 
+def test_today_s_values_are_the_defaults_and_a_stored_re_offer_wins(tmp_path):
+    """No stored setting keeps 60 s and 15 min (#2619); a stored 10 min re-offers a 12-minute claim."""
+    assert (BACKOFF_SECONDS, CLAIM_STALE_MS) == (60.0, 900_000)
+    assert (bell_mod.rering_seconds(object()), bell_mod.claim_stale_ms(object())) == (60.0, 900_000)
+    inbox = tmp_path / "chief-inbox"
+    _touch(inbox / ".claimed" / f"{NOW_MS - 12 * 60_000}-taken.json")
+    assert count_pending(inbox, NOW_MS) == 0
+    stale = bell_mod.claim_stale_ms(_cfg(chief_reoffer_minutes=10))
+    assert count_pending(inbox, NOW_MS, stale) == 1
+
+
 # --- Doorbell.decide: the debounce + back-off state machine ---------------
 
 
@@ -339,6 +350,12 @@ class TestTickOnce:
         decisions, sends, _ = await _run_ticks(_cfg(), _obs(), ticks=5)
         assert decisions == ["debouncing", "ring"] + ["backing off after ring"] * 3
         assert sends == [(54321, CHIEF_SID, DOORBELL_LINE, True)]
+
+    async def test_the_stored_re_ring_setting_sets_the_back_off(self):
+        """chief_rering_seconds (#2619): 30 s re-rings after ten 3 s ticks, not twenty."""
+        decisions, sends, _ = await _run_ticks(_cfg(chief_rering_seconds=30), _obs(), ticks=13)
+        assert decisions[:2] == ["debouncing", "ring"] and decisions[-1] == "ring"
+        assert len(sends) == 2
 
     async def test_a_stuck_working_label_rings_through_tick_once(self):
         obs = _obs(status="working", output_age=STALE_WORKING_SECONDS + 60)
