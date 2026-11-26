@@ -84,6 +84,11 @@ TRAY_DOWN = "down"                                 # nothing is listening
 # every half second: short enough that one poll stays well under the 30 s budget.
 _PROBE_TIMEOUT_S = 1.5
 
+# A loopback connect to a bound port completes at once, so this only bounds the
+# wait on a closed one; kept below the ready poll's half second (a judged value,
+# not a measured one).
+_PORT_PROBE_TIMEOUT_S = 0.3
+
 
 def _log_path() -> Path:
     """The gitignored boot breadcrumb log this repo writes at each autostart.
@@ -113,7 +118,7 @@ def _log_breadcrumb(msg: str) -> None:
 def port_listening(port: int) -> bool:
     """True if something is listening on 127.0.0.1:<port> (loopback)."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.settimeout(0.3)
+        s.settimeout(_PORT_PROBE_TIMEOUT_S)
         return s.connect_ex(("127.0.0.1", port)) == 0
 
 

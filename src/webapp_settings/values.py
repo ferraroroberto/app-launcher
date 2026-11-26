@@ -41,9 +41,10 @@ WEBAPP_CONFIG_PATH_ENV = "LAUNCHER_WEBAPP_CONFIG"
 # a config for a test or disposable run from the real file must drop these —
 # the e2e autoboot does (tests/_credential_hygiene.py), and its failure-output
 # redaction scrubs their values. ``webhook_secrets`` is the legacy name
-# ``secrets`` still loads from (see ``_load_secrets``), so it is a credential
-# too. A new credential field must be added here: tests/unit/repo/test_credential_hygiene.py
-# fails on any credential-shaped field name this tuple doesn't list.
+# ``secrets`` still loads from (see :mod:`src.webapp_settings.loaders`), so it
+# is a credential too. A new credential field must be added here:
+# tests/unit/repo/test_credential_hygiene.py fails on any credential-shaped
+# field name this tuple doesn't list.
 CREDENTIAL_KEYS: Tuple[str, ...] = (
     "auth_token",
     "auth_password",

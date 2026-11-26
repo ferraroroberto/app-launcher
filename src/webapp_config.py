@@ -18,6 +18,9 @@ Holds:
 - Pushover failure-notification credentials
 - auth secrets (bearer token + login password)
 
+Reading one field and carrying legacy keys over live in
+:mod:`src.webapp_settings.loaders` and :mod:`src.webapp_settings.migrations`.
+
 Config only — turning those settings into each agent's actual CLI argv is
 launch logic, and lives in :mod:`src.launching.flags` (``build_*_flags``).
 That module imports this one; never the reverse.
@@ -28,46 +31,90 @@ from __future__ import annotations
 import json
 import logging
 import os
-from dataclasses import MISSING, asdict, dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from dataclasses import fields as dataclass_fields
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple
 from urllib.parse import urlencode, urlparse, urlunparse
 
+from src import runtime_files
 from src._json_io import atomic_write_json
 from src.agents import DEFAULT_AGENT
-
-# isort: off
-# Grid layout: one name per line would push this module past the structure ratchet's file-size cap.
 from src.launching.model_catalog import (
-    CODEX_MODEL_SPECS, DEFAULT_HIDDEN_MODELS,
-    load_hidden_models, migrate_renamed_models, with_visible_defaults,
+    CODEX_MODEL_SPECS,
+    DEFAULT_HIDDEN_MODELS,
+    migrate_renamed_models,
+    with_visible_defaults,
 )
-from src.launching.presets import load_launch_presets
-from src.restart_window import DEFAULT_END, DEFAULT_START, validate_window
-from src import request_health, runtime_files
-from src.usage.providers import DEFAULT_USAGE_PROVIDERS, load_usage_providers
+from src.restart_window import (
+    DEFAULT_END,
+    DEFAULT_START,
+    validate_window,
+)
+from src.usage.providers import DEFAULT_USAGE_PROVIDERS
+from src.webapp_settings.chief_timings import (
+    CHIEF_TIMINGS,
+    check_chief_timings,
+)
+from src.webapp_settings.loaders import load_field
+from src.webapp_settings.migrations import migrate_legacy_keys
 from src.webapp_settings.values import (  # noqa: F401 — re-exported for webapp_config.<name> callers
-    ALWAYS_ON_CLAUDE_FLAGS, CREDENTIAL_KEYS, DEFAULT_CHANNEL_MODEL,
-    DEFAULT_CHIEF_AUTO_COMPACT_THRESHOLD, DEFAULT_CHIEF_MODEL, DEFAULT_CHIEF_WORKER_CAP,
-    DEFAULT_CHIEF_WORKER_CAP_SCOPE, DEFAULT_CLAUDE_EFFORT, DEFAULT_CLAUDE_MODEL,
-    DEFAULT_CLAUDE_PERMISSION_MODE, DEFAULT_CODEX_EFFORT, DEFAULT_CODEX_MODEL,
-    DEFAULT_CODEX_MODEL_EFFORTS, DEFAULT_CODEX_PERMISSION_MODE, DEFAULT_CODING_MODEL_CHOICE,
-    DEFAULT_DICTATION_AUTO_STOP_SECONDS, DEFAULT_GROK_EFFORT, DEFAULT_GROK_PERMISSION_MODE,
-    DEFAULT_HOST, DEFAULT_LARGE_UPLOAD_MAX_MB, DEFAULT_MIRROR_BROWSER, DEFAULT_PI_EFFORT, DEFAULT_PI_MODEL,
-    DEFAULT_PI_TRUST_MODE, DEFAULT_PORT, DEFAULT_SESSION_HOST_PORT, DEFAULT_TERMINAL_HISTORY_LINES,
-    LEGACY_CLAUDE_MODELS, MAX_CHIEF_AUTO_COMPACT_THRESHOLD, MAX_CHIEF_WORKER_CAP,
-    MAX_LARGE_UPLOAD_MAX_MB, MAX_TERMINAL_HISTORY_LINES, MIN_CHIEF_AUTO_COMPACT_THRESHOLD,
-    MIN_CHIEF_WORKER_CAP, MIN_LARGE_UPLOAD_MAX_MB, MIN_TERMINAL_HISTORY_LINES,
-    SESSION_HOST_PORT_ENV, VALID_CHIEF_MODELS, VALID_CHIEF_WORKER_CAP_SCOPES, VALID_CLAUDE_EFFORTS,
-    VALID_CLAUDE_MODELS, VALID_CLAUDE_PERMISSION_MODES, VALID_CODEX_EFFORTS, VALID_CODEX_MODELS,
-    VALID_CODEX_PERMISSION_MODES, VALID_CODING_MODEL_CHOICES, VALID_GROK_EFFORTS,
-    VALID_GROK_PERMISSION_MODES, VALID_PI_EFFORTS, VALID_PI_MODELS, VALID_PI_TRUST_MODES,
-    WEBAPP_CONFIG_PATH_ENV, valid_claude_efforts_for, check_dictation_auto_stop,
+    ALWAYS_ON_CLAUDE_FLAGS,
+    CREDENTIAL_KEYS,
+    DEFAULT_CHANNEL_MODEL,
+    DEFAULT_CHIEF_AUTO_COMPACT_THRESHOLD,
+    DEFAULT_CHIEF_MODEL,
+    DEFAULT_CHIEF_WORKER_CAP,
+    DEFAULT_CHIEF_WORKER_CAP_SCOPE,
+    DEFAULT_CLAUDE_EFFORT,
+    DEFAULT_CLAUDE_MODEL,
+    DEFAULT_CLAUDE_PERMISSION_MODE,
+    DEFAULT_CODEX_EFFORT,
+    DEFAULT_CODEX_MODEL,
+    DEFAULT_CODEX_MODEL_EFFORTS,
+    DEFAULT_CODEX_PERMISSION_MODE,
+    DEFAULT_CODING_MODEL_CHOICE,
+    DEFAULT_DICTATION_AUTO_STOP_SECONDS,
+    DEFAULT_GROK_EFFORT,
+    DEFAULT_GROK_PERMISSION_MODE,
+    DEFAULT_HOST,
+    DEFAULT_LARGE_UPLOAD_MAX_MB,
+    DEFAULT_MIRROR_BROWSER,
+    DEFAULT_PI_EFFORT,
+    DEFAULT_PI_MODEL,
+    DEFAULT_PI_TRUST_MODE,
+    DEFAULT_PORT,
+    DEFAULT_SESSION_HOST_PORT,
+    DEFAULT_TERMINAL_HISTORY_LINES,
+    LEGACY_CLAUDE_MODELS,
+    MAX_CHIEF_AUTO_COMPACT_THRESHOLD,
+    MAX_CHIEF_WORKER_CAP,
+    MAX_LARGE_UPLOAD_MAX_MB,
+    MAX_TERMINAL_HISTORY_LINES,
+    MIN_CHIEF_AUTO_COMPACT_THRESHOLD,
+    MIN_CHIEF_WORKER_CAP,
+    MIN_LARGE_UPLOAD_MAX_MB,
+    MIN_TERMINAL_HISTORY_LINES,
+    SESSION_HOST_PORT_ENV,
+    VALID_CHIEF_MODELS,
+    VALID_CHIEF_WORKER_CAP_SCOPES,
+    VALID_CLAUDE_EFFORTS,
+    VALID_CLAUDE_MODELS,
+    VALID_CLAUDE_PERMISSION_MODES,
+    VALID_CODEX_EFFORTS,
+    VALID_CODEX_MODELS,
+    VALID_CODEX_PERMISSION_MODES,
+    VALID_CODING_MODEL_CHOICES,
+    VALID_GROK_EFFORTS,
+    VALID_GROK_PERMISSION_MODES,
+    VALID_PI_EFFORTS,
+    VALID_PI_MODELS,
+    VALID_PI_TRUST_MODES,
+    WEBAPP_CONFIG_PATH_ENV,
+    check_dictation_auto_stop,
     check_mirror_browser,
+    valid_claude_efforts_for,
 )
-from src.webapp_settings.chief_timings import CHIEF_TIMINGS, check_chief_timings
-# isort: on
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +267,7 @@ class WebappConfig:
     claude_model: str = DEFAULT_CLAUDE_MODEL
     # Overrides only: ``{model: effort}`` for a model whose effort the
     # owner changed. A model with no entry runs at its catalog default. The old
-    # global ``claude_effort`` key is a legacy read, see _migrate_legacy_keys.
+    # global ``claude_effort`` key is a legacy read, see webapp_settings.migrations.
     claude_model_efforts: dict = field(default_factory=dict)
     claude_verbose: bool = True
     claude_debug: bool = False
@@ -516,195 +563,6 @@ def _apply_session_host_override(cfg: WebappConfig) -> WebappConfig:
     return cfg
 
 
-def _load_secrets(raw: dict) -> Dict[str, str]:
-    """``secrets``, honouring the legacy ``webhook_secrets`` key.
-
-    The block holds every ``Job.env`` value, but it began as webhook secrets
-    only, and old config files in the wild still spell it that way.
-    """
-    return {
-        str(key): str(value)
-        for key, value in (
-            raw.get("secrets") or raw.get("webhook_secrets") or {}
-        ).items()
-    }
-
-
-def _load_api_tokens(raw: dict) -> list:
-    """``api_tokens`` — a list of *records*, not of strings, and a malformed
-    entry is dropped rather than stringified: a half-written token record can
-    only ever fail closed."""
-    return [
-        dict(token)
-        for token in (raw.get("api_tokens") or [])
-        if isinstance(token, dict)
-    ]
-
-
-def _load_documents(raw: dict) -> list:
-    """``documents`` — a list of *records*; a non-object entry is dropped here
-    and ``src.documents`` checks each record's fields when it is used."""
-    return [
-        dict(entry)
-        for entry in (raw.get("documents") or [])
-        if isinstance(entry, dict)
-    ]
-
-
-def _load_pi_model(raw: dict) -> str:
-    """Migrate the three retired pinned ids to their current successors."""
-    value = str(raw.get("pi_model") or DEFAULT_PI_MODEL)
-    return {
-        "claude-opus-4-8": "claude-opus-5",
-        "claude-sonnet-4-6": "claude-sonnet-5",
-        "gpt-5.5": "gpt-5.6-sol",
-    }.get(value, value)
-
-
-def _load_codex_model_efforts(raw: dict) -> Dict[str, str]:
-    """Load only supported model/effort pairs and seed newly added models.
-
-    ``codex_effort`` mirrors the selected model's entry, and a hand-edited file
-    can make them disagree. The selected model's own ``codex_effort`` has always
-    been the one launched, so it wins here, and ``effective_effort`` reads the
-    dict alone.
-    """
-    result = dict(DEFAULT_CODEX_MODEL_EFFORTS)
-    authored = raw.get("codex_model_efforts") or {}
-    if isinstance(authored, dict):
-        for model, effort in authored.items():
-            if (
-                model in VALID_CODEX_MODELS
-                and effort in CODEX_MODEL_SPECS[model]["efforts"]
-            ):
-                result[str(model)] = str(effort)
-    selected = raw.get("codex_model") or DEFAULT_CODEX_MODEL
-    mirrored = _load_codex_effort(raw)
-    if (
-        ("codex_model" in raw or "codex_model_efforts" in raw)
-        and selected in VALID_CODEX_MODELS
-        and mirrored in CODEX_MODEL_SPECS[selected]["efforts"]
-    ):
-        result[str(selected)] = mirrored
-    return result
-
-
-def _load_claude_model_efforts(raw: dict) -> Dict[str, str]:
-    """Load the Claude overrides: only a known model with an effort it supports."""
-    authored = raw.get("claude_model_efforts") or {}
-    if not isinstance(authored, dict):
-        return {}
-    return {
-        str(model): str(effort)
-        for model, effort in authored.items()
-        if effort in valid_claude_efforts_for(str(model))
-    }
-
-
-def _load_pi_model_efforts(raw: dict) -> Dict[str, str]:
-    """Load the Pi overrides: only a known model with a ``--thinking`` level."""
-    authored = raw.get("pi_model_efforts") or {}
-    if not isinstance(authored, dict):
-        return {}
-    return {
-        str(model): str(effort)
-        for model, effort in authored.items()
-        if str(model) in VALID_PI_MODELS and effort in VALID_PI_EFFORTS
-    }
-
-
-def _load_codex_effort(raw: dict) -> str:
-    """Do not reinterpret the old global High default as Luna's preference."""
-    if "codex_model" not in raw and "codex_model_efforts" not in raw:
-        return DEFAULT_CODEX_EFFORT
-    return str(raw.get("codex_effort") or DEFAULT_CODEX_EFFORT)
-
-
-#: Fields whose on-disk shape can't be derived from the annotation alone.
-#: Everything else is handled by the generic loop in
-#: :func:`load_webapp_config`, so a new setting is declared once — on
-#: :class:`WebappConfig` — and both directions follow it.
-_CUSTOM_LOADERS: Dict[str, Callable[[dict], Any]] = {
-    "secrets": _load_secrets,
-    "api_tokens": _load_api_tokens,
-    "documents": _load_documents,
-    "pi_model": _load_pi_model,
-    "codex_effort": _load_codex_effort,
-    "codex_model_efforts": _load_codex_model_efforts,
-    "claude_model_efforts": _load_claude_model_efforts,
-    "pi_model_efforts": _load_pi_model_efforts,
-    "usage_providers": load_usage_providers,
-    "hidden_models": load_hidden_models,
-    "request_budgets": request_health.load_request_budgets,
-    "launch_presets": load_launch_presets,
-}
-
-
-def _coerce(value: Any, annotation: Any, default: Any) -> Any:
-    """Cast one raw JSON value to the type its dataclass field declares.
-
-    ``from __future__ import annotations`` is active, so a field's ``type``
-    arrives as the *string* ``"str"`` / ``"int"`` / ``"bool"`` / ``"list"``;
-    both spellings are accepted so this keeps working if that import ever
-    goes away. An unusable number falls back to the declared default rather
-    than raising — a hand-edited config with a null in an int field
-    shouldn't take the whole webapp down. Unknown annotations pass through
-    untouched; those are the ones that belong in ``_CUSTOM_LOADERS``.
-    """
-    if annotation in (str, "str"):
-        return str(value)
-    if annotation in (bool, "bool"):
-        # A hand-edited config's non-boolean value (e.g. the string
-        # ``"false"``, truthy under `bool()`) or an unusable null (were it
-        # ever to reach here) falls back to the declared default rather
-        # than being coerced by truthiness — matching the int
-        # branch's discipline just below.
-        return value if isinstance(value, bool) else default
-    if annotation in (int, "int"):
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return default
-    if annotation in (list, "list"):
-        return [str(item) for item in value]
-    return value
-
-
-def _load_field(spec, raw: dict) -> Any:
-    """Read one :class:`WebappConfig` field out of the parsed JSON.
-
-    Two default disciplines, both inherited from the per-field block this
-    replaced and both derivable from the field itself:
-
-    - A ``default_factory`` field (every path-ish setting, plus the list and
-      dict ones) treats *any* falsy on-disk value as absent and re-derives
-      the default — an empty ``projects_dir`` means "you never set one", not
-      "scan the filesystem root".
-    - A literal-default field keeps a falsy value as authored, because that
-      is how features here are switched off: an empty ``voice_transcriber_url``
-      hides the 🎤 button, an empty ``auth_token`` disables the bearer gate.
-
-    Collapsing the two would silently re-enable whatever the user turned off,
-    so the distinction is load-bearing rather than incidental. An explicit
-    JSON ``null`` is the one falsy value treated as absent everywhere: it is
-    never a meaningful "off" for any setting here (``""`` and ``0`` are), and
-    the old per-field block turned it into ``"None"`` or a ``TypeError``
-    depending on the field.
-    """
-    custom = _CUSTOM_LOADERS.get(spec.name)
-    if custom is not None:
-        return custom(raw)
-    if spec.default_factory is not MISSING:  # type: ignore[misc]
-        default = spec.default_factory()
-        value = raw.get(spec.name)
-        return _coerce(value, spec.type, default) if value else default
-    default = spec.default
-    value = raw.get(spec.name, default)
-    if value is None:
-        return default
-    return _coerce(value, spec.type, default)
-
-
 def _resolve_config_path(path: Optional[Path]) -> Path:
     """Resolve the config file path: explicit arg > ``LAUNCHER_WEBAPP_CONFIG``
     env override (e2e-gate isolation) > the repo default.
@@ -719,85 +577,6 @@ def _resolve_config_path(path: Optional[Path]) -> Path:
     if env:
         return Path(env)
     return DEFAULT_CONFIG_PATH
-
-
-# Keys renamed since a live ``config/webapp_config.json`` may have been written
-# (the file is gitignored, so a pull never rewrites it): old name -> new name.
-# ``claude_config_dir`` held the fleet-config checkout root all along, not
-# Claude's own config dir.
-_LEGACY_KEYS = {"claude_config_dir": "fleet_config_dir"}
-
-
-def _migrate_legacy_keys(raw: Dict[str, Any], source: Path) -> Dict[str, Any]:
-    """``raw`` with each renamed key carried over to its new name.
-
-    In memory only: the next save writes the new name and drops the old one, so
-    the live file migrates itself the first time a setting changes. A new key
-    already present wins over the old one.
-    """
-    migrated = dict(raw)
-    for old, new in _LEGACY_KEYS.items():
-        if old not in migrated:
-            continue
-        legacy = migrated.pop(old)
-        if new not in migrated:
-            migrated[new] = legacy
-            logger.info(
-                f"ℹ️  {source.name}: key '{old}' is now '{new}'; read it under "
-                f"the new name (the file is rewritten on the next save)"
-            )
-    migrated = _migrate_global_effort(
-        migrated, source, legacy_key="claude_effort", dict_key="claude_model_efforts",
-        default=DEFAULT_CLAUDE_EFFORT, models=VALID_CLAUDE_MODELS,
-        allowed_for=valid_claude_efforts_for,
-    )
-    return _migrate_global_effort(
-        migrated, source, legacy_key="pi_effort", dict_key="pi_model_efforts",
-        default=DEFAULT_PI_EFFORT, models=VALID_PI_MODELS,
-        allowed_for=lambda model: VALID_PI_EFFORTS,
-    )
-
-
-def _migrate_global_effort(
-    raw: Dict[str, Any],
-    source: Path,
-    *,
-    legacy_key: str,
-    dict_key: str,
-    default: str,
-    models: Tuple[str, ...],
-    allowed_for: Callable[[str], Tuple[str, ...]],
-) -> Dict[str, Any]:
-    """Turn a legacy global effort key into per-model overrides.
-
-    One global value was sent to every model of the agent, so ``default`` (the
-    old default, ``high``) cannot be told from "never chose" and is dropped:
-    copying it to every model would keep Opus one level above its own default,
-    which is the bug. Any other value was a deliberate choice and is carried to
-    every model that supports it, so nothing changes silently (the live Pi
-    ``medium`` stays ``medium``). An existing ``dict_key`` wins. In memory only,
-    like the key renames above: the next save writes the new shape and drops the
-    old key.
-    """
-    if legacy_key not in raw:
-        return raw
-    migrated = dict(raw)
-    legacy = migrated.pop(legacy_key)
-    if dict_key in migrated:
-        return migrated
-    carried = {model: legacy for model in models if legacy in allowed_for(model)}
-    if legacy in (None, "", default) or not carried:
-        logger.info(
-            f"ℹ️  {source.name}: legacy {legacy_key} {legacy!r} dropped; every "
-            f"model runs at its own default effort"
-        )
-        return migrated
-    migrated[dict_key] = carried
-    logger.info(
-        f"ℹ️  {source.name}: legacy {legacy_key} {legacy!r} carried to every "
-        f"model as a per-model override"
-    )
-    return migrated
 
 
 def load_webapp_config(
@@ -838,13 +617,13 @@ def load_webapp_config(
         cfg = WebappConfig()
         return _apply_session_host_override(cfg) if apply_env_override else cfg
 
-    raw = migrate_renamed_models(_migrate_legacy_keys(raw, target))
+    raw = migrate_renamed_models(migrate_legacy_keys(raw, target))
 
     # One generic pass over the dataclass's own field list: the dataclass is
     # the single declaration of name, type and default both directions read.
     cfg = WebappConfig(
         **{
-            spec.name: _load_field(spec, raw)
+            spec.name: load_field(spec, raw)
             for spec in dataclass_fields(WebappConfig)
         }
     )
@@ -902,7 +681,7 @@ def append_auth_token(url: str, token: Optional[str]) -> str:
 
 #: Enum-valued settings validated by plain membership — a new
 #: enum field is one row here instead of a hand-written ``not in`` check, the
-#: same declarative-table shape ``_CUSTOM_LOADERS`` above and
+#: same declarative-table shape ``webapp_settings.loaders``' custom table and
 #: ``middleware._TERMINAL_GUARD_RULES`` already use.
 _ENUM_VALIDATIONS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     ("coding_model_choice", VALID_CODING_MODEL_CHOICES),
