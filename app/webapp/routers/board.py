@@ -326,7 +326,7 @@ async def _build_board_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[str
     # for a live Claude PTY session the Coding tab linked fine. Same
     # bounded transcript scan, off the loop and memoized in _helpers, so the
     # Board poll re-uses whatever the (identically-paced) sessions poll found.
-    await steps.run("attach_provider_web_urls", attach_provider_web_urls, session_cards)
+    await steps.run("attach_provider_web_urls", attach_provider_web_urls, session_cards, cfg)
     columns = board.build_board(session_cards, github, job_cards)
     ci_snap = ci_runs.snapshot()
     columns["other"].extend(ci_runs.board_cards(ci_snap))

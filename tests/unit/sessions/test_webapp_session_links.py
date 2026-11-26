@@ -26,9 +26,11 @@ def _clear_provider_url_cache():
     """The memo is module state — no test may inherit another's entries."""
     _helpers._PROVIDER_URL_CACHE.clear()
     _helpers._PROVIDER_URL_MISSES.clear()
+    _helpers._COPILOT_IDS.clear()
     yield
     _helpers._PROVIDER_URL_CACHE.clear()
     _helpers._PROVIDER_URL_MISSES.clear()
+    _helpers._COPILOT_IDS.clear()
 
 
 def test_claude_web_url_is_recovered_from_wrapped_terminal_output(tmp_path):
@@ -165,6 +167,7 @@ async def test_board_cards_carry_the_same_provider_link_as_the_coding_tab(
                     fleet_config_dir=str(tmp_path / "fleet-config"),
                     projects_dir="",
                     chief_plan_file=str(tmp_path / "chief-plan.json"),
+                    copilot_web_url_prefix="",
                 )
             )
         )
@@ -195,3 +198,131 @@ def test_the_memo_is_bounded_over_a_long_lived_tray(monkeypatch, tmp_path):
         assert rows[0]["web_url"] == _LINK
 
     assert len(_helpers._PROVIDER_URL_CACHE) <= 4
+
+
+# Placeholder host and synthetic id: the real host is the machine's own
+# Copilot sign-in and never appears in the repo.
+_GHE_HOST = "ghe.example.com"
+_COPILOT_PREFIX = f"https://{_GHE_HOST}/copilot/tasks/"
+_COPILOT_ID = "79c18133-52bd-4f8f-9260-b33c853158be"
+# 2026-09-17T21:57:30Z; Copilot's folder is stamped 4 s later.
+_COPILOT_STARTED = 1_789_682_250.0
+
+
+def _copilot_folder(root, folder, created="2026-09-17T21:57:34Z"):
+    """A Copilot session folder as the CLI writes it at launch: no
+    ``events.jsonl`` yet, since that only appears at the first prompt."""
+    (root / folder).mkdir()
+    (root / folder / "workspace.yaml").write_text(
+        f"id: {folder}\ncwd: E:/work/project\ncreated_at: {created}\n",
+        encoding="utf-8",
+    )
+
+
+def _copilot_row(sid="s-cop"):
+    return {"session_id": sid, "kind": "pty", "agent": "copilot",
+            "project_dir": r"E:\work\project", "started_at": _COPILOT_STARTED}
+
+
+def _cfg(override):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(copilot_web_url_prefix=override)
+
+
+@pytest.fixture
+def copilot_env(monkeypatch, tmp_path):
+    """Copilot's session-state dir under tmp_path, signed in to ``host``."""
+    from src.session_view import transcript_locate
+
+    monkeypatch.setattr(transcript_locate, "_COPILOT_STATE_DIR", tmp_path)
+    signed_in = {"host": _GHE_HOST}
+    monkeypatch.setattr(_helpers, "copilot_signed_in_host", lambda: signed_in["host"])
+    return signed_in
+
+
+def test_copilot_link_is_its_signed_in_enterprise_host_plus_its_session_id(
+    copilot_env, tmp_path
+):
+    _copilot_folder(tmp_path, _COPILOT_ID)
+    rows = [_copilot_row(), {**_copilot_row("s-detached"), "kind": "remote"}]
+
+    attach_provider_web_urls(rows)
+    assert [r["web_url"] for r in rows] == [_COPILOT_PREFIX + _COPILOT_ID, ""]
+
+    # The id is cached, not the URL, so the base follows the current sign-in:
+    # github.com derives nothing, and the override wins over either.
+    copilot_env["host"] = "github.com"
+    attach_provider_web_urls(rows)
+    assert rows[0]["web_url"] == ""
+    attach_provider_web_urls(rows, _cfg("https://ghe.example.org/tasks"))
+    assert rows[0]["web_url"] == f"https://ghe.example.org/tasks/{_COPILOT_ID}"
+    # An override that is not an http(s) URL is ignored, not glued on.
+    copilot_env["host"] = _GHE_HOST
+    attach_provider_web_urls(rows, _cfg("ghe.example.org/tasks/"))
+    assert rows[0]["web_url"] == _COPILOT_PREFIX + _COPILOT_ID
+
+
+def test_copilot_with_no_base_never_scans_copilot_sessions(copilot_env, monkeypatch):
+    """A github.com sign-in with no override pays nothing for the feature."""
+    copilot_env["host"] = "github.com"
+    monkeypatch.setattr(
+        _helpers, "copilot_session_id",
+        lambda s: pytest.fail("scanned Copilot's sessions with no link base"),
+    )
+    rows = [_copilot_row()]
+    attach_provider_web_urls(rows)
+    assert rows[0]["web_url"] == ""
+
+
+def test_a_copilot_miss_is_retried_only_while_the_launch_window_is_open(
+    copilot_env, monkeypatch, tmp_path
+):
+    """Copilot creates its folder a few seconds after launch, so an early miss
+    must be retried; once the window has passed no folder can still qualify,
+    and the miss is cached instead of re-reading every sidecar each poll."""
+    clock = {"now": _COPILOT_STARTED + 1}
+    monkeypatch.setattr(_helpers.time, "time", lambda: clock["now"])
+    rows = [_copilot_row()]
+
+    attach_provider_web_urls(rows)
+    assert rows[0]["web_url"] == "" and "s-cop" not in _helpers._COPILOT_IDS
+
+    _copilot_folder(tmp_path, _COPILOT_ID)
+    attach_provider_web_urls(rows)
+    assert rows[0]["web_url"] == _COPILOT_PREFIX + _COPILOT_ID
+
+    late = [{**_copilot_row("s-late"), "project_dir": r"E:\work\other"}]
+    clock["now"] = _COPILOT_STARTED + 600
+    attach_provider_web_urls(late)
+    assert _helpers._COPILOT_IDS["s-late"] == ""
+
+
+@pytest.mark.parametrize(
+    ("host", "expected"),
+    [
+        (f"https://{_GHE_HOST}", _GHE_HOST),
+        (f"https://{_GHE_HOST.upper()}/", _GHE_HOST),
+        (_GHE_HOST, _GHE_HOST),
+        (f"https://{_GHE_HOST}/some/path", None),
+        ("https://user@ghe.example.com", None),
+    ],
+)
+def test_the_signed_in_host_is_read_from_copilots_own_config(
+    monkeypatch, tmp_path, host, expected
+):
+    """The CLI records the account as an origin under a block of ``//``
+    comment lines; only a bare origin may head a URL."""
+    import json
+
+    from src.session_view import copilot_host
+
+    config = tmp_path / "config.json"
+    config.write_text(
+        "// written by the Copilot CLI\n// do not edit\n"
+        + json.dumps({"lastLoggedInUser": {"host": host, "login": "someone"}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(copilot_host, "_COPILOT_CONFIG", config)
+    monkeypatch.setattr(copilot_host, "_memo", (None, None))
+    assert copilot_host.copilot_signed_in_host() == expected

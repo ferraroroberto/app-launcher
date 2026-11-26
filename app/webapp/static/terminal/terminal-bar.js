@@ -78,23 +78,28 @@ function sessionShareUrl(sid) {
 // What ⋮ Copy link writes, and how to describe it. The launcher's own
 // ?session= URL is tailnet-gated by design — the terminal endpoints refuse
 // anything that did not arrive from 100.64.0.0/10 — so it is dead outside the
-// tailnet and is the *fallback*, not the answer. When the session has a
-// provider-native link (Claude's, resolved by sessions.js::providerWebUrl
-// from the same `web_url` the Rename / link dialog shows) copy that instead:
-// it is authenticated by the Anthropic account and opens anywhere. The toast
-// names which one went to the clipboard rather than folding the two — a
-// silent fallback can quietly bring back the tailnet link
-// without anyone noticing.
+// tailnet and dies with the launcher, so it is the *fallback*, not the
+// answer. When the session has a provider-native link (Claude's or
+// Copilot's, resolved by sessions.js::providerWebUrl from the same `web_url`
+// the Rename / link dialog shows) copy that instead: the provider
+// authenticates it and it opens anywhere. The toast names which one went to
+// the clipboard rather than folding the two — a silent fallback can quietly
+// bring back the launcher link without anyone noticing.
 //
 // `s` may be the bare {session_id, name} a ?session= deep link opens with,
-// which carries no agent or web_url at all — providerWebUrl('' agent) is ''
-// and that path lands on the fallback, never on `undefined`.
+// which carries no agent or web_url at all — providerWebUrl is '' and that
+// path lands on the fallback, never on `undefined`.
+const PROVIDER_NAMES = { claude: 'Claude', copilot: 'Copilot' };
+
 function sessionCopyLink(s) {
   const web = providerWebUrl(s);
-  if (web) return { url: web, message: 'Claude web link copied' };
+  if (web) {
+    const name = PROVIDER_NAMES[s.agent] || 'Provider';
+    return { url: web, message: name + ' web link copied' };
+  }
   return {
     url: sessionShareUrl(s.session_id),
-    message: 'Launcher link copied (tailnet only)',
+    message: 'Launcher link copied: works only while the launcher runs, on the tailnet',
   };
 }
 

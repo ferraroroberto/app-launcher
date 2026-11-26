@@ -333,12 +333,13 @@ def test_full_control_rename_keeps_the_modal_contract_copies_the_link_and_wins(
     expect(row.locator(".name")).to_have_text("My custom title", timeout=10_000)
 
 
-def test_codex_link_is_unavailable_and_a_detached_row_offers_none(
+def test_codex_link_is_unavailable_copilot_shows_its_own_and_detached_has_none(
     authed_page: Page, base_url: str
 ) -> None:
-    """A Codex row's dialog has the link row but no link yet; a detached
-    row's has no link row at all. One page: the row turns detached between
-    the two (the list re-reads on the way back from the overlay)."""
+    """A Codex row's dialog has the link row but no link yet; a Copilot row's
+    shows and copies the server's `web_url`; a detached row's has no link row
+    at all. One page: the row changes between legs (the list re-reads on the
+    way back from the overlay)."""
     state = {"manual_title": "", "agent": "codex", "web_url": ""}
     _mock_sessions_list(authed_page, state)
 
@@ -352,7 +353,18 @@ def test_codex_link_is_unavailable_and_a_detached_row_offers_none(
 
     authed_page.locator("#sessionRenameCancel").click()
     expect(authed_page.locator("#sessionRenameDialog")).to_be_hidden()
-    state.update(kind="remote", agent="claude")
+    copilot_url = "https://ghe.example.com/copilot/tasks/79c18133-52bd-4f8f-9260-b33c853158be"
+    state.update(agent="copilot", web_url=copilot_url)
+    authed_page.locator("#terminalBack").click()
+    expect(authed_page.locator("#terminalOverlay")).to_be_hidden()
+    _open_rename(authed_page, row)
+    expect(authed_page.locator("#sessionRenameHeading")).to_have_text("Rename / link")
+    expect(authed_page.locator("#sessionLinkInput")).to_have_value(copilot_url)
+    expect(authed_page.locator("#sessionLinkCopy")).to_be_enabled()
+
+    authed_page.locator("#sessionRenameCancel").click()
+    expect(authed_page.locator("#sessionRenameDialog")).to_be_hidden()
+    state.update(kind="remote", agent="claude", web_url="")
     authed_page.locator("#terminalBack").click()
     expect(authed_page.locator("#terminalOverlay")).to_be_hidden()
     expect(row.locator(".chip.session-detached")).to_be_visible()

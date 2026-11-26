@@ -252,10 +252,13 @@ For a detached session, Send types the text into the session's console window on
 
 ## Rename and link
 
-The menu's pencil opens **Rename / link** for Claude and Codex full-control sessions:
+The menu's pencil opens **Rename / link** for Claude, Codex and GitHub Copilot full-control sessions:
 
-- Claude exposes and copies the provider-native `claude.ai/code/session_…` remote-control URL captured from its terminal.
+- Claude exposes and copies the provider-native `claude.ai/code/session_…` remote-control URL captured from its terminal. A session started without remote control prints no such card, so it has no link.
+- Copilot exposes `https://<host>/copilot/tasks/<session id>` (for example `https://ghe.example.com/copilot/tasks/<id>`): the host is the GitHub Enterprise host the Copilot CLI is signed in to, read from its own `~/.copilot/config.json`, and the id is the name of Copilot's own session folder, matched to the launch by folder and start time. `copilot_web_url_prefix` overrides the prefix ([config](config.md)). A github.com sign-in with no override, or no single matching folder, says **Not available yet**.
 - Codex says **Not available yet**, because its local sessions currently have no web URL.
+
+The server resolves the link per agent as the session's `web_url`, so this dialog and the session bar's ⋮ **Copy link** always agree.
 
 Detached sessions and other agents keep the rename-only dialog.
 
