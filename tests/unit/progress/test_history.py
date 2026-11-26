@@ -10,6 +10,7 @@ import pytest
 
 from src.clients import hub_token_history
 from src.progress import buckets, history, tokens, totals
+from src.progress.run_tracker import RunProgress
 
 NOW = datetime(2026, 11, 4, 12, 0, tzinfo=timezone.utc)
 
@@ -65,7 +66,7 @@ def _isolated(tmp_path, monkeypatch):
     started: List[tuple] = []
     monkeypatch.setattr(totals, "start_refresh", lambda *a, **k: started.append(a) or True)
     monkeypatch.setattr(totals, "_in_flight", False)
-    monkeypatch.setattr(totals, "_run", None)
+    monkeypatch.setattr(totals, "_run", RunProgress())
     yield started
     tokens.reset()
 
@@ -286,9 +287,9 @@ class TestDegradedHalves:
 class TestRun:
     def test_the_refresh_progress_rides_the_github_half(self, monkeypatch):
         _save(_store({"alpha": {"2026-11-04": _day(2)}}))
-        run = {"started_at": "2026-11-04T11:59:00Z", "finished_at": None, "total": 3, "done": 1,
-               "current": "beta", "error": None, "results": []}
-        monkeypatch.setattr(totals, "_run", run)
+        totals._run.begin(3, started_at="2026-11-04T11:59:00Z")
+        totals._run.record({"repo": "alpha", "status": "ok", "detail": None})
+        totals._run.started("beta")
         out = _read(FakeHub(_hub({"2026-11-04": {}})), monkeypatch)
         assert out["github"]["run"]["done"] == 1 and out["github"]["run"]["total"] == 3
 

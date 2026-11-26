@@ -1,4 +1,4 @@
-"""Guard: the tolerant JSON reader and the port-listener lookup each have one owner.
+"""Guard: concerns that have drifted into a second copy before keep one owner.
 
 A `/codebase-audit` duplication bucket flagged, two audits running, the "read
 JSON; missing file is empty, unreadable warns and is empty" block hand-rolled
@@ -6,8 +6,11 @@ in dozens of ``src/`` modules beside ``src/_json_io.py``'s atomic writer, and
 two functions in ``src/diagnostics.py`` answering "which PIDs LISTEN on this
 port" with different error semantics.
 
-Both reinventions have a tell a reader can scan for, so the next copy fails
-the gate instead of waiting for the next audit.
+A later bucket flagged the same class again: a forked copy of the vendored poll
+helper, a hand-written poll loop beside it, and a second run-progress tracker.
+
+Each reinvention has a tell a reader can scan for, so the next copy fails the
+gate instead of waiting for the next audit.
 """
 
 from __future__ import annotations
@@ -33,6 +36,13 @@ _JSON_READ_THEN_MISSING_RE = re.compile(
 )
 
 _LISTENER_OWNER = "src/diagnostics.py"
+
+_STATIC = _ROOT / "app" / "webapp" / "static"
+_JS_EXPORT_RE = re.compile(r"^export\s+(?:async\s+)?function\s+(\w+)", re.MULTILINE)
+_TIMER_POLL_RE = re.compile(r"setTimeout\([^;]*POLL[A-Z_]*_MS")
+# Loops that predate this gate. The set only shrinks.
+_TIMER_POLL_OK = {"channel-sessions.js", "progress/progress-sheet.js", "settings/inspiration.js"}
+_RUN_TRACKER_OWNER = "src/progress/run_tracker.py"
 
 
 def _product_files() -> list[tuple[str, str]]:
@@ -65,6 +75,43 @@ def test_listening_port_lookup_stays_in_diagnostics() -> None:
         "a second 'who LISTENs on this port' scan; call "
         f"{_LISTENER_OWNER}'s listener_pids instead:\n  " + "\n  ".join(offenders)
     )
+
+
+def _static_js(vendored: bool) -> list[tuple[str, str]]:
+    return [
+        (path.relative_to(_STATIC).as_posix(), path.read_text(encoding="utf-8"))
+        for path in sorted(_STATIC.rglob("*.js"))
+        if (path.relative_to(_STATIC).parts[0] == "_vendored") is vendored
+        and path.relative_to(_STATIC).parts[0] != "vendor"
+    ]
+
+
+def test_no_app_module_forks_a_vendored_helper() -> None:
+    owned = {name for _, code in _static_js(True) for name in _JS_EXPORT_RE.findall(code)}
+    offenders = [
+        f"{rel}: {name}"
+        for rel, code in _static_js(False)
+        for name in _JS_EXPORT_RE.findall(code)
+        if name in owned
+    ]
+    assert "startPoll" in owned
+    assert not offenders, f"a second export of a _vendored helper; import it: {offenders}"
+
+
+def test_page_polls_are_not_hand_rolled_on_set_timeout() -> None:
+    offenders = [
+        rel for rel, code in _static_js(False) if rel not in _TIMER_POLL_OK and _TIMER_POLL_RE.search(code)
+    ]
+    assert not offenders, f"a hand-rolled poll loop; use _vendored/poll startPoll: {offenders}"
+
+
+def test_watched_run_progress_has_one_tracker() -> None:
+    offenders = [
+        rel
+        for rel, code in _product_files()
+        if rel != _RUN_TRACKER_OWNER and '"current": None' in code and '"finished_at": None' in code
+    ]
+    assert not offenders, f"a second run tracker; drive {_RUN_TRACKER_OWNER}: {offenders}"
 
 
 def test_read_json_or_separates_missing_corrupt_and_wrong_shape(tmp_path, caplog) -> None:

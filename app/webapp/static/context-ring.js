@@ -23,6 +23,7 @@ import { els, state } from './state.js';
 import { jsonApi, sessionRoute, toast } from './api.js';
 import { usageTier } from './shared/format.js';
 import { bindLongPressHint } from './long-press-hint.js';
+import { startPoll } from './_vendored/poll/poll.js';
 
 const CONTEXT_POLL_MS = 10000;
 // Matches the <circle r="9"> in index.html. The dash length is computed
@@ -31,11 +32,10 @@ const CONTEXT_POLL_MS = 10000;
 const RING_RADIUS = 9;
 const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
 
-let timer = null;
-let inflightSid = null;
-// The session the ring currently speaks for, so a number read for one
-// session is never left showing over another.
-let ringSid = null;
+// The viewed session's poll, and the session it reads. The id also keeps a
+// number read for one session from showing over another.
+let poll = null;
+let pollSid = null;
 
 // The open session as the list knows it (kind / agent), falling back to the
 // object the overlay was opened with — the same resolution as the ⋮ menu.
@@ -50,10 +50,6 @@ function viewSession() {
 // server can read (the plan picker's rule, session-transcript.js).
 function ringAllowed(s) {
   return !!s && String(s.agent || 'claude').toLowerCase() === 'claude' && s.kind !== 'remote';
-}
-
-function pollAllowed() {
-  return ringAllowed(viewSession()) && document.visibilityState === 'visible';
 }
 
 function render(percent) {
@@ -78,57 +74,39 @@ function render(percent) {
   btn.hidden = false;
 }
 
-function stop() {
-  if (timer) {
-    window.clearTimeout(timer);
-    timer = null;
-  }
+function dropPoll() {
+  if (poll) poll.stop();
+  poll = null;
+  pollSid = null;
 }
 
-function schedule() {
-  stop();
-  if (pollAllowed()) timer = window.setTimeout(tick, CONTEXT_POLL_MS);
-}
-
-async function tick() {
-  timer = null;
-  const s = viewSession();
-  if (!pollAllowed()) return;
-  const sid = s.session_id;
-  // A mode switch or visibility change landing mid-request: the request
-  // already in flight answers it, and reschedules when it lands.
-  if (inflightSid === sid) return;
-  inflightSid = sid;
+async function readContext(sid) {
   let body = null;
   try {
     body = await jsonApi(sessionRoute(sid, '/context'));
   } catch (_) {
     body = null;   // unknown is not 0%: the ring hides, the next tick asks again
   }
-  if (inflightSid === sid) inflightSid = null;
-  const now = viewSession();
-  if (!now || now.session_id !== sid) return;   // the overlay moved on meanwhile
+  if (sid !== pollSid) return;   // the overlay moved on meanwhile
   render(body && typeof body.percent === 'number' ? body.percent : null);
   // A session that is gone won't come back: stop asking until it is reopened.
-  if (body && body.reason === 'session_not_found') return;
-  schedule();
+  if (body && body.reason === 'session_not_found') dropPoll();
 }
 
 // Called whenever the answer to "should the ring be polling, and for which
-// session?" may have changed: open, mode switch, close, tab visibility.
+// session?" may have changed: open, mode switch, close.
 export function syncContextRing() {
-  stop();
   const s = viewSession();
-  if (!ringAllowed(s)) {
-    ringSid = null;
+  const sid = ringAllowed(s) ? s.session_id : null;
+  if (sid !== pollSid) {
+    dropPoll();
     render(null);
-    return;
+    if (sid) {
+      pollSid = sid;
+      poll = startPoll(function () { return readContext(sid); }, CONTEXT_POLL_MS);
+    }
   }
-  if (s.session_id !== ringSid) {
-    ringSid = s.session_id;
-    render(null);
-  }
-  if (pollAllowed()) tick();
+  if (poll) poll.kick();
 }
 
 export function wireContextRing() {
@@ -139,5 +117,4 @@ export function wireContextRing() {
     if (pct == null) return;
     toast('Context window ' + pct + '% used');
   });
-  document.addEventListener('visibilitychange', syncContextRing);
 }
