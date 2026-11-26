@@ -77,6 +77,12 @@ def _launch_claude_via_webapp(
 
     The target is the first agent-trusted checkout of this repository — a
     skip naming trust when there is none (issue #932).
+
+    ``ignore_behind`` because that checkout is not the tree under test: from a
+    worktree it is usually the primary, whose ``main`` lags ``origin`` as soon
+    as another lane merges. The pin submits no prompt, so no work starts on
+    stale code; the refusal itself is pinned in
+    ``tests/unit/scanner/test_git_upstream.py``.
     """
     if shutil.which("claude") is None:
         pytest.skip(
@@ -93,7 +99,7 @@ def _launch_claude_via_webapp(
             # The test renders the session in its own Playwright page, so say
             # so: without `in_page` the launch mirrors to a real PC Edge window
             # (issue #938; the disposable instance also refuses to mirror).
-            json={"mode": "pty", "in_page": True},
+            json={"mode": "pty", "in_page": True, "ignore_behind": True},
             headers=headers,
             verify=False,
             timeout=10,

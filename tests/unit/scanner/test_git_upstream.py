@@ -11,6 +11,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Tuple
 
 import pytest
@@ -358,3 +359,35 @@ def test_launch_is_refused_on_a_behind_repo(webapp_client, repos, tmp_path):
     res = client.post("/api/apps/mine/launch", json={"agent": "claude", "mode": "remote"})
     assert res.status_code == 409
     assert "behind origin/main: pull first" in res.json()["detail"]
+
+
+def test_gate_real_agent_launch_gets_through_a_behind_checkout(
+    webapp_client, repos, tmp_path, monkeypatch
+):
+    """The gate's real-agent fixture launches in the primary checkout, whose
+    ``main`` lags as soon as another lane merges. That is not this lane's tree,
+    so the launch must not be refused for it."""
+    from app.webapp.routers import apps as apps_router
+    from tests.e2e.fixtures import sessions
+
+    client, app, _ = webapp_client
+    _, mine, theirs = repos
+    _push_from(theirs, "a.txt")
+    git_upstream.fetch(mine)
+    projects = tmp_path / "projects"
+    projects.mkdir()
+    shutil.move(str(mine), str(projects / "mine"))
+    _point_projects_at(app, projects)
+
+    monkeypatch.setattr(
+        apps_router, "spawn_claude_session",
+        lambda *_a, **_k: {"session_id": "s1", "kind": "pty", "agent": "claude"},
+    )
+    monkeypatch.setattr(sessions, "shutil", SimpleNamespace(which=lambda _name: "claude"))
+    monkeypatch.setattr(sessions, "require_trusted_launch_target", lambda: projects / "mine")
+    monkeypatch.setattr(sessions, "requests", SimpleNamespace(
+        post=lambda url, json, headers, **_k: client.post(url, json=json, headers=headers),
+    ))
+
+    # autoboot=True: the gate's mode, where a refusal fails instead of skipping.
+    assert sessions._launch_claude_via_webapp("", "", autoboot=True) == "s1"
