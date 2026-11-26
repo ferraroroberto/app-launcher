@@ -288,8 +288,9 @@ export async function attachTerminalPane(session) {
     // Resize-dedupe + repaint-batch state. lastSentSize suppresses
     // same-size resize frames; fsSized gates the fullscreen pan path until
     // the first real fit has run; batch* is owned by terminal-connection.js.
-    // resizeSettleTimer holds a pending settled resize frame.
-    lastSentSize: null, fsSized: false, resizeSettleTimer: null,
+    // resizeSettleTimer holds a pending settled resize frame, queuedSize the
+    // size it waits on.
+    lastSentSize: null, queuedSize: null, fsSized: false, resizeSettleTimer: null,
     batchBuf: null, batchTimer: null, batchQuietTimer: null, batchDeadline: 0,
     onShutdown: closeTerminal,
   };

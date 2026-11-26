@@ -19,7 +19,8 @@ put on the WebSocket. It pins:
 * nothing is sent mid-sweep;
 * a sweep that returns to where it started sends nothing at all;
 * a sweep that ends somewhere new sends exactly one frame, for the final size;
-* a sub-floor sample is clamped before it is sent.
+* a sub-floor sample is clamped before it is sent;
+* a host observer that reports the same size late does not postpone the frame.
 """
 
 from __future__ import annotations
@@ -56,6 +57,30 @@ _SWEEP = r"""
 """
 
 
+# The browser delivers a ResizeObserver from its rendering step, which a loaded
+# host can push into the middle of a clock jump. This holds the terminal host's
+# delivery on the fake clock for ``window.__lateMs``, so the late case happens
+# on every run instead of only on a slow one.
+_LATE_HOST_OBSERVER = r"""
+(() => {
+  const Real = window.ResizeObserver;
+  window.__lateMs = 0;
+  window.__lateQueued = 0;
+  window.ResizeObserver = class extends Real {
+    constructor(callback) {
+      super((entries, observer) => {
+        if (!window.__lateMs || entries[0].target.id !== 'terminalHost') {
+          return callback(entries, observer);
+        }
+        window.__lateQueued += 1;
+        setTimeout(() => callback(entries, observer), window.__lateMs);
+      });
+    }
+  };
+})();
+"""
+
+
 def _frames(page: Page) -> list:
     return page.evaluate("window.__resizeFrames.slice()")
 
@@ -75,6 +100,7 @@ def test_keyboard_sweep_settles_to_one_floored_resize(
     page = authed_page
     _fake_clock.install(page)
     page.add_init_script(RECORD_RESIZE_FRAMES)
+    page.add_init_script(_LATE_HOST_OBSERVER)
     # Open via the session-list row — the phone path. The ?terminal= deep link
     # classifies a loopback open as the PC mirror window (#241), which never
     # sends resize frames at all.
@@ -115,8 +141,12 @@ def test_keyboard_sweep_settles_to_one_floored_resize(
     )
     _clear(page)
 
-    # 3. A sub-floor sample is clamped before it reaches the PTY.
+    # 3. A sub-floor sample is clamped before it reaches the PTY. The host
+    # observer reports that same size part-way through the settle, which must
+    # not start the settle again.
+    page.evaluate("window.__lateMs = 200")
     page.evaluate(_SWEEP, [10])
+    page.wait_for_function("window.__lateQueued >= 1")
     _fake_clock.advance(page, _AFTER_SETTLE_MS)
     floored = _frames(page)
     min_rows = page.evaluate("import('/static/terminal.js').then(m => m.PTY_MIN_ROWS)")
