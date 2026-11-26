@@ -25,9 +25,9 @@ from src.launching.vscode_workspace import (
     is_vscode_installed,
     open_workspace,
 )
+from src.progress.run_tracker import RunProgress
 from src.registry import load_registry
 from src.request_timing import TimedExecutor
-from src.run_progress import RunProgress
 from src.scanner import ProjectDir, git_status, scan_project_dirs
 from src.session_view.git_changes import (
     file_diff,

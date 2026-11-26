@@ -1,7 +1,7 @@
 /* What the Sync all dialog and its toast say about a run.
  *
  * The server records a run as { started_at, finished_at, total, done, current,
- * error, results } (src/run_progress.py), the same progress shape the
+ * error, results } (src/progress/run_tracker.py), the same progress shape the
  * History refresh uses. Plain functions of that record, so the wording and the
  * counts are pinned under Node without a browser.
  */

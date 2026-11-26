@@ -35,7 +35,7 @@ from src import fleet_scope
 from src._json_io import atomic_write_json
 from src.clients import github as github_client
 from src.git_utils import run_git
-from src.run_progress import RunProgress
+from src.progress.run_tracker import RunProgress
 
 logger = logging.getLogger(__name__)
 

@@ -42,7 +42,7 @@ _JS_EXPORT_RE = re.compile(r"^export\s+(?:async\s+)?function\s+(\w+)", re.MULTIL
 _TIMER_POLL_RE = re.compile(r"setTimeout\([^;]*POLL[A-Z_]*_MS")
 # Loops that predate this gate. The set only shrinks.
 _TIMER_POLL_OK = {"channel-sessions.js", "progress/progress-sheet.js", "settings/inspiration.js"}
-_RUN_TRACKER_OWNER = "src/run_progress.py"
+_RUN_TRACKER_OWNER = "src/progress/run_tracker.py"
 
 
 def _product_files() -> list[tuple[str, str]]:

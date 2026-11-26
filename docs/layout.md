@@ -74,7 +74,6 @@ app-launcher/
 │   ├── inspiration/            # Settings › Inspiration: sources.py (the scan's source list, validated by the skill's own parser, saved atomically with a backup), login.py (the X login window), toml_write.py (stdlib TOML writer)
 │   ├── documents/              # Settings › Documents: the allowlist's validation, the path jail and the read (__init__.py)
 │   ├── git_utils.py            # shared `git` subprocess runner — every git spawn goes through it
-│   ├── run_progress.py         # in-memory progress of a watched run (Sync all, the History refresh)
 │   ├── git_upstream/           # ahead/behind against origin, the fetch ledger, Sync all's guarded fast-forward
 │   ├── notifications.py        # notify_on_failure dispatch
 │   ├── notify/                 # vendored provider package behind notifications.py (Telegram, …)
@@ -103,6 +102,7 @@ app-launcher/
 │   ├── life_os/                # Life OS: capture, history, title, the delete routine, the index, zombie sweep + backup, the relay registry, the stat-keyed directory listing cache
 │   ├── progress/               # fleet progress: totals.py caches daily GitHub totals per repo (lines, PRs merged, issues opened/closed)
 │   │                           #   in webapp/progress-totals.json; snapshot() reads it with no GitHub call, refresh() is explicit;
+│   │                           #   run_tracker.py is the in-memory progress of a watched run (Sync all and the refresh);
 │   │                           #   history.py/tokens.py/buckets.py answer GET /api/progress (the totals + the hub's token history, bucketed)
 │   ├── usage/                  # usage meter: providers.py, auto_switch.py (the Grok fallback for Sonnet lanes),
 │   │                           #   quota.py, export.py (Send to task-os)

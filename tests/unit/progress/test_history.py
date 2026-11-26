@@ -10,7 +10,7 @@ import pytest
 
 from src.clients import hub_token_history
 from src.progress import buckets, history, tokens, totals
-from src.run_progress import RunProgress
+from src.progress.run_tracker import RunProgress
 
 NOW = datetime(2026, 11, 4, 12, 0, tzinfo=timezone.utc)
 
