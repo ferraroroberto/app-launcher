@@ -33,7 +33,7 @@ app-launcher/
 │           ├── screen/        # the Screen view: the socket and lifecycle (screen-view.js), control, keys, quality, and their pure helpers
 │           ├── shared/        # modules several views import: the model picker, session-kind predicates, number/date formatting, the launch-size contract, the Mermaid diagram renderer (mermaid-render.js), the build readout's restart wiring (build-restart.js)
 │           ├── settings/      # Settings sheets and cards: launch defaults, API tokens, Telegram, the context filter, fleet scope, inspiration sources, the Documents group and its reading sheet
-│           ├── terminal/      # the Terminal pane's modules beside terminal.js: bar, composer bytes, socket, keys, mirror, read-aloud, theme, touch
+│           ├── terminal/      # the Terminal pane's modules beside terminal.js: bar, composer bytes, socket, sizing, keys, mirror, read-aloud, theme, touch
 │           └── styles/        # the app's own CSS: base.css (tokens, tabs, shell) + one file per view, linked in cascade order
 │
 ├── src/                        # logic layer (no UI imports); flat modules first, then one subpackage per domain

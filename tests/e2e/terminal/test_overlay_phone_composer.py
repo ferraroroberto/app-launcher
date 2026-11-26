@@ -31,6 +31,10 @@ paints no statusline, and the ring only draws with one) and the sessions
 list's ``model`` field (the derivation is pinned by
 ``tests/unit/sessions/test_session_model.py``), so they measure the worst
 case: ring, toggle, 🔊 and ⋮ all showing.
+
+Last, the terminal's size and pan (``_refit_legs.py``): a full-screen terminal
+first opened under a phone keyboard, at phone and desktop widths, then the
+mirror window.
 """
 
 from __future__ import annotations
@@ -43,6 +47,10 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS
+from tests.e2e.terminal._refit_legs import (
+    leg_mirror_keeps_the_last_row_in_view,
+    leg_terminal_grows_back_after_the_keyboard,
+)
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
@@ -495,3 +503,7 @@ def test_overlay_keeps_composer_reachable_on_a_phone(
         _leg_terminal_bar_fits_at_once_on_default_phone(
             page, base_url, sid, stubs, default_viewport
         )
+    stubs.model, stubs.agent = None, "copilot"
+    for width, height in ((390, 844), (1280, 800)):
+        leg_terminal_grows_back_after_the_keyboard(page, base_url, sid, width, height)
+    leg_mirror_keeps_the_last_row_in_view(page, base_url, sid)

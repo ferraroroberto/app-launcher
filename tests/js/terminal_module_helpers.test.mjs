@@ -60,6 +60,17 @@ const { beginRepaintBatch, connectTerminalWs } =
   clearTimeout(terminal.batchTimer);
 }
 
+// beginRepaintBatch: a resize during a batch still being filled keeps what the
+// same connection already sent.
+{
+  const terminal = { isFullscreen: true, term: { element: { style: {} } } };
+  beginRepaintBatch(terminal);
+  terminal.batchBuf.push('SNAPSHOT');
+  beginRepaintBatch(terminal, true);
+  assert.deepEqual(terminal.batchBuf, ['SNAPSHOT']);
+  clearTimeout(terminal.batchTimer);
+}
+
 // connectTerminalWs: reconnecting while the old socket is still OPEN closes it.
 {
   class FakeWs {

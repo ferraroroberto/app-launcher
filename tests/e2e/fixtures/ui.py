@@ -65,6 +65,24 @@ def open_session_row(page: Page, row, mode: str | None = None) -> None:
         expect(page.locator("#terminalOverlay")).to_have_attribute("data-mode", mode)
 
 
+# Record every resize frame the page sends, before any app script runs.
+RECORD_RESIZE_FRAMES = r"""
+(() => {
+  window.__resizeFrames = [];
+  const send = WebSocket.prototype.send;
+  WebSocket.prototype.send = function (data) {
+    try {
+      const msg = JSON.parse(data);
+      if (msg && msg.type === 'resize') {
+        window.__resizeFrames.push({ rows: msg.rows, cols: msg.cols });
+      }
+    } catch (_) { /* not a JSON control frame */ }
+    return send.apply(this, arguments);
+  };
+})();
+"""
+
+
 # --------------------------------------------------- switching tabs
 
 # Records every trusted pointer event the page receives and whether its target

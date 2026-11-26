@@ -23,8 +23,8 @@ from src import session_host
 from src.session_host import PtySession
 from src.vt_snapshot import VtSnapshot
 
-_TERMINAL_JS = (
-    Path(__file__).resolve().parents[3] / "app" / "webapp" / "static" / "terminal.js"
+_TERMINAL_SIZE_JS = (
+    Path(__file__).resolve().parents[3] / "app" / "webapp" / "static" / "terminal" / "terminal-size.js"
 )
 
 
@@ -97,13 +97,13 @@ def test_sub_floor_sample_at_the_floor_is_a_noop():
 
 
 def test_client_floor_matches_the_session_host_floor():
-    # The phone floors its frames client-side (terminal.js) and the host
+    # The phone floors its frames client-side (terminal-size.js) and the host
     # clamps again here; two different floors would make the host resize the
     # PTY to a size the phone never asked for.
-    js = _TERMINAL_JS.read_text(encoding="utf-8")
+    js = _TERMINAL_SIZE_JS.read_text(encoding="utf-8")
     for name in ("PTY_MIN_ROWS", "PTY_MIN_COLS"):
         match = re.search(rf"export const {name} = (\d+);", js)
-        assert match, f"{name} not found in terminal.js"
+        assert match, f"{name} not found in terminal-size.js"
         assert int(match.group(1)) == getattr(session_host, name), name
 
 

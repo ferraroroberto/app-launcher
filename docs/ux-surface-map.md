@@ -611,6 +611,7 @@ flowchart LR
   - Back closes the view
   - the switch changes mode and remembers it per session
   - a tap on the context ring toasts how full the window is, and the ring hides while the number is unknown
+  - the terminal takes more rows when its box grows; a full-screen agent pans up when it shrinks, as does the PC mirror window
 - **Phone:** full screen, and the floating nav hides while it is open
 - **Desktop:** on a wide window it docks in the pane beside the session list
 - **Why:** one overlay with two modes so a session never needs two places to answer
