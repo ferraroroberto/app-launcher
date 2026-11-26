@@ -18,14 +18,15 @@ writes nothing, and nothing a PC already has configured is ever overwritten:
 * Each ignored config is created from its tracked sample only when missing. A
   settings file that exists but lacks keys its sample has gets only those keys,
   after a timestamped backup, and the added key names are printed (never
-  values). Every other config is a registry, the owner's own list, never
+  values). The top-up is refused unless git confirms the backup is ignored,
+  because the backup holds the config's values. Every other config is a registry, the owner's own list, never
   rewritten. A file that does not parse is left alone and reported.
 * The log-on autostart is registered only with ``-Startup`` and only when absent.
 
 ``-WhatIf`` lists every change and makes none. The run ends with a checklist of
 what works and what still needs the owner, each item ``ok``, ``missing`` or
-``unknown``. Exit code: 0 when every step ran, 1 when one failed or a config was
-left alone because it does not parse.
+``unknown``. Exit code: 0 when every step ran, 1 when one failed, a config was
+left alone because it does not parse, or a top-up was refused for its backup.
 
 The module is stdlib only: on a fresh PC it runs on the system python before any
 requirement is installed.
@@ -60,6 +61,9 @@ VENV_TIMEOUT_S = 300
 CHECK_TIMEOUT_S = 60
 # The token in a declared command that stands for the repo's .venv python.
 PYTHON_TOKEN = "{python}"
+
+# The .gitignore line that covers every top-up backup; the backup holds the config's secrets.
+BACKUP_IGNORE_PATTERN = "*.json.bak-*"
 
 OK, MISSING, UNKNOWN = "ok", "missing", "unknown"
 QUIET_STATUSES = ("unchanged", "kept", "not registered", "not checked", "left alone")
@@ -337,7 +341,24 @@ def config_pairs(root: Path, plan: Plan) -> list[tuple[str, str]]:
     return pairs
 
 
-def ensure_config(root: Path, sample_name: str, target_name: str, settings: bool, report: Report, stamp: str) -> None:
+def backup_ignored(root: Path, backup: Path, runner: Runner) -> tuple[bool | None, str]:
+    """Whether git ignores ``backup``: True, False, or None with the reason when git cannot tell."""
+    rel = backup.relative_to(root).as_posix()
+    try:
+        # conventions-exempt: a vendor-verbatim file cannot import the adopter's run_git; one read-only query
+        done = runner(["git", "check-ignore", "-q", "--", rel], cwd=root, timeout=CHECK_TIMEOUT_S, check=False,
+                      capture_output=True, creationflags=NO_WINDOW)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return None, f"could not ask git whether its backup is ignored ({type(exc).__name__})"
+    if done.returncode == 0:
+        return True, ""
+    if done.returncode == 1:
+        return False, ""
+    return None, f"git check-ignore exited {done.returncode} (not a git checkout?)"
+
+
+def ensure_config(root: Path, sample_name: str, target_name: str, settings: bool, report: Report, stamp: str,
+                  runner: Runner) -> None:
     """Create the target from its sample when missing; for a settings file, add only the keys it lacks."""
     sample, target = root / sample_name, root / target_name
     if not sample.is_file():
@@ -367,10 +388,21 @@ def ensure_config(root: Path, sample_name: str, target_name: str, settings: bool
     if not keys:
         report.step("unchanged", target_name)
         return
+    backup = target.with_name(f"{target.name}.bak-{stamp}")
+    ignored, why = backup_ignored(root, backup, runner)
+    if ignored is None:
+        report.step("not confirmed", target_name, f"{why}; nothing was written, so no backup holding its "
+                    "values can be committed")
+        report.failed = True
+        return
+    if not ignored:
+        report.step("refused", target_name, f"its backup {backup.name} would not be gitignored; add "
+                    f"{BACKUP_IGNORE_PATTERN} to .gitignore and rerun, nothing was written")
+        report.failed = True
+        return
     if report.what_if:
         report.step("would add", target_name, "keys: " + ", ".join(keys))
         return
-    backup = target.with_name(f"{target.name}.bak-{stamp}")
     shutil.copyfile(target, backup)  # runtime-write-exempt: the ignored backup beside the config it protects
     _add_missing(current, sample_data)
     # runtime-write-exempt: the ignored config the app reads, rewritten only to add missing keys
@@ -378,9 +410,9 @@ def ensure_config(root: Path, sample_name: str, target_name: str, settings: bool
     report.step("added", target_name, "keys: " + ", ".join(keys) + f" (backup {backup.name})")
 
 
-def ensure_configs(root: Path, plan: Plan, report: Report, stamp: str) -> None:
+def ensure_configs(root: Path, plan: Plan, report: Report, stamp: str, runner: Runner) -> None:
     for sample, target in config_pairs(root, plan):
-        ensure_config(root, sample, target, target in plan.settings, report, stamp)
+        ensure_config(root, sample, target, target in plan.settings, report, stamp, runner)
 
 
 # ---------------------------------------------------------------- probes, autostart, checklist
@@ -492,7 +524,7 @@ def run(root: Path, *, what_if: bool, startup: bool = False, runner: Runner = su
         ensure_requirements(root, plan, report, runner)
     if not report.failed:
         ensure_deps(root, plan, report, runner)
-    ensure_configs(root, plan, report, stamp)
+    ensure_configs(root, plan, report, stamp, runner)
     ensure_startup(root, plan, report, startup, runner)
     build_checklist(root, plan, report, runner)
     return report

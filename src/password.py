@@ -20,7 +20,14 @@ echoed or logged)::
 
     python -m src.password set
     python -m src.password set --stdin     # one line from stdin, for a script
-    python -m src.password status          # is a hash stored? prints no secret
+    python -m src.password status          # is a password stored? prints no secret
+
+``status`` is an installer probe (``src/installer.py``): exit 0 when a password
+is stored, 1 when none is, 2 when a file it needs cannot be read. An app still
+honouring its old plaintext value names where that value lives, a top-level key
+of a JSON file, so it counts as stored::
+
+    python -m src.password status --legacy config/webapp_config.json auth_password
 
 Checking it, in the login route (``legacy`` is the app's old stored value,
 plaintext, "" when it has none)::
@@ -101,7 +108,7 @@ def stored_hash(path: Path | None = None) -> str:
         raw = target.read_text(encoding="utf-8")
     except FileNotFoundError:
         return ""
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         logger.warning(f"⚠️ password file unreadable, falling back to the old password: {type(exc).__name__}")
         return ""
     try:
@@ -163,19 +170,62 @@ def _read_new_password(from_stdin: bool) -> str | None:
     return first
 
 
+def _legacy_value(source: str, key: str) -> str | None:
+    """The app's old plaintext value at ``key`` of the JSON file ``source``; None when it cannot be read."""
+    try:
+        return str(json.loads(Path(source).read_text(encoding="utf-8")).get(key) or "")
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def _unreadable(path: Path) -> bool:
+    """True when ``path`` is there but cannot be read, so what it holds is not known."""
+    try:
+        path.read_bytes()
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True
+    return False
+
+
+def _status(legacy: list[str] | None) -> int:
+    """Print whether a password is stored; 0 yes, 1 no, 2 cannot tell."""
+    target = password_file()
+    if stored_hash(target):
+        print(f"ℹ️ Password hash stored: {target}")
+        return 0
+    source, key = legacy or ("", "")
+    old = _legacy_value(source, key) if legacy else ""
+    if old:
+        print(f"ℹ️ Password hash not stored; the old password ({key} in {source}) still works.")
+        return 0
+    if old is None or _unreadable(target):
+        unread = source if old is None else target
+        print(f"⚠️ Cannot tell whether a password is stored: {unread} could not be read.")
+        return 2
+    print(f"ℹ️ No password stored: {target}")
+    return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     """``set`` stores a new password; ``status`` says whether one is stored."""
+    # A piped Windows child prints through the ANSI code page, where an emoji raises
+    # and the resulting exit 1 would read as "missing".
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(prog="python -m src.password", description="Set or inspect the app password.")
     commands = parser.add_subparsers(dest="command", required=True)
     setter = commands.add_parser("set", help="prompt for a password and store its hash")
     setter.add_argument("--stdin", action="store_true", help="read one line from stdin instead of prompting")
-    commands.add_parser("status", help="say whether a password hash is stored")
+    status = commands.add_parser("status", help="exit 0 when a password is stored, 1 when not, 2 when unknown")
+    status.add_argument("--legacy", nargs=2, metavar=("JSON_FILE", "KEY"),
+                        help="also count the app's old plaintext password at this key")
     args = parser.parse_args(argv)
 
     if args.command == "status":
-        state = "stored" if stored_hash() else "not stored (the app's old password, if any, still works)"
-        print(f"ℹ️ Password hash {state}: {password_file()}")
-        return 0
+        return _status(args.legacy)
 
     new = _read_new_password(args.stdin)
     if new is None:

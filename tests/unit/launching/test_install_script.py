@@ -1,9 +1,9 @@
 """``setup.bat`` keeps what a PC has configured, through this app's ``[install]`` table.
 
-The run is the vendored ``src/installer.py`` over a temp checkout holding copies
-of the tracked manifest and config samples; the live ``config/`` and the real
-Startup folder are never touched. ``.venv`` is a stub, so no probe and no pip
-runs.
+The run is the vendored ``src/installer.py`` over a temp git checkout holding
+copies of the tracked manifest, ignore rules and config samples; the live
+``config/`` and the real Startup folder are never touched. ``.venv`` is a stub,
+so no probe and no pip runs; ``git check-ignore`` is real.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from typing import Any, Dict, List
 import pytest
 
 from src import boot_autostart, installer, password
+from src.git_utils import run_git
 from src.launching import install_checks
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -26,12 +27,15 @@ BACKUP_SUFFIX = ".bak-20260102-030405"
 SETTINGS = ["config/config.json", "config/webapp_config.json"]
 
 
-def _stub_runner(command: List[str], **_: Any) -> "subprocess.CompletedProcess[Any]":
+def _stub_runner(command: List[str], **kwargs: Any) -> "subprocess.CompletedProcess[Any]":
+    if command[0] == "git":
+        return subprocess.run(command, **kwargs)  # no-window-exempt: the installer passes creationflags
     return subprocess.CompletedProcess(command, 1)
 
 
 def _snapshot(root: Path) -> Dict[str, bytes]:
-    return {str(p.relative_to(root)): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file()}
+    return {str(p.relative_to(root)): p.read_bytes() for p in sorted(root.rglob("*"))
+            if p.is_file() and ".git" not in p.relative_to(root).parts}
 
 
 def _run(root: Path, *, what_if: bool = False) -> installer.Report:
@@ -40,13 +44,15 @@ def _run(root: Path, *, what_if: bool = False) -> installer.Report:
 
 @pytest.fixture
 def root(tmp_path: Path) -> Path:
-    """A checkout with the tracked manifest and samples, its requirements already stamped."""
+    """A git checkout with the tracked manifest and samples, its requirements already stamped."""
     checkout = tmp_path / "checkout"
     (checkout / "config").mkdir(parents=True)
     for sample in (REPO_ROOT / "config").glob("*.sample.json"):
         shutil.copy(sample, checkout / "config" / sample.name)
-    for name in (".fleet.toml", "requirements.txt"):
+    for name in (".fleet.toml", ".gitignore", "requirements.txt"):
         shutil.copy(REPO_ROOT / name, checkout / name)
+    # A settings top-up is refused unless git confirms its backup is ignored.
+    assert run_git(checkout, ["init", "-q"]) is not None
     python = installer.venv_python(checkout)
     python.parent.mkdir(parents=True)
     python.write_bytes(b"")

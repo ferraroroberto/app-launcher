@@ -57,6 +57,7 @@
 /src/build_info.py
 /src/compression.py
 /src/health_routes.py
+/src/installer.py
 /src/login_alert.py
 /src/login_lockout.py
 /src/notify
