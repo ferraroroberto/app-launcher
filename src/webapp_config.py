@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple
 from urllib.parse import urlencode, urlparse, urlunparse
 
+from src import runtime_files
 from src._json_io import atomic_write_json
 from src.agents import DEFAULT_AGENT
 from src.launching.model_catalog import (
@@ -50,7 +51,6 @@ from src.restart_window import (
     DEFAULT_START,
     validate_window,
 )
-from src import runtime_files
 from src.usage.providers import DEFAULT_USAGE_PROVIDERS
 from src.webapp_settings.chief_timings import (
     CHIEF_TIMINGS,
@@ -111,9 +111,9 @@ from src.webapp_settings.values import (  # noqa: F401 — re-exported for webap
     VALID_PI_MODELS,
     VALID_PI_TRUST_MODES,
     WEBAPP_CONFIG_PATH_ENV,
-    valid_claude_efforts_for,
     check_dictation_auto_stop,
     check_mirror_browser,
+    valid_claude_efforts_for,
 )
 
 logger = logging.getLogger(__name__)
