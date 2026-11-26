@@ -39,7 +39,7 @@ app-launcher/
 ├── src/                        # logic layer (no UI imports); flat modules first, then one subpackage per domain
 │   ├── app_config.py           # log level, webapp embed section
 │   ├── webapp_config.py        # host/port/scan-paths/agent settings/secrets/terminal knobs
-│   ├── webapp_settings/        # values.py: the defaults and value sets every webapp_config field validates against
+│   ├── webapp_settings/        # webapp_config's parts: values.py (defaults and value sets), loaders.py (how each field is read), migrations.py (legacy keys), chief_timings.py
 │   ├── agents.py               # coding-agent registry (claude/codex/agy/copilot/pi/grok) + PATH detection
 │   ├── registry.py             # apps registry (load/save/scan) + live claude-code rows
 │   ├── scanner.py              # bat classifier + project-dir + life-os skill discovery

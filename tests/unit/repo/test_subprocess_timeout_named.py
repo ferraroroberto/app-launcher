@@ -1,5 +1,5 @@
-"""Static gate: a ``subprocess`` spawn's ``timeout=`` is a named constant, not
-a bare number (#1793).
+"""Static gate: a ``subprocess`` spawn's ``timeout=`` and a socket's
+``settimeout()`` take a named constant, not a bare number (#1793, #2668).
 
 Why this is a *static* check and not a runtime one
 --------------------------------------------------
@@ -36,19 +36,28 @@ SPAWN_ATTRS = {"run", "Popen", "call", "check_output", "check_call"}
 #: remove an entry in its own PR rather than growing this set.
 BASELINE = {
     ("src/session_hosting/remote.py", 332),  # taskkill on a detached session's kill
-    ("app/webapp/manager.py", 126),     # tray subprocess readiness probe
+    ("app/webapp/manager.py", 130),     # tray subprocess readiness probe
     ("app/tray/tailscale.py", 58),
     ("src/usage/quota.py", 534),
 }
 
 
+def _is_number(node: ast.expr) -> bool:
+    return isinstance(node, ast.Constant) and isinstance(node.value, (int, float))
+
+
 def _bare_timeout_spawns_in(tree: ast.AST, label: str) -> list[tuple[str, int]]:
-    """``(label, line)`` for every ``subprocess.<spawn>(..., timeout=<number literal>, ...)``."""
+    """``(label, line)`` for every ``subprocess.<spawn>(..., timeout=<number literal>, ...)``
+    and every ``<socket>.settimeout(<number literal>)``."""
     offenders: list[tuple[str, int]] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
         fn = node.func
+        if isinstance(fn, ast.Attribute) and fn.attr == "settimeout":
+            if any(_is_number(arg) for arg in node.args):
+                offenders.append((label, node.lineno))
+            continue
         if not (
             isinstance(fn, ast.Attribute)
             and fn.attr in SPAWN_ATTRS
@@ -59,7 +68,7 @@ def _bare_timeout_spawns_in(tree: ast.AST, label: str) -> list[tuple[str, int]]:
         for kw in node.keywords:
             if kw.arg != "timeout":
                 continue
-            if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, (int, float)):
+            if _is_number(kw.value):
                 offenders.append((label, node.lineno))
     return offenders
 
@@ -84,7 +93,7 @@ def test_no_bare_numeric_timeout_on_a_subprocess_spawn():
     assert scanned > 0, "the scan found no files — SCAN_DIRS is wrong"
     new = sorted(set(offenders) - BASELINE)
     assert not new, (
-        "a subprocess spawn's timeout is a bare number with no name or reason (#1793) — "
+        "a spawn or socket timeout is a bare number with no name or reason (#1793) — "
         "give it a named constant and a one-clause reason (measured, or an admitted guess):\n  "
         + "\n  ".join(f"{label}:{line}" for label, line in new)
     )
@@ -111,6 +120,8 @@ def test_the_matcher_recognizes_the_shapes_it_must():
         "subprocess.run(cmd, timeout=_TIMEOUT_S)\n"       # 4: named, fine
         "subprocess.Popen(cmd, timeout=_TIMEOUT_S())\n"   # 5: a call, fine
         "proc.wait(timeout=5)\n"                          # 6: not a subprocess.* spawn
+        "sock.settimeout(0.3)\n"                          # 7: caught — bare socket wait
+        "sock.settimeout(_TIMEOUT_S)\n"                   # 8: named, fine
     )
     lines = {line for _, line in _bare_timeout_spawns_in(ast.parse(src), "synthetic")}
-    assert lines == {2, 3}, f"matcher flagged {sorted(lines)}"
+    assert lines == {2, 3, 7}, f"matcher flagged {sorted(lines)}"

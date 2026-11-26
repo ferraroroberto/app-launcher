@@ -53,6 +53,10 @@ HEALTH_DOWN = "down"                      # nothing is listening
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
+# A loopback connect to a bound port completes at once, so this only bounds the
+# wait on a closed one (a judged value, not a measured one).
+_PORT_PROBE_TIMEOUT_S = 0.2
+
 
 @dataclass(frozen=True)
 class WebappManagerConfig:
@@ -187,7 +191,7 @@ class WebappManager:
 
     def is_port_in_use(self) -> bool:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(0.2)
+            s.settimeout(_PORT_PROBE_TIMEOUT_S)
             host = self.config.host if self.config.host != "0.0.0.0" else "127.0.0.1"
             return s.connect_ex((host, self.config.port)) == 0
 
