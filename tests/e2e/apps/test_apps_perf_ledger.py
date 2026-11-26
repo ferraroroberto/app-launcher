@@ -5,17 +5,20 @@ every state is drawn on demand. What this pins: the card lists only measured
 apps, each with its result against budget; an over-budget one links its
 issues; every app without a result is listed under its reason; none of that
 is drawn as within budget when the ledger is unreadable or a read fails; and
-no app row carries a result of its own. Nothing about it reaches the Board.
+no app row carries a result of its own; and a hidden page reads no ledger.
+Nothing about it reaches the Board.
 """
 
 from __future__ import annotations
 
 import json
+from datetime import datetime
 
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.fixtures.waits import stable_eval
+from tests.e2e import _fake_clock
+from tests.e2e.fixtures.waits import flush_requests, stable_eval, wait_until
 
 pytestmark = pytest.mark.smoke
 
@@ -115,11 +118,45 @@ def _assert_unknown(page: Page, message: str) -> None:
     expect(page.locator("#perfUnmeasured")).to_be_hidden()
 
 
+def _assert_no_ledger_read_while_hidden(page: Page) -> None:
+    """The ledger read follows the registry read. A registry answer that lands
+    after the page hid starts none; the poll on the way back reads it."""
+    hold, held, ledger_reads = [], [], []
+    page.route("**/api/apps", lambda r: held.append(r) if hold else r.fallback())
+    page.on("request", lambda r: r.url.endswith("/api/apps/perf") and ledger_reads.append(r.url))
+
+    def _set_hidden(hidden: bool) -> None:
+        page.evaluate("""(hidden) => {
+          Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+          document.dispatchEvent(new Event('visibilitychange'));
+        }""", hidden)
+
+    _fake_clock.wait_for_interval(page, 4_000, "fetchApps")
+    hold.append(True)
+    _fake_clock.advance(page, 4_000)
+    wait_until(page, lambda: bool(held), "a registry poll held open")
+    # Past the card's own throttle, without firing a timer.
+    page.clock.set_system_time(datetime.fromtimestamp(page.evaluate("Date.now()") / 1000 + 61))
+    _set_hidden(True)
+    hold.clear()
+    held.pop().fulfill(status=200, content_type="application/json",
+                       body=json.dumps(_APPS).replace("Good App", "Late App"))
+    # The late name on the page proves the answer was handled, follow-up included.
+    expect(page.locator("#registeredTraysList")).to_contain_text("Late App")
+    flush_requests(page)
+    assert not ledger_reads, "a ledger read started while the page was hidden"
+
+    _set_hidden(False)
+    wait_until(page, lambda: len(ledger_reads) == 1, "the ledger read on the return")
+
+
 def test_the_card_lists_measured_apps_against_budget_and_the_rest_with_reasons(
     authed_page: Page, base_url: str
 ) -> None:
     """Every ledger state on one page load: a failed read, an unreadable
-    ledger, a missing one, then a readable one with every kind of row."""
+    ledger, a missing one, then a readable one with every kind of row.
+    Last, a registry answer landing on the hidden page."""
+    _fake_clock.install(authed_page)
     answer = _open_apps(authed_page, base_url, {"detail": "boom"}, status=500)
 
     # A failed read with nothing good to show is unknown, never green.
@@ -189,7 +226,7 @@ def test_the_card_lists_measured_apps_against_budget_and_the_rest_with_reasons(
     expect(authed_page.locator("#appsList, #registeredTraysList").locator(
         '[class*="perf"], a[href*="perf-review"]')).to_have_count(0)
 
-
+    _assert_no_ledger_read_while_hidden(authed_page)
 
 
 @pytest.mark.iphone
