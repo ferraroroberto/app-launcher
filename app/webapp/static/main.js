@@ -142,6 +142,8 @@ async function fetchStatus() {
   try {
     const body = await jsonApi('/api/status');
     state.status = body;
+    els.configError.textContent = body.config_error || '';
+    els.configError.hidden = !body.config_error;
     // No TLS badge or tunnel URL render here: exposing the tunnel hostname
     // in the UI is needless, and not information the user needs day to
     // day. The reachability warning stays; it's actionable (fix by

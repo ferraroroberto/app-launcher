@@ -367,6 +367,19 @@ html, body {
   }
 }
 
+/* The unreadable-settings warning above every tab. It quotes a file path, so
+   long runs wrap anywhere rather than widening the page. */
+.config-error {
+  margin: var(--gap) 0;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: rgb(from var(--attention) r g b / 0.16);
+  color: var(--attention-text);
+  font-size: var(--font-body-sm);
+  overflow-wrap: anywhere;
+}
+.config-error[hidden] { display: none; }
+
 /* ---------- tabs ----------
    Nav geometry + the desktop segmented control / mobile floating pill are
    owned by the vendored _vendored/nav/nav-tabs.css — see

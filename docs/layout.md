@@ -81,7 +81,7 @@ app-launcher/
 │   ├── self_restart.py         # vendored: /api/restart routes, the detached restart runner and its run record
 │   ├── auth/                   # credentials beyond the main token: api_tokens.py (job-scoped tokens), the delegate token,
 │   │                           #   webauthn_gate.py (passkey enrollment / assertion + terminal tokens)
-│   ├── middleware/             # the webapp's auth gate: trust.py (loopback/tailnet), credentials, routes (guard table), terminal_gate, bearer
+│   ├── middleware/             # the webapp's auth gate: trust.py (loopback/tailnet), credentials, routes (guard table), terminal_gate, bearer, unreadable_config (refusal)
 │   ├── clients/                # loopback HTTP clients: the shared _loopback_http.py base, the session-host (session.py),
 │   │                           #   local-llm-hub (llm.py, tts.py), photo-ocr, voice-transcriber, and `gh` (github.py)
 │   ├── launching/              # coding-agent launch: per-agent CLI flags (flags.py), spawn helpers (launcher.py),

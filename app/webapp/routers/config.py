@@ -654,4 +654,11 @@ async def status(request: Request) -> Dict[str, Any]:
         "tts": bool((cfg.llm_hub_url or "").strip()),
         # The PC load sheet's IP row; null when it could not be established.
         "private_ip": system_load.private_ip(),
+        # Why the settings file could not be read; only the PC itself gets an
+        # answer then.
+        "config_error": (
+            f"{cfg.load_error}. Remote access is off until the file is fixed "
+            "and the app restarted."
+            if cfg.load_error else None
+        ),
     }
