@@ -23,7 +23,7 @@ continuously, so that was measured holding 145 such sockets to ``:8446`` at a
 single sample. ``SESSION`` is built once at import and never reconfigured per
 call — ``requests.Session`` is not thread-safe for *configuration* mutation,
 but plain request dispatch on a shared ``HTTPAdapter`` pool is fine across the
-several ``asyncio.to_thread`` worker threads that share it concurrently.
+several route-pool worker threads that share it concurrently.
 """
 
 from __future__ import annotations

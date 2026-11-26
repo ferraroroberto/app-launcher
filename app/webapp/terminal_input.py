@@ -2,10 +2,9 @@
 
 A keystroke is forwarded to the session-host before anything else touches it.
 Its audit line is written afterwards on :data:`_AUDIT_POOL`, a one-thread pool
-of its own: the loop's default executor is shared with every route that reads
-files, and on a slow machine with stalled reads it can be full for seconds, so
-a keystroke that waited on it echoed seconds late. One thread keeps the log
-lines in the order the frames arrived.
+of its own: on a slow machine with stalled reads a shared pool can be full for
+seconds, and a keystroke that waits on one echoes seconds late. One thread
+keeps the log lines in the order the frames arrived.
 
 :class:`KeystrokeTimer` logs per-keystroke stage timings while the
 ``terminal_timing_log`` switch is on; with it off the proxy never builds one.

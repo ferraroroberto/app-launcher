@@ -390,7 +390,7 @@ def attach_last_turn(
     Same agent-aware claim walk as :func:`attach_shared_names`, so a session
     resolves to the same state row on every tab. Returns new dicts; the
     input is never mutated. Blocking file IO (one bounded tail read per
-    session) - callers wrap in ``asyncio.to_thread``.
+    session) - callers run it on a named pool.
     """
     pairs, _ = _claim_walk(live, state_rows)
     out: List[Dict[str, Any]] = []
@@ -413,7 +413,7 @@ def attach_transcript_model(
     resolves to the same state row on every tab. ``None`` when there is no
     state row, no readable transcript or no assistant record yet. Returns new
     dicts; the input is never mutated. Blocking file IO (one bounded tail read
-    per Claude session) - callers wrap in ``asyncio.to_thread``. The Board
+    per Claude session) - callers run it on a named pool. The Board
     cards keep the flag-only model: their lazy shared tail read is pinned to
     one per card, and the pill is the chat header's.
     """
@@ -483,8 +483,8 @@ def merge_sessions(
     Blocking file IO (a transcript stat plus up to two bounded tail reads per
     waiting card — the activity window and one shared
     :class:`src.board.transcript._ExchangeTail` — and, for a screen-checked
-    card, a capture stat plus a render when the capture changed) — callers wrap in
-    ``asyncio.to_thread``.
+    card, a capture stat plus a render when the capture changed) — callers run it
+    on a named pool.
     """
     now = now or utc_now()
     active_repos = active_issue_repos or frozenset()

@@ -463,7 +463,7 @@ def _refresh_chief_pointer_after_resume(
 ) -> None:
     """Re-stamp the pointer at the conversation a Resume just reattached.
 
-    Blocking IO — callers wrap in ``asyncio.to_thread``; this only ever runs on
+    Blocking IO — runs on the Board-files pool; this only ever runs on
     the explicit ensure path, never on the board poll.
 
     The identification writer would eventually record the same id off the next
