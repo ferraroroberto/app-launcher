@@ -15,11 +15,13 @@ in files that also hold unrelated tests names the files instead:
 
 The last stdout line is the verdict, one of:
 
-  WEBKIT_BUDGET=pass            exit 0  the tests ran on WebKit and passed
+  WEBKIT_BUDGET=pass            exit 0  at least one test ran on WebKit and passed,
+                                        and none failed
   WEBKIT_BUDGET=fail            exit 1  a budget test failed on WebKit
   WEBKIT_BUDGET=unknown         exit 3  NOT CONFIRMED: Playwright missing, a
                                         malformed `[webkit_budget] targets`, or a
-                                        pytest run that never reported
+                                        pytest run that never reported (no
+                                        readable JUnit report included)
   WEBKIT_BUDGET=not-installed   exit 4  WebKit's browser build is not installed
                                         here, so nothing ran (never a pass:
                                         `python -m playwright install webkit`)
@@ -29,9 +31,13 @@ The last stdout line is the verdict, one of:
                                         drive raw `playwright.sync_api`), so the
                                         tests cannot be pointed at WebKit from
                                         here; nothing ran
+  WEBKIT_BUDGET=not-run         exit 7  the budget tests exist but not one passed:
+                                        every test was skipped (or xfailed), or
+                                        pytest collected none; the line above says
+                                        which
 
 A caller treats 0 as the only pass; 4, 5 and 6 are "not run" states it prints as
-such, and 1 and 3 fail the gate.
+such, and 1, 3 and 7 fail the gate.
 
 Vendor-verbatim (manifest key `webkit_budget_check`), stdlib-only apart from the
 Playwright the repo's e2e suite already needs.
@@ -43,7 +49,9 @@ import argparse
 import re
 import subprocess
 import sys
+import tempfile
 import tomllib
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 EXIT_PASS = 0
@@ -52,6 +60,7 @@ EXIT_UNKNOWN = 3
 EXIT_NOT_INSTALLED = 4
 EXIT_NO_TESTS = 5
 EXIT_NO_BROWSER_OPTION = 6
+EXIT_NOT_RUN = 7
 
 PROBE_HELPER = "_request_budget.py"
 # The probe runs a fake-clock minute per case; a hung browser must end the gate, not stall it.
@@ -141,6 +150,22 @@ def has_browser_option(root: Path, python: str, targets: list[str]) -> bool | No
     return bool(_BROWSER_OPTION.search(result.stdout or ""))
 
 
+def count_outcomes(report: Path) -> tuple[int, int] | None:
+    """(passed, skipped) from the JUnit report pytest wrote; None when it cannot be read.
+
+    pytest exits 0 for a run whose every test was skipped, so only the counts say whether anything passed.
+    """
+    try:
+        suites = list(ET.parse(report).getroot().iter("testsuite"))  # noqa: S314 -- written by our own pytest run
+        total = {key: sum(int(suite.attrib[key]) for suite in suites)
+                 for key in ("tests", "skipped", "failures", "errors")}
+    except (OSError, ET.ParseError, KeyError, ValueError):
+        return None
+    if not suites:
+        return None
+    return total["tests"] - total["skipped"] - total["failures"] - total["errors"], total["skipped"]
+
+
 def run(root: Path, python: str) -> int:
     try:
         targets = declared_targets(root)
@@ -178,21 +203,34 @@ def run(root: Path, python: str) -> int:
         return EXIT_NOT_INSTALLED
 
     print(f"ℹ️ request budget on WebKit: {' '.join(targets)}")
-    try:
-        # no-window-exempt: the run streams its output into the gate's own console, which a windowless child would not share
-        result = subprocess.run(  # noqa: S603
-            [python, "-m", "pytest", *targets, "--browser", "webkit"], cwd=root, check=False, timeout=RUN_TIMEOUT_S)
-    except subprocess.TimeoutExpired:
-        _verdict("unknown", f"❌ NOT CONFIRMED: the WebKit run did not finish within {RUN_TIMEOUT_S} s")
-        return EXIT_UNKNOWN
-    if result.returncode == 0:
-        _verdict("pass")
-        return EXIT_PASS
+    with tempfile.TemporaryDirectory() as scratch:
+        report = Path(scratch) / "webkit-budget.xml"
+        try:
+            # no-window-exempt: the run streams its output into the gate's own console, which a windowless child would not share
+            result = subprocess.run(  # noqa: S603
+                [python, "-m", "pytest", *targets, "--browser", "webkit", f"--junitxml={report}"],
+                cwd=root, check=False, timeout=RUN_TIMEOUT_S)
+        except subprocess.TimeoutExpired:
+            _verdict("unknown", f"❌ NOT CONFIRMED: the WebKit run did not finish within {RUN_TIMEOUT_S} s")
+            return EXIT_UNKNOWN
+        counts = count_outcomes(report)
     if result.returncode == 1:
         _verdict("fail", "❌ a request-budget test failed on WebKit")
         return EXIT_FAIL
-    _verdict("unknown", f"❌ NOT CONFIRMED: pytest ended with exit {result.returncode} (not a plain pass or fail)")
-    return EXIT_UNKNOWN
+    # 5 is pytest's "no tests collected", which a module-level skip also ends with.
+    if result.returncode not in (0, 5):
+        _verdict("unknown", f"❌ NOT CONFIRMED: pytest ended with exit {result.returncode} (not a plain pass or fail)")
+        return EXIT_UNKNOWN
+    if counts is None:
+        _verdict("unknown", "❌ NOT CONFIRMED: pytest left no readable JUnit report, so how many tests passed is unknown")
+        return EXIT_UNKNOWN
+    passed, skipped = counts
+    if result.returncode == 0 and passed > 0:
+        _verdict("pass")
+        return EXIT_PASS
+    reason = f"every test was skipped ({skipped} skipped)" if skipped else "no tests collected"
+    _verdict("not-run", f"❌ no request-budget test passed on WebKit: {reason}")
+    return EXIT_NOT_RUN
 
 
 def main(argv: list[str] | None = None) -> int:
