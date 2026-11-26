@@ -390,7 +390,7 @@ def attach_provider_web_urls(
     "no link" from "field absent"; only ``kind == "pty"`` rows are resolved:
     Claude's from its captured remote-control card, Copilot's from the
     signed-in host (or ``cfg.copilot_web_url_prefix``) plus its task id. Blocking
-    file IO — callers wrap it in ``asyncio.to_thread``.
+    file IO — callers run it on a named pool.
     """
     copilot_override = cfg.copilot_web_url_prefix if cfg is not None else ""
     for session in sessions:

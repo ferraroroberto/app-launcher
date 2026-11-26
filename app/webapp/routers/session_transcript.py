@@ -146,7 +146,7 @@ async def _read_or_unavailable(
     shared refusal shape instead of leaking it to the caller. Returns
     ``(value, refusal)`` — exactly one of the two is not ``None``. ``read``
     is the already-built awaitable (a ``steps.run(...)`` or
-    ``asyncio.to_thread(...)`` call); each route still logs its own success
+    ``run_on(...)`` call); each route still logs its own success
     breadcrumb, since those fields differ per route."""
     try:
         return await read, None
@@ -230,8 +230,8 @@ async def resolve_source(
     same fact as "the session is not in it").
 
     ``steps`` is the polled ``/transcript`` route's build: its reads
-    then run on the per-session pool, off the default executor. Without it
-    (an on-demand route) they run on the default executor.
+    then run on the per-session pool. Without it (an on-demand route) they
+    run on the session-files pool.
     """
     run = steps.run if steps is not None else run_on_session_files
     (live, host_error), state = await asyncio.gather(

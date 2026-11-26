@@ -260,8 +260,8 @@ def live_session_ids(port: int) -> Optional[Set[str]]:
 def run_scheduled_sweep(session_host_port: int, retention_days: int) -> SweepReport:
     """The webapp tick's whole cycle: live list, then a real sweep, then log.
 
-    Blocking (HTTP + filesystem) — the caller runs it via
-    ``asyncio.to_thread``.
+    Blocking (HTTP + filesystem) — the caller runs it on the session-files
+    pool.
     """
     report = sweep(
         audit.sessions_dir(),

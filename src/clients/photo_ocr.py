@@ -11,7 +11,7 @@ left in photo-ocr's History so it stays recoverable on disk.
 The pixel counterpart to ``voice_client`` — same loopback contract, same
 auth model: same-host callers bypass photo-ocr's auth gate, and its TLS is
 a self-signed loopback cert, so ``verify=False``. These are blocking
-``requests`` calls — webapp routes wrap them in ``asyncio.to_thread``.
+``requests`` calls — webapp routes run them on the service-calls pool.
 """
 
 from __future__ import annotations

@@ -230,8 +230,8 @@ async def _read_screen(
     is the screen as the PTY shows it.
 
     ``steps`` is a polled route's build: its reads then run on the
-    per-session pool, off the default executor. Without it they run on the
-    default executor, as the send-time re-reads always have."""
+    per-session pool. Without it (a send-time re-read or another on-demand
+    call) they run on the session-files pool."""
     run = steps.run if steps is not None else run_on_session_files
     live, host_error = await run("read_live_sessions", read_live_sessions, cfg.session_host_port)
     session = next((s for s in live if str(s.get("session_id")) == str(sid)), None)

@@ -4,11 +4,10 @@
 live session's PTY transcript (``webapp/sessions/<sid>.transcript``) on each
 5 s poll. A file-system call on a transcript the session-host is still
 appending to can stall below Python for many seconds under on-access
-antivirus scanning, regardless of transcript size. Each stalled poll holds
-one of the loop's 20 default-executor threads; if the phones keep polling
-while enough calls stall, the pool fills, both endpoints end up answering
-tens of seconds late, and every other ``asyncio.to_thread`` caller queues
-behind them.
+antivirus scanning, regardless of transcript size. On a shared pool each
+stalled poll holds a thread; if the phones keep polling while enough calls
+stall, the pool fills, both endpoints end up answering tens of seconds late,
+and every other user of that pool queues behind them.
 
 So each endpoint builds its payload through a :class:`HotPoll`:
 
@@ -34,8 +33,8 @@ The Chat pane's per-session polls (``/context``, ``/plan-picker``,
 they go through a :class:`HotPoll` too, one per session and request
 shape (:func:`session_poll`). Theirs build on a pool of their own,
 :data:`SESSION_READS_POOL`: a stalled transcript then holds that pool's
-threads, never the default executor every ``POST /input`` send waits on,
-nor the two polls above. A fresh answer from one of them is the route's
+threads, never those a ``POST /input`` send waits on, nor those of the
+two polls above. A fresh answer from one of them is the route's
 payload as it always was; only a stale one gains ``stale: true`` and
 ``age_seconds``.
 """

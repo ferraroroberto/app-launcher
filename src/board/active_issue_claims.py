@@ -62,7 +62,7 @@ def classify_claims(
 
     ``live_session_ids`` is every alive session-host id, or ``None`` when the
     session list could not be read. Blocking (a first-call module load plus a
-    pid probe per owned row) — callers wrap in ``asyncio.to_thread``.
+    pid probe per owned row) — callers run it on a named pool.
     """
     if not rows:
         return {}

@@ -9,8 +9,8 @@ webapp proxies to it over loopback so the phone never talks to the hub directly.
 
 Like :mod:`src.clients.tts`, the hub binds loopback only and serves plain HTTP
 (no self-signed TLS), so calls use ``verify=True`` (the default) and a plain
-``http://`` base. The call is a blocking ``requests`` round-trip wrapped in
-``asyncio.to_thread`` by the router.
+``http://`` base. The call is a blocking ``requests`` round-trip, which the
+router runs on the service-calls pool.
 """
 
 from __future__ import annotations

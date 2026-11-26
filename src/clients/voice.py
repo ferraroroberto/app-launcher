@@ -10,8 +10,8 @@ on the PC the same way a recording made in the voice-transcriber UI is.
 
 Same-host contract: loopback callers bypass the voice-transcriber's auth
 gate, and its TLS is a self-signed loopback cert, so ``verify=False``. These
-are blocking ``requests`` calls — webapp routes wrap them in
-``asyncio.to_thread`` (mirroring ``session_client``).
+are blocking ``requests`` calls — webapp routes run them on the
+service-calls pool.
 """
 
 from __future__ import annotations

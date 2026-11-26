@@ -11,8 +11,8 @@ Unlike the sibling voice-transcriber / photo-ocr clients, the hub binds
 loopback only and serves **plain HTTP** (no self-signed TLS), so calls use
 ``verify=True`` (the default) and a plain ``http://`` base.
 
-``health`` is a blocking ``requests`` call wrapped in ``asyncio.to_thread`` by
-the router; the streamed synth itself is forwarded with ``httpx`` straight in
+``health`` is a blocking ``requests`` call the router runs on the service-calls
+pool; the streamed synth itself is forwarded with ``httpx`` straight in
 the router (mirroring the ``/api/transcribe/.../events`` SSE proxy), so this
 module owns only the cheap health probe plus the URL / payload builders.
 """

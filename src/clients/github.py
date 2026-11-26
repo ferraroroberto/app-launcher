@@ -3,10 +3,11 @@
 Wraps the exact cross-repo queries the ``/issue-triage`` skill runs — open
 issues, open PRs, and today's merged/closed items across every repo the
 configured owner has — behind a module-level cache. The contract mirrors the
-Coding tab's ⎇ git-status button: **``gh`` is a subprocess per call and is
-never invoked on a poll** — :func:`refresh` runs the searches only when the
-user asks (or once on first Board activation), while :func:`snapshot` is a
-pure memory read the 5s board poll can hit for free.
+Coding tab's ⎇ git-status button: **``gh`` is a subprocess per call and no
+poll waits on it** — :func:`refresh` runs the searches on the user's ↻ tap
+or in the open Board's TTL-gated background refresh
+(:mod:`src.board.view_refresh`), while :func:`snapshot` is a pure memory
+read the 5s board poll can hit for free.
 
 Shared ownership note: this module is the single fetch layer —
 the future Issues tab builds its rich inbox on these same functions
@@ -637,10 +638,12 @@ def snapshot() -> Dict[str, Any]:
 def refresh(owner: str) -> Dict[str, Any]:
     """Run the ``gh`` searches now and replace the cache.
 
-    Subprocess-heavy (three ``gh`` calls) — callers invoke this on explicit
-    user demand only, never on a poll. On failure the previous data is kept
-    and only ``error`` is updated, so a flaky ``gh`` degrades to a badge
-    instead of an empty board.
+    Subprocess-heavy (three ``gh`` calls), so no poll waits on it. Two callers:
+    the Board's ↻ tap (``POST /api/board/github/refresh``) and the view refresh
+    (:func:`src.board.view_refresh.refresh_all`), which a visible Board's
+    ``GET /api/board`` poll starts in a background thread, TTL-gated. On
+    failure the previous data is kept and only ``error`` is updated, so a
+    flaky ``gh`` degrades to a badge instead of an empty board.
 
     *Every* failure records ``error``, not just :class:`GhError` — a
     malformed row the normalisers choke on used to escape as a 500 and leave

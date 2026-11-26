@@ -105,8 +105,8 @@ def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
 
     Reads the jobs' in-memory runtime snapshot, shared with
     ``/api/jobs``, instead of walking every job's history per poll. Still
-    blocking (a stale or dirty snapshot is rebuilt inline) — callers wrap in
-    ``asyncio.to_thread``. Job timestamps are naive local ISO strings
+    blocking (a stale or dirty snapshot is rebuilt inline) — callers run it on
+    a named pool. Job timestamps are naive local ISO strings
     (``run_job_cmd`` writes ``datetime.now().isoformat()``), so "today" is the
     local calendar day.
 
@@ -316,7 +316,7 @@ def session_board_columns(
     A session absent from the result has no known column; callers show no
     chip for it rather than guess. ``age_seconds`` is the Board card's own
     last-activity age, ``None`` when it has no anchor. Blocking (transcript tails and a pid probe
-    per owned claim row) — callers wrap in ``asyncio.to_thread``.
+    per owned claim row) — callers run it on a named pool.
     """
     claim_states = active_issue_claims.classify_claims(
         active_issue_rows,
