@@ -1048,6 +1048,7 @@ surfaces:
       - an attach button that puts a file or image into the answer
     does:
       - Done closes; an answer is sent when it is complete
+      - tap a web address in a question or its detail opens it in a new tab
     states:
       - an answer in flight locks the card
 

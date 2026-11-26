@@ -1,7 +1,8 @@
 /* The transcript renderer's building blocks: links in plain text, times,
  * the meta line, capped text blocks, a path as "folder / name", an edit's
  * line counts and the turn chevron. Every part of the renderer
- * (transcript-render.js and the modules beside it) draws with these.
+ * (transcript-render.js and the modules beside it) draws with these, and the
+ * Board's answer sheet links its question text with the same linkify.
  */
 
 // Bare URLs become links everywhere transcript text is shown — reply

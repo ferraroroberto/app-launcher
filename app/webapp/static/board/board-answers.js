@@ -53,6 +53,7 @@ import { el } from '../dom-utils.js';
 import { createDictation, startWorkTimer, voiceDictationAvailable } from '../voice.js';
 import { growTextarea, mountComposer } from '../composer.js';
 import { uploadSessionFile } from '../terminal/terminal-compose.js';
+import { linkify } from '../chat/transcript-text.js';
 import { chiefSessionId, sendToChief } from './board-dispatch.js';
 import { markLooked } from './journal-look.js';
 import { optionList, otherRow, paintOptions } from './answer-item.js';
@@ -259,8 +260,8 @@ function renderItem(item, index) {
   block.appendChild(answerHead(item, index));
 
   const question = item.question || item.text;
-  block.appendChild(el('p', 'tr-ask-question', question));
-  if (item.detail) block.appendChild(el('p', 'tr-ask-hint chief-answer-detail', item.detail));
+  block.appendChild(linked(el('p', 'tr-ask-question', question)));
+  if (item.detail) block.appendChild(linked(el('p', 'tr-ask-hint chief-answer-detail', item.detail)));
   const options = item.options || [];
   // A recommended option says so in its own label; only a recommendation
   // that marks none needs a line of its own — quiet text, not a card.
@@ -325,6 +326,13 @@ function renderItem(item, index) {
   block.appendChild(other.files.extra);
   paint();
   return block;
+}
+
+// A line of the chief's own words, its bare http(s) URLs made tappable: the
+// owner answers from the phone, where a plain-text URL can only be copied.
+function linked(node) {
+  linkify(node);
+  return node;
 }
 
 // An item's head: its number, then its repo and its ref (a link when it has one).
