@@ -138,6 +138,13 @@ class TestAllSignedStartAndRestart:
         restart = (REPO_ROOT / "scripts" / "restart-session-host.ps1").read_text(encoding="utf-8")
         assert not re.search(r"^[^#]*-File\s", restart, re.MULTILINE)
 
+    def test_only_the_launcher_starts_a_script_with_file(self) -> None:
+        """A hand-built ``-File`` argv skips the policy check; every other start goes through ``ps_script``."""
+        sources = [p for top in ("app", "src", "scripts") for p in (REPO_ROOT / top).rglob("*.py")]
+        builders = [p.relative_to(REPO_ROOT).as_posix() for p in sources
+                    if re.search(r"""["']-File["']""", p.read_text(encoding="utf-8"))]
+        assert builders == ["src/launching/ps_script.py"]
+
     def test_docs_start_the_session_host_restart_through_the_launcher(self) -> None:
         docs = [REPO_ROOT / "README.md", REPO_ROOT / "CLAUDE.md", *(REPO_ROOT / "docs").glob("*.md")]
         offenders = [p.name for p in docs if re.search(r"-File\s+scripts[/\\]restart-session-host",

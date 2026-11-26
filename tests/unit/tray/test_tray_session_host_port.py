@@ -22,6 +22,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.tray import tray as tray_mod
+from src.launching import ps_script
 
 _CUSTOM_PORT = 19999
 
@@ -88,9 +89,15 @@ class TestStopSessionHostUsesConfiguredPort:
         monkeypatch.setenv("USERPROFILE", str(tmp_path))
         run = MagicMock(return_value=SimpleNamespace(returncode=0))
         monkeypatch.setattr(tray_mod.subprocess, "run", run)
+        monkeypatch.setattr(ps_script, "effective_policy", lambda *a, **k: "allsigned")
 
         tray_mod.TrayApp._stop_session_host(None)
 
-        assert run.called
-        cmd = run.call_args.args[0]
-        assert str(_custom_port) in cmd
+        # Under AllSigned the unsigned helper is loaded as a ScriptBlock, never -File.
+        assert run.call_args.args[0][1:] == ["-NoProfile", "-NonInteractive", "-Command", ps_script.BOOTSTRAP]
+        env = run.call_args.kwargs["env"]
+        assert env[ps_script.ENV_SCRIPT] == str(tray_dir / "tray_lifecycle.ps1")
+        assert env[ps_script.ENV_ARGV].split(chr(31))[1:] == [
+            "reclaim", "-VenvDir", str(tray_mod.PROJECT_ROOT / ".venv"), "-Ports", str(_custom_port),
+        ]
+        assert run.call_args.kwargs["timeout"] == tray_mod.RECLAIM_TIMEOUT_S

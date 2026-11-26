@@ -39,10 +39,18 @@ async function postRestart(url, body) {
   return { status: res.status, body: data };
 }
 
-export async function wireBuildRestart(readout) {
-  await initRestartSheet({
+// boot() runs again after every sign-in, and each initRestartSheet() call appends
+// its own sheet and listeners, so one wiring is kept. A call that offered no
+// restart (a refused read) is forgotten, so a later boot can still wire it.
+let wiring = null;
+
+export function wireBuildRestart(readout) {
+  wiring = wiring || initRestartSheet({
     readout,
     fetchJson: jsonApi,
     postJson: postRestart,
+  }).then(function (wired) {
+    if (!wired) wiring = null;
   });
+  return wiring;
 }

@@ -53,6 +53,7 @@ from app.webapp.manager import (
 )
 from src import AppConfig, runtime_files
 from src._tunnel_config import read_tunnel_hostname
+from src.launching import ps_script
 from src.subprocess_flags import NO_WINDOW, NO_WINDOW_NEW_GROUP
 from src.webapp_config import append_auth_token, load_webapp_config
 
@@ -121,21 +122,16 @@ def _reclaim_port(port: int) -> Optional[str]:
     if not tray_ps.exists():
         return f"missing shared tray helper {tray_ps}"
     try:
-        result = subprocess.run(
-            [r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
-             "-NoProfile", "-NonInteractive", "-File",
-             str(tray_ps),
-             "reclaim",
-             "-VenvDir", str(PROJECT_ROOT / ".venv"),
-             "-Ports", str(port)],
-            creationflags=NO_WINDOW,
+        # run_script, not -File: an AllSigned or Restricted policy refuses the unsigned helper.
+        returncode = ps_script.run_script(
+            tray_ps,
+            ["reclaim", "-VenvDir", str(PROJECT_ROOT / ".venv"), "-Ports", str(port)],
             timeout=RECLAIM_TIMEOUT_S,
-            check=False,
         )
     except Exception as exc:  # noqa: BLE001
         return f"reclaim of :{port} failed: {exc}"
-    if result.returncode != 0:
-        return f"tray_lifecycle.ps1 reclaim exited {result.returncode}"
+    if returncode != 0:
+        return f"tray_lifecycle.ps1 reclaim exited {returncode}"
     return None
 
 
