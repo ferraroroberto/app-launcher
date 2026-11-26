@@ -167,6 +167,18 @@ surfaces:
       - one line of text
     why: it sits on the body, outside the app column, so the floating nav cannot clip it on iOS
 
+  - id: chrome.config-error
+    area: chrome
+    title: Unreadable settings banner
+    root: data-surface
+    reach:
+      - appears by itself above every tab while the settings file cannot be read
+    holds:
+      - the file, the parse error, and that remote access is off until the file is fixed and the app restarted
+    states:
+      - hidden whenever the settings file reads, or is not there yet
+      - only the PC itself sees it, since every other caller is refused outright
+
   - id: app.update-banner
     area: chrome
     title: New version banner

@@ -49,7 +49,7 @@ the feature — the Open button is then shown disabled with a hover hint.
 
 UI prefs + secrets, authored from the web UI:
 
-The file is read with or without a byte-order mark. If it exists but cannot be read (not valid JSON, or not a JSON object), the app runs on defaults and every save is refused, so the file stays as it is until you fix or move it.
+The file is read with or without a byte-order mark. If it exists but cannot be read (not valid JSON, not a JSON object, or not UTF-8), the app runs on defaults and every save is refused, so the file stays as it is until you fix or move it. The default access token is empty, so in that state the webapp also answers only the PC itself: every other request and WebSocket is refused (HTTP 503, close 4403) until the file is fixed and the app restarted. The log names the file and the parse error at start, and a banner on the PC's own page says the same. A missing file starts normally on defaults.
 
 | Key | Default | What it controls |
 |---|---|---|

@@ -89,6 +89,7 @@ from src.desktop import prevent_lock
 from src.jobs import snapshot as jobs_snapshot
 from src.launching import launcher
 from src.middleware import BearerTokenMiddleware
+from src.middleware.unreadable_config import guard_unreadable_config
 from src.ports import listeners as port_listeners
 from src.request_timing import RequestTimingMiddleware, default_executor
 from src.runtime_data import runtime_db_path
@@ -674,6 +675,7 @@ def create_app() -> FastAPI:
         BearerTokenMiddleware,
         get_config=lambda: app.state.webapp_config,
     )
+    guard_unreadable_config(app, webapp_cfg, _log)
     # Outside the auth middleware, so the timing covers it.
     app.add_middleware(RequestTimingMiddleware, **request_timing_options(_budget_overrides(app)))
     # Added last → outermost, so an auth failure or a bodyless 304 passes

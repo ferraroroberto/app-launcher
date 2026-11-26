@@ -34,11 +34,12 @@ import os
 from dataclasses import asdict, dataclass, field, replace
 from dataclasses import fields as dataclass_fields
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import ClassVar, Dict, Optional, Tuple
 from urllib.parse import urlencode, urlparse, urlunparse
 
 from src import runtime_files
 from src._json_io import atomic_write_json
+from src._log_once import log_once
 from src.agents import DEFAULT_AGENT
 from src.launching.model_catalog import (
     CODEX_MODEL_SPECS,
@@ -177,6 +178,11 @@ def _default_context_filter_log_file() -> str:
 @dataclass
 class WebappConfig:
     """User-authored, persisted webapp settings."""
+
+    # Why the file on disk could not be read, so these values are all defaults;
+    # "" otherwise. Not a setting, so never saved. The webapp refuses everyone
+    # but the PC itself while it is set (src/middleware/unreadable_config.py).
+    load_error: ClassVar[str] = ""
 
     host: str = DEFAULT_HOST
     port: int = DEFAULT_PORT
@@ -604,10 +610,31 @@ def _check_replaceable(target: Path) -> None:
     )
 
 
+#: Load errors already logged: the file is re-read many times per process.
+_logged_load_errors: set = set()
+
+
+def _unreadable(target: Path, problem: str, apply_env_override: bool) -> WebappConfig:
+    """Defaults for a file that is there but unreadable, marked with the reason."""
+    cfg = WebappConfig()
+    if apply_env_override:
+        _apply_session_host_override(cfg)
+    cfg.load_error = f"{target} could not be read: {problem}"
+    log_once(
+        _logged_load_errors, cfg.load_error, 16,
+        logger.warning, "⚠️  %s; falling back to defaults", cfg.load_error,
+    )
+    return cfg
+
+
 def load_webapp_config(
     path: Optional[Path] = None, *, apply_env_override: bool = True
 ) -> WebappConfig:
     """Load the webapp config, falling back to defaults if the file is missing.
+
+    A file that is there but cannot be read also yields defaults, with
+    ``load_error`` set: the default access token is empty, so a caller that
+    serves the network must not read that as "no protection wanted".
 
     ``apply_env_override=False`` skips the ``LAUNCHER_SESSION_HOST_PORT``
     override (see :func:`_apply_session_host_override`) — used by
@@ -628,19 +655,12 @@ def load_webapp_config(
 
     try:
         raw = _read_document(target)
-    except (OSError, json.JSONDecodeError) as exc:
-        logger.warning(
-            f"⚠️  Could not read {target} ({exc}); falling back to defaults"
-        )
-        cfg = WebappConfig()
-        return _apply_session_host_override(cfg) if apply_env_override else cfg
+    # ValueError covers bad JSON and bytes that are not UTF-8.
+    except (OSError, ValueError) as exc:
+        return _unreadable(target, str(exc), apply_env_override)
 
     if not isinstance(raw, dict):
-        logger.warning(
-            f"⚠️  {target} is not a JSON object; falling back to defaults"
-        )
-        cfg = WebappConfig()
-        return _apply_session_host_override(cfg) if apply_env_override else cfg
+        return _unreadable(target, "it is not a JSON object", apply_env_override)
 
     raw = migrate_renamed_models(migrate_legacy_keys(raw, target))
 

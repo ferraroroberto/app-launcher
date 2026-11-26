@@ -611,6 +611,7 @@ export const els = {
   otherPortsSheetClose: document.getElementById('otherPortsSheetClose'),
   listenersCheckAgain: document.getElementById('listenersCheckAgain'),
   statusReadout: document.getElementById('statusReadout'),
+  configError: document.getElementById('configError'),
   buildReadout: document.getElementById('buildReadout'),
 
   scanDialog: document.getElementById('scanDialog'),
