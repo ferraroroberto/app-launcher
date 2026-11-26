@@ -31,7 +31,8 @@ def password_state(root: Path = ROOT) -> int:
     legacy = ""
     config = root / "config" / "webapp_config.json"
     if config.is_file():
-        data = json.loads(config.read_text(encoding="utf-8"))
+        # Decoded as the webapp loader does: a Windows editor may add a BOM.
+        data = json.loads(config.read_text(encoding="utf-8-sig"))
         legacy = str(data.get("auth_password") or "")
     stored = password.is_configured(legacy=legacy, path=root / "config" / "app_password.json")
     return OK if stored else MISSING
