@@ -32,14 +32,15 @@ function summary(url) {
   try { return new URL(text).host; } catch (_e) { return text; }
 }
 
-export function renderHubUrl(body) {
+export function renderHubUrl(body, overFocus) {
   const url = (body && body.llm_hub_url) || '';
   document.querySelectorAll('[data-settings-value="hub"]').forEach(function (el) {
     el.textContent = summary(url);
   });
   const input = field();
-  // Leave a field being typed in alone: a re-read must not overwrite it.
-  if (input && input !== document.activeElement) input.value = url;
+  // Leave a field being typed in alone: a re-read must not overwrite it. A
+  // save passes overFocus, as its field is locked and nothing can be typed.
+  if (input && (overFocus || input !== document.activeElement)) input.value = url;
   const local = document.getElementById('llmHubUseLocal');
   if (local && body && body.llm_hub_local_url) local.dataset.localUrl = body.llm_hub_local_url;
 }
@@ -50,22 +51,25 @@ async function save(value, message) {
   showError('');
   if (input) input.disabled = true;
   if (button) button.disabled = true;
+  let saved = false;
   try {
     await jsonApi('/api/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ llm_hub_url: value }),
     });
+    saved = true;
   } catch (exc) {
     showError((exc && exc.message) || 'Not saved. Check the address and try again.');
     apiFailToast('Hub not saved', exc);
-    return;
-  } finally {
-    if (input) input.disabled = false;
-    if (button) button.disabled = false;
   }
-  await fetchConfig().catch(function () {});
-  toast(message, 'good');
+  if (saved) await fetchConfig().catch(function () {});
+  // Put the stored address back before unlocking: a disabled field keeps focus
+  // until the next frame, which a fast answer beats.
+  renderHubUrl(state.config, true);
+  if (input) input.disabled = false;
+  if (button) button.disabled = false;
+  if (saved) toast(message, 'good');
 }
 
 export function wireHubUrl() {
@@ -76,7 +80,6 @@ export function wireHubUrl() {
   input.addEventListener('change', async function () {
     const value = input.value.trim();
     await save(value, value ? 'Local hub saved.' : 'Local hub off.');
-    renderHubUrl(state.config);
   });
   const local = document.getElementById('llmHubUseLocal');
   if (local) {
@@ -84,7 +87,6 @@ export function wireHubUrl() {
       const url = local.dataset.localUrl || 'http://127.0.0.1:8000';
       input.value = url;
       await save(url, 'Local hub saved.');
-      renderHubUrl(state.config);
     });
   }
 }

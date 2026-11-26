@@ -388,6 +388,18 @@ def _assert_local_hub_refuses_an_unreachable_address_and_turns_the_hub_off(
     expect(field).to_have_value(before)
     assert _config(base_url, auth_token)["llm_hub_url"] == before
 
+    # A refusal that lands before the next frame finds the field still focused:
+    # an engine drops focus from a disabled field only when it renders.
+    page.evaluate("""() => { const real = window.fetch; window.fetch = (url, opts) =>
+        url === '/api/config' && opts?.method === 'POST'
+            ? (window.fetch = real, Promise.resolve(new Response(
+                '{"detail":"Refused at once."}', {status: 400})))
+            : real(url, opts); }""")
+    field.fill("http://127.0.0.1:2")
+    field.dispatch_event("change")
+    expect(page.locator("#llmHubUrlError")).to_contain_text("Refused at once.")
+    expect(field).to_have_value(before)
+
     sent: list[str] = []
     page.route("**/api/config", lambda route: (
         sent.append(route.request.post_data or ""), route.fulfill(json={"ok": True}))
