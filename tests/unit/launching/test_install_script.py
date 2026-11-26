@@ -119,6 +119,9 @@ def test_the_password_probe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     assert install_checks.password_state(tmp_path) == install_checks.MISSING
     config.write_text('{"auth_password": "legacy"}', encoding="utf-8")
     assert install_checks.password_state(tmp_path) == install_checks.OK
+    # A Windows editor may save the config with a BOM.
+    config.write_text('{"auth_password": "legacy"}', encoding="utf-8-sig")
+    assert install_checks.password_state(tmp_path) == install_checks.OK
     config.write_text("{}", encoding="utf-8")
     password.set_password("1234", tmp_path / "config" / "app_password.json")
     assert install_checks.password_state(tmp_path) == install_checks.OK
