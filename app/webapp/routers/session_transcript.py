@@ -13,7 +13,8 @@ else, for a session whose harness writes the launcher nothing at all, a
 file correlated from the filesystem — a Codex rollout by cwd + launch
 time, an Antigravity conversation by its newest-per-folder cache,
 a Copilot event log by cwd + launch time against its own per-session
-``workspace.yaml``.
+``workspace.yaml``, followed to the conversation a resume picked
+(:mod:`src.session_view.copilot_reopen`).
 Claude has a filesystem fallback too: the hook deletes its row on
 ``/resume`` and ``/clear`` and only the next prompt writes it back, so a
 live session can be rowless for as long as the user is reading rather than
@@ -41,7 +42,9 @@ Chat pane's live refresh ticks on, and answers from one ``stat`` when
 ``size`` says the file has not grown at all. One path rather than a second
 route on purpose — a new path shape needs its own ``_TERMINAL_GUARD_RULES``
 row, and this is the same resource, the same caller and the same gate, read
-from the other end of the file.
+from the other end of the file. A resume or ``/clear`` can move a session to
+another file, where that offset means nothing, so both reads name theirs in
+``log_id`` and the client reloads when it changes.
 
 ``GET /api/claude-code/sessions/{sid}/transcript/entry?offset=<n>`` re-reads
 one ``user``/``assistant`` turn from the same source, uncapped — the Chat
@@ -61,6 +64,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import hashlib
 import logging
 import os
 from datetime import datetime, timezone
@@ -361,6 +365,7 @@ async def _build_transcript(
         "source": "native" if flavor == "claude" else flavor,
         "reason": None,
         "session_id": sid,
+        "log_id": _log_id(path),
         **page,
     }
     if before is None:
@@ -406,10 +411,19 @@ async def _tail_response(
         "source": "native" if flavor == "claude" else flavor,
         "reason": None,
         "session_id": sid,
+        "log_id": _log_id(path),
         **tail,
         "activity": await _activity(session, flavor, path, steps),
         "pending_input": _pending_input(session),
     }
+
+
+def _log_id(path: Path) -> str:
+    """Which history file answered, without sending its path. A digest of the
+    whole path: Claude names the file by conversation, Copilot only the folder.
+    Spelling differences between sources of one file do not change it."""
+    spelled = os.path.normcase(os.path.abspath(path))
+    return hashlib.sha256(spelled.encode("utf-8", "surrogatepass")).hexdigest()[:16]
 
 
 def _pending_input(session: Optional[Dict[str, Any]]) -> Optional[List[Dict[str, Any]]]:

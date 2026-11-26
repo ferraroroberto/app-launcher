@@ -25,6 +25,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from src._log_once import log_once
 from src.board.transcript import _read_tail_bytes, strip_status_glyph
+from src.session_view import copilot_reopen
 
 logger = logging.getLogger(__name__)
 
@@ -372,20 +373,33 @@ def find_copilot_transcript(session: Dict[str, Any]) -> Optional[Path]:
     construction and both refuse; being *outside* each other's window is
     what makes the ordinary case unambiguous, not a tie-break.
 
-    A qualifying folder whose ``events.jsonl`` does not exist yet also
-    answers ``None`` — Copilot creates that file at the first prompt, so a
-    session nobody has typed into genuinely has no transcript. Older
-    sessions on this box keep a ``session.db`` instead (28 of 71) and are
-    refused by the same check.
+    A resume leaves that window's answer short of the history
+    (:mod:`src.session_view.copilot_reopen`). With no folder in the window,
+    the one older folder in this directory that was reopened inside it is the
+    ``--resume=<id>`` launch's. A launch folder nobody has said anything in is
+    followed to the conversation its Copilot process opened after it.
 
-    Cost: one bounded read of every session folder's sidecar — 71 files of
-    ~500 bytes here. Chat mode has no periodic refresh, so this runs
-    on opening the pane and on Reload, not on a timer.
+    A folder whose ``events.jsonl`` does not exist yet also answers ``None``:
+    a session nobody has typed into has no transcript, and older sessions
+    that kept a ``session.db`` instead are refused by the same check.
+
+    Cost: one bounded read of every session folder's sidecar, on every read
+    of the transcript, the Chat pane's live tick included.
     """
-    folder = copilot_session_folder(session)
-    if folder is None:
+    launched, older = _copilot_folders(session)
+    started = _started_epoch(session)
+    if started is None:
         return None
-    events = folder / "events.jsonl"
+    since = started - _COPILOT_CLOCK_SKEW_SECONDS
+    until = started + _COPILOT_START_SLOP_SECONDS
+    candidates = launched or [f for f in older if copilot_reopen.reopened_in(f, since, until)]
+    if len(candidates) != 1:
+        return None
+    events = candidates[0] / "events.jsonl"
+    if not events.is_file() or copilot_reopen.holds_no_turn(events):
+        shown = copilot_reopen.shown_folder(_COPILOT_STATE_DIR, candidates[0], since, until)
+        if shown is not None:
+            events = shown / "events.jsonl"
     return events if events.is_file() else None
 
 
@@ -437,26 +451,34 @@ def copilot_session_folder(session: Dict[str, Any]) -> Optional[Path]:
 
     Anything other than exactly one qualifying folder answers None.
     """
+    launched, _older = _copilot_folders(session)
+    return launched[0] if len(launched) == 1 else None
+
+
+def _copilot_folders(session: Dict[str, Any]) -> Tuple[List[Path], List[Path]]:
+    """This directory's Copilot session folders: ``(created inside the
+    session's launch window, created before it)``."""
+    launched: List[Path] = []
+    older: List[Path] = []
     project_dir = _normalize_dir(session.get("project_dir"))
     started = _started_epoch(session)
     if not project_dir or started is None:
-        return None
+        return launched, older
     try:
         workspaces = list(_COPILOT_STATE_DIR.glob("*/workspace.yaml"))
     except OSError:
-        return None
+        return launched, older
 
-    matches: List[Path] = []
     for workspace in workspaces:
         cwd, created = _copilot_workspace(workspace)
         if created is None or cwd != project_dir:
             continue
         delta = created - started
-        if -_COPILOT_CLOCK_SKEW_SECONDS <= delta <= _COPILOT_START_SLOP_SECONDS:
-            matches.append(workspace.parent)
-        if len(matches) > 1:
-            return None
-    return matches[0] if len(matches) == 1 else None
+        if delta < -_COPILOT_CLOCK_SKEW_SECONDS:
+            older.append(workspace.parent)
+        elif delta <= _COPILOT_START_SLOP_SECONDS:
+            launched.append(workspace.parent)
+    return launched, older
 
 
 def _scan_claude_transcript(

@@ -194,6 +194,8 @@ class _Transcript:
         self.activity: dict | None = None
         # The session's messages the agent has not taken yet, ridden the same way.
         self.pending_input: list | None = None
+        # Which log the server read: a resume can move a session to another.
+        self.log_id = "log-a"
         # While set, forward reads are answered later, by ``release``, so a
         # test can hold one read open and see whether a second one starts.
         self.hold = False
@@ -230,7 +232,7 @@ class _Transcript:
         if m is None:
             body = {
                 "available": True, "source": "native", "reason": None,
-                "session_id": _SID, "next_cursor": None,
+                "session_id": _SID, "next_cursor": None, "log_id": self.log_id,
                 "entries": list(self.entries), "tail": self.tail,
                 "size": self.size, "tool_errors": "reported",
                 "activity": self.activity, "pending_input": self.pending_input,
@@ -242,7 +244,7 @@ class _Transcript:
             changed = not (sm and int(sm.group(1)) == self.size)
             body = {
                 "available": True, "source": "native", "reason": None,
-                "session_id": _SID, "changed": changed, "reset": False,
+                "session_id": _SID, "changed": changed, "reset": False, "log_id": self.log_id,
                 "entries": fresh[:-1] if changed else [],
                 "pending": fresh[-1:] if changed else [],
                 "tail": self.tail, "size": self.size,
