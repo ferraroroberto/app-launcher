@@ -59,6 +59,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 # A loopback connect to a bound port completes at once, so this only bounds the
 # wait on a closed one (a judged value, not a measured one).
 _PORT_PROBE_TIMEOUT_S = 0.2
+# The cert check may renew over the network, so this is an admitted guess with
+# room to spare; it only stops a hung renewal from blocking startup.
+_CERT_CHECK_TIMEOUT_S = 90
 
 
 @dataclass(frozen=True)
@@ -134,7 +137,7 @@ def check_tailscale_cert() -> None:
             [sys.executable, str(script), "--check"],
             capture_output=True,
             text=True,
-            timeout=90,
+            timeout=_CERT_CHECK_TIMEOUT_S,
             cwd=str(PROJECT_ROOT),
             creationflags=NO_WINDOW,
         )

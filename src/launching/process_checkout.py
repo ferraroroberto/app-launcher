@@ -60,31 +60,6 @@ def process_checkout(pid: int) -> Optional[Path]:
         return None
 
 
-def probe_listener_pids(port: int, host: str = "") -> Optional[List[int]]:
-    """The PIDs listening on ``port`` on a loopback or wildcard address, or on ``host``.
-
-    ``None`` when unreadable. A socket table this process may not read falls back to every
-    listener on the port, which can only make an answer stricter.
-    """
-    if psutil is None:
-        return None
-    try:
-        connections = psutil.net_connections(kind="inet")
-    except (psutil.AccessDenied, PermissionError, OSError) as exc:
-        logger.info(f"ℹ️  socket table unreadable ({exc}); counting every listener on :{port}")
-        return listener_pids(port)
-    addresses = _PROBE_ADDRESSES | {host}
-    return sorted({
-        int(c.pid)
-        for c in connections
-        if c.status == psutil.CONN_LISTEN
-        and c.laddr
-        and c.laddr.port == port
-        and c.laddr.ip in addresses
-        and c.pid
-    })
-
-
 def same_checkout(a: Path, b: Path) -> bool:
     """Whether two paths name the same tree, whatever junction or case spells them."""
     try:
@@ -107,7 +82,7 @@ def classify_pid(
 
 def port_owner(port: int, root: Path, *, host: str = "") -> PortOwner:
     """Who listens on ``port``: ``ours`` only when every counted listener runs from ``root``."""
-    pids = probe_listener_pids(port, host)
+    pids = listener_pids(port, _PROBE_ADDRESSES | {host})
     if pids is None:
         return PortOwner(UNKNOWN, [], None, f"the listener on :{port} could not be read")
     if not pids:
