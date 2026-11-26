@@ -53,7 +53,7 @@ import { syncFailed } from './life-os/title-sync.js';
 // verb here loads it first rather than pulling the Board into the boot graph.
 import { loadView } from './shared/lazy-views.js';
 import { openSettingsAt } from './tabs.js';
-import { singleFlight } from './shared/poll.js';
+import { singleFlight } from './_vendored/poll/poll.js';
 
 // Kept as a named re-export (apps.js, jobs.js, jobs-row.js, and this
 // module's own row render all import it) over the shared formatter in

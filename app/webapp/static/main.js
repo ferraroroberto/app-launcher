@@ -51,7 +51,7 @@ import { fetchWebauthnStatus, wireWebauthn, writeTerminalToken } from './webauth
 import { renderSettingsHead } from './home-head.js';
 import { isWideLayout } from './layout.js';
 import { icon } from './_vendored/icons/icons.js';
-import { startPoll } from './shared/poll.js';
+import { startPoll } from './_vendored/poll/poll.js';
 
 // --------------------------------------------------------- settings panel
 // No Edit mode: Add, Edit and Remove are always one tap away, so there is

@@ -6,7 +6,7 @@
 
 import { els, state } from '../state.js';
 import { fetchSessions } from '../sessions.js';
-import { startPoll } from '../shared/poll.js';
+import { startPoll } from '../_vendored/poll/poll.js';
 import { beginRepaintBatch } from './terminal-connection.js';
 // Circular with this module, like terminal.js: nothing here runs at import time.
 import { inChatMode } from '../session-overlay.js';
@@ -273,7 +273,7 @@ export function wireSizeTracking(t) {
     // The phone may rotate or resize — re-sync to its size periodically.
     t.stopSizePoll = startPoll(function () {
       return fetchSessions().then(applySize);
-    }, 2500);
+    }, 2500).stop;
     return;
   }
   setTimeout(applySize, 0);

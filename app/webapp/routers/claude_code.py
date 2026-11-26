@@ -20,7 +20,6 @@ from app.webapp.hot_poll import start_or_join
 from app.webapp.route_pools import OUTBOUND, SESSION_FILES, run_on
 from app.webapp.routers._helpers import maybe_json
 from src import git_upstream
-from src.git_upstream.sync_run import SyncRun
 from src.launching.vscode_workspace import (
     ensure_workspace_file,
     is_vscode_installed,
@@ -28,6 +27,7 @@ from src.launching.vscode_workspace import (
 )
 from src.registry import load_registry
 from src.request_timing import TimedExecutor
+from src.run_progress import RunProgress
 from src.scanner import ProjectDir, git_status, scan_project_dirs
 from src.session_view.git_changes import (
     file_diff,
@@ -321,7 +321,7 @@ _SYNC_LOCK = asyncio.Lock()
 _SYNC_BUSY = "a fetch or Sync all is already running"
 # The Sync all run the page is counting along with, and the task that owns it
 # (held so the event loop cannot drop a task nobody awaits).
-_SYNC_RUN = SyncRun()
+_SYNC_RUN = RunProgress()
 _sync_task: "Optional[asyncio.Task[None]]" = None
 # The slow fetch cadence, and how recently a page must have asked for git
 # status for it to run: nobody looking means no network traffic.

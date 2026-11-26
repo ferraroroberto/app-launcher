@@ -18,7 +18,7 @@ import re
 from playwright.sync_api import Page
 
 # Records the delay (and the callback's source) of every interval the page arms,
-# and of every tick a self-scheduling poll (static/shared/poll.js) arms, named by
+# and of every tick a self-scheduling poll (static/_vendored/poll/poll.js) arms, named by
 # the read it runs, so a test can wait for the poll it is about to jump instead
 # of guessing when boot has armed it.
 _SPY_INTERVALS = """(() => {

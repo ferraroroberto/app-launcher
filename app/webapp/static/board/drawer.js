@@ -32,7 +32,7 @@ import { exchangeState } from './exchange-state.js';
 import { isChiefCard } from './board-dispatch.js';
 import { markLooked } from './journal-look.js';
 import { fetchBoard, noteBoardEdit, renderBoard, sessionLabel } from '../board.js';
-import { startPoll } from '../shared/poll.js';
+import { startPoll } from '../_vendored/poll/poll.js';
 
 // Chief-only exchange refresh: loadExchange is one-shot, fine for a
 // worker drawer you glance at — but a chat conversation needs the chief's
@@ -168,7 +168,7 @@ export function buildDrawer(card) {
       // the drawer actually still being the visible one.
       if (state.tab !== 'board' || state.boardExpanded !== card.session_id) return;
       return loadExchange(card, exchange);
-    }, CHIEF_EXCHANGE_POLL_MS);
+    }, CHIEF_EXCHANGE_POLL_MS).stop;
   }
   // A session that has ended has nothing to reply to or act on.
   if (!card.alive) return drawer;

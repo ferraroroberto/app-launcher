@@ -82,7 +82,7 @@ import {
 import { voiceDictationAvailable } from './voice.js';
 import { isWideLayout } from './layout.js';
 import { ensureTerminalToken } from './webauthn.js';
-import { startPoll } from './shared/poll.js';
+import { startPoll } from './_vendored/poll/poll.js';
 // Mode routing. Circular with this module by design (same shape as
 // sessions.js ↔ terminal.js): nothing here runs at import time.
 import {
@@ -495,7 +495,7 @@ function startTitleRefresh(t) {
       });
       if (s) refreshTerminalTitle(t, s);
     }).catch(function () { /* best-effort; title just won't refresh */ });
-  }, SESSIONS_POLL_MS);
+  }, SESSIONS_POLL_MS).stop;
 }
 
 // Full teardown of the ACTIVE terminal — kept for the paths where the

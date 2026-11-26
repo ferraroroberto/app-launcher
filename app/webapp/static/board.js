@@ -83,7 +83,7 @@ import { ClaimState, claimState } from './board/claim-state.js';
 import { pollIdeas, renderIdeas, wireIdeas } from './board/ideas-card.js';
 import { pollJournal, wireJournal } from './board/chief-journal.js';
 import { syncFoldAll, wireFoldAll } from './board/fold-all.js';
-import { singleFlight } from './shared/poll.js';
+import { singleFlight } from './_vendored/poll/poll.js';
 import {
   bucketChipEls, bucketNodes, hasBuckets, notPlannedCount,
 } from './board/backlog-buckets.js';

@@ -74,7 +74,8 @@ app-launcher/
 │   ├── inspiration/            # Settings › Inspiration: sources.py (the scan's source list, validated by the skill's own parser, saved atomically with a backup), login.py (the X login window), toml_write.py (stdlib TOML writer)
 │   ├── documents/              # Settings › Documents: the allowlist's validation, the path jail and the read (__init__.py)
 │   ├── git_utils.py            # shared `git` subprocess runner — every git spawn goes through it
-│   ├── git_upstream/           # ahead/behind against origin, the fetch ledger, Sync all's guarded fast-forward and its run progress
+│   ├── run_progress.py         # in-memory progress of a watched run (Sync all, the History refresh)
+│   ├── git_upstream/           # ahead/behind against origin, the fetch ledger, Sync all's guarded fast-forward
 │   ├── notifications.py        # notify_on_failure dispatch
 │   ├── notify/                 # vendored provider package behind notifications.py (Telegram, …)
 │   ├── usage_log.py            # vendored: local view/tap log router + SQLite store
