@@ -28,7 +28,7 @@ import pytest
 from playwright.sync_api import Page
 
 from tests.e2e import _fake_clock
-from tests.e2e.fixtures.ui import open_session_row
+from tests.e2e.fixtures.ui import RECORD_RESIZE_FRAMES, open_session_row
 from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
@@ -38,23 +38,6 @@ pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 # fake clock (#1376, #1515) instead of waiting 1.5 s of real time per step — a
 # settle that grew past this, or was dropped, turns the assertions below red.
 _AFTER_SETTLE_MS = 301
-
-# Record every resize frame the page sends, before any app script runs.
-_RECORD_RESIZE_FRAMES = r"""
-(() => {
-  window.__resizeFrames = [];
-  const send = WebSocket.prototype.send;
-  WebSocket.prototype.send = function (data) {
-    try {
-      const msg = JSON.parse(data);
-      if (msg && msg.type === 'resize') {
-        window.__resizeFrames.push({ rows: msg.rows, cols: msg.cols });
-      }
-    } catch (_) { /* not a JSON control frame */ }
-    return send.apply(this, arguments);
-  };
-})();
-"""
 
 # Resize the terminal host through each height synchronously, firing the
 # window 'resize' applySize() is bound to after every step — the same shape as
@@ -91,7 +74,7 @@ def test_keyboard_sweep_settles_to_one_floored_resize(
         )
     page = authed_page
     _fake_clock.install(page)
-    page.add_init_script(_RECORD_RESIZE_FRAMES)
+    page.add_init_script(RECORD_RESIZE_FRAMES)
     # Open via the session-list row — the phone path. The ?terminal= deep link
     # classifies a loopback open as the PC mirror window (#241), which never
     # sends resize frames at all.
