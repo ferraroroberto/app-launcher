@@ -36,6 +36,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.compose._composer_refit import leg_terminal_refits_around_the_composer
 from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS, stable_read
 
 # 1x1 transparent PNG — smallest valid image the session-host will accept.
@@ -364,8 +365,12 @@ def test_compose_send_and_attach_stay_put_during_autogrow(
     Issue #1219 extends the same pin downward: a connection status message
     appearing or clearing must not move them either, and it sits centred in
     the reserved bottom strip. Reopened, it pins how tall that strip gets
-    under an iPhone's home-indicator inset (emulated on Chromium)."""
+    under an iPhone's home-indicator inset (emulated on Chromium).
+
+    Issue #2660 pins what the growth does to the terminal above, in the leg
+    run first (``_composer_refit.py``)."""
     sid = launched_pty_session
+    leg_terminal_refits_around_the_composer(authed_page, base_url, sid)
     _open_terminal(authed_page, base_url, sid)
     _show_composer(authed_page)
 

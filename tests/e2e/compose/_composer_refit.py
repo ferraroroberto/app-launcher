@@ -1,4 +1,4 @@
-"""#2660: the terminal re-fits when the composer under it changes height.
+"""The terminal re-fits when the composer under it changes height (#2660).
 
 A growing draft shrinks the terminal's box with no viewport event, so xterm
 kept its old row count and the prompt line sat clipped under the composer.
@@ -7,17 +7,16 @@ ends above the composer, and the rows follow the box both ways.
 
 The Chat pane has its own composer, so a long Chat draft must leave the
 terminal alone; that is the first step below.
+
+A leg of ``test_compose_bar.py``'s auto-grow test, which shares its setup.
 """
 
 from __future__ import annotations
 
-import pytest
 from playwright.sync_api import Page, expect
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS
-
-pytestmark = [pytest.mark.smoke, pytest.mark.iphone, pytest.mark.unbundled]
 
 _VIEWPORTS = [(390, 844), (1280, 900)]
 _DRAFT = "\n".join(f"line {i} of a long dictated message" for i in range(12))
@@ -79,12 +78,12 @@ def _show(page: Page, mode: str) -> None:
     expect(page.locator("#terminalOverlay")).to_have_attribute("data-mode", mode)
 
 
-def test_terminal_refits_around_the_composer(
-    authed_page: Page, base_url: str, launched_pty_session: str
-) -> None:
-    page = authed_page
+def leg_terminal_refits_around_the_composer(page: Page, base_url: str, sid: str) -> None:
+    """Open ``sid`` as a phone does (not as the PC mirror, which never re-fits),
+    sweep both widths, then restore the viewport. Needs an ``unbundled`` page."""
+    default_viewport = dict(page.viewport_size)
     page.set_viewport_size({"width": _VIEWPORTS[0][0], "height": _VIEWPORTS[0][1]})
-    page.goto(f"{base_url}/?session={launched_pty_session}", wait_until="domcontentloaded")
+    page.goto(f"{base_url}/?session={sid}", wait_until="domcontentloaded")
     page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
     _show(page, "terminal")
     page.wait_for_selector("#terminalHost .xterm-screen", timeout=OVERLAY_OPEN_MS)
@@ -137,3 +136,4 @@ def test_terminal_refits_around_the_composer(
     page.wait_for_function(
         "() => !window.__term().term.element.style.transform", timeout=5_000
     )
+    page.set_viewport_size(default_viewport)
