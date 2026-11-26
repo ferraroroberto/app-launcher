@@ -236,8 +236,11 @@ export function renderPerfCard(apps, retry) {
 
 // Reads the ledger view; `onChange` redraws the card when it differs from
 // what was drawn. Self-throttled: a poll calls it freely, `force` skips the wait.
+// A hidden page starts no read, since the registry read it follows can be
+// answered after the hide; the poll on the way back reads it.
 export function fetchAppsPerf(onChange, force) {
   if (perf.inflight) return perf.inflight;
+  if (document.hidden) return Promise.resolve();
   if (!force && perf.readAt && Date.now() - perf.readAt < REFRESH_MS) return Promise.resolve();
   const before = JSON.stringify([perf.ledger, perf.apps, perf.rows, perf.failed]);
   perf.inflight = jsonApi('/api/apps/perf').then(function (body) {

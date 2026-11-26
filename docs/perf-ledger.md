@@ -37,7 +37,7 @@ The card is collapsed by default; its summary says how many apps are measured an
 | a tunnel row | "A tunnel, not a web app of its own" |
 | an unreadable ledger, or a failed read with nothing earlier to show | no rows: an "Unknown" summary and a Retry line |
 
-Several registry rows of one repo (its tray and its web app) share one measured row, named by the first of them. Only a record whose own verdict is `pass` reads as within budget; every other state is its own words, never folded into it. A failed read after a good one keeps the last good result and its age. The page asks at most once a minute, and again when the Apps tab opens. App rows themselves carry nothing about performance.
+Several registry rows of one repo (its tray and its web app) share one measured row, named by the first of them. Only a record whose own verdict is `pass` reads as within budget; every other state is its own words, never folded into it. A failed read after a good one keeps the last good result and its age. The page asks at most once a minute, and again when the Apps tab opens; a hidden page asks nothing, since the card's read follows the registry read, which can be answered after the page hides. App rows themselves carry nothing about performance.
 
 ## Tests
 

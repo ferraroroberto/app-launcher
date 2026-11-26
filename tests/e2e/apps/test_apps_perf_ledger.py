@@ -11,11 +11,13 @@ no app row carries a result of its own. Nothing about it reaches the Board.
 from __future__ import annotations
 
 import json
+from datetime import datetime
 
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.fixtures.waits import stable_eval
+from tests.e2e import _fake_clock
+from tests.e2e.fixtures.waits import flush_requests, stable_eval, wait_until
 
 pytestmark = pytest.mark.smoke
 
@@ -190,6 +192,55 @@ def test_the_card_lists_measured_apps_against_budget_and_the_rest_with_reasons(
         '[class*="perf"], a[href*="perf-review"]')).to_have_count(0)
 
 
+
+
+def test_a_registry_answer_landing_on_a_hidden_page_starts_no_ledger_read(
+    authed_page: Page, base_url: str
+) -> None:
+    """The ledger read follows the registry read; hidden in between, it waits for the return."""
+    page = authed_page
+    registry = json.dumps(_APPS)
+    hold, held, ledger_reads = [], [], []
+
+    def _registry(route) -> None:
+        if hold:
+            held.append(route)
+        else:
+            route.fulfill(status=200, content_type="application/json", body=registry)
+
+    def _ledger(route) -> None:
+        ledger_reads.append(route.request.url)
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(_perf_ok()))
+
+    def _set_hidden(hidden: bool) -> None:
+        page.evaluate("""(hidden) => {
+          Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+          document.dispatchEvent(new Event('visibilitychange'));
+        }""", hidden)
+
+    _fake_clock.install(page)
+    page.route("**/api/apps", _registry)
+    page.route("**/api/apps/perf", _ledger)
+    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    wait_until(page, lambda: len(ledger_reads) == 1, "the boot ledger read")
+    _fake_clock.wait_for_interval(page, 4_000, "fetchApps")
+
+    hold.append(True)
+    _fake_clock.advance(page, 4_000)
+    wait_until(page, lambda: bool(held), "a registry poll held open")
+    # Past the card's own throttle, without firing a timer.
+    page.clock.set_system_time(datetime.fromtimestamp(page.evaluate("Date.now()") / 1000 + 61))
+    _set_hidden(True)
+    hold.clear()
+    held.pop().fulfill(status=200, content_type="application/json",
+                       body=registry.replace("Good App", "Late App"))
+    # The late name on the page proves the answer was handled, follow-up included.
+    expect(page.locator("#registeredTraysList")).to_contain_text("Late App")
+    flush_requests(page)
+    assert len(ledger_reads) == 1, "a ledger read started while the page was hidden"
+
+    _set_hidden(False)
+    wait_until(page, lambda: len(ledger_reads) == 2, "the ledger read on the return")
 
 
 @pytest.mark.iphone
