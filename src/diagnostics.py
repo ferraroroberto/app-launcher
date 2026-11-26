@@ -11,7 +11,7 @@ import os
 import socket
 import ssl
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional
+from typing import Any, Callable, Collection, List, Optional
 
 try:
     import psutil  # type: ignore
@@ -42,8 +42,10 @@ class PortOwner:
         return " ".join(self.cmdline) if self.cmdline else ""
 
 
-def listener_pids(port: int) -> Optional[List[int]]:
+def listener_pids(port: int, addresses: Optional[Collection[str]] = None) -> Optional[List[int]]:
     """Every PID LISTENing on ``port``, this process included.
+
+    ``addresses`` counts only listeners bound to one of those local addresses.
 
     ``None`` means the answer could not be established (psutil missing or the
     socket table unreadable), which is not the same as ``[]`` (nobody listens).
@@ -54,18 +56,23 @@ def listener_pids(port: int) -> Optional[List[int]]:
         connections = psutil.net_connections(kind="inet")
     except (psutil.AccessDenied, PermissionError, OSError) as exc:
         logger.debug(f"listener_pids denied ({exc}); asking each process instead")
-        return _listener_pids_per_process(port)
-    return sorted({
-        int(c.pid)
-        for c in connections
-        if c.status == psutil.CONN_LISTEN
-        and c.laddr
-        and c.laddr.port == port
-        and c.pid
-    })
+        return _listener_pids_per_process(port, addresses)
+    return sorted({int(c.pid) for c in connections if _listens_on(c, port, addresses) and c.pid})
 
 
-def _listener_pids_per_process(port: int) -> Optional[List[int]]:
+def _listens_on(conn: Any, port: int, addresses: Optional[Collection[str]]) -> bool:
+    """Whether ``conn`` is a LISTEN socket on ``port``, bound to one of ``addresses`` if given."""
+    return bool(
+        conn.status == psutil.CONN_LISTEN
+        and conn.laddr
+        and conn.laddr.port == port
+        and (addresses is None or conn.laddr.ip in addresses)
+    )
+
+
+def _listener_pids_per_process(
+    port: int, addresses: Optional[Collection[str]] = None
+) -> Optional[List[int]]:
     """:func:`listener_pids` for a caller that may not read the whole socket table.
 
     macOS (and a non-root Linux user) refuse the machine-wide scan but still
@@ -83,10 +90,7 @@ def _listener_pids_per_process(port: int) -> Optional[List[int]]:
         except (psutil.AccessDenied, PermissionError, OSError):
             unreadable = True
             continue
-        if any(
-            c.status == psutil.CONN_LISTEN and c.laddr and c.laddr.port == port
-            for c in conns
-        ):
+        if any(_listens_on(c, port, addresses) for c in conns):
             found.add(proc.pid)
     if found:
         return sorted(found)

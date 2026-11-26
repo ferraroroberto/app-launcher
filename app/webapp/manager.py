@@ -2,7 +2,9 @@
 
 Mirrors photo-ocr's manager: status() probes /healthz and the TCP port,
 start() adopts an already-listening webapp or spawns one, stop() only
-terminates a process this manager owns.
+terminates a process this manager owns. Adoption needs the process holding
+the port to run from this checkout: a second clone on the same port answers
+/healthz just the same, and adopting it would leave the other tree serving.
 
 Health is a THREE-state fact, not a boolean. A wedged uvicorn still
 LISTENs, so "the port accepts a connection" cannot establish that the webapp
@@ -38,6 +40,7 @@ import requests
 from app.tray.single_instance import cross_process_lock
 from app.webapp.event_loop import LOOP_FACTORY
 from app.webapp.serve import HYPERCORN, SERVERS
+from src.launching.process_checkout import FOREIGN, OURS, port_owner
 from src.subprocess_flags import NO_WINDOW, NO_WINDOW_NEW_GROUP
 
 logger = logging.getLogger(__name__)
@@ -56,6 +59,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 # A loopback connect to a bound port completes at once, so this only bounds the
 # wait on a closed one (a judged value, not a measured one).
 _PORT_PROBE_TIMEOUT_S = 0.2
+# The cert check may renew over the network, so this is an admitted guess with
+# room to spare; it only stops a hung renewal from blocking startup.
+_CERT_CHECK_TIMEOUT_S = 90
 
 
 @dataclass(frozen=True)
@@ -131,7 +137,7 @@ def check_tailscale_cert() -> None:
             [sys.executable, str(script), "--check"],
             capture_output=True,
             text=True,
-            timeout=90,
+            timeout=_CERT_CHECK_TIMEOUT_S,
             cwd=str(PROJECT_ROOT),
             creationflags=NO_WINDOW,
         )
@@ -295,6 +301,7 @@ class WebappManager:
                 logger.info(f"ℹ️  Webapp already {current.detail}")
                 return current
             if current.running:
+                self._refuse_another_checkout()
                 logger.info(f"🔗 Adopting external webapp at {current.base_url}")
                 return current
 
@@ -427,6 +434,23 @@ class WebappManager:
                 ]
             )
         return cmd
+
+    def _refuse_another_checkout(self) -> None:
+        """Raise unless the process answering on the port runs from this checkout."""
+        host = "" if self.config.host == "0.0.0.0" else self.config.host
+        owner = port_owner(self.config.port, PROJECT_ROOT, host=host)
+        logger.info(f"ℹ️  webapp port owner: {owner.state} ({owner.detail})")
+        if owner.state == OURS:
+            return
+        if owner.state == FOREIGN:
+            raise RuntimeError(
+                f"❌ webapp {owner.detail}, not this checkout ({PROJECT_ROOT}), so it was "
+                "not adopted. Stop that copy, then run tray.bat --restart from this checkout."
+            )
+        raise RuntimeError(
+            f"❌ webapp on :{self.config.port} answers, but which checkout serves it could "
+            f"not be confirmed ({owner.detail}), so it was not adopted."
+        )
 
     def _await_answer(self) -> WebappStatus:
         """Re-probe a bound-but-silent port for the startup budget.

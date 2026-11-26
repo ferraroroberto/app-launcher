@@ -4,16 +4,23 @@ A matching ``git_sha`` does not prove a restart: a restart that never ran
 leaves the old process serving, and when that process already loaded ``HEAD``
 the sha matches anyway. The webapp's ``pid`` changes only with a new process,
 so the check records it before the restart (``snapshot``) and, afterwards
-(``verify``), passes only when the answer carries a different ``pid`` and a
-``git_sha`` that matches ``HEAD``. Anything that cannot be established
-(no baseline, no pid in the answer, nothing answering) is its own failure,
-never a pass.
+(``verify``), passes only when the answer carries a different ``pid``, that
+pid runs from this checkout, and its ``git_sha`` matches ``HEAD``. The checkout
+matters because a second clone at the same commit answers with the same sha on
+the same port. Anything that cannot be established (no baseline, no pid in the
+answer, an owner whose directory cannot be read, nothing answering) is its own
+failure, never a pass.
 
 Run from the repo root, around the restart::
 
     python -m src.launching.restart_check snapshot
     tray.bat --restart          # from PowerShell, not ``cmd.exe /c`` in Git Bash
     python -m src.launching.restart_check verify
+
+``tray.bat --restart`` itself runs two of these around the shared lifecycle
+helper, whose build check cannot tell the two checkouts apart: ``preflight``
+refuses when another checkout holds the port, and ``owner`` passes only when
+this checkout serves it afterwards.
 
 Every step appends a line to ``webapp/restart.log``.
 """
@@ -27,17 +34,25 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import requests
 
 from src import runtime_files
 from src.build_info import resolve_git_sha
 from src.clients._loopback_http import pooled_request
+from src.launching.process_checkout import (
+    FOREIGN,
+    OURS,
+    classify_pid,
+    port_owner,
+    process_checkout,
+)
 
 _log = logging.getLogger(__name__)
 
-_WEBAPP_DIR = Path(__file__).resolve().parent.parent.parent / "webapp"
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+_WEBAPP_DIR = _REPO_ROOT / "webapp"
 RESTART_LOG = _WEBAPP_DIR / "restart.log"
 BASELINE_FILE = _WEBAPP_DIR / "restart-baseline.json"
 DEFAULT_VERIFY_TIMEOUT_S = 60.0
@@ -62,12 +77,18 @@ def fetch_version(port: int) -> Optional[Dict[str, Any]]:
 
 
 def decide(
-    before: Dict[str, Any], after: Optional[Dict[str, Any]], head_sha: str
+    before: Dict[str, Any],
+    after: Optional[Dict[str, Any]],
+    head_sha: str,
+    *,
+    root: Path = _REPO_ROOT,
+    checkout_of: Optional[Callable[[int], Optional[Path]]] = None,
 ) -> Tuple[bool, str]:
-    """``(replaced, reason)``: whether ``after`` is a new process serving ``head_sha``.
+    """``(replaced, reason)``: whether ``after`` is a new process from ``root`` serving ``head_sha``.
 
     ``before`` is the snapshot (``{"pid": int | None}``): a ``None`` pid means
-    no webapp was answering, so any answering process is new.
+    no webapp was answering, so any answering process is new. ``checkout_of``
+    defaults to :func:`process_checkout`, looked up when called.
     """
     if after is None:
         return False, "no webapp answering on the port"
@@ -82,7 +103,12 @@ def decide(
     before_pid = before.get("pid")
     if before_pid is not None and pid == before_pid:
         return False, f"same process still serving (pid {pid}): the restart did not replace it"
-    return True, f"new process pid {pid} (was {before_pid}) serves git_sha {served}"
+    holder = classify_pid(pid, root, checkout_of or process_checkout)
+    if holder.state == FOREIGN:
+        return False, f"served by {holder.detail}, not this one {root}"
+    if holder.state != OURS:
+        return False, f"cannot confirm the checkout {root} serves: {holder.detail}"
+    return True, f"new process pid {pid} (was {before_pid}) from {holder.checkout} serves git_sha {served}"
 
 
 def _log_line(message: str) -> None:
@@ -129,9 +155,35 @@ def verify(port: int, timeout_s: float = DEFAULT_VERIFY_TIMEOUT_S) -> int:
     return 1
 
 
+def preflight(port: int) -> int:
+    """Before a restart: 1 when another checkout holds ``port``, so nothing is stopped for it."""
+    holder = port_owner(port, _REPO_ROOT)
+    if holder.state == FOREIGN:
+        _log_line(
+            f"preflight FAILED restart refused: {holder.detail}, not this one "
+            f"{_REPO_ROOT}. Stop that copy first."
+        )
+        return 1
+    if holder.state != OURS and holder.listening:
+        _log_line(f"preflight NOT CONFIRMED {holder.detail}; the check after the restart decides")
+        return 0
+    _log_line(f"preflight OK {holder.detail}")
+    return 0
+
+
+def owner(port: int) -> int:
+    """After a restart: 0 only when this checkout's process serves ``port``."""
+    holder = port_owner(port, _REPO_ROOT)
+    if holder.state != OURS:
+        _log_line(f"owner FAILED {holder.detail}; not confirmed as served from {_REPO_ROOT}")
+        return 1
+    _log_line(f"owner OK {holder.detail}")
+    return 0
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m src.launching.restart_check", description=__doc__)
-    parser.add_argument("action", choices=("snapshot", "verify"))
+    parser.add_argument("action", choices=("snapshot", "verify", "preflight", "owner"))
     parser.add_argument("--port", type=int, default=None, help="webapp port (default: the configured one)")
     parser.add_argument("--timeout", type=float, default=DEFAULT_VERIFY_TIMEOUT_S)
     args = parser.parse_args(argv)
@@ -140,9 +192,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         from src.webapp_config import load_webapp_config
 
         port = load_webapp_config().port
-    if args.action == "snapshot":
-        return snapshot(port)
-    return verify(port, args.timeout)
+    if args.action == "verify":
+        return verify(port, args.timeout)
+    return {"snapshot": snapshot, "preflight": preflight, "owner": owner}[args.action](port)
 
 
 if __name__ == "__main__":
