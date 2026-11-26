@@ -46,6 +46,8 @@ pytestmark = pytest.mark.smoke
 # token is synthetic — the shape is all this test needs, and it never goes
 # near the server-side regex, which only ever parses a real transcript.
 _CLAUDE_WEB_URL = "https://claude.ai/code/session_E2E1096FALLBACKPROVIDER1"
+# Placeholder enterprise host; the real one is the machine's Copilot sign-in.
+_COPILOT_WEB_URL = "https://ghe.example.com/copilot/tasks/79c18133-52bd-4f8f-9260-b33c853158be"
 
 _CLIPBOARD_MOCK = """
 (() => {
@@ -113,7 +115,7 @@ async () => {
 """
 
 
-def _inject_web_url(page: Page, sid: str, web_url: str) -> None:
+def _inject_web_url(page: Page, sid: str, row: dict) -> None:
     """Pass /api/claude-code/sessions through, stamping one row's web_url.
 
     A static payload would fight the overlay's own 5s title poll, which reads
@@ -121,7 +123,8 @@ def _inject_web_url(page: Page, sid: str, web_url: str) -> None:
     it. Patching the real response keeps every other field (manual_title
     included) exactly as the server computed it; only the field the stub
     child can never produce — Claude prints no remote-control card — is
-    supplied, and `agent` is pinned to claude so the row is the shape this
+    supplied, and `agent` is pinned (claude, then copilot: ``row`` is read
+    on every response, so a leg can switch it) so the row is the shape this
     branch is about.
     """
 
@@ -130,8 +133,7 @@ def _inject_web_url(page: Page, sid: str, web_url: str) -> None:
         body = response.json()
         for session in body.get("sessions", []):
             if session.get("session_id") == sid:
-                session["agent"] = "claude"
-                session["web_url"] = web_url
+                session.update(row)
         route.fulfill(
             status=200, content_type="application/json", body=_json.dumps(body)
         )
@@ -195,7 +197,8 @@ def test_menu_copy_link_and_rename_update_the_bar(
     sid = launched_pty_session
     authed_page.add_init_script(_CLIPBOARD_MOCK)
     authed_page.add_init_script(_WS_FRAME_PROBE)
-    _inject_web_url(authed_page, sid, _CLAUDE_WEB_URL)
+    row = {"agent": "claude", "web_url": _CLAUDE_WEB_URL}
+    _inject_web_url(authed_page, sid, row)
     _open_overlay(authed_page, base_url, sid)
 
     _leg_latest_pill_shows_only_when_scrolled_up(authed_page)
@@ -228,26 +231,43 @@ def test_menu_copy_link_and_rename_update_the_bar(
         "Menu rename 981", timeout=2_000
     )
 
+    # A Copilot session: its link is the server's per-agent `web_url` too,
+    # and the toast names Copilot. Both the poll's source and the page's
+    # current copy switch, so a poll landing mid-leg agrees with the page.
+    row.update(agent="copilot", web_url=_COPILOT_WEB_URL)
+    authed_page.evaluate(_LIVE_STATE_HANDLE)
+    authed_page.evaluate(
+        "(url) => { const v = window.__state.sessionView.session;"
+        " for (const s of [v, ...window.__state.sessions]) {"
+        " if (s.session_id === v.session_id) { s.agent = 'copilot'; s.web_url = url; } } }",
+        _COPILOT_WEB_URL,
+    )
+    _copy_link(authed_page)
+    authed_page.wait_for_function("() => window.__copied.length === 2", timeout=5_000)
+    assert authed_page.evaluate("() => window.__copied[1]") == _COPILOT_WEB_URL
+    expect(authed_page.locator("#toast")).to_have_text(
+        re.compile("Copilot web link copied")
+    )
+
     # Last, because it mutates the page's own state: the bare ?session=
     # deep-link shape, where the sessions list does not carry the row and
     # main.js opens the overlay with a bare {session_id, name} instead
     # (`openTerminal(found || {...})`). currentSession() then resolves to
     # that object, which has no agent and no web_url — it must land on the
     # launcher link, never on `undefined`, and the toast must flag it
-    # tailnet-only rather than staying silent about the downgrade.
+    # launcher-only rather than staying silent about the downgrade.
     #
     # Both halves are set: emptying state.sessions alone is not that shape,
     # because state.sessionView.session is the *same object* the boot lookup
     # found and would still carry web_url.
-    authed_page.evaluate(_LIVE_STATE_HANDLE)
     authed_page.evaluate(
         "(sid) => { window.__state.sessions = [];"
         " window.__state.sessionView.session = {session_id: sid, name: sid}; }",
         sid,
     )
     _copy_link(authed_page)
-    authed_page.wait_for_function("() => window.__copied.length === 2", timeout=5_000)
-    fallback = authed_page.evaluate("() => window.__copied[1]")
+    authed_page.wait_for_function("() => window.__copied.length === 3", timeout=5_000)
+    fallback = authed_page.evaluate("() => window.__copied[2]")
     expected = authed_page.evaluate(
         "(sid) => location.origin + location.pathname + '?session=' + sid", sid
     )
@@ -260,5 +280,5 @@ def test_menu_copy_link_and_rename_update_the_bar(
     # PROOF: pre-fix this toast read "Session link copied" for both outcomes —
     # the silent fold that let the wrong link ship unnoticed for two weeks.
     expect(authed_page.locator("#toast")).to_have_text(
-        re.compile(r"Launcher link copied \(tailnet only\)")
+        re.compile(r"Launcher link copied: works only while the launcher runs")
     )

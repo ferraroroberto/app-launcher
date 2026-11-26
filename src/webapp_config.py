@@ -249,6 +249,11 @@ class WebappConfig:
     # `src.launching.flags.build_copilot_flags`). Model choice belongs to the
     # CLI's own `/model` and `/config model`.
     copilot_skip_permissions: bool = False
+    # Override for the URL a Copilot session's id is appended to for its Copy
+    # link, e.g. `https://ghe.example.com/copilot/tasks/`. Empty (the
+    # default) derives it from the enterprise host the Copilot CLI is signed
+    # in to; set it only when that is wrong or the account is on github.com.
+    copilot_web_url_prefix: str = ""
     # Grok Build launch settings. `grok_effort` is the
     # reasoning tier (low/medium/high); `grok_permission_mode` mirrors
     # Claude's and Codex's auto/skip. No model picker — see VALID_GROK_*.

@@ -89,6 +89,11 @@ _COPILOT_YAML_CAP_BYTES = 64 * 1024
 # here are LF, but nothing about the format promises that.
 _COPILOT_CWD_RE = re.compile(r"^cwd:[ \t]*(.+?)[ \t\r]*$", re.M)
 _COPILOT_CREATED_RE = re.compile(r"^created_at:[ \t]*(\S+?)[ \t\r]*$", re.M)
+# A Copilot session folder is named by its UUID session id; only that shape
+# may become part of a provider URL.
+_COPILOT_ID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
+)
 _AGY_ROOT = Path.home() / ".gemini" / "antigravity-cli"
 # Antigravity names a conversation directory by UUID; the strict shape keeps
 # a mangled cache key from being joined onto a path.
@@ -373,6 +378,47 @@ def find_copilot_transcript(session: Dict[str, Any]) -> Optional[Path]:
     ~500 bytes here. Chat mode has no periodic refresh, so this runs
     on opening the pane and on Reload, not on a timer.
     """
+    folder = _copilot_session_folder(session)
+    if folder is None:
+        return None
+    events = folder / "events.jsonl"
+    return events if events.is_file() else None
+
+
+def copilot_session_id(session: Dict[str, Any]) -> Optional[str]:
+    """The Copilot CLI's own id for a live session, or None.
+
+    Copilot names each session folder after its session id, which is the id
+    its web view addresses. Found by the same launch-window match as
+    :func:`find_copilot_transcript`, without waiting on ``events.jsonl``:
+    the id exists from launch, before any prompt. Only a UUID-shaped folder
+    name answers, so nothing else can land in a URL.
+    """
+    folder = _copilot_session_folder(session)
+    if folder is None or not _COPILOT_ID_RE.match(folder.name):
+        return None
+    return folder.name
+
+
+def copilot_match_settled(session: Dict[str, Any], now: float) -> bool:
+    """Whether this session's launch window has closed.
+
+    A qualifying folder is stamped with a ``created_at`` inside the window,
+    so once the window and its clock skew have passed no new folder can
+    qualify: the answer, hit or miss, can no longer change. A session with
+    no readable ``started_at`` never matches, so it is settled at once.
+    """
+    started = _started_epoch(session)
+    if started is None:
+        return True
+    return now > started + _COPILOT_START_SLOP_SECONDS + _COPILOT_CLOCK_SKEW_SECONDS
+
+
+def _copilot_session_folder(session: Dict[str, Any]) -> Optional[Path]:
+    """The one Copilot session folder launched with this session, or None.
+
+    Anything other than exactly one qualifying folder answers None.
+    """
     project_dir = _normalize_dir(session.get("project_dir"))
     started = _started_epoch(session)
     if not project_dir or started is None:
@@ -389,12 +435,10 @@ def find_copilot_transcript(session: Dict[str, Any]) -> Optional[Path]:
             continue
         delta = created - started
         if -_COPILOT_CLOCK_SKEW_SECONDS <= delta <= _COPILOT_START_SLOP_SECONDS:
-            matches.append(workspace.parent / "events.jsonl")
+            matches.append(workspace.parent)
         if len(matches) > 1:
             return None
-    if len(matches) != 1 or not matches[0].is_file():
-        return None
-    return matches[0]
+    return matches[0] if len(matches) == 1 else None
 
 
 def _scan_claude_transcript(
