@@ -375,16 +375,17 @@ def copilot_web_url(override: str, session: Dict[str, Any]) -> str:
 
 
 def attach_provider_web_urls(
-    sessions: List[Dict[str, Any]], copilot_override: str = ""
+    sessions: List[Dict[str, Any]], cfg: Optional[WebappConfig] = None
 ) -> None:
     """Enrich live full-control rows without requiring a session-host restart.
 
     Every row gets a ``web_url`` key so the client never has to distinguish
     "no link" from "field absent"; only ``kind == "pty"`` rows are resolved:
     Claude's from its captured remote-control card, Copilot's from the
-    signed-in host (or ``copilot_override``) plus its session id. Blocking
+    signed-in host (or ``cfg.copilot_web_url_prefix``) plus its session id. Blocking
     file IO — callers wrap it in ``asyncio.to_thread``.
     """
+    copilot_override = cfg.copilot_web_url_prefix if cfg is not None else ""
     for session in sessions:
         session["web_url"] = ""
         if session.get("kind") != "pty":

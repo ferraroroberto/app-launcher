@@ -224,6 +224,12 @@ def _copilot_row(sid="s-cop"):
             "project_dir": r"E:\work\project", "started_at": _COPILOT_STARTED}
 
 
+def _cfg(override):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(copilot_web_url_prefix=override)
+
+
 @pytest.fixture
 def copilot_env(monkeypatch, tmp_path):
     """Copilot's session-state dir under tmp_path, signed in to ``host``."""
@@ -249,11 +255,11 @@ def test_copilot_link_is_its_signed_in_enterprise_host_plus_its_session_id(
     copilot_env["host"] = "github.com"
     attach_provider_web_urls(rows)
     assert rows[0]["web_url"] == ""
-    attach_provider_web_urls(rows, "https://ghe.example.org/tasks")
+    attach_provider_web_urls(rows, _cfg("https://ghe.example.org/tasks"))
     assert rows[0]["web_url"] == f"https://ghe.example.org/tasks/{_COPILOT_ID}"
     # An override that is not an http(s) URL is ignored, not glued on.
     copilot_env["host"] = _GHE_HOST
-    attach_provider_web_urls(rows, "ghe.example.org/tasks/")
+    attach_provider_web_urls(rows, _cfg("ghe.example.org/tasks/"))
     assert rows[0]["web_url"] == _COPILOT_PREFIX + _COPILOT_ID
 
 
