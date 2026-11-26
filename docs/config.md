@@ -49,6 +49,8 @@ the feature — the Open button is then shown disabled with a hover hint.
 
 UI prefs + secrets, authored from the web UI:
 
+The file is read with or without a byte-order mark. If it exists but cannot be read (not valid JSON, or not a JSON object), the app runs on defaults and every save is refused, so the file stays as it is until you fix or move it.
+
 | Key | Default | What it controls |
 |---|---|---|
 | `host` | `"0.0.0.0"` | webapp bind host |
