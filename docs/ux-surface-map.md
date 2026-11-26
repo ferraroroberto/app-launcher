@@ -1033,7 +1033,9 @@ flowchart LR
 - **Holds:**
   - each question with its options and an Anything else field
   - an attach button that puts a file or image into the answer
-- **Does:** Done closes; an answer is sent when it is complete
+- **Does:**
+  - Done closes; an answer is sent when it is complete
+  - tap a web address in a question or its detail opens it in a new tab
 - **States:** an answer in flight locks the card
 
 ### `board.claude-turn` Claude's turn card

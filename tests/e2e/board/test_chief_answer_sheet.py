@@ -31,6 +31,16 @@ from tests.e2e.fixtures.waits import stable_eval, stable_read
 
 pytestmark = pytest.mark.smoke
 
+# The shared questions with web addresses in them: a long unbroken one in a
+# detail, beside markup and a non-http scheme, and one in a question line.
+_PROPOSAL = "https://proposal.e2e.invalid/scored/" + "a" * 90
+_DETAIL = f"Scores: {_PROPOSAL}. <b>not bold</b> javascript:alert(1)"
+_LINKED_QUESTIONS = [
+    _QUESTIONS[0],
+    {**_QUESTIONS[1], "detail": _DETAIL},
+    {**_QUESTIONS[2], "text": "Remember the last tab? http://tabs.e2e.invalid"},
+]
+
 
 def _assert_answer_sheet_questions(dialog, blocks):
     """Assert the sheet shows each question as specified; return first, second, the first's options and Anything else."""
@@ -63,7 +73,7 @@ def _assert_answer_sheet_questions(dialog, blocks):
     expect(rec.locator("svg")).to_have_count(0)
 
     third = blocks.nth(2)
-    expect(third.locator(".tr-ask-question")).to_have_text("Remember the last tab?")
+    expect(third.locator(".tr-ask-question")).to_have_text(_LINKED_QUESTIONS[2]["text"])
     expect(third.locator(".tr-ask-opt")).to_have_count(0)
     expect(third.locator("a.chief-answer-ref")).to_have_attribute(
         "href", "https://github.com/octo/app-launcher/issues/1131")
@@ -110,6 +120,34 @@ def _assert_sheet_fits_viewport(page: Page, dialog) -> None:
         assert box["width"] <= 440, f"desktop sheet should stay a centred dialog: {box}"
 
 
+def _assert_urls_are_tappable_links(page: Page, dialog) -> None:
+    """Assert, at phone width, that only the http(s) addresses are links, the
+    rest of the text is shown as written, and a tap opens a new tab."""
+    projection = page.viewport_size
+    page.set_viewport_size({"width": 390, "height": 844})
+    detail = dialog.locator(".chief-answer").nth(1).locator(".chief-answer-detail")
+    expect(detail).to_have_text(_DETAIL)
+    expect(detail.locator("b")).to_have_count(0)
+    link = detail.locator("a")
+    expect(link).to_have_count(1)  # javascript: stays text
+    expect(link).to_have_attribute("href", _PROPOSAL)  # the full stop is not part of it
+    expect(dialog.locator(".tr-ask-question a")).to_have_attribute("href", "http://tabs.e2e.invalid")
+    overflow = stable_eval(dialog.locator(".chief-answers-list"), "el => el.scrollWidth - el.clientWidth")
+    assert overflow <= 0, f"a long address scrolls the sheet sideways by {overflow}px"
+
+    pattern = "https://proposal.e2e.invalid/**"
+    page.context.route(pattern, lambda route: route.fulfill(content_type="text/html", body="scored"))
+    try:
+        with page.expect_popup() as popup:
+            link.click()
+        expect(popup.value).to_have_url(_PROPOSAL)
+        popup.value.close()
+    finally:
+        page.context.unroute(pattern)
+    expect(dialog).to_be_visible()
+    page.set_viewport_size(projection)
+
+
 def _assert_chief_plan_rows_marked_answered(page: Page) -> None:
     """Assert the plan marks the two answered questions and leaves the skipped one."""
     rows = page.locator("#boardChiefPlan li.board-plan-waiting")
@@ -132,9 +170,10 @@ def test_answer_sheet_renders_questions_and_done_sends_one_message(
     the chief's session and rides the message as its path, as a Chat send
     carries it. Done sends exactly one message, composed from every answer,
     through the chat bar's ensure → input path; the sheet closes, a toast
-    says so, and the card marks what this viewer answered."""
+    says so, and the card marks what this viewer answered. A web address in a
+    question or its detail is a link that opens in a new tab."""
     _mock_board(authed_page, _board_payload(with_chief=True))
-    _route_plan_from(authed_page, {"plan": _plan_with(tmp_path, _QUESTIONS)})
+    _route_plan_from(authed_page, {"plan": _plan_with(tmp_path, _LINKED_QUESTIONS)})
     ensured: dict = {}
     _mock_ensure(authed_page, ensured)
     posts = _capture_chief_input(authed_page)
@@ -176,6 +215,7 @@ def test_answer_sheet_renders_questions_and_done_sends_one_message(
     assert len(uploads) == 1 and "inline=1" in uploads[0], uploads
 
     _assert_sheet_fits_viewport(authed_page, dialog)
+    _assert_urls_are_tappable_links(authed_page, dialog)
 
     done.click()
     expect(authed_page.locator("#toast")).to_contain_text("Sent to chief")
