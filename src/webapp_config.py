@@ -579,6 +579,31 @@ def _resolve_config_path(path: Optional[Path]) -> Path:
     return DEFAULT_CONFIG_PATH
 
 
+def _read_document(target: Path) -> object:
+    """Parse the config file; a Windows editor may have saved it with a BOM."""
+    return json.loads(target.read_text(encoding="utf-8-sig"))
+
+
+def _check_replaceable(target: Path) -> None:
+    """Raise ``ValueError`` when ``target`` exists but cannot be read.
+
+    Such a file loads as all defaults, so saving over it would replace the
+    owner's values with them.
+    """
+    if not target.exists():
+        return
+    try:
+        if isinstance(_read_document(target), dict):
+            return
+        reason = "not a JSON object"
+    except (OSError, ValueError) as exc:
+        reason = type(exc).__name__
+    logger.error(f"❌ Not saving over {target}: it cannot be read ({reason})")
+    raise ValueError(
+        f"{target.name} exists but cannot be read; fix or move it, then save again"
+    )
+
+
 def load_webapp_config(
     path: Optional[Path] = None, *, apply_env_override: bool = True
 ) -> WebappConfig:
@@ -602,7 +627,7 @@ def load_webapp_config(
         return _apply_session_host_override(cfg) if apply_env_override else cfg
 
     try:
-        raw = json.loads(target.read_text(encoding="utf-8"))
+        raw = _read_document(target)
     except (OSError, json.JSONDecodeError) as exc:
         logger.warning(
             f"⚠️  Could not read {target} ({exc}); falling back to defaults"
@@ -635,8 +660,13 @@ def load_webapp_config(
 
 
 def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
-    """Atomically write the config back to disk."""
+    """Atomically write the config back to disk.
+
+    Raises ``ValueError``, leaving the file as it is, when the existing one
+    cannot be read.
+    """
     target = _resolve_config_path(path)
+    _check_replaceable(target)
     runtime_files.make_dirs(target.parent)
 
     # Derived straight from the dataclass — the field list, in
