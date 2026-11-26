@@ -14,7 +14,8 @@ REM
 REM  Idempotent:
 REM    tray.bat              -> no-op if an AppLauncher tray is already running
 REM    tray.bat --restart    -> stop the running tray (and its service tree) and
-REM                             start a fresh one
+REM                             start a fresh one; refuses, and stops nothing,
+REM                             when another checkout holds the webapp port
 REM
 REM  Detection matches the tray process by command line + this project's .venv
 REM  path via CIM, then kills BY PID with /T. We never blanket-kill pythonw, so
@@ -129,15 +130,32 @@ set "RESTART_LOG=%SCRIPT_DIR%webapp\restart.log"
 if not exist "%SCRIPT_DIR%webapp\" md "%SCRIPT_DIR%webapp" 2>nul
 >>"%RESTART_LOG%" echo %DATE% %TIME% tray.bat entered args=[%*]
 
+REM  On --restart two checks run around the helper (src\launching\restart_check.py),
+REM  whose own build check cannot tell this checkout's webapp from a second clone's
+REM  at the same commit: `preflight` refuses before anything is stopped, `owner`
+REM  fails the restart unless this checkout serves the port. Flat ifs and labels,
+REM  not nested blocks, for the exit-code reason above.
+set "TRAY_PY=%TRAY_VENV%\Scripts\python.exe"
+if not defined WANT_RESTART goto :run_helper
+"%TRAY_PY%" -m src.launching.restart_check preflight --port %OWNED_PORTS%
+set "TRAY_RC=!ERRORLEVEL!"
+if not "!TRAY_RC!"=="0" goto :finish
+
 REM  The helper is loaded as text and run as a ScriptBlock, not started with
 REM  -File: -File refuses an unsigned script under an AllSigned (or Restricted)
 REM  execution policy, and overriding the policy would weaken the machine's own
 REM  control. Values travel in the environment, so no quoting nests inside the
 REM  -Command string, and the process is powershell.exe, which the helper's tray
 REM  detection (python processes only) can never mistake for the tray.
+:run_helper
 %PS% -NoProfile -NonInteractive -Command "$a = @{ AppName = $env:TRAY_APP_NAME; ScriptDir = $env:SCRIPT_DIR_ARG; VenvDir = $env:TRAY_VENV; TrayMatch = '(scripts[\/]+)?launcher\.py\s+tray'; Ports = $env:OWNED_PORTS; TrayLaunch = $env:TRAY_LAUNCH; VersionUrl = $env:VERSION_URL }; if ($env:WANT_RESTART) { $a.Restart = $true }; try { & ([scriptblock]::Create([IO.File]::ReadAllText($env:TRAY_PS))) launch @a } catch { [Console]::Error.WriteLine(($_ | Out-String)); exit 1 }; exit 0"
 set "TRAY_RC=%ERRORLEVEL%"
 >>"%RESTART_LOG%" echo %DATE% %TIME% tray.bat helper exit=!TRAY_RC!
+if not defined WANT_RESTART goto :finish
+if not "!TRAY_RC!"=="0" goto :finish
+"%TRAY_PY%" -m src.launching.restart_check owner --port %OWNED_PORTS%
+set "TRAY_RC=!ERRORLEVEL!"
+:finish
 exit /b !TRAY_RC!
 
 REM  Standalone start (project-scaffolding#345): the shared helper is missing,

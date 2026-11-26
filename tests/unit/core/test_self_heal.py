@@ -284,6 +284,7 @@ def test_session_host_heal_spawns_only_when_nothing_listens(monkeypatch):
     app = tray.TrayApp.__new__(tray.TrayApp)
 
     monkeypatch.setattr(tray.registered_trays, "port_listening", lambda _p: True)
+    monkeypatch.setattr(tray, "port_owner", lambda _port, _root: SimpleNamespace(state=tray.OURS, detail=""))
     assert app._start_session_host() == "adopted the session-host already listening on :18446"
     assert spawned == []
 

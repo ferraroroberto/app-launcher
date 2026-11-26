@@ -32,8 +32,8 @@ process is restarted.
    ```
 
    `verify` polls `GET /api/version` (60 s by default) and exits 0 only when
-   the answer carries a **different `pid`** than the snapshot **and** a
-   `git_sha` matching `HEAD`. A matching `git_sha` alone proves nothing: a
+   the answer carries a **different `pid`** than the snapshot, that process
+   **runs from this checkout**, **and** its `git_sha` matches `HEAD`. A matching `git_sha` alone proves nothing: a
    restart that never ran leaves the old process serving, and when that
    process already loaded `HEAD` the sha matches anyway. Exit 1 = the process
    was not replaced (or nothing answers); exit 2 = no baseline, so a restart
@@ -49,6 +49,20 @@ process is restarted.
    from a webapp-only restart (the tray's Restart webapp item, a self-heal),
    so it is no proof that `tray.bat --restart` ran. `pid` is.
 7. Don't hand off "done" with a stale process still serving.
+
+**Two checkouts on one machine.** A second clone at the same commit answers
+`/api/version` with the same `git_sha` on the same port, so the checks also ask
+which directory the serving process runs from
+(`src/launching/process_checkout.py`; the tray spawns the webapp and the
+session-host with `cwd` at its checkout root). The shared lifecycle helper
+behind `tray.bat` cannot tell them apart, so `tray.bat --restart` runs
+`restart_check preflight` before it (another checkout on the webapp port:
+`restart refused`, naming the path and PID, and nothing is stopped) and
+`restart_check owner` after it (fails unless this checkout serves the port).
+Nothing stops the other copy for you. The tray itself adopts a running webapp
+only when it runs from this checkout, and names a session-host from another
+checkout instead of reporting it adopted. An owner whose directory cannot be
+read is "not confirmed", never ours.
 
 ## A session-host change is not live until `:8446` itself restarts
 

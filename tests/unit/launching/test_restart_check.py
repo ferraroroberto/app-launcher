@@ -11,6 +11,13 @@ from src.launching import restart_check
 HEAD = "86224f1b"
 
 
+@pytest.fixture(autouse=True)
+def _pids_run_from_this_checkout(monkeypatch):
+    """The fake pids below stand for processes of this checkout; the two-checkout cases live in
+    ``test_two_checkouts.py`` with real processes."""
+    monkeypatch.setattr(restart_check, "process_checkout", lambda _pid: restart_check._REPO_ROOT)
+
+
 def _version(pid, sha=HEAD):
     body = {"git_sha": sha}
     if pid is not None:
@@ -45,6 +52,11 @@ class TestDecide:
         ok, reason = restart_check.decide({"pid": 100}, _version(None), HEAD)
         assert not ok
         assert "no pid" in reason
+
+    def test_an_owner_whose_directory_cannot_be_read_is_not_confirmed(self):
+        ok, reason = restart_check.decide({"pid": 100}, _version(200), HEAD, checkout_of=lambda _pid: None)
+        assert not ok
+        assert "cannot confirm" in reason and "pid 200" in reason
 
     def test_unknown_sha_never_passes(self):
         ok, _ = restart_check.decide({"pid": 100}, _version(200, sha="unknown"), HEAD)
