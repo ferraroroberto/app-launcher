@@ -7,7 +7,7 @@ cold load event from ~2.3 s to ~1.0 s with the same build and no bundling step.
 Browsers only speak HTTP/2 over TLS, so the gain needs ``--ssl-certfile`` and
 ``--ssl-keyfile``; without them the server is plain HTTP/1.1 either way.
 
-Every launch path (the tray's spawn, ``scripts/webapp.bat``, a CLI command, the e2e
+Every launch path (the tray's spawn, ``webapp.bat``, a CLI command, the e2e
 autoboot) goes through here so a server setting lands everywhere at once::
 
     python -m app.webapp.serve --host H --port P [--ssl-keyfile K --ssl-certfile C]
@@ -163,6 +163,41 @@ def release_h2_streams_on_disconnect() -> None:
     setattr(H2Protocol, "handle", handle_then_release_streams)
 
 
+def skip_late_h2_stream_events() -> None:
+    """Keep an HTTP/2 connection alive past a late event for a closed stream. Idempotent.
+
+    Hypercorn 0.18 looks up ``self.streams[stream_id]`` for every request body
+    frame. When the app answered before the client finished sending (a fast
+    4xx, a redirect, an app that ignores the body), the stream is gone by the
+    time the rest of the body or its end arrives, and the ``KeyError`` drops
+    the whole connection: every request multiplexed on it, a page navigation
+    included, then waits on a response that never comes. Such an event is
+    skipped here, its data still acknowledged so the connection's flow-control
+    window does not shrink. Events are handed on one at a time because a
+    stream opened earlier in the same batch must count as live.
+    """
+    import h2.events
+    from hypercorn.protocol.h2 import H2Protocol
+
+    if getattr(H2Protocol._handle_events, "_skips_late_events", False):
+        return
+    original = H2Protocol._handle_events
+
+    async def handle_events_skipping_late(self: Any, events: list[Any]) -> None:
+        for event in events:
+            late = isinstance(event, (h2.events.DataReceived, h2.events.StreamEnded))
+            if late and event.stream_id not in self.streams:
+                logger.info(f"ℹ️ skipped a late {type(event).__name__} for closed h2 stream {event.stream_id}")
+                if isinstance(event, h2.events.DataReceived):
+                    self.connection.acknowledge_received_data(event.flow_controlled_length, event.stream_id)
+                continue
+            await original(self, [event])
+        await self._flush()
+
+    handle_events_skipping_late._skips_late_events = True  # type: ignore[attr-defined]
+    setattr(H2Protocol, "_handle_events", handle_events_skipping_late)
+
+
 def wrap_app(app: Any) -> Any:
     """The ASGI app as served: client address taken from X-Forwarded-For only
     when the peer is loopback, which an app's bearer and terminal gates read."""
@@ -216,6 +251,7 @@ def run(
                 f"or launch with --server {UVICORN} for HTTP/1.1"
             ) from exc
         release_h2_streams_on_disconnect()
+        skip_late_h2_stream_events()
     with asyncio.Runner(loop_factory=loop_factory) as runner:
         # The loop exists, and a factory's process-wide tuning is in force,
         # before the app's module-level setup runs.
