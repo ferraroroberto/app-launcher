@@ -657,8 +657,11 @@ function panFullscreenCanvas(term) {
   // the compose bar whenever the native keyboard is up. The overlay
   // pinning above already resized the flex layout, so the host rect
   // is the box the canvas actually shows through.
-  const boxH = els.terminalHost ?
-    els.terminalHost.getBoundingClientRect().height : 0;
+  // The canvas sits inside .xterm's vertical padding, so that comes off too.
+  const pad = term.element ? getComputedStyle(term.element) : null;
+  const boxH = (pad && els.terminalHost) ?
+    els.terminalHost.getBoundingClientRect().height -
+      (parseFloat(pad.paddingTop) || 0) - (parseFloat(pad.paddingBottom) || 0) : 0;
   const panY = terminalPanY(contentH, boxH);
   if (term.element) {
     term.element.style.transform =
@@ -666,16 +669,26 @@ function panFullscreenCanvas(term) {
   }
 }
 
+// Whether the view was at the tail, asked before the fit. A box that just grew
+// has already clamped the scroll position upward by up to the rows it gained,
+// so those count as still at the tail.
+function followsTail(t) {
+  try {
+    const next = t.fit && t.fit.proposeDimensions();
+    const gained = next ? Math.max(0, next.rows - t.term.rows) : 0;
+    const b = t.term.buffer.active;
+    return b.viewportY >= b.baseY - 1 - gained;
+  } catch (_) { return false; }
+}
+
 function reflowTerminal(t) {
   const term = t.term;
   if (term.element) term.element.style.transform = '';
+  const follow = followsTail(t);
   try { if (t.fit) t.fit.fit(); } catch (_) {}
-  // Keep the prompt (bottom row) in view after a keyboard-driven
+  // Keep the prompt (bottom row) in view after a keyboard- or composer-driven
   // reflow, but only if the user hadn't scrolled up to read history.
-  try {
-    const b = term.buffer.active;
-    if (b.viewportY >= b.baseY - 1) term.scrollToBottom();
-  } catch (_) {}
+  if (follow) { try { term.scrollToBottom(); } catch (_) {} }
   if (t.ws && t.ws.readyState === WebSocket.OPEN) {
     // The first size on this terminal is the phone's authoritative one
     // and goes out at once; every later change is settled so a
@@ -760,6 +773,18 @@ function wireSizeTracking(t) {
     t.orientationSettleTimer = setTimeout(applySize, 350);
   };
   window.addEventListener('orientationchange', t.onOrientationChange);
+}
+
+// The host's box also changes with no viewport event: the composer under it
+// grows with its draft and shrinks on send. Re-run the active terminal's
+// sizing on every such change; applyTerminalSize settles the PTY frame and
+// ignores the Chat pane. A hidden host measures 0 and is left alone.
+function watchHostSize() {
+  if (!window.ResizeObserver) return;
+  new ResizeObserver(function () {
+    const t = state.terminal;
+    if (t && t.applySize && els.terminalHost.clientHeight) t.applySize();
+  }).observe(els.terminalHost);
 }
 
 // Full teardown of the ACTIVE terminal — kept for the paths where the
@@ -855,6 +880,7 @@ export function wireTerminal() {
   // kill live in the menu, not as an in-bar ✕.
   wireTerminalMenu();
   mountTerminalComposer();
+  watchHostSize();
   wireTerminalImage();
   // Read-aloud — wiring lives in
   // terminal-readaloud.js, alongside its ⋮ menu rows and the

@@ -230,7 +230,7 @@ and ⋮, which always fit beside a shrinking title. Only the Life OS
   position: relative;
   flex: 1;
   min-height: 0;
-  padding: 6px 4px 4px 8px;
+  padding: 0 4px 0 8px;
   background: var(--term-bg);
   overflow: hidden;
   /* xterm.js owns the inner scrollback; tell iOS the host is a
@@ -249,7 +249,10 @@ and ⋮, which always fit beside a shrinking title. Only the Life OS
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
-.terminal-host .xterm { height: 100%; }
+/* The vertical padding sits here, not on the host: xterm's fit addon takes
+   the element's own padding off the height but not its parent's, so a padded
+   host fits more rows than it shows and clips the last one. */
+.terminal-host .xterm { height: 100%; padding: 6px 0 4px; }
 /* Floating "Latest" pill: one look for all three mounts —
    the Terminal, the Chat pane and the Life OS conversation viewer
    (latest-pill.js owns when it shows). Bottom-right of its scroll surface,
