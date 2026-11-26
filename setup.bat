@@ -1,15 +1,20 @@
 @echo off
 chcp 65001 >nul
 REM ============================================================================
-REM  SETUP - install app-launcher on this PC, or bring its setup up to date
+REM  SETUP - install this app on this PC, or bring its setup up to date
 REM ----------------------------------------------------------------------------
+REM  What is specific to app-launcher is declared in the [install] table of
+REM  .fleet.toml.
 REM  Safe to run any number of times; it never overwrites what this PC has
-REM  configured. The work is scripts\install.py (docs\install.md):
+REM  configured. The work is src\installer.py (docs\install.md):
 REM    setup.bat            create .venv, install requirements, create missing
-REM                         configs, add keys a config lacks (after a backup)
+REM                         configs, add keys a settings file lacks (after a
+REM                         backup), end with an ok/missing/unknown checklist
 REM    setup.bat -WhatIf    list every change, make none
 REM    setup.bat -Startup   also start the tray at log on
-REM  A batch file, not a .ps1, so an AllSigned execution policy never refuses it.
+REM  A batch file, not a .ps1, so the PowerShell execution policy (AllSigned
+REM  included) never refuses it. Keep this file ASCII-only: cmd.exe reads ahead
+REM  in the codepage that was active before chcp 65001 ran.
 REM ============================================================================
 
 setlocal
@@ -27,9 +32,11 @@ if not defined PY_EXE where python >nul 2>nul && set "PY_EXE=python"
 if not defined PY_EXE goto :no_python
 
 :run
-"%PY_EXE%" %PY_ARGS% "%SCRIPT_DIR%scripts\install.py" %*
+REM  -I: isolated mode keeps src\ off sys.path, so the app's src package is never
+REM  imported before its requirements exist.
+"%PY_EXE%" %PY_ARGS% -I "%SCRIPT_DIR%src\installer.py" %*
 exit /b %ERRORLEVEL%
 
 :no_python
-echo ERROR: no Python found. Install Python 3 from python.org, then run setup.bat again.
+echo ERROR: no Python found. Install Python 3.11 or newer from python.org, then run setup.bat again.
 exit /b 1

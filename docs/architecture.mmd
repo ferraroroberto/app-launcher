@@ -340,7 +340,7 @@ one machine-critical chief mailbox event per incident"]
 
   subgraph testing["tests/ + scripts/"]
     TESTS["pytest (unit) + tests/e2e (Playwright)\nscripts/verify-before-ship.ps1 gate"]
-    SCRIPTS["scripts/install.py (setup.bat) ·\nwebapp_port.py · gen_icons.py ·\ngen_tailscale_cert.py (--check on boot) ·\ngen_token.py · run_named_tunnel.py"]
+    SCRIPTS["src/installer.py (setup.bat) ·\nwebapp_port.py · gen_icons.py ·\ngen_tailscale_cert.py (--check on boot) ·\ngen_token.py · run_named_tunnel.py"]
   end
   TESTS -.->|exercises| webapp
   TESTS -.->|exercises| sessionhost

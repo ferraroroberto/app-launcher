@@ -39,7 +39,8 @@ depends_on = ["local-llm-hub", "voice-transcriber", "photo-ocr", "task-os", "lif
 extra_junctions = ["webapp/certificates"]
 
 [vendored]
-icons = { src = "app/webapp/static/_vendored/icons", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/icons" }
+installer = { src = "src/installer.py", sha = "c23c5bf575a3f375a4ddbfb99a31763a80c6bee5", dest = "src/installer.py" }
+icons ={ src = "app/webapp/static/_vendored/icons", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/icons" }
 switch = { src = "app/webapp/static/_vendored/switch", sha = "8f15c49560adbc076d24a8a63dd671868ffa7a4e", dest = "app/webapp/static/_vendored/switch" }
 button = { src = "app/webapp/static/_vendored/button", sha = "7a1a7561331edded3dc91128a42076fb3b0262f8", dest = "app/webapp/static/_vendored/button" }
 card = { src = "app/webapp/static/_vendored/card", sha = "8f15c49560adbc076d24a8a63dd671868ffa7a4e", dest = "app/webapp/static/_vendored/card" }
@@ -121,7 +122,52 @@ request_budget_probe = { src = "tests/e2e/budget/_request_budget.py", sha = "d15
 webkit_budget_check = { src = "scripts/tools/webkit_budget_check.py", sha = "d15277a91fdaff7d24790c19a0d187baa559228a", dest = "scripts/tools/webkit_budget_check.py" }
 
 # ---------------------------------------------------------------------------
-# [verify] -- the launch recipe the generated verify-app-launcher skill reads
+# [install] -- what setup.bat declares to the vendored installer
+# (src/installer.py; schema: project-scaffolding docs/installer.md; playbook:
+# docs/install.md). Every config sample becomes its ignored config; the two
+# under `settings` are topped up with missing keys, and every other one is a
+# registry (apps, jobs, channel profiles), never rewritten.
+[install]
+requirements = "requirements.txt"
+samples      = ["config"]
+settings     = ["config/config.json", "config/webapp_config.json"]
+
+[install.startup]
+check    = ["{python}", "-m", "src.launching.install_checks", "autostart"]
+register = ["{python}", "-m", "src.launching.install_checks", "autostart-enable"]
+
+[[install.check]]
+name    = "Sign-in password"
+command = ["{python}", "-m", "src.launching.install_checks", "password"]
+hint    = "set one with: .venv\\Scripts\\python.exe -m src.password set"
+
+[[install.check]]
+name  = "HTTPS certificate"
+paths = ["webapp/certificates/cert.pem", "webapp/certificates/key.pem"]
+hint  = "run: .venv\\Scripts\\python.exe scripts\\gen_tailscale_cert.py"
+
+[[install.check]]
+name    = "Shared tray helper (tray.bat --restart)"
+command = ["{python}", "-m", "src.launching.install_checks", "tray-helper"]
+hint    = "from fleet-config; a plain tray.bat start works without it"
+
+[[install.check]]
+name  = "Claude Code CLI (Coding tab)"
+which = "claude"
+hint  = "see docs/installing-agent-clis.md"
+
+[[install.check]]
+name  = "GitHub CLI (Board)"
+which = "gh"
+hint  = "install gh, then: gh auth login"
+
+[[install.check]]
+name  = "Node.js (bundles the page scripts)"
+which = "npx"
+hint  = "optional: without it the page loads the separate modules"
+
+# ---------------------------------------------------------------------------
+# [verify] --the launch recipe the generated verify-app-launcher skill reads
 # (project-scaffolding docs/verify-skill.md). `boot` is the session fixture the
 # e2e suite boots a disposable webapp + session-host from; ready_path and
 # data_dir_env are the generator defaults (/healthz, APP_LAUNCHER_DATA_DIR).
