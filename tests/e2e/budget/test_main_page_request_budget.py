@@ -8,12 +8,9 @@ key is unknown (`RequestBudgetUnknown`), never a pass.
 
 from __future__ import annotations
 
-from datetime import datetime
-
 import pytest
 from playwright.sync_api import Page
 
-from tests.e2e.budget import _request_budget
 from tests.e2e.budget._request_budget import (
     assert_request_budget,
     measure_request_budget,
@@ -42,28 +39,7 @@ _HIDDEN_FLUSHES = ("/api/usage/events", "/api/perf/timings")
 _BOOT_GRACE_PREFIX = ("/api/-no-held-stream-",)
 
 
-class _StoppedClockCounter(_request_budget._Counter):
-    """Counts each minute on a stopped page clock and ends it on quiet traffic.
-
-    The probe moves its count to "hidden" before it hides the page, and every poll
-    and the 60 s ledger throttle come due as the visible minute ends. On a running
-    clock a poll can fire in that gap, and under load a read started while visible
-    (or one chained on its answer) is counted there too. Stopped, a timer fires
-    only inside `advance`.
-    """
-
-    def advance(self, total_ms: int, step_ms: int) -> None:
-        # The stop must lie ahead of the page's time; 2 s covers the round trips.
-        now = self.page.evaluate("Date.now()") / 1000
-        self.page.clock.pause_at(datetime.fromtimestamp(now + 2))
-        super().advance(total_ms, step_ms)
-        self.wait_for_boot()
-
-
-def test_main_page_keeps_its_request_budget(
-    authed_page: Page, base_url: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(_request_budget, "_Counter", _StoppedClockCounter)
+def test_main_page_keeps_its_request_budget(authed_page: Page, base_url: str) -> None:
     reading = measure_request_budget(authed_page, f"{base_url}/", stream_paths=_BOOT_GRACE_PREFIX)
     for path in _HIDDEN_FLUSHES:
         assert reading.hidden.pop(path, 0) <= 1, f"{path} repeated while hidden: {reading.summary()}"
