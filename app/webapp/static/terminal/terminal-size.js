@@ -222,11 +222,20 @@ function reflowTerminal(t) {
   t.fsSized = true;
 }
 
+function sizeKey(size) {
+  return size.rows + 'x' + size.cols;
+}
+
 // The first size on a terminal is the phone's authoritative one and goes out
 // at once; every later change is settled so a keyboard sweep's intermediate
-// samples never reach the PTY.
+// samples never reach the PTY. Only a changed size restarts the settle: the
+// host observer and the viewport events re-run the sizing without one, and one
+// delivered late would otherwise keep postponing the frame.
 function queuePtySize(t) {
   if (!t.ws || t.ws.readyState !== WebSocket.OPEN) return;
+  const key = sizeKey(ptySendSize(t.term.rows, t.term.cols));
+  if (t.resizeSettleTimer && key === t.queuedSize) return;
+  t.queuedSize = key;
   if (t.resizeSettleTimer) clearTimeout(t.resizeSettleTimer);
   t.resizeSettleTimer = null;
   if (t.lastSentSize) {
@@ -246,7 +255,7 @@ function sendPtySize(t) {
   // real change on a fullscreen agent triggers the transcript
   // re-emission — batch it into a single paint (terminal-connection.js).
   const size = ptySendSize(t.term.rows, t.term.cols);
-  const key = size.rows + 'x' + size.cols;
+  const key = sizeKey(size);
   if (key === t.lastSentSize) return;
   const resized = !!t.lastSentSize;
   t.lastSentSize = key;
