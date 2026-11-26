@@ -190,6 +190,24 @@ def _leg_latest_pill_shows_only_when_scrolled_up(authed_page: Page) -> None:
     assert at_tail, "tapping Latest did not return the terminal to its tail"
 
 
+def _leg_copilot_copies_its_own_link(page: Page, row: dict) -> None:
+    """A Copilot session: its link is the server's per-agent `web_url` too,
+    and the toast names Copilot. Both the poll's source and the page's
+    current copy switch, so a poll landing mid-leg agrees with the page."""
+    row.update(agent="copilot", web_url=_COPILOT_WEB_URL)
+    page.evaluate(_LIVE_STATE_HANDLE)
+    page.evaluate(
+        "(url) => { const v = window.__state.sessionView.session;"
+        " for (const s of [v, ...window.__state.sessions]) {"
+        " if (s.session_id === v.session_id) { s.agent = 'copilot'; s.web_url = url; } } }",
+        _COPILOT_WEB_URL,
+    )
+    _copy_link(page)
+    page.wait_for_function("() => window.__copied.length === 2", timeout=5_000)
+    assert page.evaluate("() => window.__copied[1]") == _COPILOT_WEB_URL
+    expect(page.locator("#toast")).to_have_text(re.compile("Copilot web link copied"))
+
+
 @pytest.mark.unbundled
 def test_menu_copy_link_and_rename_update_the_bar(
     authed_page: Page, base_url: str, launched_pty_session: str
@@ -231,23 +249,7 @@ def test_menu_copy_link_and_rename_update_the_bar(
         "Menu rename 981", timeout=2_000
     )
 
-    # A Copilot session: its link is the server's per-agent `web_url` too,
-    # and the toast names Copilot. Both the poll's source and the page's
-    # current copy switch, so a poll landing mid-leg agrees with the page.
-    row.update(agent="copilot", web_url=_COPILOT_WEB_URL)
-    authed_page.evaluate(_LIVE_STATE_HANDLE)
-    authed_page.evaluate(
-        "(url) => { const v = window.__state.sessionView.session;"
-        " for (const s of [v, ...window.__state.sessions]) {"
-        " if (s.session_id === v.session_id) { s.agent = 'copilot'; s.web_url = url; } } }",
-        _COPILOT_WEB_URL,
-    )
-    _copy_link(authed_page)
-    authed_page.wait_for_function("() => window.__copied.length === 2", timeout=5_000)
-    assert authed_page.evaluate("() => window.__copied[1]") == _COPILOT_WEB_URL
-    expect(authed_page.locator("#toast")).to_have_text(
-        re.compile("Copilot web link copied")
-    )
+    _leg_copilot_copies_its_own_link(authed_page, row)
 
     # Last, because it mutates the page's own state: the bare ?session=
     # deep-link shape, where the sessions list does not carry the row and

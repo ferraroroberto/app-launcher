@@ -241,18 +241,12 @@ class WebappConfig:
         default_factory=lambda: dict(DEFAULT_CODEX_MODEL_EFFORTS)
     )
     codex_permission_mode: str = DEFAULT_CODEX_PERMISSION_MODE
-    # GitHub Copilot CLI launch settings.
-    # `copilot_skip_permissions` is the opt-in allow-all switch, and the
-    # only one: there is deliberately no model setting, because Copilot
-    # resolves `--model` against the account at launch and silently
-    # substitutes when it refuses (see
-    # `src.launching.flags.build_copilot_flags`). Model choice belongs to the
-    # CLI's own `/model` and `/config model`.
+    # GitHub Copilot CLI: allow-all is the only launch switch; no model
+    # setting, as Copilot resolves `--model` against the account and silently
+    # substitutes (`build_copilot_flags`). `copilot_web_url_prefix` only
+    # overrides the Copy link base derived from the CLI's signed-in
+    # enterprise host (`src/session_view/copilot_host.py`).
     copilot_skip_permissions: bool = False
-    # Override for the URL a Copilot session's id is appended to for its Copy
-    # link, e.g. `https://ghe.example.com/copilot/tasks/`. Empty (the
-    # default) derives it from the enterprise host the Copilot CLI is signed
-    # in to; set it only when that is wrong or the account is on github.com.
     copilot_web_url_prefix: str = ""
     # Grok Build launch settings. `grok_effort` is the
     # reasoning tier (low/medium/high); `grok_permission_mode` mirrors
