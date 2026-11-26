@@ -574,9 +574,11 @@ async function readForward(target, manual) {
   // Read before anything lands: a card that appears at the end of the turn
   // keeps a reader who was following the conversation at the bottom.
   const stick = atBottom();
-  if (body.reset) {
-    // The file was rotated, or this view fell further behind than one
-    // request may read. Either way the newest turns are what it wants.
+  const moved = !!(body.log_id && target.logId && body.log_id !== target.logId);
+  if (body.log_id) target.logId = body.log_id;
+  if (body.reset || moved) {
+    // Rotated, moved to another log by a resume, or further behind than one
+    // request may read: in each case the newest turns are what it wants.
     loadNewest();
     return 'reset';
   }
@@ -688,6 +690,7 @@ async function loadNewest() {
   view.entries = entries.concat(pending);
   view.tail = body.tail != null ? body.tail : 0;
   view.size = body.size;
+  view.logId = body.log_id || null;
   // Sent files older than this page wait for the page that reaches them.
   const files = takeOutbox(body, body.next_cursor == null ? -Infinity : oldestTime(all));
   syncPendingChip();

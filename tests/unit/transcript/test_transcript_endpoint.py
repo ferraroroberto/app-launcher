@@ -295,6 +295,10 @@ class TestTranscriptEndpoint:
         assert body["available"] is True and body["source"] == "copilot"
         # Copilot cannot mark every failure, and the page says so (#1020).
         assert body["tool_errors"] == "partial"
+        # Both read directions name the log, so a resume that moves the
+        # session to another one is seen by the next tick.
+        tick = client.get(f"/api/claude-code/sessions/s1/transcript?after={body['tail']}").json()
+        assert body["log_id"] and tick["log_id"] == body["log_id"]
         assert [e["kind"] for e in body["entries"]][:3] == ["system", "user", "tool_call"]
         # The no-tools reply — the capture's last assistant belongs to
         # #1020's failing-view exchange, which is one short line.
