@@ -24,7 +24,11 @@ from src.jobs.config import get_by_id, load_jobs
 from src.launching.flags import build_claude_flags, default_effort, effective_effort
 from src.launching.presets import contexts_for, efforts_for
 from src.session_view.copilot_host import copilot_signed_in_host
-from src.session_view.transcript_locate import copilot_match_settled, copilot_session_id
+from src.session_view.transcript_locate import (
+    copilot_match_settled,
+    copilot_session_folder,
+    copilot_task_id,
+)
 from src.webapp_config import (
     ALWAYS_ON_CLAUDE_FLAGS,
     VALID_CLAUDE_EFFORTS,
@@ -296,17 +300,18 @@ _PROVIDER_URL_CACHE: Dict[str, str] = {}
 _PROVIDER_URL_MISSES: Dict[str, Tuple[int, int]] = {}
 _PROVIDER_URL_CACHE_MAX = 512
 
-# GitHub Copilot's enterprise web view addresses a session as
-# ``https://<host>/copilot/tasks/<session id>``. The host is the one the
+# GitHub Copilot's enterprise web view addresses a task as
+# ``https://<host>/copilot/tasks/<task id>``. The host is the one the
 # Copilot CLI itself is signed in to (its own config, read by
 # ``copilot_signed_in_host``), so it is never a repo value; the
 # ``copilot_web_url_prefix`` setting only overrides it. github.com is not
 # derived: that template is the enterprise view, and a github.com account
-# gets a link only through the override. The id is cached per launcher
-# session rather than the URL, so a sign-in or override change applies on
-# the next poll. ``""`` is a settled miss: the launch window has closed with
-# no single matching folder, so the match is never re-run.
-_COPILOT_IDS: Dict[str, str] = {}
+# gets a link only through the override. The session's folder is cached per
+# launcher session, never the URL or the task id: a sign-in or override change
+# applies on the next poll, and so does a task id written later. ``None`` is a
+# settled miss: the launch window has closed with no single matching folder,
+# so the match is never re-run.
+_COPILOT_FOLDERS: Dict[str, Optional[Path]] = {}
 _COPILOT_TASKS_PATH = "/copilot/tasks/"
 _PUBLIC_GITHUB_HOST = "github.com"
 
@@ -344,7 +349,7 @@ def provider_web_url(agent: str, transcript: Path) -> str:
 
 
 def copilot_web_base(override: str) -> str:
-    """The URL a Copilot session id is appended to, or ``""`` for none.
+    """The URL a Copilot task id is appended to, or ``""`` for none.
 
     An ``http(s)`` override wins; otherwise the enterprise host the Copilot
     CLI is signed in to. No base means no session scan at all.
@@ -359,16 +364,18 @@ def copilot_web_base(override: str) -> str:
 
 
 def copilot_web_url(override: str, session: Dict[str, Any]) -> str:
-    """``<base><Copilot session id>`` for a live Copilot session, or ``""``."""
+    """``<base><Copilot task id>`` for a live Copilot session, or ``""``."""
     prefix = copilot_web_base(override)
     if not prefix:
         return ""
     sid = str(session.get("session_id") or "")
-    task_id = _COPILOT_IDS.get(sid) if sid else None
-    if task_id is None:
-        task_id = copilot_session_id(session) or ""
-        if sid and (task_id or copilot_match_settled(session, time.time())):
-            _remember(_COPILOT_IDS, sid, task_id)
+    if sid in _COPILOT_FOLDERS:
+        folder = _COPILOT_FOLDERS[sid]
+    else:
+        folder = copilot_session_folder(session)
+        if sid and (folder or copilot_match_settled(session, time.time())):
+            _remember(_COPILOT_FOLDERS, sid, folder)
+    task_id = copilot_task_id(folder) if folder else None
     if not task_id:
         return ""
     return f"{prefix.rstrip('/')}/{task_id}"
@@ -382,7 +389,7 @@ def attach_provider_web_urls(
     Every row gets a ``web_url`` key so the client never has to distinguish
     "no link" from "field absent"; only ``kind == "pty"`` rows are resolved:
     Claude's from its captured remote-control card, Copilot's from the
-    signed-in host (or ``cfg.copilot_web_url_prefix``) plus its session id. Blocking
+    signed-in host (or ``cfg.copilot_web_url_prefix``) plus its task id. Blocking
     file IO — callers wrap it in ``asyncio.to_thread``.
     """
     copilot_override = cfg.copilot_web_url_prefix if cfg is not None else ""

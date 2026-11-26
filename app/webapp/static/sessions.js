@@ -650,7 +650,7 @@ let sessionLinkFeedbackTimer = null;
 
 // The provider-native session URL, resolved per agent by the server as
 // `web_url` (Claude's captured `claude.ai/code/session_…` remote-control
-// link, Copilot's configured web view plus its session id) — '' when this
+// link, Copilot's configured web view plus its task id) — '' when this
 // session has none. It is the link that keeps working without this
 // launcher, so both copy affordances — this dialog and the session bar's
 // ⋮ Copy link — resolve through here and can never hand back two different

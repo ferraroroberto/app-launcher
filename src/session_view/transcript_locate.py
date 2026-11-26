@@ -89,11 +89,15 @@ _COPILOT_YAML_CAP_BYTES = 64 * 1024
 # here are LF, but nothing about the format promises that.
 _COPILOT_CWD_RE = re.compile(r"^cwd:[ \t]*(.+?)[ \t\r]*$", re.M)
 _COPILOT_CREATED_RE = re.compile(r"^created_at:[ \t]*(\S+?)[ \t\r]*$", re.M)
-# A Copilot session folder is named by its UUID session id; only that shape
-# may become part of a provider URL.
-_COPILOT_ID_RE = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
+# The id Copilot's web view addresses a session's task by; only a UUID may
+# become part of a provider URL.
+_COPILOT_TASK_RE = re.compile(
+    r"^mc_task_id:[ \t]*([0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12})[ \t\r]*$", re.M
 )
+# Per `workspace.yaml`: its `(size, mtime_ns)` and the task id read then. The
+# cap only bounds a long-lived process; clearing costs one re-read per file.
+_COPILOT_TASK_CACHE: Dict[Path, Tuple[Tuple[int, int], Optional[str]]] = {}
+_COPILOT_TASK_CACHE_MAX = 512
 _AGY_ROOT = Path.home() / ".gemini" / "antigravity-cli"
 # Antigravity names a conversation directory by UUID; the strict shape keeps
 # a mangled cache key from being joined onto a path.
@@ -378,26 +382,40 @@ def find_copilot_transcript(session: Dict[str, Any]) -> Optional[Path]:
     ~500 bytes here. Chat mode has no periodic refresh, so this runs
     on opening the pane and on Reload, not on a timer.
     """
-    folder = _copilot_session_folder(session)
+    folder = copilot_session_folder(session)
     if folder is None:
         return None
     events = folder / "events.jsonl"
     return events if events.is_file() else None
 
 
-def copilot_session_id(session: Dict[str, Any]) -> Optional[str]:
-    """The Copilot CLI's own id for a live session, or None.
+def copilot_task_id(folder: Path) -> Optional[str]:
+    """The id Copilot's web view addresses this folder's task by, or None.
 
-    Copilot names each session folder after its session id, which is the id
-    its web view addresses. Found by the same launch-window match as
-    :func:`find_copilot_transcript`, without waiting on ``events.jsonl``:
-    the id exists from launch, before any prompt. Only a UUID-shaped folder
-    name answers, so nothing else can land in a URL.
+    That is ``mc_task_id`` in the folder's ``workspace.yaml``, which Copilot
+    writes once the session is shared remotely. It is not the session id the
+    folder is named by: GitHub's task API answers "not found" for that one
+    (probed on CLI 1.0.114). The file is read again only when its size or
+    mtime moves, since ``/remote on`` can add the id at any point of a
+    session's life, so a missing id is never a final answer.
     """
-    folder = _copilot_session_folder(session)
-    if folder is None or not _COPILOT_ID_RE.match(folder.name):
+    path = folder / "workspace.yaml"
+    try:
+        st = path.stat()
+        identity = (st.st_size, st.st_mtime_ns)
+        cached = _COPILOT_TASK_CACHE.get(path)
+        if cached is not None and cached[0] == identity:
+            return cached[1]
+        with path.open("rb") as fh:
+            raw = fh.read(_COPILOT_YAML_CAP_BYTES)
+    except OSError:
         return None
-    return folder.name
+    match = _COPILOT_TASK_RE.search(raw.decode("utf-8", errors="replace"))
+    task_id = match.group(1) if match else None
+    if len(_COPILOT_TASK_CACHE) >= _COPILOT_TASK_CACHE_MAX:
+        _COPILOT_TASK_CACHE.clear()
+    _COPILOT_TASK_CACHE[path] = (identity, task_id)
+    return task_id
 
 
 def copilot_match_settled(session: Dict[str, Any], now: float) -> bool:
@@ -414,7 +432,7 @@ def copilot_match_settled(session: Dict[str, Any], now: float) -> bool:
     return now > started + _COPILOT_START_SLOP_SECONDS + _COPILOT_CLOCK_SKEW_SECONDS
 
 
-def _copilot_session_folder(session: Dict[str, Any]) -> Optional[Path]:
+def copilot_session_folder(session: Dict[str, Any]) -> Optional[Path]:
     """The one Copilot session folder launched with this session, or None.
 
     Anything other than exactly one qualifying folder answers None.

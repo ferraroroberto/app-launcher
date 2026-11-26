@@ -26,11 +26,11 @@ def _clear_provider_url_cache():
     """The memo is module state — no test may inherit another's entries."""
     _helpers._PROVIDER_URL_CACHE.clear()
     _helpers._PROVIDER_URL_MISSES.clear()
-    _helpers._COPILOT_IDS.clear()
+    _helpers._COPILOT_FOLDERS.clear()
     yield
     _helpers._PROVIDER_URL_CACHE.clear()
     _helpers._PROVIDER_URL_MISSES.clear()
-    _helpers._COPILOT_IDS.clear()
+    _helpers._COPILOT_FOLDERS.clear()
 
 
 def test_claude_web_url_is_recovered_from_wrapped_terminal_output(tmp_path):
@@ -200,22 +200,26 @@ def test_the_memo_is_bounded_over_a_long_lived_tray(monkeypatch, tmp_path):
     assert len(_helpers._PROVIDER_URL_CACHE) <= 4
 
 
-# Placeholder host and synthetic id: the real host is the machine's own
+# Placeholder host and synthetic ids: the real host is the machine's own
 # Copilot sign-in and never appears in the repo.
 _GHE_HOST = "ghe.example.com"
 _COPILOT_PREFIX = f"https://{_GHE_HOST}/copilot/tasks/"
 _COPILOT_ID = "79c18133-52bd-4f8f-9260-b33c853158be"
+_COPILOT_TASK_ID = "0d4b6f52-1c7e-4a39-b2a8-6e5f9c3d1a77"
 # 2026-09-17T21:57:30Z; Copilot's folder is stamped 4 s later.
 _COPILOT_STARTED = 1_789_682_250.0
 
 
-def _copilot_folder(root, folder, created="2026-09-17T21:57:34Z"):
+def _copilot_folder(root, folder, task_id=_COPILOT_TASK_ID):
     """A Copilot session folder as the CLI writes it at launch: no
-    ``events.jsonl`` yet, since that only appears at the first prompt."""
-    (root / folder).mkdir()
+    ``events.jsonl`` yet, since that only appears at the first prompt.
+    ``task_id`` None is a session that was never shared remotely."""
+    (root / folder).mkdir(exist_ok=True)
+    lines = [f"id: {folder}", "cwd: E:/work/project", "created_at: 2026-09-17T21:57:34Z"]
+    if task_id:
+        lines.append(f"mc_task_id: {task_id}")
     (root / folder / "workspace.yaml").write_text(
-        f"id: {folder}\ncwd: E:/work/project\ncreated_at: {created}\n",
-        encoding="utf-8",
+        "".join(line + "\n" for line in lines), encoding="utf-8"
     )
 
 
@@ -241,33 +245,35 @@ def copilot_env(monkeypatch, tmp_path):
     return signed_in
 
 
-def test_copilot_link_is_its_signed_in_enterprise_host_plus_its_session_id(
+def test_copilot_link_is_its_signed_in_enterprise_host_plus_its_task_id(
     copilot_env, tmp_path
 ):
     _copilot_folder(tmp_path, _COPILOT_ID)
     rows = [_copilot_row(), {**_copilot_row("s-detached"), "kind": "remote"}]
 
     attach_provider_web_urls(rows)
-    assert [r["web_url"] for r in rows] == [_COPILOT_PREFIX + _COPILOT_ID, ""]
+    # The task id, never the session id the folder is named by: GitHub's task
+    # API does not know that one.
+    assert [r["web_url"] for r in rows] == [_COPILOT_PREFIX + _COPILOT_TASK_ID, ""]
 
-    # The id is cached, not the URL, so the base follows the current sign-in:
+    # The folder is cached, not the URL, so the base follows the current sign-in:
     # github.com derives nothing, and the override wins over either.
     copilot_env["host"] = "github.com"
     attach_provider_web_urls(rows)
     assert rows[0]["web_url"] == ""
     attach_provider_web_urls(rows, _cfg("https://ghe.example.org/tasks"))
-    assert rows[0]["web_url"] == f"https://ghe.example.org/tasks/{_COPILOT_ID}"
+    assert rows[0]["web_url"] == f"https://ghe.example.org/tasks/{_COPILOT_TASK_ID}"
     # An override that is not an http(s) URL is ignored, not glued on.
     copilot_env["host"] = _GHE_HOST
     attach_provider_web_urls(rows, _cfg("ghe.example.org/tasks/"))
-    assert rows[0]["web_url"] == _COPILOT_PREFIX + _COPILOT_ID
+    assert rows[0]["web_url"] == _COPILOT_PREFIX + _COPILOT_TASK_ID
 
 
 def test_copilot_with_no_base_never_scans_copilot_sessions(copilot_env, monkeypatch):
     """A github.com sign-in with no override pays nothing for the feature."""
     copilot_env["host"] = "github.com"
     monkeypatch.setattr(
-        _helpers, "copilot_session_id",
+        _helpers, "copilot_session_folder",
         lambda s: pytest.fail("scanned Copilot's sessions with no link base"),
     )
     rows = [_copilot_row()]
@@ -286,16 +292,34 @@ def test_a_copilot_miss_is_retried_only_while_the_launch_window_is_open(
     rows = [_copilot_row()]
 
     attach_provider_web_urls(rows)
-    assert rows[0]["web_url"] == "" and "s-cop" not in _helpers._COPILOT_IDS
+    assert rows[0]["web_url"] == "" and "s-cop" not in _helpers._COPILOT_FOLDERS
 
     _copilot_folder(tmp_path, _COPILOT_ID)
     attach_provider_web_urls(rows)
-    assert rows[0]["web_url"] == _COPILOT_PREFIX + _COPILOT_ID
+    assert rows[0]["web_url"] == _COPILOT_PREFIX + _COPILOT_TASK_ID
 
     late = [{**_copilot_row("s-late"), "project_dir": r"E:\work\other"}]
     clock["now"] = _COPILOT_STARTED + 600
     attach_provider_web_urls(late)
-    assert _helpers._COPILOT_IDS["s-late"] == ""
+    assert _helpers._COPILOT_FOLDERS["s-late"] is None
+
+
+@pytest.mark.parametrize("not_yet", [None, "not-a-uuid/../x"])
+def test_a_task_id_written_later_is_picked_up(
+    copilot_env, monkeypatch, tmp_path, not_yet
+):
+    """``/remote on`` can share a session at any point, even long after the
+    launch window closed, so a missing task id is never a final answer. Only a
+    UUID counts, so nothing else lands in a URL."""
+    monkeypatch.setattr(_helpers.time, "time", lambda: _COPILOT_STARTED + 600)
+    _copilot_folder(tmp_path, _COPILOT_ID, task_id=not_yet)
+    rows = [_copilot_row()]
+    attach_provider_web_urls(rows)
+    assert rows[0]["web_url"] == ""
+
+    _copilot_folder(tmp_path, _COPILOT_ID)
+    attach_provider_web_urls(rows)
+    assert rows[0]["web_url"] == _COPILOT_PREFIX + _COPILOT_TASK_ID
 
 
 @pytest.mark.parametrize(
