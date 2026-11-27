@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.webapp.session_host import server
@@ -82,6 +83,21 @@ def test_create_forwards_normalized_label(monkeypatch):
 
     assert resp.status_code == 200
     assert captured["label"] == "chief"
+
+
+@pytest.mark.parametrize("bad", ['"abc"', "[30]", "1e999"])
+def test_create_defaults_a_malformed_size(monkeypatch, bad):
+    captured = _stub_manager(monkeypatch)
+    client = TestClient(server.app)
+
+    resp = client.post(
+        "/sessions",
+        content=f'{{"project_dir": "p", "rows": {bad}, "cols": {bad}}}',
+        headers={"content-type": "application/json"},
+    )
+
+    assert resp.status_code == 200
+    assert (captured["rows"], captured["cols"]) == (40, 120)
 
 
 def test_create_accepts_ssh_agent_for_loopback_pty(monkeypatch):

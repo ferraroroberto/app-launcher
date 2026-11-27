@@ -200,9 +200,7 @@ async def create_session(request: Request) -> Dict[str, Any]:
     label = str(body.get("label") or "").strip().lower()
     # Phone-supplied spawn dimensions: size the PTY to the
     # real viewport before first paint so a ratatui TUI isn't cut.
-    # Omitted → the manager's legacy 40×120 default.
-    rows = int(body.get("rows") or 40)
-    cols = int(body.get("cols") or 120)
+    rows, cols = _pty_size(body)
     # User-configurable scrollback depth for full-screen agents (Settings
     # tab). Omitted/absent → SessionManager's
     # own default (older webapp builds, or a caller that doesn't set it).
@@ -357,7 +355,7 @@ async def session_resize(sid: str, request: Request) -> Dict[str, Any]:
     if session is None:
         raise HTTPException(status_code=404, detail=f"unknown session {sid}")
     body = await _json(request)
-    session.resize(int(body.get("rows") or 40), int(body.get("cols") or 120))
+    session.resize(*_pty_size(body))
     return {"ok": True}
 
 
@@ -519,6 +517,20 @@ async def _json(request: Request) -> Dict[str, Any]:
         return {}
 
 
+def _pty_size(body: Dict[str, Any]) -> Tuple[int, int]:
+    """``(rows, cols)`` from a request body or resize frame. A field that is
+    absent, falsy or not a finite number gets its 40×120 default, so a
+    malformed client value never fails the request or drops the socket."""
+
+    def field(key: str, default: int) -> int:
+        try:
+            return int(body.get(key) or default)
+        except (TypeError, ValueError, OverflowError):  # Overflow: JSON 1e999
+            return default
+
+    return field("rows", 40), field("cols", 120)
+
+
 async def _force_repaint(session) -> None:
     """Nudge a full-screen TUI into repainting a clean frame after a
     (re)connect.
@@ -580,7 +592,7 @@ async def _pump_from_client(
             # write() blocks in real time on large payloads.
             await pools.run_on(pools.PTY_WRITES, session.write, str(msg.get("data") or ""))
         elif kind == "resize" and role != "pc":
-            session.resize(int(msg.get("rows") or 40), int(msg.get("cols") or 120))
+            session.resize(*_pty_size(msg))
 
 
 def _upload_dir(project_dir: str) -> Path:

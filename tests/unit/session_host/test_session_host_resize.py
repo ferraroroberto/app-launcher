@@ -1,4 +1,5 @@
-"""``PtySession.resize()`` defends the PTY from resize storms (issue #930).
+"""Resize handling: ``PtySession.resize()`` defends the PTY from resize storms
+(issue #930), and the host's resize request and frame survive a malformed size.
 
 Every PTY resize SIGWINCHes an inline agent (Claude Code) into a full-viewport
 repaint, and the copy already scrolled into xterm's scrollback survives it —
@@ -14,11 +15,16 @@ defences, pinned here against a mock PTY:
 
 from __future__ import annotations
 
+import asyncio
 import re
 import time
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+from fastapi.testclient import TestClient
+
+from app.webapp.session_host import server
 from src import session_host
 from src.session_host import PtySession
 from src.vt_snapshot import VtSnapshot
@@ -94,6 +100,29 @@ def test_sub_floor_sample_at_the_floor_is_a_noop():
     session.resize(6, 51)
 
     session._pty.setwinsize.assert_not_called()
+
+
+def test_resize_request_defaults_a_malformed_size(monkeypatch):
+    session = MagicMock()
+    monkeypatch.setattr(server.manager, "get", lambda _sid: session)
+
+    resp = TestClient(server.app).post("/sessions/sid/resize", json={"rows": "abc", "cols": [30]})
+
+    assert resp.status_code == 200
+    session.resize.assert_called_once_with(40, 120)
+
+
+def test_resize_frame_defaults_a_malformed_size():
+    session = MagicMock()
+    socket = MagicMock()
+    socket.receive_text = AsyncMock(
+        side_effect=['{"type": "resize", "rows": "abc", "cols": 90}', asyncio.CancelledError]
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(server._pump_from_client(socket, session))
+
+    session.resize.assert_called_once_with(40, 90)
 
 
 def test_client_floor_matches_the_session_host_floor():
