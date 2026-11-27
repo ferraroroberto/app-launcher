@@ -8,7 +8,8 @@ Nothing else reaps this directory: :mod:`src.audit` appends a
 The window itself is **not** set here. It is one field,
 ``WebappConfig.session_retention_days`` in :mod:`src.webapp_config`, so a
 human can find and change it in ``config/webapp_config.json`` without
-reading this module; ``0`` keeps everything forever.
+reading this module; ``0`` keeps everything forever. While that file cannot be
+read the window is unknown, so neither caller falls back to the default one.
 
 :func:`sweep` is the single function that decides and deletes. It is
 deliberately conservative, because what it removes is not in git and not

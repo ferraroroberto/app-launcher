@@ -19,9 +19,16 @@ from types import SimpleNamespace
 import pytest
 
 from app.webapp import route_pools, server
-from src import instance_role, session_retention
+from scripts import session_retention as retention_cli
+from src import audit, instance_role, session_retention
 from src.clients import session as session_client
-from src.webapp_config import SESSION_HOST_PORT_ENV, WebappConfig, _validate
+from src.webapp_config import (
+    SESSION_HOST_PORT_ENV,
+    WEBAPP_CONFIG_PATH_ENV,
+    WebappConfig,
+    _validate,
+    load_webapp_config,
+)
 
 DAY = 86400
 NOW = 1_800_000_000.0  # fixed clock: 2027-01-15
@@ -357,9 +364,74 @@ async def _noop_async(*a, **k):
     return None
 
 
-def test_scheduled_sweep_uses_the_audit_sessions_dir(tmp_path, monkeypatch):
-    from src import audit
+class TestUnparseableConfig:
+    """A file that will not parse loads as defaults; the owner's window is
+    unknown then, so the default one must not delete anything."""
 
+    @pytest.fixture
+    def old_file(self, sessions, monkeypatch) -> Path:
+        old = sessions / "old.log"
+        old.write_text("x", encoding="utf-8")
+        t = time.time() - 400 * DAY
+        os.utime(old, (t, t))
+        os.utime(sessions / "fresh.log")  # real "now": no clock stand-down
+        monkeypatch.setattr(audit, "_SESSIONS_DIR", sessions)
+        monkeypatch.setattr(session_client, "list_sessions", lambda port: [])
+        return old
+
+    @pytest.fixture
+    def config_file(self, tmp_path, monkeypatch) -> Path:
+        path = tmp_path / "webapp_config.json"
+        path.write_text('{"session_retention_days": 0,', encoding="utf-8")
+        monkeypatch.setenv(WEBAPP_CONFIG_PATH_ENV, str(path))
+        return path
+
+    @pytest.mark.asyncio
+    async def test_the_webapp_tick_deletes_nothing_and_says_why(
+        self, old_file, config_file, monkeypatch, caplog
+    ):
+        sleeps = []
+
+        async def _one_cycle(_s):
+            sleeps.append(_s)
+            if len(sleeps) > 1:
+                raise asyncio.CancelledError
+
+        async def _inline(pool, fn, *a):
+            return fn(*a)
+
+        monkeypatch.setattr(server, "run_on", _inline)
+        monkeypatch.setattr(server.asyncio, "sleep", _one_cycle)
+        app = SimpleNamespace(
+            state=SimpleNamespace(webapp_config=load_webapp_config())
+        )
+
+        with pytest.raises(asyncio.CancelledError):
+            await server._session_retention_tick(app)
+
+        assert old_file.exists()
+        assert "session retention off" in caplog.text
+        assert str(config_file) in caplog.text
+
+    @pytest.mark.parametrize(
+        "argv, code, says",
+        [([], 2, "could not be read"), (["--days", "30"], 0, "would remove 1")],
+    )
+    def test_the_script_needs_days(
+        self, old_file, config_file, monkeypatch, capsys, argv, code, says
+    ):
+        monkeypatch.setattr(sys, "argv", ["session_retention.py", *argv])
+
+        assert retention_cli.main() == code
+        assert says in capsys.readouterr().out
+        assert old_file.exists()
+
+    def test_a_missing_config_keeps_the_default_window(self, config_file):
+        config_file.unlink()
+        assert server._session_retention_days(load_webapp_config()) == 365
+
+
+def test_scheduled_sweep_uses_the_audit_sessions_dir(tmp_path, monkeypatch):
     d = tmp_path / "sessions"
     d.mkdir()
     old = d / "old.log"

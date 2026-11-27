@@ -426,13 +426,22 @@ _RETENTION_INTERVAL_SECONDS = 24 * 3600.0
 
 
 def _session_retention_days(cfg: object) -> int:
-    """The configured window in days; ``0`` (keep forever) when unset.
+    """The configured window in days; ``0`` (delete nothing) when unset or unknown.
 
     Unlike the coverage interval, a config object *without* the key reads as
     off, not as the schema default: this tick deletes, so an absent setting
     must never arm it. A real :class:`~src.webapp_config.WebappConfig` always
-    carries the field, so this only matters for stubs and garbage.
+    carries the field, but one loaded from an unreadable file holds defaults,
+    not the owner's window, which may be longer or ``0``.
     """
+    load_error = getattr(cfg, "load_error", "")
+    if load_error:
+        _log.warning(
+            "⚠️ session retention off: %s. Nothing is deleted until the file "
+            "is fixed and the app restarted.",
+            load_error,
+        )
+        return 0
     try:
         return max(0, int(getattr(cfg, "session_retention_days", 0) or 0))
     except (TypeError, ValueError):
