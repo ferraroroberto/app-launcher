@@ -18,6 +18,7 @@ def _board_sources() -> list[Path]:
         _STATIC / "views" / "board-pane.html",
         _STATIC / "views" / "board-answers-dialog.html",
         _STATIC / "styles" / "board.css",
+        _STATIC / "styles" / "board-answers.css",
     ]
     files += sorted((_STATIC / "board").rglob("*.js"))
     files += sorted((PROJECT_ROOT / "app" / "webapp" / "routers").glob("board*.py"))

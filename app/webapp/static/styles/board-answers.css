@@ -1,0 +1,74 @@
+/* The chief's answer sheet: the modal shell, full-screen on the
+   phone. Each question borrows the transcript AskUserQuestion card's parts
+   (.tr-ask-*), so options, marks and the Other field look as they do in
+   Chat — but as a flat list row on the modal's top hairline (design.md
+   list-row), never a card nested in the modal's card. */
+.chief-answers-list { display: flex; flex-direction: column; }
+.chief-answers-list .tr-ask.chief-answer {
+  padding: 12px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+.chief-answer-head { flex-wrap: wrap; }
+.chief-answer-num {
+  font-size: var(--font-caption);
+  font-weight: 600;
+  color: var(--muted);
+}
+.chief-answer-ref {
+  font-size: var(--font-body-sm);
+  color: var(--accent-text);
+  overflow-wrap: anywhere;
+}
+span.chief-answer-ref { color: var(--muted); }
+/* The link's 44px hit area, invisible: down only by the question's 8px top
+   margin, so it never covers a URL there, and the rest upward. Each side
+   takes a spare pixel, or layout rounding leaves the box a fraction short. */
+a.chief-answer-ref { position: relative; }
+a.chief-answer-ref::before {
+  content: "";
+  position: absolute;
+  inset: min(0px, calc(100% - var(--hit-min) + 7px)) min(0px, calc((100% - var(--hit-min) - 1px) / 2)) -8px;
+}
+/* A URL in the question or its detail: an inline text link that wraps, since a
+   long address has no break point of its own at phone width. */
+.chief-answer .tr-ask-question a,
+.chief-answer-detail a { color: var(--accent); overflow-wrap: anywhere; }
+.chief-answers-also {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.chief-answers-also[hidden] { display: none; }
+.chief-answers-also > span { font-weight: 600; }
+/* The composer mount sits on the sheet's own surface, as the Board drawer's
+   does: no docked bar padding, hairline or card fill. */
+.chief-answers-also .compose-bar {
+  padding: 0;
+  border-top: 0;
+  background: transparent;
+}
+.chief-answers-note { margin: 0; text-align: center; }
+.chief-answers-defaults { margin: 0 0 4px; }
+@media (max-width: 520px) {
+  .chief-answers-dialog, .idea-sheet-dialog {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100vh;
+    max-height: 100dvh;
+    margin: 0;
+    border-radius: 0;
+  }
+  .chief-answers-dialog .detail-card, .idea-sheet-dialog .detail-card {
+    min-height: 100%;
+    border-radius: 0;
+    padding-top: calc(env(safe-area-inset-top, 0px) + 18px);
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+  }
+}

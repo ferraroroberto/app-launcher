@@ -1,7 +1,7 @@
 /* The Board's Ideas card and an idea's sheet (board/ideas-card.js,
    board/idea-sheet.js). The card's rows are the shared action-row, as every
    Board row; the segment is the vendored segmented control. The sheet is the
-   shared modal, full-screen on the phone like the answer sheet (board.css). */
+   shared modal, full-screen on the phone like the answer sheet (board-answers.css). */
 
 .board-ideas { margin-top: var(--gap); }
 .board-ideas[hidden] { display: none; }
