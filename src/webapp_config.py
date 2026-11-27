@@ -57,7 +57,7 @@ from src.webapp_settings.chief_timings import (
     CHIEF_TIMINGS,
     check_chief_timings,
 )
-from src.webapp_settings.loaders import load_field
+from src.webapp_settings.loaders import load_field, retention_problem
 from src.webapp_settings.migrations import migrate_legacy_keys
 from src.webapp_settings.values import (  # noqa: F401 — re-exported for webapp_config.<name> callers
     ALWAYS_ON_CLAUDE_FLAGS,
@@ -183,6 +183,9 @@ class WebappConfig:
     # "" otherwise. Not a setting, so never saved. The webapp refuses everyone
     # but the PC itself while it is set (src/middleware/unreadable_config.py).
     load_error: ClassVar[str] = ""
+    # Why the file's session_retention_days is no window; "" otherwise. Not
+    # saved. session_retention_days is 0 (delete nothing) while it is set.
+    retention_error: ClassVar[str] = ""
 
     host: str = DEFAULT_HOST
     port: int = DEFAULT_PORT
@@ -590,17 +593,19 @@ def _read_document(target: Path) -> object:
     return json.loads(target.read_text(encoding="utf-8-sig"))
 
 
-def _check_replaceable(target: Path) -> None:
-    """Raise ``ValueError`` when ``target`` exists but cannot be read.
+def _check_replaceable(target: Path) -> dict:
+    """``target``'s current document (``{}`` when there is no file); raise
+    ``ValueError`` when it exists but cannot be read.
 
     Such a file loads as all defaults, so saving over it would replace the
     owner's values with them.
     """
     if not target.exists():
-        return
+        return {}
     try:
-        if isinstance(_read_document(target), dict):
-            return
+        document = _read_document(target)
+        if isinstance(document, dict):
+            return document
         reason = "not a JSON object"
     except (OSError, ValueError) as exc:
         reason = type(exc).__name__
@@ -610,7 +615,7 @@ def _check_replaceable(target: Path) -> None:
     )
 
 
-#: Load errors already logged: the file is re-read many times per process.
+#: Load and retention errors already logged: the file is re-read many times per process.
 _logged_load_errors: set = set()
 
 
@@ -663,6 +668,9 @@ def load_webapp_config(
         return _unreadable(target, "it is not a JSON object", apply_env_override)
 
     raw = migrate_renamed_models(migrate_legacy_keys(raw, target))
+    problem = retention_problem(raw)
+    if problem:
+        raw = {**raw, "session_retention_days": 0}
 
     # One generic pass over the dataclass's own field list: the dataclass is
     # the single declaration of name, type and default both directions read.
@@ -676,6 +684,13 @@ def load_webapp_config(
     if apply_env_override:
         _apply_session_host_override(cfg)
     _validate(cfg)
+    if problem:
+        cfg.retention_error = f"{target}: {problem}"
+        log_once(
+            _logged_load_errors, cfg.retention_error, 16,
+            logger.warning, "⚠️  %s; no session files are deleted until it is fixed",
+            cfg.retention_error,
+        )
     return cfg
 
 
@@ -686,13 +701,17 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
     cannot be read.
     """
     target = _resolve_config_path(path)
-    _check_replaceable(target)
+    existing = _check_replaceable(target)
     runtime_files.make_dirs(target.parent)
 
     # Derived straight from the dataclass — the field list, in
     # declaration order, IS the on-disk schema. asdict() also deep-copies the
     # list/dict fields, so the writer can never alias live config state.
     payload = asdict(cfg)
+    # An unusable retention value stays as written: saving the in-memory 0 over
+    # it would clear the error and make "keep forever" the owner's setting.
+    if retention_problem(existing):
+        payload["session_retention_days"] = existing["session_retention_days"]
     atomic_write_json(target, payload)
     logger.info(f"💾 Saved webapp_config to {target}")
     return target
@@ -715,6 +734,8 @@ def update_webapp_config(**fields) -> WebappConfig:
     patched = with_visible_defaults(replace(current, **fields), VALID_CODING_MODEL_CHOICES)
     _validate(patched)
     save_webapp_config(patched)
+    # replace() builds a new object, and the file still holds the bad value.
+    patched.retention_error = current.retention_error
     return _apply_session_host_override(patched)
 
 

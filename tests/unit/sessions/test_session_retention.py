@@ -10,6 +10,7 @@ jumped forward.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 import time
@@ -28,6 +29,7 @@ from src.webapp_config import (
     WebappConfig,
     _validate,
     load_webapp_config,
+    update_webapp_config,
 )
 
 DAY = 86400
@@ -364,20 +366,40 @@ async def _noop_async(*a, **k):
     return None
 
 
+@pytest.fixture
+def old_file(sessions, monkeypatch) -> Path:
+    old = sessions / "old.log"
+    old.write_text("x", encoding="utf-8")
+    t = time.time() - 400 * DAY
+    os.utime(old, (t, t))
+    os.utime(sessions / "fresh.log")  # real "now": no clock stand-down
+    monkeypatch.setattr(audit, "_SESSIONS_DIR", sessions)
+    monkeypatch.setattr(session_client, "list_sessions", lambda port: [])
+    return old
+
+
+async def _one_tick(cfg, monkeypatch) -> None:
+    """One cycle of the webapp's retention tick, on ``cfg``, run inline."""
+    sleeps = []
+
+    async def _one_cycle(_s):
+        sleeps.append(_s)
+        if len(sleeps) > 1:
+            raise asyncio.CancelledError
+
+    async def _inline(pool, fn, *a):
+        return fn(*a)
+
+    monkeypatch.setattr(server, "run_on", _inline)
+    monkeypatch.setattr(server.asyncio, "sleep", _one_cycle)
+    app = SimpleNamespace(state=SimpleNamespace(webapp_config=cfg))
+    with pytest.raises(asyncio.CancelledError):
+        await server._session_retention_tick(app)
+
+
 class TestUnparseableConfig:
     """A file that will not parse loads as defaults; the owner's window is
     unknown then, so the default one must not delete anything."""
-
-    @pytest.fixture
-    def old_file(self, sessions, monkeypatch) -> Path:
-        old = sessions / "old.log"
-        old.write_text("x", encoding="utf-8")
-        t = time.time() - 400 * DAY
-        os.utime(old, (t, t))
-        os.utime(sessions / "fresh.log")  # real "now": no clock stand-down
-        monkeypatch.setattr(audit, "_SESSIONS_DIR", sessions)
-        monkeypatch.setattr(session_client, "list_sessions", lambda port: [])
-        return old
 
     @pytest.fixture
     def config_file(self, tmp_path, monkeypatch) -> Path:
@@ -390,24 +412,7 @@ class TestUnparseableConfig:
     async def test_the_webapp_tick_deletes_nothing_and_says_why(
         self, old_file, config_file, monkeypatch, caplog
     ):
-        sleeps = []
-
-        async def _one_cycle(_s):
-            sleeps.append(_s)
-            if len(sleeps) > 1:
-                raise asyncio.CancelledError
-
-        async def _inline(pool, fn, *a):
-            return fn(*a)
-
-        monkeypatch.setattr(server, "run_on", _inline)
-        monkeypatch.setattr(server.asyncio, "sleep", _one_cycle)
-        app = SimpleNamespace(
-            state=SimpleNamespace(webapp_config=load_webapp_config())
-        )
-
-        with pytest.raises(asyncio.CancelledError):
-            await server._session_retention_tick(app)
+        await _one_tick(load_webapp_config(), monkeypatch)
 
         assert old_file.exists()
         assert "session retention off" in caplog.text
@@ -428,6 +433,56 @@ class TestUnparseableConfig:
 
     def test_a_missing_config_keeps_the_default_window(self, config_file):
         config_file.unlink()
+        assert server._session_retention_days(load_webapp_config()) == 365
+
+
+class TestUnusableRetentionValue:
+    """A file that parses but holds a value that is no window: delete nothing
+    and say which key, never fall back to the default window."""
+
+    @pytest.fixture
+    def write(self, tmp_path, monkeypatch):
+        path = tmp_path / "webapp_config.json"
+        monkeypatch.setenv(WEBAPP_CONFIG_PATH_ENV, str(path))
+
+        def _write(body: str) -> Path:
+            path.write_text(body, encoding="utf-8")
+            return path
+
+        return _write
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "value",
+        ['"forever"', "null", "-1", '"30"', "true", "1.5", "[30]", "Infinity"],
+    )
+    async def test_nothing_is_deleted_and_the_key_is_named(
+        self, old_file, write, monkeypatch, caplog, capsys, value
+    ):
+        write(f'{{"session_retention_days": {value}}}')
+        monkeypatch.setattr(sys, "argv", ["session_retention.py"])
+
+        await _one_tick(load_webapp_config(), monkeypatch)
+
+        assert "session retention off" in caplog.text
+        assert "session_retention_days must be" in caplog.text
+        assert retention_cli.main() == 2
+        assert "session_retention_days must be" in capsys.readouterr().out
+        assert old_file.exists()
+
+    def test_a_save_keeps_the_value_and_the_error(self, write):
+        path = write('{"session_retention_days": "forever"}')
+
+        saved = update_webapp_config(chief_doorbell=True)
+
+        assert server._session_retention_days(saved) == 0
+        assert "session_retention_days" in saved.retention_error
+        on_disk = json.loads(path.read_text(encoding="utf-8"))
+        assert on_disk["session_retention_days"] == "forever"
+        assert on_disk["chief_doorbell"] is True
+
+    def test_a_missing_key_keeps_the_default_window(self, write):
+        write("{}")
         assert server._session_retention_days(load_webapp_config()) == 365
 
 

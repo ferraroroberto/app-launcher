@@ -8,8 +8,8 @@ why the rest stays. The retention window itself is
 
 Exit status: 0 when a selection was made (even an empty one), 2 when the
 sweep stood down because something it needs was unknown (config file
-unreadable and no ``--days``, session-host unreachable, directory unreadable,
-clock suspect).
+unreadable or its retention value unusable and no ``--days``, session-host
+unreachable, directory unreadable, clock suspect).
 
 Usage
 -----
@@ -58,9 +58,10 @@ def main() -> int:
     args = parser.parse_args()
 
     cfg = load_webapp_config()
-    if args.days is None and cfg.load_error:
+    error = cfg.load_error or cfg.retention_error
+    if args.days is None and error:
         print(
-            f"⚠️ {cfg.load_error}. The configured window is unknown, so nothing "
+            f"⚠️ {error}. The configured window is unknown, so nothing "
             "is selected; fix the file or pass --days."
         )
         return 2

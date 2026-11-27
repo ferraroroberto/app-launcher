@@ -169,15 +169,16 @@ surfaces:
 
   - id: chrome.config-error
     area: chrome
-    title: Unreadable settings banner
+    title: Settings file banner
     root: data-surface
     reach:
-      - appears by itself above every tab while the settings file cannot be read
+      - appears by itself above every tab while the settings file cannot be read, or its session retention value is unusable
     holds:
-      - the file, the parse error, and that remote access is off until the file is fixed and the app restarted
+      - for an unreadable file, the file, the parse error, and that remote access is off until the file is fixed and the app restarted
+      - for an unusable retention value, the file, the key, the value, and that no session files are deleted until it is fixed and the app restarted
     states:
-      - hidden whenever the settings file reads, or is not there yet
-      - only the PC itself sees it, since every other caller is refused outright
+      - hidden whenever the settings file reads with a usable retention value, or is not there yet
+      - for an unreadable file only the PC itself sees it, since every other caller is refused outright
 
   - id: app.update-banner
     area: chrome
