@@ -375,6 +375,8 @@ async def _build_board_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[str
         # cache: ``available: false`` until a list has landed, never "none".
         # Each item carries its backlog ``bucket`` and whether it is ``counted``.
         "owner_checks": owner_section,
+        # What Copy puts in place of an owner step's ``<root>``; null is unknown.
+        "fleet_root": owner_checks.fleet_root(cfg.projects_dir),
     }
 
 

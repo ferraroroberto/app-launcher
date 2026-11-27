@@ -1046,7 +1046,7 @@ flowchart LR
   - an owner check's exact step in copyable blocks, with what to expect
 - **Does:**
   - Done closes; an answer is sent when it is complete
-  - Copy puts an owner step's lines on the clipboard
+  - Copy puts an owner step's lines on the clipboard, with this PC's fleet root in place of <root>
   - tap a web address in a question or its detail opens it in a new tab
 - **States:** an answer in flight locks the card
 
@@ -1104,7 +1104,7 @@ flowchart LR
 - **Does:**
   - tap a session opens its drawer
   - an owner check folds open to say what it needs, with its exact step and what to expect
-  - Copy puts a step's lines on the clipboard
+  - Copy puts a step's lines on the clipboard, with this PC's fleet root in place of <root>
   - each owner group has a button that opens its answer sheet
 - **States:**
   - empty: a line saying nothing needs you

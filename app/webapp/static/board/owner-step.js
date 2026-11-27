@@ -5,12 +5,15 @@
  * code-listing frame: the place as its caption, an icon-button Copy), so a
  * copy never mixes a terminal command with a screen to look at. A field the
  * note does not carry says so in its own line, and an issue with no note says
- * why there is none; nothing is guessed.
+ * why there is none; nothing is guessed. Copy alone fills `<root>` with this
+ * PC's fleet root, and says when it could not.
  */
 
 import { el } from '../dom-utils.js';
 import { icon } from '../_vendored/icons/icons.js';
 import { copyText } from '../apps/apps-listeners.js';
+import { state } from '../state.js';
+import { fillRoot } from './fill-root.js';
 
 // fleet-config's `where` values (docs/owner-check.md "The exact step").
 const WHERE_LABEL = {
@@ -39,7 +42,7 @@ export function noNoteChip(item) {
 }
 
 // Consecutive lines of one place, in order: [{ where, text }] with the texts
-// joined one per line, which is what Copy puts on the clipboard.
+// joined one per line, which is what Copy puts on the clipboard (`<root>` filled).
 export function runBlocks(run) {
   const blocks = [];
   (run || []).forEach(function (line) {
@@ -52,11 +55,19 @@ export function runBlocks(run) {
 
 function copy(button, block) {
   const dialog = button.closest('dialog');
-  copyText(block.text, COMMANDS.indexOf(block.where) === -1 ? 'Step' : 'Command', {
+  const what = COMMANDS.indexOf(block.where) === -1 ? 'Step' : 'Command';
+  const filled = fillRoot(block.text, state.board && state.board.fleet_root);
+  const opts = {
     // A modal sheet covers the page's toast, so it carries its own.
     host: (dialog && dialog.querySelector('.sheet-toast')) || undefined,
     byHand: 'Select it and copy by hand.',
-  });
+  };
+  if (filled.unfilled) {
+    opts.done = what + ' copied with <root> unfilled: fleet folder unknown';
+    // It will not run as pasted, so it stays long enough to read.
+    opts.ms = 4500;
+  }
+  copyText(filled.text, what, opts);
 }
 
 function runBlock(block) {
