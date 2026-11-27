@@ -834,7 +834,7 @@ class SessionManager:
 
         # The same floors :meth:`PtySession.resize` applies, as the docstring
         # above promises. `POST /sessions` forwards the request's rows
-        # unfloored (`int(body.get("rows") or 40)` only catches a falsy value,
+        # unfloored (its parse only replaces a falsy or non-numeric value,
         # so a literal 1 survives), and a 1-row ConPTY's first real resize
         # fires exactly the full-viewport repaint PTY_MIN_ROWS exists to
         # prevent.
