@@ -519,6 +519,15 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
   overflow-wrap: anywhere;
 }
 span.chief-answer-ref { color: var(--muted); }
+/* The link's 44px hit area, invisible: down only by the question's 8px top
+   margin, so it never covers a URL there, and the rest upward. Each side
+   takes a spare pixel, or layout rounding leaves the box a fraction short. */
+a.chief-answer-ref { position: relative; }
+a.chief-answer-ref::before {
+  content: "";
+  position: absolute;
+  inset: min(0px, calc(100% - var(--hit-min) + 7px)) min(0px, calc((100% - var(--hit-min) - 1px) / 2)) -8px;
+}
 /* A URL in the question or its detail: an inline text link that wraps, since a
    long address has no break point of its own at phone width. */
 .chief-answer .tr-ask-question a,

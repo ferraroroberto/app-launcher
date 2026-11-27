@@ -11,6 +11,7 @@ from playwright.sync_api import Page, expect
 from tests.e2e.board._chief_support import (
     _QUESTIONS,
     _RECORDER_MOCK,
+    _assert_ref_link_targets,
     _board_payload,
     _capture_chief_input,
     _mock_board,
@@ -246,6 +247,7 @@ def test_chief_and_owner_checks_open_separate_sheets(
     expect(dialog.locator(".chief-answer")).to_have_count(2)
     expect(dialog.locator(".chief-answer:not(.owner-answer)")).to_have_count(0)
     expect(dialog.locator("#chiefAnswersAlso")).to_be_visible()
+    _assert_ref_link_targets(authed_page, dialog)
     dialog.locator("#chiefAnswersClose").click()
     expect(dialog).to_be_hidden()
 

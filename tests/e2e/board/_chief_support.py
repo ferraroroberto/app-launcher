@@ -8,11 +8,13 @@ import json as _json
 import re
 from datetime import datetime, timezone
 
-from playwright.sync_api import Page
+from playwright.sync_api import Locator, Page
 
 from src.chief import answers as chief_answers
 from src.chief import plan as chief_plan
 from tests.e2e._audio_mock import RECORDER_BASE_JS
+from tests.e2e._geometry import apply_matrix_leg, effective_rect
+from tests.e2e._layout_lint import lint_layout
 from tests.e2e.board._support import _open_board  # noqa: F401  (re-exported to the chief tests)
 
 _CHIEF_CARD = {
@@ -344,3 +346,36 @@ _RECORDER_MOCK = """
   window.MediaRecorder = FakeRecorder;
 })()
 """
+
+
+# A tap just inside the top and bottom edge of the 44px box has to reach the link.
+_EDGES_HIT_JS = """(el, box) => [box.top + 1, box.bottom - 1].every(
+  y => document.elementFromPoint((box.left + box.right) / 2, y) === el)"""
+
+
+def _assert_ref_link_targets(page: Page, dialog: Locator) -> None:
+    """#2682: each item head's issue link takes a thumb at phone width, in both
+    themes: a 44px hit box that is really tappable and reaches no other control."""
+    size = page.viewport_size
+    theme_before = page.evaluate("document.documentElement.dataset.theme")
+    others = "button:visible, input:visible, textarea:visible, a:visible:not(.chief-answer-ref)"
+    for theme in ("light", "dark"):
+        apply_matrix_leg(page, 390, theme)
+        links = dialog.locator("a.chief-answer-ref")
+        assert links.count(), "no issue link in the sheet"
+        for link in links.all():
+            link.evaluate("el => el.scrollIntoView({block: 'center'})")
+            box = effective_rect(link).effective
+            assert box.height >= 43.99 and box.width >= 43.99, f"{theme}: {box}"
+            edges = {"top": box.top, "bottom": box.bottom, "left": box.left, "right": box.right}
+            assert link.evaluate(_EDGES_HIT_JS, edges), f"{theme}: the 44px box is not tappable"
+            for other in dialog.locator(others).all():
+                o = effective_rect(other).effective
+                apart = (o.bottom <= box.top or o.top >= box.bottom
+                         or o.right <= box.left or o.left >= box.right)
+                assert apart, f"{theme}: {box} overlaps {o}"
+        flagged = [f.line() for f in lint_layout(page)
+                   if f.kind == "tap-target" and "chief-answer-ref" in f.element]
+        assert not flagged, flagged
+    page.evaluate("t => { document.documentElement.dataset.theme = t; }", theme_before)
+    page.set_viewport_size(size)
