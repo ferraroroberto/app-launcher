@@ -26,6 +26,7 @@ CLI, for ``tray.bat`` and other non-Python callers (run from the repo root)::
 
 from __future__ import annotations
 
+import ctypes
 import logging
 import os
 import subprocess
@@ -52,24 +53,30 @@ _ARG_SEP = chr(31)
 
 # One line, single quotes only: it travels as one argv element, and a double
 # quote or a backslash before one would be re-escaped on the way. A leading
-# `-Name` token is a named parameter (taking the next token as its value unless
-# that is another name), anything else is positional -- the same split `-File`
-# applies. An `exit` inside the script ends this process with its code; a
-# script that simply finishes exits 0, as `-File` does.
+# `-Name` token is a named parameter, anything else is positional. The name takes
+# the next token as its value unless that token names a parameter the script
+# declares (full name, prefix or alias), so a value such as `-m tray` stays a
+# value, as under `-File`. An `exit` inside the script ends this process with its
+# code; a script that simply finishes exits 0, as `-File` does.
 BOOTSTRAP = (
     "$path = [IO.Path]::GetFullPath($env:PSL_SCRIPT); "
     "$argv = @($env:PSL_ARGV -split [char]31 | Select-Object -Skip 1); "
-    "$pos = @(); $named = @{}; "
-    "for ($i = 0; $i -lt $argv.Count; $i++) { "
-    "$t = [string]$argv[$i]; "
-    "if ($t -match '^-[A-Za-z]') { "
-    "if (($i + 1 -lt $argv.Count) -and (([string]$argv[$i + 1]) -notmatch '^-[A-Za-z]')) "
-    "{ $named[$t.Substring(1)] = [string]$argv[$i + 1]; $i++ } else { $named[$t.Substring(1)] = $true } "
-    "} else { $pos += $t } }; "
     "$PSL_Root = Split-Path -Parent $path; "
     "try { "
     "$text = [IO.File]::ReadAllText($path).Replace('$PSScriptRoot', '$PSL_Root'); "
     "$block = [scriptblock]::Create($text); "
+    "$function:PSL_Target = $block; "
+    "$meta = (Get-Command PSL_Target -CommandType Function).Parameters; "
+    "$known = @(); if ($meta) { $known = @($meta.Keys) + @($meta.Values | ForEach-Object { $_.Aliases }) }; "
+    "$pos = @(); $named = @{}; "
+    "for ($i = 0; $i -lt $argv.Count; $i++) { "
+    "$t = [string]$argv[$i]; "
+    "if ($t -match '^-[A-Za-z]') { "
+    "$value = $i + 1 -lt $argv.Count; "
+    "if ($value -and ([string]$argv[$i + 1]) -match '^-([A-Za-z][^:]*)') { "
+    "$n = $Matches[1]; $value = @($known | Where-Object { $_.StartsWith($n, 'OrdinalIgnoreCase') }).Count -eq 0 }; "
+    "if ($value) { $named[$t.Substring(1)] = [string]$argv[$i + 1]; $i++ } else { $named[$t.Substring(1)] = $true } "
+    "} else { $pos += $t } }; "
     "& $block @pos @named "
     "} catch { [Console]::Error.WriteLine(($_ | Out-String)); exit 1 }; "
     "exit 0"
@@ -81,14 +88,25 @@ _log = logging.getLogger(__name__)
 def _inherit(stream: object) -> object:
     """The caller's own std handle for the child, or DEVNULL when it has none.
 
-    The child runs with NO_WINDOW, which gives it a console of its own, so a handle left to
-    default would be that hidden console and the script's output would never reach the caller
-    (a redirected gate log, a tray.bat console).
+    A child run with NO_WINDOW has a console of its own, so a handle left to default would be
+    that hidden console and the script's output would never reach the caller's redirect.
     """
     try:
         return stream.fileno()  # type: ignore[attr-defined]
     except (AttributeError, OSError, ValueError):
         return subprocess.DEVNULL
+
+
+def _window_flags() -> int:
+    """NO_WINDOW only for a caller that has no console of its own.
+
+    A child of a console caller (an operator's terminal) has to share that console: under
+    NO_WINDOW it gets a hidden one, and what it writes to the caller's console handle is
+    never shown. Sharing a console opens no window.
+    """
+    if os.name == "nt" and ctypes.windll.kernel32.GetConsoleCP():
+        return 0
+    return NO_WINDOW
 
 
 def effective_policy(timeout: float = _PROBE_TIMEOUT_S) -> Optional[str]:
@@ -162,7 +180,7 @@ def run_script(
         stdout=_inherit(sys.stdout),
         stderr=_inherit(sys.stderr),
         timeout=timeout,
-        creationflags=NO_WINDOW,
+        creationflags=_window_flags(),
         check=False,
     )
     return done.returncode

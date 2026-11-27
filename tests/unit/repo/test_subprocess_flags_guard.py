@@ -38,6 +38,10 @@ _VISIBLE_CONSOLE_EXEMPT: Dict[str, str] = {
         "its pytest child streams into the gate's own console, which a windowless child "
         "would not share. Nothing in the tray reaches it."
     ),
+    "src/launching/ps_script.py::run_script": (
+        "A console caller (an operator's terminal) must share its console or the script's output "
+        "is never shown. A console-less caller still gets NO_WINDOW, which test_ps_script.py pins."
+    ),
 }
 
 #: Files copied byte-verbatim from project-scaffolding, which cannot import this
