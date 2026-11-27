@@ -100,17 +100,22 @@ Stays where it is, because it lives outside the app folder: the usage, timing an
 
 ### Reinstall in the same folder (the usual case)
 
-From a terminal whose current folder is outside the app:
+This works whatever version the installed copy is, because it runs from a fresh clone beside it and never runs the old copy's code. Run these from `<root>`, the folder that holds `app-launcher`:
 
 ```powershell
-cd <PARENT FOLDER>
-.\app-launcher\setup.bat -InPlace -WhatIf    # read the backup name and every step; nothing changes
-.\app-launcher\setup.bat -InPlace
+cd <root>
+git clone https://github.com/ferraroroberto/app-launcher.git app-launcher.incoming    # run nothing in it yet
+.\app-launcher.incoming\setup.bat -Replace app-launcher -WhatIf    # read the backup name and every step; nothing changes
+.\app-launcher.incoming\setup.bat -Replace app-launcher
 ```
 
-It stops the app, keeps the replaced copy as `app-launcher.bak-YYYYMMDD-N`, clones `origin` into the same path, copies the files above, installs, starts and passes only when the new clone serves its own commit. The path is unchanged, so the log-on entry, the job schedules and your shortcuts need no edit.
+Both copies must name the same repository, so when `git -C app-launcher remote get-url origin` prints another URL (a fork, SSH), clone that one. The incoming clone must be fresh: no changed or untracked files and no `.venv`.
 
-The new clone holds only what `origin` has. Unpushed commits, local branches, stashes and linked worktrees stay with the backup, so push or finish them first.
+It stops the app, keeps the replaced copy as `app-launcher.bak-YYYYMMDD-N`, moves `app-launcher.incoming` into the same path, copies the files above, installs, starts and passes only when the new clone serves its own commit. The path is unchanged, so the log-on entry, the job schedules and your shortcuts need no edit. A run that fails before the rename leaves the install in its folder: start it again with `tray.bat --restart`.
+
+On an install whose `setup.bat` already has `-InPlace`, `.\app-launcher\setup.bat -InPlace` from `<root>` does the same and makes the clone itself.
+
+The new clone holds only what `origin` has. Uncommitted edits, unpushed commits, local branches, stashes and linked worktrees stay with the backup, so push or finish them first.
 
 ### Beside it (another folder, or an old copy that is not a git clone)
 

@@ -17,11 +17,13 @@ Two entries, both stdlib only (schema: project-scaffolding ``docs/installer.md``
 
 Verify passes only when the endpoint serves this clone's ``HEAD`` and the process
 listening on the port runs from this clone, so an old copy still serving the port
-fails it. The port is the one this PC's config sets (``port_config``), the declared
-one as fallback, and the scheme is whichever of http and https answers. A fact a
-probe cannot establish is ``unknown`` and fails the run. No config or secret value
-is ever printed: files and keys are named, values never. ``-WhatIf`` reports every
-step and every file it would copy, and changes nothing; ``-Json`` prints the report as JSON.
+fails it. A path counts as a folder's when it is spelled that way or leads there,
+so a copy started through a junction or a mapped drive is the same copy. The port
+is the one this PC's config sets (``port_config``), the declared one as fallback,
+and the scheme is whichever of http and https answers. A fact a probe cannot
+establish is ``unknown`` and fails the run. No config or secret value is ever
+printed: files and keys are named, values never. ``-WhatIf`` reports every step
+and every file it would copy, and changes nothing; ``-Json`` prints the report as JSON.
 """
 
 from __future__ import annotations
@@ -70,6 +72,10 @@ POLL_S = 2.0
 # Abbreviated commit ids shorter than git's default are not compared.
 MIN_SHA_LEN = 7
 TEXT_SCAN_MAX_BYTES = 1_000_000
+# The local addresses a connection to 127.0.0.1 can meet: the wildcards and loopback itself. A reverse proxy on a
+# LAN or VPN address may share the port number without being a rival. "" is a listener whose address the listing
+# did not give, counted so that an unknown never reads as free.
+LOOPBACK_LISTENERS = frozenset({"0.0.0.0", "::", "127.0.0.1", "::1", ""})
 
 PYTHON_NAMES = ("python.exe", "pythonw.exe", "python", "pythonw", "py.exe")
 DB_SUFFIXES = (".sqlite", ".sqlite3", ".db")
@@ -81,6 +87,9 @@ DATA_ROOT_ENV = "FLEET_DATA_ROOT"
 WINDOWS_DATA_ROOT = Path("C:/sqlite")
 # A path in free text ends at a separator, a quote, a space or the end; `app` must not match `app.bak-1`.
 PATH_END = r"(?=$|[\\/\"'\s;,])"
+# A drive-letter path in free text, up to a character no path holds or the next drive letter (a shortcut's target
+# and arguments arrive unquoted on one line). The length cap bounds the word-by-word tries on a long line.
+DRIVE_PATH = re.compile(r"(?<![A-Za-z0-9])[A-Za-z]:[\\/](?:(?![A-Za-z]:)[^:\"<>|*?\r\n]){0,1024}")
 
 Runner = Callable[..., "subprocess.CompletedProcess[Any]"]
 
@@ -168,12 +177,34 @@ def _norm(path: str) -> str:
     return os.path.normcase(os.path.normpath(path))
 
 
+def _below(path: str, folder: str) -> bool:
+    """Whether ``path`` is ``folder`` or below it as spelled, by path component."""
+    target, base = _norm(path), _norm(folder).rstrip("\\/")
+    return target == base or target.startswith(base + os.sep)
+
+
+def real_path(path: str) -> str:
+    """Where ``path`` leads: junctions, symlinks and subst or mapped drives followed; as given when it cannot tell."""
+    try:
+        return os.path.realpath(path)
+    except (OSError, ValueError):
+        return path
+
+
 def inside(path: str, folder: Path) -> bool:
-    """Whether ``path`` is ``folder`` or below it, by path component (``app`` never contains ``app.bak-1``)."""
+    """Whether ``path`` is ``folder`` or below it, by path component (``app`` never contains ``app.bak-1``).
+
+    As spelled, or by where it leads, since a junction or a mapped drive is another spelling of the same folder.
+    Every level of ``path`` is followed, so a ``.venv`` that is itself a junction to elsewhere still counts.
+    """
     if not path:
         return False
-    target, base = _norm(path), _norm(str(folder)).rstrip("\\/")
-    return target == base or target.startswith(base + os.sep)
+    if _below(path, str(folder)):
+        return True
+    if not os.path.isabs(path):  # never resolved against this run's own current folder
+        return False
+    base, spelled = real_path(str(folder)), Path(os.path.normpath(path))
+    return any(_below(real_path(str(level)), base) for level in (spelled, *spelled.parents))
 
 
 def _spellings(folder: Path) -> list[str]:
@@ -181,19 +212,52 @@ def _spellings(folder: Path) -> list[str]:
     return list(dict.fromkeys([text, text.replace("\\", "/")]))
 
 
+def _leads_into(run: str, base: str) -> tuple[str, str] | None:
+    """The shortest leading part of ``run`` that leads into ``base``, and what it adds below it ("." for ``base``).
+
+    A path may hold spaces, so every place it could end is tried, shortest first.
+    """
+    for end in re.finditer(PATH_END, run):
+        head = run[:end.start()]
+        if len(head.rstrip("\\/")) <= 2:  # a bare "C:" would mean the current folder of that drive
+            continue
+        target = real_path(os.path.normpath(head))
+        if _below(target, base):
+            return head, os.path.relpath(target, base)
+        if run[len(head):len(head) + 1] in ("\\", "/") and not os.path.exists(head):
+            break  # nothing under a folder that is not there leads anywhere
+    return None
+
+
 def mentions(text: str, folder: Path) -> bool:
-    """Whether free text (a command line, a shortcut, a script) names ``folder`` or a path below it."""
-    return any(re.search(re.escape(s) + PATH_END, text or "", re.IGNORECASE) for s in _spellings(folder))
+    """Whether free text (a command line, a shortcut, a script) names ``folder`` or a path below it.
+
+    As spelled, or through any drive-letter path in it that leads there (a junction, a mapped drive).
+    """
+    text = text or ""
+    if any(re.search(re.escape(s) + PATH_END, text, re.IGNORECASE) for s in _spellings(folder)):
+        return True
+    base = real_path(str(folder))
+    return any(_leads_into(run, base) for run in dict.fromkeys(DRIVE_PATH.findall(text)))
+
+
+def _in_style_of(path: Path, spelled: str) -> str:
+    text = str(path)
+    return text.replace("\\", "/") if "/" in spelled and "\\" not in spelled else text
 
 
 def rebind_text(value: str, old: Path, new: Path) -> str | None:
-    """``value`` with a leading ``old`` folder replaced by ``new`` (in the slash style it used), else None."""
+    """``value`` with a leading ``old`` folder, however spelled, replaced by ``new`` in its slash style, else None."""
     for spelling in _spellings(old):
         match = re.match(re.escape(spelling) + PATH_END, value, re.IGNORECASE)
         if match:
-            base = str(new).replace("\\", "/") if "/" in spelling and "\\" not in spelling else str(new)
-            return base + value[match.end():]
-    return None
+            return _in_style_of(new, spelling) + value[match.end():]
+    run = DRIVE_PATH.match(value)
+    found = _leads_into(run.group(), real_path(str(old))) if run else None
+    if found is None:
+        return None
+    head, rest = found
+    return _in_style_of(new / rest, head) + value[len(head):]
 
 
 def rebind_values(data: Any, old: Path, new: Path, prefix: str = "") -> list[str]:
@@ -265,7 +329,8 @@ def run_powershell(script: str, runner: Runner) -> Any | None:
 PS_PROCESSES = r"""
 $procs = @(Get-CimInstance Win32_Process | ForEach-Object {
   @{ pid = [int]$_.ProcessId; ppid = [int]$_.ParentProcessId; exe = [string]$_.ExecutablePath; cmd = [string]$_.CommandLine } })
-$ports = @(Get-NetTCPConnection -State Listen | ForEach-Object { @{ port = [int]$_.LocalPort; pid = [int]$_.OwningProcess } })
+$ports = @(Get-NetTCPConnection -State Listen | ForEach-Object {
+  @{ port = [int]$_.LocalPort; pid = [int]$_.OwningProcess; address = [string]$_.LocalAddress } })
 ConvertTo-Json -InputObject @{ procs = $procs; ports = $ports } -Depth 4 -Compress
 """
 
@@ -300,10 +365,14 @@ class Proc:
 
 @dataclass
 class Snapshot:
-    """Every process and which ones listen on which TCP port, at one moment."""
+    """Every process and which ones listen on which TCP port and address, at one moment."""
 
     procs: dict[int, Proc]
-    listeners: dict[int, set[int]]  # port -> listening PIDs
+    listeners: dict[int, dict[int, set[str]]]  # port -> listening PID -> its local addresses
+
+    def holders(self, port: int) -> set[int]:
+        """The PIDs listening on ``port`` where 127.0.0.1, the only address verify asks, can reach them."""
+        return {pid for pid, addresses in self.listeners.get(port, {}).items() if addresses & LOOPBACK_LISTENERS}
 
 
 def take_snapshot(runner: Runner) -> Snapshot | None:
@@ -313,10 +382,11 @@ def take_snapshot(runner: Runner) -> Snapshot | None:
         return None
     procs = {int(p["pid"]): Proc(int(p["pid"]), int(p["ppid"]), p.get("exe") or "", p.get("cmd") or "")
              for p in data.get("procs") or [] if isinstance(p, dict)}
-    listeners: dict[int, set[int]] = {}
+    listeners: dict[int, dict[int, set[str]]] = {}
     for entry in data.get("ports") or []:
         if isinstance(entry, dict):
-            listeners.setdefault(int(entry["port"]), set()).add(int(entry["pid"]))
+            by_pid = listeners.setdefault(int(entry["port"]), {})
+            by_pid.setdefault(int(entry["pid"]), set()).add(str(entry.get("address") or ""))
     return Snapshot(procs, listeners)
 
 
@@ -341,7 +411,7 @@ def processes_from(snap: Snapshot, folder: Path, mine: set[int]) -> list[Proc]:
 
 
 def _ports_of(snap: Snapshot, pids: set[int]) -> list[int]:
-    return sorted(port for port, owners in snap.listeners.items() if owners & pids)
+    return sorted(port for port, owners in snap.listeners.items() if owners.keys() & pids)
 
 
 def owner_of(snap: Snapshot, pid: int, clone: Path, old: Path | None) -> tuple[str, Proc | None]:
@@ -462,7 +532,7 @@ def _wait_port_free(port: int, report: MigrationReport, snapshot_fn: Callable[[]
         if snap is None:
             report.add("stop", UNKNOWN, f"port {port}", "could not list listening ports")
             return
-        holders = snap.listeners.get(port, set())
+        holders = snap.holders(port)
         if not holders:
             report.add("stop", OK, f"port {port}", "free")
             return
@@ -713,9 +783,10 @@ def _verify_owner(root: Path, old: Path | None, port: int, report: MigrationRepo
     if snap is None:
         report.add("verify", UNKNOWN, f"port {port} owner", "could not list processes and ports")
         return
-    pids = snap.listeners.get(port, set())
+    pids = snap.holders(port)
     if not pids:
-        report.add("verify", FAILED, f"port {port} owner", "nothing listens on the port")
+        report.add("verify", FAILED, f"port {port} owner", "nothing listens on the port at a loopback or "
+                   "wildcard address")
         return
     for pid in sorted(pids):
         side, proc = owner_of(snap, pid, root, old)
