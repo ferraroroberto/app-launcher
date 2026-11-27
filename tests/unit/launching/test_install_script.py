@@ -17,7 +17,7 @@ from typing import Any, Dict, List
 
 import pytest
 
-from src import boot_autostart, installer, password
+from src import boot_autostart, installer, installer_declaration, password
 from src.git_utils import run_git
 from src.launching import install_checks
 
@@ -25,6 +25,9 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 FIXED_NOW = datetime.datetime(2026, 1, 2, 3, 4, 5)
 BACKUP_SUFFIX = ".bak-20260102-030405"
 SETTINGS = ["config/config.json", "config/webapp_config.json"]
+# Ignored paths a migration leaves behind: the new copy makes its own.
+LEFT_BEHIND = {"config/*.lock", "config/*.bak-*", "webapp/js-bundle", "webapp/briefs",
+               "webapp/last_tunnel_url.txt", "webapp/restart-baseline.json", "webapp/bench", "webapp/health"}
 
 
 def _stub_runner(command: List[str], **kwargs: Any) -> "subprocess.CompletedProcess[Any]":
@@ -104,13 +107,29 @@ def test_a_second_run_is_unchanged_and_what_if_writes_nothing(root: Path) -> Non
     assert report.changes == []
 
 
-def test_the_migrate_playbook_names_every_ignored_config_and_state_path() -> None:
-    """A state file missing from docs/install.md is left behind by a migration."""
+def _migration() -> installer_declaration.Migration:
+    return installer_declaration.parse_migration(installer_declaration.read_fleet_toml(REPO_ROOT))
+
+
+def test_every_ignored_config_and_state_path_is_carried_over_or_left_behind_by_name() -> None:
+    """A state file missing from [install.migrate] is lost by a migration."""
     ignored = [line.strip().rstrip("/") for line in (REPO_ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()]
-    playbook = (REPO_ROOT / "docs" / "install.md").read_text(encoding="utf-8")
-    names = [entry.split("/", 1)[1] for entry in ignored if entry.startswith(("config/", "webapp/"))]
     # The gate's own scratch files are never part of an install.
-    assert [n for n in names if not n.startswith("e2e-") and n not in playbook] == []
+    paths = [e for e in ignored if e.startswith(("config/", "webapp/")) and not e.startswith("webapp/e2e-")]
+    mig = _migration()
+    assert [p for p in paths if p not in mig.copy and p not in LEFT_BEHIND] == []
+    assert set(mig.secrets) <= set(mig.copy) | {"webapp/certificates/key.pem"}
+    playbook = (REPO_ROOT / "docs" / "install.md").read_text(encoding="utf-8")
+    assert [p for p in paths if p.split("/", 1)[1] not in playbook] == []
+
+
+def test_migration_verify_asks_the_port_this_pc_serves(tmp_path: Path) -> None:
+    endpoint = _migration().endpoint
+    assert endpoint is not None
+    assert installer_declaration.local_port(tmp_path, endpoint)[0] == 8445
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "config.json").write_text('{"webapp": {"port": 9001}}', encoding="utf-8")
+    assert installer_declaration.local_port(tmp_path, endpoint)[0] == 9001
 
 
 def test_the_password_probe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

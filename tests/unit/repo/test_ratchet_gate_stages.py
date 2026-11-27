@@ -1,4 +1,4 @@
-"""The gate's docs-, structure-, instruction-, doc-refs-, dead-code-, conventions-, runtime-write-, request-budget- and windows-only-ratchet stages fail on exit 3 and on a new finding, by name.
+"""The gate's docs-, structure-, instruction-, doc-refs-, dead-code-, conventions-, runtime-write-, request-budget-, windows-only- and install-standard-ratchet stages fail on exit 3 and on a new finding, by name.
 
 The real stage text runs against a throwaway repo with `Fail` stubbed to exit 1; a bare
 `& $python scripts/<ratchet>.py` would let exit 3 ("not confirmed") pass."""
@@ -29,6 +29,8 @@ _EXTRA_KEYS = {
     "runtime_write": 'exclude = ["scripts/**"]\n',
     "request_budget": 'browser_paths = ["static/**"]\n',
 }
+# The install standard ratchet lists `hits`, not the `entries` the others do.
+_NO_HITS = '{"version": 1, "hits": []}\n'
 
 
 def _stage(name: str) -> str:
@@ -78,6 +80,11 @@ def _stage(name: str) -> str:
     ("windows_only", {"tests/test_a.py": "import os\n\n\ndef test_a():\n    assert os.environ['ProgramFiles']\n"}, 1,
      ["windows only ratchet failed", "tests/test_a.py", "[win-env-read]"]),
     ("windows_only", {"tests/test_a.py": "def test_a():\n    assert True\n"}, 0, ["STAGE-PASSED"]),
+    ("install_standard", {"src/installer_migrate.py": "def broken(:\n", "src/installer_declaration.py": "x = 1\n",
+                          ".ratchets/install-standard.json": _NO_HITS}, 1,
+     ["install standard ratchet NOT CONFIRMED ("]),
+    ("install_standard", {"docs/install.md": "## Install\n", ".ratchets/install-standard.json": _NO_HITS}, 1,
+     ["install standard ratchet failed", "[installer-vendored] src/installer.py", "## Migrate"]),
 ])
 def test_stage_verdict(tmp_path, name: str, files: dict[str, str], code: int, expected: list[str]) -> None:
     (tmp_path / "scripts").mkdir()

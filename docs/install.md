@@ -1,13 +1,10 @@
-# Install, update and move app-launcher
+# Install, update and migrate app-launcher
 
-app-launcher moves to another Windows PC the way you copy an app: clone it and run one `setup.bat`. An update is a pull plus a restart. Neither resets or overwrites what a PC has configured.
+app-launcher installs, updates and migrates the way any app in the toolbox does: clone it and run one `setup.bat`. An update is a pull plus a restart. A migration, onto a fresh clone of the same PC or of another one, is one `setup.bat` call. None of them resets or overwrites what a PC has configured.
 
-## What you need
+## Install
 
-- Windows 10 or 11, `git`, and Python 3.11 or newer (the `py` launcher, or `python` on `PATH`).
-- Optional: [Tailscale](https://tailscale.com/) for the phone-trusted HTTPS certificate; a `fleet-config` checkout for the orphan-proof `tray.bat --restart` (a plain `tray.bat` start works without it); the GitHub CLI (`gh`) for the Board; Node.js, which bundles the page scripts; and the CLI of each coding agent you want ([installing-agent-clis.md](installing-agent-clis.md)).
-
-## Fresh PC
+You need Windows 10 or 11, `git`, and Python 3.11 or newer (the `py` launcher, or `python` on `PATH`). Optional: [Tailscale](https://tailscale.com/) for the phone-trusted HTTPS certificate; a `fleet-config` checkout for the orphan-proof `tray.bat --restart` (a plain `tray.bat` start works without it); the GitHub CLI (`gh`) for the Board; Node.js, which bundles the page scripts; and the CLI of each coding agent you want ([installing-agent-clis.md](installing-agent-clis.md)).
 
 ```powershell
 git clone https://github.com/ferraroroberto/app-launcher.git
@@ -21,19 +18,31 @@ cd app-launcher
 1. creates `.venv` when it is missing;
 2. installs `requirements.txt`, and later reinstalls only when that file changed (its hash is kept inside `.venv`);
 3. creates each ignored `config/*.json` from its tracked `config/*.sample.json` when the file is missing;
-4. ends with a checklist that marks each item `ok`, `missing` or `unknown`.
+4. ends with two lists: the required items, each `ok`, `missing` or `unknown`, and the optional features, each `available`, `off` or `unknown` with what it unlocks.
 
-The checklist names what still needs you:
+Setup has succeeded when it ends with `Setup complete` and exits 0; an optional feature that is `off` never changes that. The optional features, each needed only for what it unlocks:
 
-- **Sign-in password:** `.venv\Scripts\python.exe -m src.password set`.
-- **HTTPS certificate:** `.venv\Scripts\python.exe scripts\gen_tailscale_cert.py` (see the README's HTTPS section).
-- **Shared tray helper:** comes with `fleet-config`; only `tray.bat --restart` needs it.
+- **Sign-in password**, for remote sign-in: `.venv\Scripts\python.exe -m src.password set`.
+- **HTTPS certificate**, for phone access: `.venv\Scripts\python.exe scripts\gen_tailscale_cert.py` (see the README's HTTPS section).
+- **Shared tray helper**, for `tray.bat --restart` and for a migration: it comes with `fleet-config`.
 - **Claude Code CLI, GitHub CLI, Node.js:** install the ones you use.
 - **Start at log on:** `.\setup.bat -Startup`, or turn it on in Settings.
 
 `config/apps.json` and `config/jobs.json` start as the sample rows, which point at placeholder paths: replace or delete them. The project folders in `config/webapp_config.json` can stay empty, which means "the folder beside this checkout" ([config.md](config.md)).
 
 `.\setup.bat -WhatIf` lists every change it would make and makes none.
+
+### Execution policy
+
+Nothing here needs a signed script or overrides the PC's PowerShell execution policy, `AllSigned` included. `setup.bat`, `tray.bat` and `scripts/webapp.bat` are batch files. `tray.bat` loads the shared tray helper as text, and the operator-only session-host restart starts through `src/launching/ps_script.py` (`.venv\Scripts\python.exe -m src.launching.ps_script scripts\restart-session-host.ps1 -Confirm`), which falls back to that ScriptBlock launch under `AllSigned` or `Restricted`. PowerShell jobs in the Jobs tab start the same way.
+
+### Uninstall
+
+1. Turn off **Start at log on** in Settings, or delete `AppLauncher.bat` from your Startup folder (`shell:startup`).
+2. Remove any job schedules you made in the Jobs tab: they are Task Scheduler tasks under the `\AppLauncher\` folder.
+3. If you turned on the remote power guard in Settings, turn it off there first ([remote-power-guard.md](remote-power-guard.md)).
+4. Quit the tray from its menu (this ends every live terminal), then delete the `app-launcher` folder. Keep a copy of the files listed under [Migrate](#migrate) first if you may want them back.
+5. Optional: delete its runtime data under `C:\sqlite\app-launcher` (or under `FLEET_DATA_ROOT`) and the power guard log under `%LOCALAPPDATA%\AppLauncher`.
 
 ## Update
 
@@ -57,15 +66,11 @@ Running `setup.bat` on a configured PC is safe, and is how a new setting gets wr
 - The log-on entry is added only with `-Startup` and only when absent.
 - A second run reports `unchanged` and writes nothing.
 
-## Migrate from an existing install
+## Migrate
 
-For a PC that already runs an older copy: one that may not be a git clone, and may live at another path. The old copy keeps running while you prepare the new one, and nothing here deletes it.
+What moves is declared in `[install.migrate]` of `.fleet.toml`. All of it is gitignored, and each path is the same in the new folder. The installer does the whole move; nothing here or in `setup.bat` deletes the old copy.
 
-### What carries over
-
-All of it is gitignored, and each path is the same in the new folder.
-
-| Copy | What it holds |
+| Carried over | What it holds |
 | --- | --- |
 | `config\config.json`, `config\webapp_config.json` | Settings, the access token, API tokens, notification keys |
 | `config\app_password.json` | The sign-in password hash |
@@ -84,66 +89,44 @@ All of it is gitignored, and each path is the same in the new folder.
 | `webapp\lid-keep-awake.json` | The power plan values to restore when the lid keep-awake switch goes off |
 | `webapp\spawned-apps.json` | The apps the launcher started |
 
-Leave behind, because the new copy makes its own: `.venv` (a venv cannot be moved), `webapp\js-bundle\`, `webapp\briefs\`, `webapp\last_tunnel_url.txt`, `webapp\restart-baseline.json`, `webapp\bench\` and `webapp\health\` (local reports), the other `*.log` files, `config\*.lock` and `config\*.bak-*`.
+Left behind, because the new copy makes its own: `.venv` (a venv cannot be moved), `webapp\js-bundle\`, `webapp\briefs\`, `webapp\last_tunnel_url.txt`, `webapp\restart-baseline.json`, `webapp\bench\` and `webapp\health\` (local reports), the other `*.log` files, `config\*.lock` and `config\*.bak-*`.
 
 Stays where it is, because it lives outside the app folder: the usage, timing and job-index databases and the other runtime data under `C:\sqlite\app-launcher` (or under `FLEET_DATA_ROOT`); the Cloudflare credentials in `%USERPROFILE%\.cloudflared`; the remote power guard task, whose script is stored inside the task.
 
-### Steps
+### Before either way
 
-1. **Clone fresh, beside the old copy.** Never clone over it.
+- **Run it from a plain terminal**, one you opened yourself, never a session the launcher hosts: the run stops app-launcher and every session it hosts, Telegram channel sessions and running jobs included, so pick a quiet moment. The stop refuses a run it recognises as started from the app, but do not rely on that: a launcher started through another spelling of its folder (a junction, another drive letter) is not recognised.
+- The new copy is started with `tray.bat --restart`, so the PC needs the shared tray helper from `fleet-config`.
 
-   ```powershell
-   git clone https://github.com/ferraroroberto/app-launcher.git C:\path\to\new\app-launcher
-   ```
+### Reinstall in the same folder (the usual case)
 
-2. **Copy this PC's own files across.** Set the two folders, then run the block. A file the old copy does not have is skipped.
+From a terminal whose current folder is outside the app:
 
-   ```powershell
-   $old = 'C:\path\to\old\app-launcher'
-   $new = 'C:\path\to\new\app-launcher'
-   $carry = @(
-     'config\config.json', 'config\webapp_config.json', 'config\app_password.json',
-     'config\webauthn_devices.json', 'config\apps.json', 'config\jobs.json',
-     'config\channel_profiles.json', 'config\process_auto_restart.json',
-     'webapp\certificates', 'webapp\cloudflared.yml', 'webapp\terminal-themes.json',
-     'webapp\jobs', 'webapp\sessions', 'webapp\terminal_audit.log', 'webapp\outbox',
-     'webapp\chief-pointer.json', 'webapp\chief-answered.json', 'webapp\chief-journal-look.json',
-     'webapp\jobs-dismissed.json', 'webapp\ci-dismissed.json', 'webapp\ci-failed-seen.json',
-     'webapp\machine-critical-open.json', 'webapp\owner-check-marks.json',
-     'webapp\life-os-skill-hashes.json', 'webapp\progress-totals.json',
-     'webapp\lid-keep-awake.json', 'webapp\spawned-apps.json'
-   )
-   foreach ($item in $carry) {
-     $source = Join-Path $old $item
-     if (Test-Path -LiteralPath $source) {
-       $parent = Split-Path (Join-Path $new $item)
-       New-Item -ItemType Directory -Force $parent | Out-Null
-       Copy-Item -LiteralPath $source -Destination $parent -Recurse -Force
-     }
-   }
-   ```
+```powershell
+cd <PARENT FOLDER>
+.\app-launcher\setup.bat -InPlace -WhatIf    # read the backup name and every step; nothing changes
+.\app-launcher\setup.bat -InPlace
+```
 
-3. **Top them up.** In the new folder run `.\setup.bat -WhatIf`, read what it would change, then `.\setup.bat`. Settings files gain only the keys they lack.
+It stops the app, keeps the replaced copy as `app-launcher.bak-YYYYMMDD-N`, clones `origin` into the same path, copies the files above, installs, starts and passes only when the new clone serves its own commit. The path is unchanged, so the log-on entry, the job schedules and your shortcuts need no edit.
 
-4. **Stop the old copy.** This ends every live terminal and Telegram channel session, so pick a quiet moment.
-   - Right-click the old tray icon and choose **Quit**. That stops the webapp, the tunnel and the session-host.
-   - Check that nothing still listens (use your own ports if you changed them): `Get-NetTCPConnection -State Listen -LocalPort 8445,8446 -ErrorAction SilentlyContinue`. If a line comes back, stop that process with `Stop-Process -Id <OwningProcess>`.
-   - Remove the old log-on entry: delete `AppLauncher.bat` from your Startup folder (`shell:startup`).
+The new clone holds only what `origin` has. Unpushed commits, local branches, stashes and linked worktrees stay with the backup, so push or finish them first.
 
-5. **Copy once more.** The old copy kept writing until you stopped it: run the block from step 2 again, then `.\setup.bat` again.
+### Beside it (another folder, or an old copy that is not a git clone)
 
-6. **Repoint paths into the old folder.** Your own configs may name files inside it, for example a job's `script_path`. This lists the places without printing any value:
+Do not run a plain `setup.bat` in the new folder first: it creates configs from the samples, and a file that is already there is never overwritten by the old one.
 
-   ```powershell
-   Set-Location $new
-   @(Get-ChildItem config\*.json; Get-Item webapp\cloudflared.yml -ErrorAction Ignore) |
-     Select-String -SimpleMatch -Pattern $old, $old.Replace('\', '\\'), $old.Replace('\', '/') |
-     Select-Object Path, LineNumber
-   ```
+```powershell
+git clone https://github.com/ferraroroberto/app-launcher.git <NEW FOLDER>
+cd <NEW FOLDER>
+.\setup.bat -MigrateFrom <OLD FOLDER> -StopOld -WhatIf
+.\setup.bat -MigrateFrom <OLD FOLDER> -StopOld
+```
 
-7. **Start the new one.** `.\tray.bat`, then `.\setup.bat -Startup` if it should start at log on. A checklist line `[unknown] Start at log on - probe exited 2` means the entry still starts another folder: delete it (step 4) and run `.\setup.bat -Startup` again.
+Only you can do these steps:
 
-8. **Re-register the job schedules.** Their Task Scheduler tasks still run the old folder's Python. From the new folder:
+1. **The log-on entry.** Delete the old `AppLauncher.bat` from your Startup folder (`shell:startup`), then run `.\setup.bat -Startup`.
+2. **Job schedules.** Their Task Scheduler tasks still run the old folder's Python. From the new folder:
 
    ```powershell
    .\.venv\Scripts\python.exe -c "from src.jobs import sync_schtasks; from src.jobs.config import load_jobs; [sync_schtasks(j) for j in load_jobs().jobs]"
@@ -153,26 +136,15 @@ Stays where it is, because it lives outside the app folder: the usage, timing an
 
    ```powershell
    Get-ScheduledTask -TaskPath '\AppLauncher\' |
-     Where-Object { "$($_.Actions.Execute) $($_.Actions.Arguments)" -like "*$old\*" } |
+     Where-Object { "$($_.Actions.Execute) $($_.Actions.Arguments)" -like "*<OLD FOLDER>\*" } |
      Select-Object TaskName
    ```
 
-9. **Verify it.** Open the launcher on the phone and the PC. Check that the build line shows the commit `git rev-parse --short HEAD` prints, sign in, look over the Apps and Jobs lists, launch one coding session and run one job. Check anything else you pointed at the old folder yourself: shortcuts, Stream Deck actions, other tools' settings. If something is wrong, quit the new copy and start the old one: its files are untouched (re-register the schedules from it, as in step 8).
-
-10. **Retire the old folder only after you confirm.** Rename it first (for example `app-launcher.retired`), use the new copy for a while, then delete it yourself once you are sure. An agent following this playbook asks you before it deletes anything.
+3. **Repoint what still names the old folder.** The run rewrites old-folder paths in the copied JSON configs and lists what it could not rewrite (`webapp\cloudflared.yml`, for one). Check anything outside the app yourself: shortcuts, Stream Deck actions, other tools' settings.
+4. **Check it.** Open the launcher on the phone and the PC, sign in, look over the Apps and Jobs lists, launch one coding session and run one job.
+5. **Fall back** if verify fails (the report names the step): stop the new copy and start the old one, whose files are untouched (re-register the schedules from it, as in step 2). After a reinstall in the same folder, rename the new folder away and the backup to the original name first.
+6. **Retire the old copy or the backup** once you are sure the new one works, by deleting it yourself. An agent working through this playbook asks you before it deletes anything.
 
 ### Coming from the old Flask launcher
 
-Your apps list and Claude flags carry over: copy `automation\launcher\apps_config.json` to `config\apps.json`, and the old `config.json`'s `claude_*` values into `config\webapp_config.json` under the matching keys.
-
-## Execution policy
-
-Nothing here needs a signed script or overrides the PC's PowerShell execution policy, `AllSigned` included. `setup.bat`, `tray.bat` and `scripts/webapp.bat` are batch files. `tray.bat` loads the shared tray helper as text, and the operator-only session-host restart starts through `src/launching/ps_script.py` (`.venv\Scripts\python.exe -m src.launching.ps_script scripts\restart-session-host.ps1 -Confirm`), which falls back to that ScriptBlock launch under `AllSigned` or `Restricted`. PowerShell jobs in the Jobs tab start the same way.
-
-## Uninstall
-
-1. Turn off **Start at log on** in Settings, or delete `AppLauncher.bat` from your Startup folder (`shell:startup`).
-2. Remove any job schedules you made in the Jobs tab: they are Task Scheduler tasks under the `\AppLauncher\` folder.
-3. If you turned on the remote power guard in Settings, turn it off there first ([remote-power-guard.md](remote-power-guard.md)).
-4. Quit the tray from its menu (this ends every live terminal), then delete the `app-launcher` folder.
-5. Optional: delete its runtime data under `C:\sqlite\app-launcher` (or under `FLEET_DATA_ROOT`) and the power guard log under `%LOCALAPPDATA%\AppLauncher`.
+Your apps list and Claude flags carry over by hand: copy `automation\launcher\apps_config.json` to `config\apps.json`, and the old `config.json`'s `claude_*` values into `config\webapp_config.json` under the matching keys.
