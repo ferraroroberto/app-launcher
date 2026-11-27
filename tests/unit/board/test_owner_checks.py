@@ -59,6 +59,22 @@ def test_refresh_fills_the_cache_and_a_missing_block_stays_listed(cli):
     assert no_block["block"] is False and no_block["reason"] == ""
 
 
+def test_the_exact_step_and_the_note_state_travel_with_the_item(cli):
+    responses, _ = cli
+    step = {"run": [{"where": "terminal", "text": "echo  'a  b'"}, {"where": "screen", "text": ""}, "junk"],
+            "expect": "it prints a b", "note": "complete"}
+    rows = [dict(ITEMS[0], **step), dict(ITEMS[1], note="unrepairable")]
+    responses["list"] = (0, json.dumps({"items": rows, "unknown": []}))
+    full, bare = owner_checks.refresh("fleet")["items"]
+    # The command's own spacing is kept; a line with nothing to copy is dropped.
+    assert full["run"] == [{"where": "terminal", "text": "echo  'a  b'"}]
+    assert (full["expect"], full["note"]) == ("it prints a b", "complete")
+    assert (bare["run"], bare["expect"], bare["note"]) == ([], "", "unrepairable")
+    # A list without a note state reads it off the fields.
+    responses["list"] = (0, json.dumps({"items": ITEMS, "unknown": []}))
+    assert [it["note"] for it in owner_checks.refresh("fleet")["items"]] == ["no-run", "missing"]
+
+
 def test_a_failed_refresh_keeps_the_older_items(cli):
     responses, _ = cli
     owner_checks.refresh("fleet")

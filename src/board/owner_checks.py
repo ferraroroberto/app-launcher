@@ -66,6 +66,13 @@ PENDING = "pending"
 PAUSE = "pause"
 CLOSE = "close"
 
+# A list item's ``note``: whether its block carries the owner's exact step, and
+# if there is no block, why (fleet-config docs/owner-check.md "Readers").
+NOTE_COMPLETE = "complete"
+NOTE_NO_RUN = "no-run"
+NOTE_MISSING = "missing"
+NOTE_STATES = (NOTE_COMPLETE, NOTE_NO_RUN, NOTE_MISSING, "unrepairable", "unknown")
+
 # What each kind can be answered with; the sheet offers the same set.
 ANSWERS: Dict[str, Tuple[str, ...]] = {
     VALIDATE_AFTER: (VALIDATED, PROBLEM),
@@ -173,6 +180,28 @@ def _utf8_env() -> Dict[str, str]:
     return env
 
 
+def _run_lines(raw: Any) -> List[Dict[str, str]]:
+    """The ``run`` lines with a command to show, as ``{"where", "text"}``."""
+    lines = []
+    for line in raw if isinstance(raw, list) else []:
+        if not isinstance(line, dict):
+            continue
+        text = str(line.get("text") or "").strip()
+        if text:
+            lines.append({"where": str(line.get("where") or ""), "text": text})
+    return lines
+
+
+def _note_state(raw: Dict[str, Any], run: List[Dict[str, str]], expect: str) -> str:
+    """The list's ``note``, else read off the fields a checkout without it prints."""
+    note = raw.get("note")
+    if note in NOTE_STATES:
+        return str(note)
+    if not raw.get("block"):
+        return NOTE_MISSING
+    return NOTE_COMPLETE if run and expect else NOTE_NO_RUN
+
+
 def _clean_item(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """One list row as the Board shows it, or None for a row it can't place."""
     repo = str(raw.get("repo") or "").strip()
@@ -183,6 +212,8 @@ def _clean_item(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     proof = raw.get("proof")
     recorded = str(raw.get("try") or "")
     generic = owner_try.is_generic(recorded)
+    run = _run_lines(raw.get("run"))
+    expect = str(raw.get("expect") or "").strip()
     return {
         "ref": f"{repo}#{number}",
         "repo": repo,
@@ -191,8 +222,12 @@ def _clean_item(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "url": str(raw.get("url") or ""),
         "state": str(raw.get("state") or ""),
         "kind": kind,
-        # A label with no readable block: shown as "details unknown", never hidden.
+        # A label with no readable block is listed with why, never hidden.
         "block": bool(raw.get("block")),
+        "note": _note_state(raw, run, expect),
+        # The exact step the owner copies, and what success looks like.
+        "run": run,
+        "expect": expect,
         "reason": str(raw.get("reason") or ""),
         # The back-fill boilerplate never travels as a Try: "generic" says the
         # recorded one was it, and try_lines/try_from carry what the issue itself
