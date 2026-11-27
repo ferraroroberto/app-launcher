@@ -55,7 +55,9 @@ function actionButton(action, host) {
     btn.disabled = true;
     Promise.resolve()
       .then(() => action.onClick())
-      .finally(() => hideToast(host));
+      // A toast shown while `onClick` ran (its own "Restored") replaced this one and
+      // detached the button; that newer toast must not be hidden by this tap.
+      .finally(() => { if (btn.isConnected) hideToast(host); });
   });
   return btn;
 }
