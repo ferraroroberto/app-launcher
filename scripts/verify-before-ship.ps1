@@ -190,6 +190,10 @@ $ratchetStages = @(
     @{ Name = "windows only"; Argv = @("scripts/windows_only_ratchet.py")
        NotConfirmed = "a test module could not be read or parsed, or git was unusable"
        Failed = "a test touches a Windows-only API without the windows_only marker beyond .ratchets/windows-only.json; mark it, or see the named test above." }
+    # An app whose installer falls behind, or loses its migration table, needs a hand-made move to another PC.
+    @{ Name = "install standard"; Argv = @("scripts/install_standard_ratchet.py")
+       NotConfirmed = "an installer module or docs/install.md could not be read, or src/installer_migrate.py does not load"
+       Failed = "an installer module is behind or undeclared, [install.migrate] does not parse, or docs/install.md lost a section, beyond .ratchets/install-standard.json; see the named hit above." }
 )
 # ratchet-stages:end
 

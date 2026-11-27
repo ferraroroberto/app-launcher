@@ -39,7 +39,11 @@ depends_on = ["local-llm-hub", "voice-transcriber", "photo-ocr", "task-os", "lif
 extra_junctions = ["webapp/certificates"]
 
 [vendored]
-installer = { src = "src/installer.py", sha = "289455f1ad9aa9e3f346c495540cf0c210226265", dest = "src/installer.py" }
+installer = { src = "src/installer.py", sha = "a40310fe47f82ed7af62835fbfb3ea7ba9e04f8d", dest = "src/installer.py" }
+installer_migrate = { src = "src/installer_migrate.py", sha = "a40310fe47f82ed7af62835fbfb3ea7ba9e04f8d", dest = "src/installer_migrate.py" }
+installer_declaration = { src = "src/installer_declaration.py", sha = "a40310fe47f82ed7af62835fbfb3ea7ba9e04f8d", dest = "src/installer_declaration.py" }
+installer_inplace = { src = "src/installer_inplace.py", sha = "a40310fe47f82ed7af62835fbfb3ea7ba9e04f8d", dest = "src/installer_inplace.py" }
+install_standard_ratchet = { src = "scripts/install_standard_ratchet.py", sha = "a40310fe47f82ed7af62835fbfb3ea7ba9e04f8d", dest = "scripts/install_standard_ratchet.py" }
 icons ={ src = "app/webapp/static/_vendored/icons", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/icons" }
 switch = { src = "app/webapp/static/_vendored/switch", sha = "8f15c49560adbc076d24a8a63dd671868ffa7a4e", dest = "app/webapp/static/_vendored/switch" }
 button = { src = "app/webapp/static/_vendored/button", sha = "7a1a7561331edded3dc91128a42076fb3b0262f8", dest = "app/webapp/static/_vendored/button" }
@@ -138,33 +142,107 @@ register = ["{python}", "-m", "src.launching.install_checks", "autostart-enable"
 
 [[install.check]]
 name    = "Sign-in password"
+level   = "optional"
+blocks  = "remote sign-in"
 command = ["{python}", "-m", "src.launching.install_checks", "password"]
 hint    = "set one with: .venv\\Scripts\\python.exe -m src.password set"
 
 [[install.check]]
 name  = "HTTPS certificate"
+level  = "optional"
+blocks = "phone access"
 paths = ["webapp/certificates/cert.pem", "webapp/certificates/key.pem"]
 hint  = "run: .venv\\Scripts\\python.exe scripts\\gen_tailscale_cert.py"
 
 [[install.check]]
 name    = "Shared tray helper (tray.bat --restart)"
+level   = "optional"
+blocks  = "restart and migration"
 command = ["{python}", "-m", "src.launching.install_checks", "tray-helper"]
 hint    = "from fleet-config; a plain tray.bat start works without it"
 
 [[install.check]]
 name  = "Claude Code CLI (Coding tab)"
+level  = "optional"
+blocks = "Claude sessions"
 which = "claude"
 hint  = "see docs/installing-agent-clis.md"
 
 [[install.check]]
 name  = "GitHub CLI (Board)"
+level  = "optional"
+blocks = "the Board's GitHub cards"
 which = "gh"
 hint  = "install gh, then: gh auth login"
 
 [[install.check]]
 name  = "Node.js (bundles the page scripts)"
+level  = "optional"
+blocks = "bundled page scripts"
 which = "npx"
-hint  = "optional: without it the page loads the separate modules"
+hint  = "without it the page loads the separate modules"
+
+# What `setup.bat -MigrateFrom <old folder>` and `setup.bat -InPlace` read
+# (docs/install.md, Migrate). Verify asks the port this PC's config sets, with
+# the top-level `port` as the fallback. The certificate names the tailnet host,
+# never 127.0.0.1, so loopback accepts it unchecked.
+[install.endpoint]
+scheme       = "https"
+version_path = "/api/version"
+self_signed  = true
+port_config  = "config/config.json"
+port_key     = "webapp.port"
+
+# This PC's own configs, state and certificates: everything gitignored under
+# config/ and webapp/ that the app cannot remake. `start` is the default,
+# `tray.bat --restart`.
+[install.migrate]
+copy = [
+  "config/config.json",
+  "config/webapp_config.json",
+  "config/app_password.json",
+  "config/webauthn_devices.json",
+  "config/apps.json",
+  "config/jobs.json",
+  "config/channel_profiles.json",
+  "config/process_auto_restart.json",
+  "webapp/certificates",
+  "webapp/cloudflared.yml",
+  "webapp/terminal-themes.json",
+  "webapp/jobs",
+  "webapp/sessions",
+  "webapp/terminal_audit.log",
+  "webapp/outbox",
+  "webapp/chief-pointer.json",
+  "webapp/chief-answered.json",
+  "webapp/chief-journal-look.json",
+  "webapp/jobs-dismissed.json",
+  "webapp/ci-dismissed.json",
+  "webapp/ci-failed-seen.json",
+  "webapp/machine-critical-open.json",
+  "webapp/owner-check-marks.json",
+  "webapp/life-os-skill-hashes.json",
+  "webapp/progress-totals.json",
+  "webapp/lid-keep-awake.json",
+  "webapp/spawned-apps.json",
+]
+secrets = [
+  "config/webapp_config.json",
+  "config/app_password.json",
+  "config/webauthn_devices.json",
+  "webapp/certificates/key.pem",
+]
+shared = ["app-launcher"]
+
+# ---------------------------------------------------------------------------
+# [install_standard_ratchet] -- scripts/install_standard_ratchet.py fails when an
+# installer module is missing or behind the scaffold's, [install.migrate] does
+# not parse, or docs/install.md loses its Install, Update or Migrate section.
+# Mechanism: project-scaffolding docs/install-standard-ratchet.md.
+[install_standard_ratchet]
+enabled  = true
+baseline = ".ratchets/install-standard.json"
+playbook = "docs/install.md"
 
 # ---------------------------------------------------------------------------
 # [verify] --the launch recipe the generated verify-app-launcher skill reads

@@ -23,10 +23,23 @@ writes nothing, and nothing a PC already has configured is ever overwritten:
   rewritten. A file that does not parse is left alone and reported.
 * The log-on autostart is registered only with ``-Startup`` and only when absent.
 
-``-WhatIf`` lists every change and makes none. The run ends with a checklist of
-what works and what still needs the owner, each item ``ok``, ``missing`` or
-``unknown``. Exit code: 0 when every step ran, 1 when one failed, a config was
-left alone because it does not parse, or a top-up was refused for its backup.
+Each declared check is ``required`` or ``optional``. A required check that needs
+nothing setup creates runs first, and one that is not ``ok`` stops the run before
+anything is installed or written.
+
+``-WhatIf`` lists every change and makes none. The run ends with two lists: the
+required items, each ``ok``, ``missing`` or ``unknown``, and the optional
+features, each ``available``, ``off`` or ``unknown`` with what it unlocks. A
+step that installs or registers writes straight to this run's own output, so a
+failed one says why above the checklist; a probe's output is never printed.
+Exit code: 0 when every step ran and every
+required item is ``ok`` (``-WhatIf`` does not hold the items setup has yet to
+create against it); 1 otherwise, including a config left alone because it does
+not parse and a top-up refused for its backup. An optional feature never fails it.
+
+``-MigrateFrom <old folder>`` hands the run to ``installer_migrate.py`` beside this
+file: it copies this PC's declared files from an existing install, runs this same
+install, starts the app and verifies the clone serves.
 
 The module is stdlib only: on a fresh PC it runs on the system python before any
 requirement is installed.
@@ -35,16 +48,20 @@ requirement is installed.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import datetime
 import hashlib
+import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 # A vendor-verbatim file keeps its own copy of the no-console flag: it cannot
@@ -66,6 +83,11 @@ PYTHON_TOKEN = "{python}"
 BACKUP_IGNORE_PATTERN = "*.json.bak-*"
 
 OK, MISSING, UNKNOWN = "ok", "missing", "unknown"
+REQUIRED, OPTIONAL = "required", "optional"
+# How an optional item's state reads: it is a feature that works or not, never a failure.
+FEATURE_STATES = {OK: "available", MISSING: "off", UNKNOWN: "unknown"}
+# Asked of the .venv python; only the parsed numbers are ever printed.
+PYTHON_VERSION_SNIPPET = "import sys; print('%d.%d' % sys.version_info[:2])"
 QUIET_STATUSES = ("unchanged", "kept", "not registered", "not checked", "left alone")
 
 Runner = Callable[..., "subprocess.CompletedProcess[Any]"]
@@ -73,13 +95,16 @@ Runner = Callable[..., "subprocess.CompletedProcess[Any]"]
 
 @dataclass
 class Check:
-    """One declared checklist item: files that must exist, a CLI on PATH, or a probe command."""
+    """One declared checklist item: files that must exist, a CLI on PATH, a probe command or a minimum Python."""
 
     name: str
     paths: list[str] = field(default_factory=list)
     which: str = ""
     command: list[str] = field(default_factory=list)
+    python: str = ""
     hint: str = ""
+    level: str = OPTIONAL
+    blocks: str = ""  # the feature an optional item unlocks
 
 
 @dataclass
@@ -103,8 +128,10 @@ class Report:
 
     what_if: bool
     lines: list[tuple[str, str, str]] = field(default_factory=list)
-    checklist: list[tuple[str, str, str]] = field(default_factory=list)
+    required: list[tuple[str, str, str]] = field(default_factory=list)
+    optional: list[tuple[str, str, str]] = field(default_factory=list)
     failed: bool = False
+    stopped: bool = False  # a required check ended the run before any step
 
     def step(self, status: str, item: str, detail: str = "") -> None:
         self.lines.append((status, item, detail))
@@ -113,8 +140,12 @@ class Report:
         self.step("failed", item, detail)
         self.failed = True
 
-    def check(self, state: str, item: str, detail: str = "") -> None:
-        self.checklist.append((state, item, detail))
+    def require(self, state: str, item: str, detail: str = "") -> None:
+        self.required.append((state, item, detail))
+
+    def offer(self, state: str, item: str, blocks: str, detail: str = "") -> None:
+        unlocks = f"unlocks {blocks or 'a feature the declaration does not name'}"
+        self.optional.append((FEATURE_STATES[state], item, f"{unlocks}; {detail}" if detail else unlocks))
 
     @property
     def changes(self) -> list[tuple[str, str, str]]:
@@ -137,19 +168,37 @@ def _subtable(table: dict[str, Any], key: str) -> dict[str, Any]:
     return sub
 
 
+def _check(entry: Any) -> Check:
+    if not isinstance(entry, dict) or not isinstance(entry.get("name"), str) or not entry["name"]:
+        raise ValueError("each [[install.check]] needs a name")
+    where = f"[[install.check]] {entry['name']!r}"
+    check = Check(name=entry["name"], paths=_str_list(entry, "paths"), which=str(entry.get("which", "")),
+                  command=_str_list(entry, "command"), hint=str(entry.get("hint", "")))
+    if "python" in entry:
+        if not isinstance(entry["python"], str) or not re.fullmatch(r"\d+\.\d+", entry["python"]):
+            raise ValueError(f'{where} python must be a "major.minor" string')
+        check.python = entry["python"]
+    if sum(bool(kind) for kind in (check.paths, check.which, check.command, check.python)) != 1:
+        raise ValueError(f"{where} needs exactly one of paths, which, command, python")
+    # A minimum Python is a requirement unless it says otherwise; an undeclared item of another kind never fails setup.
+    level = entry.get("level", REQUIRED if check.python else OPTIONAL)
+    if level not in (REQUIRED, OPTIONAL):
+        raise ValueError(f'{where} level must be "required" or "optional"')
+    blocks = entry.get("blocks", "")
+    if not isinstance(blocks, str):
+        raise ValueError(f"{where} blocks must be a string")
+    if entry.get("level") == OPTIONAL and not blocks:
+        raise ValueError(f"{where} is optional, so it needs blocks: the feature it unlocks")
+    if level == REQUIRED and blocks:
+        raise ValueError(f"{where} is required, so it takes no blocks")
+    check.level, check.blocks = level, blocks
+    return check
+
+
 def _checks(raw: Any) -> list[Check]:
     if not isinstance(raw, list):
         raise ValueError("[[install.check]] must be an array of tables")
-    checks: list[Check] = []
-    for entry in raw:
-        if not isinstance(entry, dict) or not isinstance(entry.get("name"), str) or not entry["name"]:
-            raise ValueError("each [[install.check]] needs a name")
-        check = Check(name=entry["name"], paths=_str_list(entry, "paths"), which=str(entry.get("which", "")),
-                      command=_str_list(entry, "command"), hint=str(entry.get("hint", "")))
-        if sum(bool(kind) for kind in (check.paths, check.which, check.command)) != 1:
-            raise ValueError(f"[[install.check]] {check.name!r} needs exactly one of paths, which, command")
-        checks.append(check)
-    return checks
+    return [_check(entry) for entry in raw]
 
 
 def parse_plan(table: dict[str, Any]) -> Plan:
@@ -218,6 +267,21 @@ def _command(root: Path, command: Sequence[str]) -> list[str]:
     return [str(venv_python(root)) if part == PYTHON_TOKEN else part for part in command]
 
 
+def _has_console() -> bool:
+    """Whether this process is attached to a console, a hidden one included."""
+    return os.name == "nt" and bool(ctypes.windll.kernel32.GetConsoleCP())
+
+
+def _step_io() -> dict[str, Any]:
+    """Spawn keywords that keep a step's output where this run's own output goes.
+
+    A ``CREATE_NO_WINDOW`` child gets a hidden console of its own, so nothing it writes reaches this one.
+    A child of a process that has a console shares it and opens no window, so only a run without one needs
+    the flag. The streams are passed so that a redirected run keeps the lines too.
+    """
+    return {"creationflags": 0 if _has_console() else NO_WINDOW, "stdout": sys.stdout, "stderr": sys.stderr}
+
+
 def ensure_venv(root: Path, report: Report, runner: Runner) -> None:
     """Create ``.venv`` when missing; an existing one (a junction included) is kept as it is."""
     if venv_python(root).exists():
@@ -227,7 +291,7 @@ def ensure_venv(root: Path, report: Report, runner: Runner) -> None:
         report.step("would create", ".venv", f"with {sys.executable}")
         return
     done = runner([sys.executable, "-m", "venv", str(root / ".venv")], timeout=VENV_TIMEOUT_S,
-                  check=False, creationflags=NO_WINDOW)
+                  check=False, **_step_io())
     if done.returncode != 0:
         report.fail(".venv", f"python -m venv exited {done.returncode}")
         return
@@ -249,7 +313,7 @@ def _install_when_changed(root: Path, report: Report, runner: Runner, *, item: s
         report.fail(item, ".venv has no python")
         return
     try:
-        done = runner(command, cwd=root, timeout=INSTALL_TIMEOUT_S, check=False, creationflags=NO_WINDOW)
+        done = runner(command, cwd=root, timeout=INSTALL_TIMEOUT_S, check=False, **_step_io())
     except (OSError, subprocess.TimeoutExpired) as exc:
         report.fail(item, f"did not run ({type(exc).__name__})")
         return
@@ -454,7 +518,7 @@ def ensure_startup(root: Path, plan: Plan, report: Report, register: bool, runne
         return
     try:
         done = runner(_command(root, plan.startup_register), cwd=root, timeout=CHECK_TIMEOUT_S, check=False,
-                      creationflags=NO_WINDOW)
+                      **_step_io())
     except (OSError, subprocess.TimeoutExpired) as exc:
         report.fail("start at log on", f"did not run ({type(exc).__name__})")
         return
@@ -464,7 +528,31 @@ def ensure_startup(root: Path, plan: Plan, report: Report, register: bool, runne
     report.step("registered", "start at log on")
 
 
+def python_state(root: Path, minimum: str, runner: Runner) -> tuple[str, str]:
+    """Whether the .venv python, or the one that would build .venv, is at least ``minimum``."""
+    python = venv_python(root)
+    if python.exists():
+        try:
+            done = runner([str(python), "-c", PYTHON_VERSION_SNIPPET], cwd=root, timeout=CHECK_TIMEOUT_S,
+                          check=False, capture_output=True, encoding="ascii", errors="replace",
+                          creationflags=NO_WINDOW)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return UNKNOWN, f"could not ask .venv for its Python version ({type(exc).__name__})"
+        match = re.fullmatch(r"(\d+)\.(\d+)", (done.stdout or "").strip())
+        if done.returncode != 0 or match is None:
+            return UNKNOWN, "could not read the .venv Python version"
+        found, source = (int(match[1]), int(match[2])), ".venv has"
+    else:
+        found, source = (sys.version_info[0], sys.version_info[1]), "setup would build .venv with"
+    major, minor = (int(part) for part in minimum.split("."))
+    if found >= (major, minor):
+        return OK, ""
+    return MISSING, f"{source} Python {found[0]}.{found[1]}, this app needs {minimum} or newer"
+
+
 def _check_state(root: Path, check: Check, runner: Runner) -> tuple[str, str]:
+    if check.python:
+        return python_state(root, check.python, runner)
     if check.paths:
         return (OK, "") if all((root / name).exists() for name in check.paths) else (MISSING, "")
     if check.which:
@@ -472,39 +560,79 @@ def _check_state(root: Path, check: Check, runner: Runner) -> tuple[str, str]:
     return probe(root, check.command, runner)
 
 
-def build_checklist(root: Path, plan: Plan, report: Report, runner: Runner) -> None:
-    """What works and what still needs the owner; a fact this run could not establish is ``unknown``."""
+def _with_hint(state: str, detail: str, hint: str) -> str:
+    if state == OK or not hint:
+        return detail
+    return f"{detail}; {hint}" if detail else hint
+
+
+def runs_before_install(check: Check) -> bool:
+    """A required check that needs nothing setup creates: no declared files and no .venv python of its own."""
+    return check.level == REQUIRED and bool(
+        check.python or check.which or (check.command and PYTHON_TOKEN not in check.command))
+
+
+def preflight(root: Path, plan: Plan, report: Report, runner: Runner) -> dict[int, tuple[str, str]]:
+    """Run the required checks that can run first; one not ``ok`` stops the run. Results keyed by check index."""
+    results = {index: _check_state(root, check, runner)
+               for index, check in enumerate(plan.checks) if runs_before_install(check)}
+    if any(state != OK for state, _ in results.values()):
+        report.stopped = report.failed = True
+        for index, (state, detail) in results.items():
+            check = plan.checks[index]
+            report.require(state, check.name, _with_hint(state, detail, check.hint))
+    return results
+
+
+def _config_state(target: Path, settings: bool) -> tuple[str, str]:
+    """A config is ``ok`` when it is there and, for JSON, parses; only a settings file must be an object."""
+    if not target.exists():
+        return MISSING, ""
+    if target.suffix != ".json":
+        return OK, ""
+    if settings:
+        data, error = _load_object(target)
+        return (OK if data is not None else MISSING), error
+    try:
+        json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        return MISSING, f"does not parse ({type(exc).__name__})"
+    return OK, ""
+
+
+def build_checklist(root: Path, plan: Plan, report: Report, runner: Runner,
+                    known: dict[int, tuple[str, str]]) -> None:
+    """The required items and the optional features; a fact this run could not establish is ``unknown``."""
     has_venv = venv_python(root).exists()
-    report.check(OK if has_venv else MISSING, "Python environment (.venv)")
+    report.require(OK if has_venv else MISSING, "Python environment (.venv)")
     reqs = root / plan.requirements
     stamp = root / ".venv" / REQUIREMENTS_STAMP
     if stamp.is_file() and reqs.is_file():
         state = OK if _stamp_matches(stamp, _sha256(reqs)) else MISSING
     else:
         state = UNKNOWN if has_venv else MISSING
-    report.check(state, "Requirements installed")
+    report.require(state, "Requirements installed")
     if plan.deps_command:
         wanted = deps_hash(root, plan)
         done = wanted is not None and _stamp_matches(root / ".venv" / DEPS_STAMP, wanted)
-        report.check(OK if done else MISSING, "Dependency step")
+        report.require(OK if done else MISSING, "Dependency step")
     for _, target_name in config_pairs(root, plan):
-        target = root / target_name
-        if not target.exists():
-            report.check(MISSING, target_name)
-            continue
-        if target.suffix != ".json":
-            report.check(OK, target_name)
-            continue
-        data, error = _load_object(target)
-        report.check(OK if data is not None else MISSING, target_name, error)
-    for check in plan.checks:
-        state, detail = _check_state(root, check, runner)
-        if state != OK and check.hint:
-            detail = f"{detail}; {check.hint}" if detail else check.hint
-        report.check(state, check.name, detail)
+        state, detail = _config_state(root / target_name, target_name in plan.settings)
+        report.require(state, target_name, detail)
+    for index, check in enumerate(plan.checks):
+        state, detail = known[index] if index in known else _check_state(root, check, runner)
+        detail = _with_hint(state, detail, check.hint)
+        if check.level == REQUIRED:
+            report.require(state, check.name, detail)
+        else:
+            report.offer(state, check.name, check.blocks, detail)
     if plan.startup_check:
         state, detail = probe(root, plan.startup_check, runner)
-        report.check(state, "Start at log on", detail if state != MISSING else "run: setup.bat -Startup")
+        report.offer(state, "Start at log on", "starting at log on",
+                     detail if state != MISSING else "run: setup.bat -Startup")
+    # -WhatIf created nothing, so an item setup has yet to make is not a failure there.
+    if not report.what_if and any(state != OK for state, _, _ in report.required):
+        report.failed = True
 
 
 # ---------------------------------------------------------------- run and render
@@ -518,6 +646,9 @@ def run(root: Path, *, what_if: bool, startup: bool = False, runner: Runner = su
     except ValueError as exc:
         report.fail(".fleet.toml [install]", str(exc))
         return report
+    known = preflight(root, plan, report, runner)
+    if report.stopped:
+        return report
     stamp = (now or datetime.datetime.now)().strftime("%Y%m%d-%H%M%S")
     ensure_venv(root, report, runner)
     if not report.failed:
@@ -526,19 +657,43 @@ def run(root: Path, *, what_if: bool, startup: bool = False, runner: Runner = su
         ensure_deps(root, plan, report, runner)
     ensure_configs(root, plan, report, stamp, runner)
     ensure_startup(root, plan, report, startup, runner)
-    build_checklist(root, plan, report, runner)
+    build_checklist(root, plan, report, runner, known)
     return report
+
+
+def _rows(rows: list[tuple[str, str, str]]) -> list[str]:
+    return [f"  [{state:<9}] {item}" + (f"  - {detail}" if detail else "") for state, item, detail in rows]
 
 
 def render(report: Report) -> str:
     out = ["What-if: nothing below is changed." if report.what_if else "Install steps:"]
     out += [f"  {status:<15} {item}" + (f"  ({detail})" if detail else "") for status, item, detail in report.lines]
-    if not report.changes:
+    if report.stopped:
+        out.append("  -> stopped: a required item is not ok, " + (
+            "so a real run installs and writes nothing" if report.what_if else "nothing was installed or written"))
+    elif not report.changes:
         out.append("  -> unchanged: nothing to do")
-    out.append("")
-    out.append("Checklist:")
-    out += [f"  [{state:<7}] {item}" + (f"  - {detail}" if detail else "") for state, item, detail in report.checklist]
+    if report.required:
+        out += ["", "Required:", *_rows(report.required)]
+        if not report.stopped:
+            out += ["", "Optional features:", *(_rows(report.optional) or ["  none declared"])]
+    if report.failed:
+        out += ["", "Setup failed: fix what is reported above, then run setup.bat again."]
+    elif not report.what_if:
+        out += ["", "Setup complete: every required item is ok."]
     return "\n".join(out)
+
+
+def _migration() -> ModuleType:
+    """``installer_migrate.py`` beside this file, loaded by path: ``-I`` keeps this folder off ``sys.path``."""
+    path = Path(__file__).with_name("installer_migrate.py")
+    spec = importlib.util.spec_from_file_location("installer_migrate", path)
+    if spec is None or spec.loader is None or not path.is_file():
+        raise SystemExit(f"setup.bat: {path.name} is missing beside installer.py; vendor it to migrate")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # dataclasses resolve their module by name
+    spec.loader.exec_module(module)
+    return module
 
 
 def main(root: Path, argv: list[str] | None = None) -> int:
@@ -549,7 +704,19 @@ def main(root: Path, argv: list[str] | None = None) -> int:
                         help="list every change and make none")
     parser.add_argument("-Startup", "--startup", dest="startup", action="store_true",
                         help="also start the app at log on (only when not already registered)")
+    parser.add_argument("-MigrateFrom", "--migrate-from", dest="migrate_from", metavar="OLD_FOLDER",
+                        help="copy this PC's declared files from an existing install, install, start and verify")
+    parser.add_argument("-StopOld", "--stop-old", dest="stop_old", action="store_true",
+                        help="with -MigrateFrom: first stop the processes that run from the old folder")
+    parser.add_argument("-Json", "--json", dest="as_json", action="store_true",
+                        help="with -MigrateFrom: print the report as JSON")
     args = parser.parse_args(argv)
+    if args.migrate_from:
+        return int(_migration().main_migrate(root, Path(args.migrate_from), installer=sys.modules[__name__],
+                                             what_if=args.what_if, stop=args.stop_old, startup=args.startup,
+                                             as_json=args.as_json))
+    if args.stop_old or args.as_json:
+        parser.error("-StopOld and -Json go with -MigrateFrom")
     reconfigure = getattr(sys.stdout, "reconfigure", None)
     if reconfigure is not None:
         reconfigure(encoding="utf-8")

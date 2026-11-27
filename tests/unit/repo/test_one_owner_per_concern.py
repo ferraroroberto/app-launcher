@@ -29,6 +29,7 @@ _HAND_ROLLED_READER_OK = {
     "src/chief_session_end.py",
     "src/desktop/lid_keep_awake.py",
     "src/inspiration/ideas.py",
+    "src/installer_declaration.py",  # vendored verbatim, stdlib only
 }
 
 _JSON_READ_THEN_MISSING_RE = re.compile(
