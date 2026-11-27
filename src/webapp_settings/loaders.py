@@ -5,6 +5,7 @@ on-disk shape its annotation alone cannot describe.
 
 from __future__ import annotations
 
+import json
 from dataclasses import MISSING
 from typing import Any, Callable, Dict
 
@@ -60,6 +61,25 @@ def _load_documents(raw: dict) -> list:
         for entry in (raw.get("documents") or [])
         if isinstance(entry, dict)
     ]
+
+
+def retention_problem(raw: dict) -> str:
+    """Why ``session_retention_days`` as authored is no window; ``""`` when it
+    is one or the key is absent.
+
+    Stricter than the generic cast on purpose: this setting deletes, so a value
+    must never turn into a number of days the owner did not write (``null`` to
+    the default, ``true`` to 1).
+    """
+    if "session_retention_days" not in raw:
+        return ""
+    value = raw["session_retention_days"]
+    if type(value) is int and value >= 0:
+        return ""
+    return (
+        "session_retention_days must be a whole number of days, 0 or more; "
+        f"got {json.dumps(value)}"
+    )
 
 
 def _load_pi_model(raw: dict) -> str:

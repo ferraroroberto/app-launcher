@@ -56,7 +56,7 @@ flowchart LR
   s2["PC load sheet"]
   s3["Confirm dialog"]
   s4["Toast"]
-  s5["Unreadable settings banner"]
+  s5["Settings file banner"]
   s6["New version banner"]
   s7["Sign-in sheet"]
   s8["Build readout"]
@@ -189,14 +189,16 @@ flowchart LR
 - **Holds:** one line of text
 - **Why:** it sits on the body, outside the app column, so the floating nav cannot clip it on iOS
 
-### `chrome.config-error` Unreadable settings banner
+### `chrome.config-error` Settings file banner
 
 - **Root:** `data-surface`
-- **Reach:** appears by itself above every tab while the settings file cannot be read
-- **Holds:** the file, the parse error, and that remote access is off until the file is fixed and the app restarted
+- **Reach:** appears by itself above every tab while the settings file cannot be read, or its session retention value is unusable
+- **Holds:**
+  - for an unreadable file, the file, the parse error, and that remote access is off until the file is fixed and the app restarted
+  - for an unusable retention value, the file, the key, the value, and that no session files are deleted until it is fixed and the app restarted
 - **States:**
-  - hidden whenever the settings file reads, or is not there yet
-  - only the PC itself sees it, since every other caller is refused outright
+  - hidden whenever the settings file reads with a usable retention value, or is not there yet
+  - for an unreadable file only the PC itself sees it, since every other caller is refused outright
 
 ### `app.update-banner` New version banner
 

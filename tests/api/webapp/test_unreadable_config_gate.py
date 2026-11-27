@@ -74,3 +74,15 @@ def test_a_missing_file_starts_on_defaults(webapp_client):
 
     assert response.status_code == 200
     assert response.json()["config_error"] is None
+
+
+def test_an_unusable_retention_value_is_bannered_and_locks_nobody_out(webapp_client):
+    app = _build(
+        webapp_client[2]["tmp_webapp_cfg_path"],
+        b'{"session_retention_days": "forever"}',
+    )
+
+    response = TestClient(app, client=REMOTE).get("/api/status")
+
+    assert response.status_code == 200
+    assert "session_retention_days must be" in response.json()["config_error"]

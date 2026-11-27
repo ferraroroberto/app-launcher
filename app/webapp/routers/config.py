@@ -623,6 +623,25 @@ async def set_remote_power_guard(request: Request) -> Dict[str, Any]:
     return {"ok": True, "remote_power_guard": remote_power_guard.payload()}
 
 
+def _config_error(cfg: WebappConfig) -> Optional[str]:
+    """The settings banner's text, or ``None``.
+
+    An unreadable file locks out every caller but the PC itself, so only the PC
+    reads that one; a bad retention value only stops the sweep.
+    """
+    if cfg.load_error:
+        return (
+            f"{cfg.load_error}. Remote access is off until the file is fixed "
+            "and the app restarted."
+        )
+    if cfg.retention_error:
+        return (
+            f"{cfg.retention_error}. No session files are deleted until the "
+            "file is fixed and the app restarted."
+        )
+    return None
+
+
 @router.get("/api/status")
 async def status(request: Request) -> Dict[str, Any]:
     cfg: WebappConfig = request.app.state.webapp_config
@@ -654,11 +673,6 @@ async def status(request: Request) -> Dict[str, Any]:
         "tts": bool((cfg.llm_hub_url or "").strip()),
         # The PC load sheet's IP row; null when it could not be established.
         "private_ip": system_load.private_ip(),
-        # Why the settings file could not be read; only the PC itself gets an
-        # answer then.
-        "config_error": (
-            f"{cfg.load_error}. Remote access is off until the file is fixed "
-            "and the app restarted."
-            if cfg.load_error else None
-        ),
+        # What is wrong with the settings file; null when nothing is.
+        "config_error": _config_error(cfg),
     }
