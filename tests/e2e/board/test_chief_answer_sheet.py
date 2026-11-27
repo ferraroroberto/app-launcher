@@ -14,6 +14,7 @@ from tests.e2e.board._chief_support import (
     _CHIEF_UPLOAD,
     _QUESTIONS,
     _RECORDER_MOCK,
+    _assert_ref_link_targets,
     _board_payload,
     _capture_chief_input,
     _mock_board,
@@ -215,6 +216,7 @@ def test_answer_sheet_renders_questions_and_done_sends_one_message(
     assert len(uploads) == 1 and "inline=1" in uploads[0], uploads
 
     _assert_sheet_fits_viewport(authed_page, dialog)
+    _assert_ref_link_targets(authed_page, dialog)
     _assert_urls_are_tappable_links(authed_page, dialog)
 
     done.click()
