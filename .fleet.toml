@@ -40,10 +40,10 @@ extra_junctions = ["webapp/certificates"]
 
 [vendored]
 installer = { src = "src/installer.py", sha = "a40310fe47f82ed7af62835fbfb3ea7ba9e04f8d", dest = "src/installer.py" }
-installer_migrate = { src = "src/installer_migrate.py", sha = "a40310fe47f82ed7af62835fbfb3ea7ba9e04f8d", dest = "src/installer_migrate.py" }
-installer_declaration = { src = "src/installer_declaration.py", sha = "a40310fe47f82ed7af62835fbfb3ea7ba9e04f8d", dest = "src/installer_declaration.py" }
-installer_inplace = { src = "src/installer_inplace.py", sha = "a40310fe47f82ed7af62835fbfb3ea7ba9e04f8d", dest = "src/installer_inplace.py" }
-install_standard_ratchet = { src = "scripts/install_standard_ratchet.py", sha = "a40310fe47f82ed7af62835fbfb3ea7ba9e04f8d", dest = "scripts/install_standard_ratchet.py" }
+installer_migrate = { src = "src/installer_migrate.py", sha = "87981135d4ea66f76621d9b2f400efc28b68d2d9", dest = "src/installer_migrate.py" }
+installer_declaration = { src = "src/installer_declaration.py", sha = "87981135d4ea66f76621d9b2f400efc28b68d2d9", dest = "src/installer_declaration.py" }
+installer_inplace = { src = "src/installer_inplace.py", sha = "87981135d4ea66f76621d9b2f400efc28b68d2d9", dest = "src/installer_inplace.py" }
+install_standard_ratchet = { src = "scripts/install_standard_ratchet.py", sha = "87981135d4ea66f76621d9b2f400efc28b68d2d9", dest = "scripts/install_standard_ratchet.py" }
 icons ={ src = "app/webapp/static/_vendored/icons", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/icons" }
 switch = { src = "app/webapp/static/_vendored/switch", sha = "8f15c49560adbc076d24a8a63dd671868ffa7a4e", dest = "app/webapp/static/_vendored/switch" }
 button = { src = "app/webapp/static/_vendored/button", sha = "7a1a7561331edded3dc91128a42076fb3b0262f8", dest = "app/webapp/static/_vendored/button" }
@@ -182,7 +182,7 @@ blocks = "bundled page scripts"
 which = "npx"
 hint  = "without it the page loads the separate modules"
 
-# What `setup.bat -MigrateFrom <old folder>` and `setup.bat -InPlace` read
+# What `setup.bat -MigrateFrom <old folder>`, `-Replace` and `-InPlace` read
 # (docs/install.md, Migrate). Verify asks the port this PC's config sets, with
 # the top-level `port` as the fallback. The certificate names the tailnet host,
 # never 127.0.0.1, so loopback accepts it unchecked.

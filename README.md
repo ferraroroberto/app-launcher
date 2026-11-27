@@ -38,7 +38,7 @@ cd app-launcher
 .\setup.bat
 ```
 
-`setup.bat` needs Python 3.11 or newer. It creates `.venv`, installs requirements, creates each missing config from its sample and ends with the required items and the optional features; it never overwrites what a PC has configured, a second run reports `unchanged`, and `-WhatIf` lists the changes without making them. Updating a configured PC is `git pull --ff-only` then `tray.bat --restart`. Install, update, migration (`setup.bat -InPlace` from a plain terminal, or `-MigrateFrom <old folder>`) and uninstall: the [install playbook](docs/install.md).
+`setup.bat` needs Python 3.11 or newer. It creates `.venv`, installs requirements, creates each missing config from its sample and ends with the required items and the optional features; it never overwrites what a PC has configured, a second run reports `unchanged`, and `-WhatIf` lists the changes without making them. Updating a configured PC is `git pull --ff-only` then `tray.bat --restart`. Install, update, migration (`setup.bat -Replace` from a fresh clone beside the install, in a plain terminal, or `-MigrateFrom <old folder>`) and uninstall: the [install playbook](docs/install.md).
 
 Each coding agent has its own CLI to install (Codex, Antigravity, Copilot, Pi, Grok Build): [docs/installing-agent-clis.md](docs/installing-agent-clis.md).
 
