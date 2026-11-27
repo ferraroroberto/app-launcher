@@ -226,7 +226,9 @@ async def get_board(request: Request) -> Dict[str, Any]:
     if request.headers.get(view_refresh.VIEW_HEADER) == "1":
         view_refresh.on_view(request.app.state, cfg)
     poll = hot_poll(request.app.state, "GET /api/board")
-    return await poll.get(functools.partial(_build_board_payload, cfg))
+    payload = await poll.get(functools.partial(_build_board_payload, cfg))
+    # What Copy puts in place of an owner step's ``<root>``; null is unknown.
+    return {**payload, "fleet_root": owner_checks.fleet_root(cfg.projects_dir)}
 
 
 # How far back "Show earlier" reaches: a week of catching up, one ``gh`` search per day.
@@ -375,8 +377,6 @@ async def _build_board_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[str
         # cache: ``available: false`` until a list has landed, never "none".
         # Each item carries its backlog ``bucket`` and whether it is ``counted``.
         "owner_checks": owner_section,
-        # What Copy puts in place of an owner step's ``<root>``; null is unknown.
-        "fleet_root": owner_checks.fleet_root(cfg.projects_dir),
     }
 
 
