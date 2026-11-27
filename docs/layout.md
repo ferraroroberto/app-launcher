@@ -64,6 +64,9 @@ app-launcher/
 │   ├── build_info.py           # git-sha / build-time metadata behind `GET /api/version`
 │   ├── boot_autostart.py       # launch-on-login registration
 │   ├── installer.py            # vendored: setup.bat's work (venv, requirements, configs from samples, never overwriting, checklist)
+│   ├── installer_migrate.py    # vendored: setup.bat -MigrateFrom (copy the declared files, install, start, verify)
+│   ├── installer_declaration.py # vendored: parses .fleet.toml [install.migrate] / [install.endpoint]
+│   ├── installer_inplace.py    # vendored: setup.bat -InPlace (stop, back up, clone, migrate)
 │   ├── remote_power_guard.py   # hide Start-menu power options over Remote Desktop
 │   ├── app_runtime.py          # process-level bootstrap shared by the CLI commands
 │   ├── _json_io.py             # shared JSON read/write helpers
