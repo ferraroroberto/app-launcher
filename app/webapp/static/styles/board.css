@@ -445,6 +445,8 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
 .board-owner-detail {
   flex: 0 0 calc(100% + 8px);
   margin-inline: -4px;
+  /* A long command line must not widen the row: the block scrolls instead. */
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -458,6 +460,15 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
 .board-owner-try-none { color: var(--muted); }
 .board-owner-try-list { margin: 0; padding-inline-start: 1.3em; }
 .board-owner-try-list li + li { margin-top: 2px; }
+/* The owner step's run lines, in the Markdown code-listing frame (chat.css
+   `.md-block`): full width, a 44px Copy, long lines scrolling inside it. */
+.md-block.board-owner-run { align-self: stretch; min-width: 0; margin: 0; }
+.board-owner-run .md-block-head { min-height: var(--hit-min); }
+.board-owner-copy { --icon-btn-box: var(--hit-min); flex: none; }
+.md-block.board-owner-run pre.md-code { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.owner-answer > .board-owner-run,
+.owner-answer > .board-owner-expect,
+.owner-answer > .board-owner-no-expect { margin-top: var(--space-sm); }
 .board-owner-links { display: flex; flex-wrap: wrap; column-gap: 4px; }
 .board-owner-link {
   display: inline-flex;

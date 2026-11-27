@@ -37,6 +37,7 @@ import {
 import { bucketName } from './plan-buckets.js';
 import { attachedLines, emptyFiles } from './answer-files.js';
 import { optionList, otherRow, paintOptions } from './answer-item.js';
+import { noNoteChip, noNoteText, stepNodes } from './owner-step.js';
 
 export const VALIDATE_AFTER = 'validate-after';
 export const BEFORE_START = 'before-start';
@@ -147,16 +148,18 @@ function unblocksText(item) {
   return refs.length ? 'unblocks ' + refs.join(', ') : '';
 }
 
-// Why it needs you and what to try; a label with no readable block says so.
+// Why it needs you, what to try and the exact step; a label with no readable
+// block says why there is none.
 function details(item, cls) {
   const nodes = [];
   if (item.unblocks && item.unblocks.length) nodes.push(labelled(cls, 'Unblocks', item.unblocks.join(', ')));
   if (!item.block) {
-    nodes.push(el('p', cls, 'Details unknown: the issue carries the label but no readable owner-check note. Open the issue to see what it needs.'));
+    nodes.push(el('p', cls + ' board-owner-no-note', noNoteText(item)));
     return nodes;
   }
   if (item.reason) nodes.push(labelled(cls, 'Why', item.reason));
   nodes.push.apply(nodes, tryNodes(item, cls));
+  nodes.push.apply(nodes, stepNodes(item, cls));
   return nodes;
 }
 
@@ -190,7 +193,7 @@ function itemRow(item, onAnswer) {
   const title = item.title || item.ref;
   const meta = [item.ref, unblocksText(item)].filter(Boolean).join(' · ');
   const tail = markText(item) || sinceText(item.since);
-  const chips = item.block ? [] : [chip('details unknown', 'attention', 'board-owner-unknown')];
+  const chips = item.block ? [] : [chip(noNoteChip(item), 'attention', 'board-owner-unknown')];
   const row = actionRow({
     className: 'board-item board-owner-row' + (waiting(item) ? '' : ' is-answered'),
     title: title,

@@ -80,7 +80,7 @@ def test_owner_checks_show_in_your_turn_and_answer_through_the_sheet(
     """Each owner check is a Your turn row (title, ref, age), grouped by
     kind and counted in the lane and the header; its tap unfolds why, what to
     try and the links (the artifact opens the artifact). A label without a
-    readable block is listed as "details unknown", never hidden, and an
+    readable block is listed as "no note", never hidden, and an
     unreadable repo is said. The sheet answers them: Validated and a typed
     Problem go to the owner-check route as one batch, then the chief
     hears what landed in one message."""
@@ -97,7 +97,7 @@ def test_owner_checks_show_in_your_turn_and_answer_through_the_sheet(
     expect(groups.nth(1).locator(".board-plan-heading")).to_have_text("Validate to close (2)")
     expect(lane.locator(".board-owner-state")).to_contain_text("1 repo unreadable")
     unknown = lane.locator('.board-owner-row[data-ref="demo#11"]')
-    expect(unknown.locator(".board-owner-unknown")).to_have_text("details unknown")
+    expect(unknown.locator(".board-owner-unknown")).to_have_text("no note")
 
     row = lane.locator('.board-owner-row[data-ref="demo#9"]')
     expect(row).to_contain_text("demo#9")
@@ -117,7 +117,7 @@ def test_owner_checks_show_in_your_turn_and_answer_through_the_sheet(
     expect(dialog.locator("#chiefAnswersTitleText")).to_have_text("Owner checks: Validate to close")
     blocks = dialog.locator(".owner-answer")
     expect(blocks).to_have_count(2)
-    expect(blocks.nth(1)).to_contain_text("Details unknown")
+    expect(blocks.nth(1)).to_contain_text("No owner-check note on this issue")
     done = dialog.locator("#chiefAnswersDone")
     expect(done).to_be_disabled()
     # Newest first: demo#9 (filed 10-31) leads the undated demo#11.
@@ -528,3 +528,74 @@ def test_an_item_answer_button_shares_the_group_buttons_edges(
     plan_btn = authed_page.locator("#boardChiefPlan .board-plan-answer")
     expect(plan_btn).to_be_visible()
     assert stable_eval(plan_btn, edges) == stable_eval(group_btn, edges)
+
+
+# A command far wider than a phone, so the block has to scroll.
+_LONG_COMMAND = "cd /d demo-folder && .venv\\Scripts\\python.exe -m demo.check --profile kitchen --verbose"
+
+
+@pytest.mark.iphone
+def test_the_exact_step_copies_from_the_card_and_a_missing_field_says_so(
+    authed_page: Page, base_url: str
+) -> None:
+    """The run lines sit in a block per place with a Copy button that copies
+    that block's commands, expect under them; a field the note does not carry
+    has its own line. The block scrolls inside itself, never the page, in the
+    row's detail and in the answer sheet, in both themes."""
+    authed_page.set_viewport_size({"width": 390, "height": 844})
+    authed_page.add_init_script(
+        "window.__copied = []; Object.defineProperty(navigator, 'clipboard', {configurable: true,"
+        " value: {writeText: (t) => { window.__copied.push(t); return Promise.resolve(); }}});"
+    )
+    payload = _payload()
+    items = payload["owner_checks"]["items"]
+    items[1].update(note="complete", expect="a hint appears within a few seconds", run=[
+        {"where": "terminal", "text": _LONG_COMMAND},
+        {"where": "terminal", "text": "tray.bat --restart"},
+        {"where": "screen", "text": "the overlay window"},
+    ])
+    items[0].update(note="no-run", run=[], expect="")
+    _mock_board(authed_page, payload)
+    _mock_ensure(authed_page, {})
+    _route_voice(authed_page, False)
+    _open_board(authed_page, base_url)
+
+    lane = authed_page.locator("#boardColYours")
+    row = lane.locator('.board-owner-row[data-ref="demo#9"]')
+    row.locator(".action-row-main").click()
+    detail = row.locator(".board-owner-detail")
+    blocks = detail.locator(".board-owner-run")
+    expect(blocks.locator(".md-block-lang")).to_have_text(["Terminal", "Screen"])
+    both = _LONG_COMMAND + "\ntray.bat --restart"
+    assert blocks.nth(0).locator("code").text_content() == both
+    expect(detail.locator(".board-owner-expect")).to_have_text("Expect: a hint appears within a few seconds")
+    copy = blocks.nth(0).locator(".board-owner-copy")
+    box = stable_read(copy.bounding_box)
+    assert box and box["width"] >= 44 and box["height"] >= 44, box
+    copy.click()
+    expect(authed_page.locator("#toast")).to_have_text("Command copied")
+    assert authed_page.evaluate("window.__copied") == [both]
+
+    def assert_scrolls_inside(block, outer) -> None:
+        inner = stable_eval(block.locator("pre"), "el => el.scrollWidth - el.clientWidth")
+        assert inner > 0, "the long command should scroll inside its block"
+        assert stable_eval(outer, "el => el.scrollWidth - el.clientWidth") <= 0
+        edge = stable_read(block.bounding_box)
+        assert edge and edge["x"] >= 0 and edge["x"] + edge["width"] <= 390, edge
+
+    for theme in ("light", "dark"):
+        authed_page.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
+        assert_scrolls_inside(blocks.nth(0), authed_page.locator("html"))
+
+    bare = lane.locator('.board-owner-row[data-ref="demo#7"]')
+    bare.locator(".action-row-main").click()
+    expect(bare.locator(".board-owner-no-run")).to_have_text("No command recorded.")
+    expect(bare.locator(".board-owner-no-expect")).to_have_text("No expected result recorded.")
+
+    # The sheet draws the same block, and its toast shows above the dialog.
+    lane.locator('.board-owner-group[data-group="validate_to_close"] .board-owner-answer-group').click()
+    dialog = authed_page.locator("#chiefAnswersDialog")
+    sheet_block = dialog.locator('[data-key="owner:demo#9"] .board-owner-run').first
+    assert_scrolls_inside(sheet_block, dialog.locator(".detail-card"))
+    sheet_block.locator(".board-owner-copy").click()
+    expect(dialog.locator("#chiefAnswersToast")).to_have_text("Command copied")
