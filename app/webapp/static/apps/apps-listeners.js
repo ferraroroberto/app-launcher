@@ -31,7 +31,8 @@ const expandedListenerPorts = new Set();
 // ("Link", "Path") in the toast; `opts.host` is the toast host of a sheet that
 // carries its own (a modal dialog hides the page's toast). `opts.noun` is the
 // form the failure line uses (default `what` lowercased), and `opts.byHand` is
-// the sentence that ends it when the text is on screen to copy.
+// the sentence that ends it when the text is on screen to copy. `opts.done`
+// replaces the "<what> copied" line.
 export async function copyText(text, what, opts) {
   try {
     await writeClipboard(text, opts);
@@ -45,7 +46,7 @@ export async function copyText(text, what, opts) {
     apiFailToast('Could not copy the ' + noun, cause, opts);
     return;
   }
-  toast(what + ' copied', 'good', opts);
+  toast((opts && opts.done) || what + ' copied', 'good', opts);
 }
 
 // The one Copy URL every Apps-tab menu uses (Running, Apps, Other ports).

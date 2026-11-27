@@ -28,7 +28,9 @@ ARTIFACT = "https://claude.ai/code/artifact/0123abcd"
 
 # A command far wider than a phone, so its block has to scroll.
 _LONG_COMMAND = "cd /d demo-folder && .venv\\Scripts\\python.exe -m demo.check --profile kitchen --verbose"
-_BOTH_COMMANDS = _LONG_COMMAND + "\ntray.bat --restart"
+_ROOTED_COMMAND = "<root>/demo/tray.bat --restart"
+_BOTH_COMMANDS = _LONG_COMMAND + "\n" + _ROOTED_COMMAND
+_FLEET_ROOT = "/srv/fleet"
 
 _OWNER_ITEMS = [
     {"ref": "demo#7", "repo": "demo", "number": 7, "title": "Pair the kitchen speaker",
@@ -42,7 +44,7 @@ _OWNER_ITEMS = [
      "proof": ["https://github.com/octo/demo/pull/12", ARTIFACT], "since": "2026-10-31",
      "mark": None, "mark_at": None, "mark_until": None,
      "note": "complete", "expect": "a hint appears within a few seconds",
-     "run": [{"where": "terminal", "text": _LONG_COMMAND}, {"where": "terminal", "text": "tray.bat --restart"},
+     "run": [{"where": "terminal", "text": _LONG_COMMAND}, {"where": "terminal", "text": _ROOTED_COMMAND},
              {"where": "screen", "text": "the overlay window"}]},
     {"ref": "demo#11", "repo": "demo", "number": 11, "title": "Swipe to archive",
      "url": "https://github.com/octo/demo/issues/11", "state": "OPEN", "kind": "validate-after",
@@ -58,6 +60,7 @@ def _payload() -> dict:
         "refreshing": False, "unknown": [{"repo": "other", "reason": "403"}],
         "items": copy.deepcopy(_OWNER_ITEMS),
     }
+    payload["fleet_root"] = _FLEET_ROOT
     return payload
 
 
@@ -524,14 +527,17 @@ def _assert_scrolls_inside(block, outer) -> None:
     assert edge and edge["x"] >= 0 and edge["x"] + edge["width"] <= 390, edge
 
 
+_CLIPBOARD_STUB = (
+    "() => { window.__copied = []; Object.defineProperty(navigator, 'clipboard', {configurable: true,"
+    " value: {writeText: (t) => { window.__copied.push(t); return Promise.resolve(); }}}); }"
+)
+
+
 def _assert_the_exact_step(page: Page) -> None:
     """From demo#7's open detail: its missing fields are said; demo#9's run lines
     sit in a block per place with a Copy button and expect under them, in the
     row's detail in both themes and in the answer sheet."""
-    page.evaluate(
-        "() => { window.__copied = []; Object.defineProperty(navigator, 'clipboard', {configurable: true,"
-        " value: {writeText: (t) => { window.__copied.push(t); return Promise.resolve(); }}}); }"
-    )
+    page.evaluate(_CLIPBOARD_STUB)
     lane = page.locator("#boardColYours")
     bare = lane.locator('.board-owner-row[data-ref="demo#7"]')
     expect(bare.locator(".board-owner-no-run")).to_have_text("No command recorded.")
@@ -549,7 +555,8 @@ def _assert_the_exact_step(page: Page) -> None:
     assert box and box["width"] >= 44 and box["height"] >= 44, box
     copy.click()
     expect(page.locator("#toast")).to_have_text("Command copied")
-    assert page.evaluate("window.__copied") == [_BOTH_COMMANDS]
+    # The clipboard gets the real root; the block above still reads <root>.
+    assert page.evaluate("window.__copied") == [_BOTH_COMMANDS.replace("<root>", _FLEET_ROOT)]
     for theme in ("light", "dark"):
         page.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
         _assert_scrolls_inside(blocks.nth(0), page.locator("html"))
@@ -561,6 +568,18 @@ def _assert_the_exact_step(page: Page) -> None:
     _assert_scrolls_inside(sheet_block, dialog.locator(".detail-card"))
     sheet_block.locator(".board-owner-copy").click()
     expect(dialog.locator("#chiefAnswersToast")).to_have_text("Command copied")
+
+    # No confirmed root: the text is copied as written, and the toast says so.
+    unresolved = _payload()
+    unresolved["fleet_root"] = None
+    _mock_board(page, unresolved)
+    with page.expect_response(re.compile(r".*/api/board(?:\?.*)?$")):
+        page.reload()
+    page.evaluate(_CLIPBOARD_STUB)
+    row.locator(".action-row-main").click()
+    blocks.nth(0).locator(".board-owner-copy").click()
+    expect(page.locator("#toast")).to_have_text("Command copied with <root> unfilled: fleet folder unknown")
+    assert page.evaluate("window.__copied") == [_BOTH_COMMANDS]
 
 
 @pytest.mark.iphone

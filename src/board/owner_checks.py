@@ -134,6 +134,27 @@ def _now_iso(now: Optional[datetime] = None) -> str:
     return moment.isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
+# ------------------------------------------------------------------ the root
+
+def fleet_root(projects_dir: str) -> Optional[str]:
+    """The folder that holds the repos, what a note's ``<root>`` stands for.
+
+    None when it cannot be confirmed (unset, relative or not a folder), so Copy
+    says so instead of pasting a guess.
+    """
+    raw = str(projects_dir or "").strip()
+    path = Path(raw)
+    try:
+        if raw and path.is_absolute() and path.is_dir():
+            return str(path)
+        why = "the projects folder is not an existing absolute path"
+    except OSError as exc:
+        why = str(exc)
+    # Debug, not warning: the 5 s Board poll comes through here.
+    logger.debug("fleet root not confirmed: %s", why)
+    return None
+
+
 # ------------------------------------------------------------------ the CLI
 
 def _cli_argv(fleet_config_dir: str) -> List[str]:

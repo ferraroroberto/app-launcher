@@ -257,6 +257,17 @@ def test_board_payload_carries_the_owner_section(webapp_client):
     assert section["items"] == []
 
 
+def test_board_payload_carries_the_fleet_root_only_when_it_is_confirmed(webapp_client, tmp_path):
+    client, app, _ = webapp_client
+    for configured, expected in ((str(tmp_path), str(tmp_path)), (str(tmp_path / "gone"), None), ("", None)):
+        app.state.webapp_config.projects_dir = configured
+        assert client.get("/api/board").json()["fleet_root"] == expected, configured
+
+
+def test_fill_root_node_pin():
+    assert "ok" in _run_node_pin("board/fill_root.test.mjs")
+
+
 def test_needs_count_is_unknown_before_a_list_lands_and_skips_marked_items():
     assert owner_checks.needs_count() is None
     snap = {"available": True, "items": [
