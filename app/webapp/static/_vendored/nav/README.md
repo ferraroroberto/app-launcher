@@ -1,6 +1,6 @@
 # `nav` — floating bottom-tab navigation
 
-The fleet's canonical **primary navigation**: a top segmented control on desktop that becomes a single floating bottom-tab pill on touch / installed-PWA. This is the navigation contract every fleet web app must *feel* identical on (see `~/.claude/design.md` → "Navigation & interaction").
+The fleet's canonical **primary navigation**: a top segmented control on desktop that becomes a single floating bottom-tab pill on touch / installed-PWA. This is the navigation contract every fleet web app must *feel* identical on (see the fleet design system → "Navigation & interaction").
 
 ## Files
 
@@ -81,11 +81,11 @@ When the app shows a screen no tab owns (Settings, an archive, a detail opened f
 
 ## Tab icons
 
-Each `.tab` holds one `<svg class="tab-icon">` stroke glyph and one `<span class="tab-label">` — and the icon is visible on **both** surfaces: beside the label in the desktop segmented control, above it in the mobile pill. Give the SVG a `24 24` viewBox and `<path>`s with no `fill`/`stroke` attributes of their own; `nav-tabs.css` paints them (`fill: none; stroke: currentColor`) so they inherit the active/inactive tab colour. Desktop sizes the icon at `1.05em` of the label's font-size; the stacked layouts (the rail and a squeezed desktop window) use `--icon-feature`, and the phone pill fixes it at 24px, the iOS tab-bar glyph size, so the 11px label cannot shrink it. Every icon size is scoped as `.tabs .tab-icon`, so an app's own single-class icon utility (a `.icon { width: 1em }` you also put on the glyph) can't resize it, whatever order the stylesheets load in (#303). Below 520px on a fine pointer (a squeezed desktop window) the tab stacks the icon over its label, the pill's shape at the `--font-caption` size, since an icon beside a 7–8 letter label no longer fits five tabs there. The nav never goes icon-only (`design.md` navigation contract, fleet-config#966); the label ellipsizes only as a last resort (#278).
+Each `.tab` holds one `<svg class="tab-icon">` stroke glyph and one `<span class="tab-label">` — and the icon is visible on **both** surfaces: beside the label in the desktop segmented control, above it in the mobile pill. Give the SVG a `24 24` viewBox and `<path>`s with no `fill`/`stroke` attributes of their own; `nav-tabs.css` paints them (`fill: none; stroke: currentColor`) so they inherit the active/inactive tab colour. Desktop sizes the icon at `1.05em` of the label's font-size; the stacked layouts (the rail and a squeezed desktop window) use `--icon-feature`, and the phone pill fixes it at 24px, the iOS tab-bar glyph size, so the 11px label cannot shrink it. Every icon size is scoped as `.tabs .tab-icon`, so an app's own single-class icon utility (a `.icon { width: 1em }` you also put on the glyph) can't resize it, whatever order the stylesheets load in (#303). Below 520px on a fine pointer (a squeezed desktop window) the tab stacks the icon over its label, the pill's shape at the `--font-caption` size, since an icon beside a 7–8 letter label no longer fits five tabs there. The nav never goes icon-only (`design.md` navigation contract); the label ellipsizes only as a last resort (#278).
 
 ## Count badge (optional)
 
-A small count on a tab says "something over there needs you" from every tab, so no page header has to repeat it (app-launcher's Board tab carries the number of sessions waiting on the user). It is opt-in: `initNavTabs` returns `setBadge(tab, count, noun?, tone?)` next to `setTab` / `getTab`, and a nav that never calls it renders exactly as before, with none of the badge elements in the DOM.
+A small count on a tab says "something over there needs you" from every tab, so no page header has to repeat it (a board tab can carry the number of sessions waiting on the user). It is opt-in: `initNavTabs` returns `setBadge(tab, count, noun?, tone?)` next to `setTab` / `getTab`, and a nav that never calls it renders exactly as before, with none of the badge elements in the DOM.
 
 ```js
 const nav = initNavTabs({ storageKey: 'my-app.tab' });
@@ -116,7 +116,7 @@ On the phone pill a finger can press one tab and, without lifting, slide across 
 
 ## Wide layout: left rail
 
-At `(min-width: 1100px) and (pointer: fine)` (`design.md` `layout.wide`, fleet-config#968) the segmented control becomes a **left rail**: `layout.rail` (80px) wide, full height, on the `card` surface with a `line` hairline on its right edge. It shows the same tabs stacked top to bottom, each an `--icon-feature` glyph over a `--font-caption` label, never icon-only. Only the placement changes. The active tint, `aria-selected` and persistence are the same rules, and the markup is the same skeleton. The file offsets your content past the rail itself: `body:has(> .tabs)` gets `padding-left: var(--layout-rail)`, and `.tabs ~ .app` gets the top gap the sticky control used to supply. Both are keyed on the nav so they outrank an app's own `body` / `.app` padding shorthand loaded after this file. Below 1100px the control keeps the `layout.measure` column (`--layout-measure`, 772px); on a coarse pointer nothing changes at any width. Master-detail and a board's full-width exception are app layout, not nav, so they stay in your CSS (#281, lifted from app-launcher#1166).
+At `(min-width: 1100px) and (pointer: fine)` (`design.md` `layout.wide`) the segmented control becomes a **left rail**: `layout.rail` (80px) wide, full height, on the `card` surface with a `line` hairline on its right edge. It shows the same tabs stacked top to bottom, each an `--icon-feature` glyph over a `--font-caption` label, never icon-only. Only the placement changes. The active tint, `aria-selected` and persistence are the same rules, and the markup is the same skeleton. The file offsets your content past the rail itself: `body:has(> .tabs)` gets `padding-left: var(--layout-rail)`, and `.tabs ~ .app` gets the top gap the sticky control used to supply. Both are keyed on the nav so they outrank an app's own `body` / `.app` padding shorthand loaded after this file. Below 1100px the control keeps the `layout.measure` column (`--layout-measure`, 772px); on a coarse pointer nothing changes at any width. Master-detail and a board's full-width exception are app layout, not nav, so they stay in your CSS (#281).
 
 ## Bottom reserve and hit area (phone)
 
@@ -155,15 +155,15 @@ Reduce Transparency (`prefers-reduced-transparency: reduce`) drops both layers; 
 
 ## Required design tokens
 
-`nav-tabs.css` references these CSS custom properties — define them in your app's `:root` / `[data-theme="dark"]` blocks, **wired to `~/.claude/design.md` (+ `design.dark.md`)**. Don't copy the spec; point your tokens at it. Reference values (light) from the canonical implementation. The mobile geometry below is the phone-validated standard promoted from `home-automation` issue #118: measured from 1290px-wide iPhone screenshots of the GitHub/VLC apps (~3x CSS pixels), then validated live on Roberto's iPhone.
+`nav-tabs.css` references these CSS custom properties — define them in your app's `:root` / `[data-theme="dark"]` blocks, **wired to the fleet design system (light + dark)**. Don't copy the spec; point your tokens at it. Reference values (light) from the canonical implementation. The mobile geometry below is the phone-validated standard measured from 1290px-wide iPhone screenshots of the GitHub/VLC apps (~3x CSS pixels), then validated live on a real iPhone.
 
 | Token | Light value | Used for |
 | --- | --- | --- |
 | `--bg` | `#ffffff` (dark `#0d1117`) | pill fade |
 | `--card` | `#ffffff` | tab bar surface (desktop) |
-| `--accent-soft` | `color-mix(in srgb, var(--accent) 16%, transparent)` | active-tab fill, desktop and mobile (fleet-config#963) |
+| `--accent-soft` | `color-mix(in srgb, var(--accent) 16%, transparent)` | active-tab fill, desktop and mobile |
 | `--accent-border-soft` | `color-mix(in srgb, var(--accent) 24%, transparent)` | active-tab border (mobile) |
-| `--accent-text` | `#0550ae` (dark `#58a6ff`) | active-tab text/icon (text on the `accent-soft` tint, fleet-config#963) |
+| `--accent-text` | `#0550ae` (dark `#58a6ff`) | active-tab text/icon (text on the `accent-soft` tint) |
 | `--attention` | `#9a6700` (dark `#d29922`) | count-badge fill; `--card` is its text — only read when `setBadge` shows a badge |
 | `--deficit` | `#cf222e` (dark `#f85149`) | count-badge fill in the `danger` tone; `--card` is its text — only read when `setBadge` shows a `danger` badge |
 | `--muted` | `#656d76` | inactive-tab text |
@@ -205,7 +205,7 @@ The floating bar hides whenever a modal is open so it never floats over a dialog
 
 ## Pinning the bar (iOS) — CSS-first, body-level nav
 
-Hard-won contract, validated extensively on a real iPhone (`home-automation` #205/#214/#229/#232). The short version: **in an installed PWA the floating bar is pinned by CSS alone, and the nav must be outside the content wrapper/scroller.**
+Hard-won contract, validated extensively on a real iPhone. The short version: **in an installed PWA the floating bar is pinned by CSS alone, and the nav must be outside the content wrapper/scroller.**
 
 - **Body-level nav is load-bearing.** `nav-tabs.html` places `<nav class="tabs">` as a direct `<body>` child before `<main class="app">`. Do not move it inside `.app`. iOS can capture a fixed-position element nested inside a momentum/content scroller and position it against the scrolled content bottom; on a short tab that makes the bar float mid-screen. A body-level sibling pins against the viewport instead.
 - **No measured JS transform, anywhere.** `nav-tabs.css` positions the bar `fixed; bottom: …` and `nav-tabs.js` never moves it: it neither reads the visual viewport to chase a browser toolbar nor translates the bar. Every measured offset risked stranding the bar **up** on iOS, where layout and rendered geometry disagree. What the script does write is state the CSS reads: `data-active-tab`, the `.sliding` class, the capsule's `--pill-x` and `--pill-w`, and the top glass's `data-nav-top-glass` and `--nav-fade-on` on `<html>`.
@@ -215,7 +215,7 @@ Hard-won contract, validated extensively on a real iPhone (`home-automation` #20
 - **The glass is never rebuilt on a timer.** Neither a launch, a viewport resize nor a return to the foreground drops the bar's `backdrop-filter`, its layer promotion or the top glass. The installed app's top-edge blur is the system scroll-edge effect, which the `.nav-top-edge` strip turns off ("Top-edge blur in the installed app: cause"). `tests/e2e/test_vendored_nav.py` pins that, in a stubbed installed app, a burst of resizes, a `visibilitychange` and a back-forward `pageshow` while scrolled write nothing that drops the glass.
 - **Standalone anchors the bar from the top.** Document scroll is the same in a browser tab and the installed app, but in `@media (display-mode: standalone)` the bar and its bottom fade are placed with `top: calc(100lvh - …)`: iOS still grows the installed app's viewport after a cold launch, and `100lvh` is the final height from the first frame, so the bar never rides that growth. A browser tab keeps `bottom:`, since there `lvh` would put the bar under the toolbar.
 - **The page head is part of the contract.** The top glass is written for `apple-mobile-web-app-status-bar-style: black-translucent` plus `viewport-fit=auto`, with `theme-color` following the page colour (How to vendor, step 4). `tests/test_nav_standalone_head.py` pins that head in the skeleton, the gallery and this README.
-- **An app that pins its body under dialogs needs the same `scroll-lock.js` change.** Neither the nav nor `modal/` carries standalone-shell code, and `initNavTabs` listens for no scroll-lock events. An app-side `scroll-lock.js` that pins the body with `position: fixed` while a `<dialog>` is open must be the plain pin (save `scrollY`, pin at `-scrollY`, restore on close) with no "standalone shell" branch and no event dispatch; it keeps working because the `html` min-height rule above leaves the document scrollable even while the body is pinned. home-automation's `scroll-lock.js` is the reference; the script is app code and is not vendored here.
+- **An app that pins its body under dialogs needs the same `scroll-lock.js` change.** Neither the nav nor `modal/` carries standalone-shell code, and `initNavTabs` listens for no scroll-lock events. An app-side `scroll-lock.js` that pins the body with `position: fixed` while a `<dialog>` is open must be the plain pin (save `scrollY`, pin at `-scrollY`, restore on close) with no "standalone shell" branch and no event dispatch; it keeps working because the `html` min-height rule above leaves the document scrollable even while the body is pinned. The script is app code and is not vendored here.
 
 **Recommended app-level hardening:**
 

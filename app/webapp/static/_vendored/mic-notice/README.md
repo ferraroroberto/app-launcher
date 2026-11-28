@@ -1,6 +1,6 @@
 # `mic-notice` — the recorder's input name and silent-mic warning
 
-The notice under a record button while the mic is open: the input's name ("Mic: AirPods"), the live level strip and, when the input carries no sound for 3 seconds, a warning under them. It is built on [`rec-wave/`](../rec-wave/)'s `onSilent` / `onSignal`, so one `AudioContext` serves the strip and the warning. Normalized from app-launcher's dictation notice (`voice.js` + `voice-level.js`) and voice-transcriber's `mic-notice.js`; the warning texts are app-launcher's current ones.
+The notice under a record button while the mic is open: the input's name ("Mic: AirPods"), the live level strip and, when the input carries no sound for 3 seconds, a warning under them. It is built on [`rec-wave/`](../rec-wave/)'s `onSilent` / `onSignal`, so one `AudioContext` serves the strip and the warning. Normalized from a shipped dictation notice (`voice.js` + `voice-level.js`) and a second app's `mic-notice.js`; the warning texts are the first one's.
 
 ## Files
 

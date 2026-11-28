@@ -1,6 +1,6 @@
 # `card` — the base content group
 
-The fleet's canonical **card**: an elevated surface one step above the canvas (surface color + hairline border, no shadow), `rounded.lg` corners, `spacing.md` padding, and a one-row header — leading title-size glyph + bold title + optional muted meta, right-pinned chevron/meta. Contract: `~/.claude/design.md` → "Component contracts" → **card**.
+The fleet's canonical **card**: an elevated surface one step above the canvas (surface color + hairline border, no shadow), `rounded.lg` corners, `spacing.md` padding, and a one-row header — leading title-size glyph + bold title + optional muted meta, right-pinned chevron/meta. Contract: the fleet design system → "Component contracts" → **card**.
 
 ## Files
 
@@ -37,7 +37,7 @@ The fleet's canonical **card**: an elevated surface one step above the canvas (s
 
 ## Required design tokens
 
-Define these CSS custom properties in your app's `:root` / `[data-theme="dark"]` blocks, **wired to `~/.claude/design.md` (+ `design.dark.md`)**. Reference values (light):
+Define these CSS custom properties in your app's `:root` / `[data-theme="dark"]` blocks, **wired to the fleet design system (light + dark)**. Reference values (light):
 
 | Token | Light value | Used for |
 | --- | --- | --- |

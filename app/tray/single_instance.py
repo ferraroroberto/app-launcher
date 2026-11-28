@@ -85,7 +85,7 @@ class SingleInstance:
     already holds the name, :attr:`acquired` is False and the caller must exit.
 
     The mutex ``name`` is the caller's responsibility and should be stable +
-    unique per app, e.g. ``"Global\\\\whatsapp-radar-tray"`` (a ``Global\\``
+    unique per app, e.g. ``"Global\\\\my-app-tray"`` (a ``Global\\``
     prefix spans terminal-server sessions; a bare/``Local\\`` name is per
     session — pick per the app's needs).
     """

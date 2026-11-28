@@ -35,6 +35,7 @@
 /scripts/dead_code_ratchet.py
 /scripts/doc_refs_ratchet.py
 /scripts/docs_ratchet.py
+/scripts/install_standard_ratchet.py
 /scripts/instruction_frontmatter.py
 /scripts/instruction_ratchet.py
 /scripts/instruction_repeats.py
@@ -58,6 +59,9 @@
 /src/compression.py
 /src/health_routes.py
 /src/installer.py
+/src/installer_declaration.py
+/src/installer_inplace.py
+/src/installer_migrate.py
 /src/login_alert.py
 /src/login_lockout.py
 /src/notify

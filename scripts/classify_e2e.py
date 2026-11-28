@@ -6,7 +6,7 @@ to the diff -- never weaker for real UI/behaviour changes, and fail-safe to
 the full suite whenever the diff is ambiguous, mixed, or touches anything not
 confidently narrow.
 
-Unlike app-launcher's classifier, the path -> tier rules here are NOT
+Unlike a hand-written per-app classifier, the path -> tier rules here are NOT
 hardcoded in this module -- every consumer's layout differs. They are
 declared per-project in that repo's own `.fleet.toml` under an `[e2e]` table
 (see the `[e2e]` block in this repo's own `.fleet.toml` for a worked example,

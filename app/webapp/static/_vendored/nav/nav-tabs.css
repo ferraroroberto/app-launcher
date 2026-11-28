@@ -2,7 +2,7 @@
  * nav. VENDORED VERBATIM from project-scaffolding; do NOT edit per-app.
  *
  * Every colour, radius and spacing value is a design-system custom property
- * (~/.claude/design.md + design.dark.md) that the consuming app defines in its
+ * (the fleet design system, light + dark) that the consuming app defines in its
  * own :root / [data-theme] blocks; this file only references them. The tokens
  * are listed in this folder's README.md.
  *

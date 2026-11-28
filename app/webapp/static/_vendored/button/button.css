@@ -7,27 +7,26 @@
  * button-tier sweep found a deterministic CSS parse of
  * ~135 button rule variants across 7 apps: the only button ever vendored
  * (.detail-save-btn, embedded in this repo's modal.css) was byte-identical
- * everywhere, while every non-vendored recipe diverged per app (photo-ocr's
- * .big-btn became a solid primary, voice-transcriber's .ghost-btn became a
+ * everywhere, while every non-vendored recipe diverged per app (one app's
+ * .big-btn became a solid primary, another's .ghost-btn became a
  * tint). This file generalizes the reference recipes out of their per-app
  * homes so the drift stops:
  *   - .button-primary        <- the former modal.css .detail-save-btn (this
  *                                repo); the modal now links this file and
  *                                keeps only its footer width:100%. Holds the
  *                                spec's 48px height, never --control-h.
- *   - .button-tint            <- home-automation styles.css .big-btn
+ *   - .button-tint            <- a reference app's .big-btn
  *                                (~line 2533)
  *   - .button-ghost           <- the fleet-majority .ghost-btn recipe
- *                                (whatsapp-radar styles.css ~line 292;
- *                                app-launcher styles.css ~line 1200 is the
+ *                                (one app's .ghost-btn rule; a second app's is the
  *                                same shape with minor padding variance)
- *   - .button-surface         <- photo-ocr styles.css .shaded-btn
+ *   - .button-surface         <- a reference app's .shaded-btn
  *                                (~line 470), core recipe only — the app's
  *                                own opacity-based :disabled and the
  *                                --accent tinted "dirty state" modifier are
  *                                per-app extras, not part of the base tier
- *   - :disabled (all tiers)   <- home-automation styles.css
- *                                .detail-save-btn:disabled (~line 2479)
+ *   - :disabled (all tiers)   <- a reference app's
+ *                                .detail-save-btn:disabled
  *                                — one recipe, both
  *                                themes, never opacity on a solid fill
  *   - .button-tint.danger     <- the outlined destructive recipe (design.md

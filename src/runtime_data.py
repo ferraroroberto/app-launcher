@@ -9,11 +9,11 @@ subdirectory under one root, so two apps can both own a
 Resolution order for a single database file, highest precedence first:
 
 1. ``env_var`` — the app's own full-path override (``TELEMETRY_DB_PATH``,
-   ``WR_DB_PATH``, ``TASKOS_DB_PATH``, …). Names a *file*, not a directory.
+   ``MYAPP_DB_PATH``, ``OTHERAPP_DB_PATH``, …). Names a *file*, not a directory.
    Kept because unit and e2e harnesses already point it at a temp path; this
    module must not break them.
 2. ``<APP>_DATA_DIR`` — a directory for this one app (slug upper-cased,
-   ``-`` → ``_``; e.g. ``HOME_AUTOMATION_DATA_DIR``).
+   ``-`` → ``_``; e.g. ``DEMO_APP_DATA_DIR``).
 3. ``FLEET_DATA_ROOT`` — the fleet-wide root; the app's directory is
    ``<root>/<app>``.
 4. The platform default root: ``C:\\sqlite`` on Windows (deliberately a
@@ -59,8 +59,8 @@ def _env(name: str) -> str:
 
 
 def app_dir_env_var(app: str) -> str:
-    """The per-app directory override name for ``app`` (``home-automation`` →
-    ``HOME_AUTOMATION_DATA_DIR``)."""
+    """The per-app directory override name for ``app`` (``demo-app`` →
+    ``DEMO_APP_DATA_DIR``)."""
     return f"{app.replace('-', '_').upper()}_DATA_DIR"
 
 

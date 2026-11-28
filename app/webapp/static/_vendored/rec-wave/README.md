@@ -1,6 +1,6 @@
 # `rec-wave` — the live recording waveform
 
-The level strip every record button shows while the mic is open: bars that follow the input level plus an elapsed `m:ss`, so a take confirms at a glance that speech is being captured. It is the "timer and level meter" of the design spec's **capture control**. Normalized from grocery-shopping-automation's recording strip (`startWave()`), generalized from a canvas in one fixed element to DOM bars in any host.
+The level strip every record button shows while the mic is open: bars that follow the input level plus an elapsed `m:ss`, so a take confirms at a glance that speech is being captured. It is the "timer and level meter" of the design spec's **capture control**. Normalized from a shipped recording strip (`startWave()`), generalized from a canvas in one fixed element to DOM bars in any host.
 
 ## Files
 
@@ -80,7 +80,7 @@ button.addEventListener('click', async () => {
 
 ## One level source for the strip and a silent-mic notice
 
-`createLevelSource` is the shared reader, and `SILENCE_RMS` / `SILENCE_MS` are the shared silence verdict. An app that also warns about a dead input (app-launcher's `voice-level.js` is one) takes the warning from `onSilent` / `onSignal` on the same wave instead of opening a second `AudioContext` on the stream: pass `silenceMs` to match its window, and keep its banner in its own callbacks.
+`createLevelSource` is the shared reader, and `SILENCE_RMS` / `SILENCE_MS` are the shared silence verdict. An app that also warns about a dead input (a voice-level banner is one) takes the warning from `onSilent` / `onSignal` on the same wave instead of opening a second `AudioContext` on the stream: pass `silenceMs` to match its window, and keep its banner in its own callbacks.
 
 `source` is the seam for tests and demos: any object with `running`, `connect(stream)`, `read(bars)` → `{rms, levels}` (or `null` when it cannot read) and `close()` works.
 

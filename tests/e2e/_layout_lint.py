@@ -65,6 +65,7 @@ settled capture. Contract: docs/playwright-ui-testing.md ("Layout lint").
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import tempfile
@@ -78,6 +79,8 @@ from playwright.sync_api import Browser, Page
 
 from tests.e2e._geometry import EFFECTIVE_RECT_JS
 from tests.e2e._shot import THEMES, VIEWPORTS, Viewport, shot, variant_page, variants
+
+logger = logging.getLogger(__name__)
 
 #: The touch-target floor, design.md's `components.hit-target.min`.
 MIN_TARGET_PX = 44.0
@@ -388,9 +391,12 @@ def _write_manifest(path: Path, entries: Sequence[CaptureEntry]) -> None:
     existing: dict[str, Any] = {}
     if path.exists():
         try:
-            existing = {_key(e): e for e in json.loads(path.read_text(encoding="utf-8"))["entries"]}
-        except (OSError, ValueError, KeyError, TypeError):
-            existing = {}
+            existing = {_key(e): e for e in json.loads(path.read_text(encoding="utf-8-sig"))["entries"]}
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            # Writing on would replace every earlier leg with this call's own: a failed read is not an absent file.
+            message = f"layout manifest {path} cannot be read ({type(exc).__name__}); it was left untouched"
+            logger.error("❌ %s", message)
+            raise ValueError(message) from exc
     for entry in entries:
         raw = asdict(entry)
         for finding, source in zip(raw["findings"], entry.findings, strict=True):

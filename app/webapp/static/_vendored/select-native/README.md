@@ -1,6 +1,6 @@
 # `select-native` — the native select at control height
 
-The fleet's canonical **native `<select>`**: whose visible control is the `control` token (36px) inside a 44px hit box, so a row of inline controls (select / input / toggle) lines up on one line — canvas-subtle fill, `control-border` border, `rounded.md` corners, label-size text. Contract: `~/.claude/design.md` → "Base UI" → **Select** (sized to `control`, 36px), and the `control` component token. Normalized from home-automation's shipped `styles.css` `.select-native`.
+The fleet's canonical **native `<select>`**: whose visible control is the `control` token (36px) inside a 44px hit box, so a row of inline controls (select / input / toggle) lines up on one line — canvas-subtle fill, `control-border` border, `rounded.md` corners, label-size text. Contract: the fleet design system → "Base UI" → **Select** (sized to `control`, 36px), and the `control` component token. Normalized from a shipped `styles.css` `.select-native`.
 
 ## Files
 
@@ -43,7 +43,7 @@ The fleet's canonical **native `<select>`**: whose visible control is the `contr
 | `--font-label` | `0.875rem` | option/label text |
 | `--radius-md` | `12px` | corners |
 | `--control-border` | `#818b98` (dark `#6e7681`) | border (WCAG 1.4.11 control boundary) |
-| `--input-bg` | `var(--card-off)` (dark `#21262d`, the `border-muted` value) | fill — the control fill, never true black inside a dark card (fleet-config#1368, project-scaffolding#356) |
+| `--input-bg` | `var(--card-off)` (dark `#21262d`, the `border-muted` value) | fill — the control fill, never true black inside a dark card (project-scaffolding#356) |
 | `--ink` | `#1f2328` | text |
 
 ## Don't diverge
