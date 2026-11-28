@@ -76,6 +76,7 @@ _VENDORED_VERBATIM_EXEMPT = {
     "scripts/windows_only_ratchet.py": "The scaffold's windows-only ratchet, vendored byte-for-byte; git spawn uses a local _NO_WINDOW.",
     "scripts/usage_track_ratchet.py": "The scaffold's usage track ratchet, vendored byte-for-byte; git spawn uses a local _NO_WINDOW.",
     "scripts/ux_surface_ratchet.py": "The scaffold's UX surface ratchet, vendored byte-for-byte; git spawn uses a local _NO_WINDOW.",
+    "scripts/personal_data_ratchet.py": "The scaffold's personal-data ratchet, vendored byte-for-byte; git spawn uses a local _NO_WINDOW.",
     "scripts/shot_baseline.py": (
         "The scaffold's screenshot baseline, vendored byte-for-byte and declared in "
         ".fleet.toml [vendored]; it spawns git and pytest with a locally derived _NO_WINDOW."
