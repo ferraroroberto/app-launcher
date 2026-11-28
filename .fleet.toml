@@ -122,6 +122,7 @@ poll = { src = "app/webapp/static/_vendored/poll", sha = "f911e1c5adc679fee1522e
 request_timing = { src = "src/request_timing.py", sha = "564864cb95a8b416c16d1a1e1e9f31b9d5b2ec8e", dest = "src/request_timing.py" }
 windows_only_ratchet = { src = "scripts/windows_only_ratchet.py", sha = "7c49213a6df844dc30987037913ba54e09de35d9", dest = "scripts/windows_only_ratchet.py" }
 ratchet_baseline = { src = "scripts/ratchet_baseline.py", sha = "7c49213a6df844dc30987037913ba54e09de35d9", dest = "scripts/ratchet_baseline.py" }
+personal_data_ratchet = { src = "scripts/personal_data_ratchet.py", sha = "f911e1c5adc679fee1522e748d9f4fc4c140561d", dest = "scripts/personal_data_ratchet.py" }
 request_budget_probe = { src = "tests/e2e/budget/_request_budget.py", sha = "ce2242f45e2f844d7806cd04c2a275d245f8dae5", dest = "tests/e2e/budget/_request_budget.py" }
 webkit_budget_check = { src = "scripts/tools/webkit_budget_check.py", sha = "48d235419a5f2d3c52ebc6de75a52c279acedab3", dest = "scripts/tools/webkit_budget_check.py" }
 
