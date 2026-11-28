@@ -1,6 +1,6 @@
 # `build-watch` — the "New version available · Reload" prompt
 
-Tells a page that stayed open across a deploy that the server now runs a newer build, and offers a **Reload**. On an installed iPhone PWA the app sits in memory across restarts and keeps the old shell and modules; without this prompt the only way to pick up a deploy is to force-quit it. The prompt never reloads by itself, so an unsent draft survives. Normalized from app-launcher's `build-watch.js`.
+Tells a page that stayed open across a deploy that the server now runs a newer build, and offers a **Reload**. On an installed iPhone PWA the app sits in memory across restarts and keeps the old shell and modules; without this prompt the only way to pick up a deploy is to force-quit it. The prompt never reloads by itself, so an unsent draft survives. Normalized from a shipped `build-watch.js`.
 
 ## Files
 

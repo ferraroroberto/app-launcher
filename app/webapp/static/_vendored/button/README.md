@@ -1,14 +1,14 @@
 # `button` — the four-tier action vocabulary
 
-The fleet's canonical **button**: four tiers covering every action, settled by the button-tier sweep (fleet-config#296) after a deterministic CSS parse of ~135 button rule variants across 7 apps found the same class names meaning different buttons per app. Contract: `~/.claude/design.md` → "Component contracts" → **button tiers**.
+The fleet's canonical **button**: four tiers covering every action, settled by the button-tier sweep after a deterministic CSS parse of ~135 button rule variants across 7 apps found the same class names meaning different buttons per app. Contract: the fleet design system → "Component contracts" → **button tiers**.
 
 - `.button-primary` — solid `accent-fill`. The one main action per view.
 - `.button-tint` — accent-soft fill, `accent-text` text, soft accent border. Secondary emphasis. **A tint is not a ghost.**
 - `.button-ghost` — transparent fill, hairline border, muted text. Quiet tertiary actions. **Ghost means transparent** — a tinted fill is a tint, never a "ghost".
-- `.button-surface` — the control fill (`--input-bg`: `card-off` in light, `border-muted` `#21262d` in dark, never a black well) at control height; the dark label is `--ink` (`fg`, 12.88:1), not `--muted` (4.08:1) (fleet-config#1375, project-scaffolding#358). Labelled toolbar/utility buttons. A glyph-only control is not a button tier: it is [`icon-button/`](../icon-button/), unpainted at rest (fleet-config#1259).
-- `.button-tint.danger` — the **outlined** destructive recipe: transparent fill, `--danger-text` label, `--deficit` hairline border. Never a fill or tint, the final Delete of a confirm dialog included (design.md, fleet-config#1403; project-scaffolding#379). The class keeps its historical name so apps' existing markup keeps working after a re-vendor; only its look changed.
-- Text on a tint is always the `*-text` token and the primary fills with `--accent-fill` (fleet-config#963): the base hue drops under AA on its own tint, and white on the dark base accent is 3.75:1.
-- One shared `:disabled` recipe applies to all four tiers (home-automation#362) — the flat control-fill/line/muted trio, never opacity on a solid fill. The disabled fill is `--input-bg`: `card-off` in light, `border-muted` (`#21262d`) in dark, so a disabled button never reads as a black well on a dark card (fleet-config#1368, project-scaffolding#356).
+- `.button-surface` — the control fill (`--input-bg`: `card-off` in light, `border-muted` `#21262d` in dark, never a black well) at control height; the dark label is `--ink` (`fg`, 12.88:1), not `--muted` (4.08:1) (project-scaffolding#358). Labelled toolbar/utility buttons. A glyph-only control is not a button tier: it is [`icon-button/`](../icon-button/), unpainted at rest.
+- `.button-tint.danger` — the **outlined** destructive recipe: transparent fill, `--danger-text` label, `--deficit` hairline border. Never a fill or tint, the final Delete of a confirm dialog included (design.md; project-scaffolding#379). The class keeps its historical name so apps' existing markup keeps working after a re-vendor; only its look changed.
+- Text on a tint is always the `*-text` token and the primary fills with `--accent-fill`: the base hue drops under AA on its own tint, and white on the dark base accent is 3.75:1.
+- One shared `:disabled` recipe applies to all four tiers  — the flat control-fill/line/muted trio, never opacity on a solid fill. The disabled fill is `--input-bg`: `card-off` in light, `border-muted` (`#21262d`) in dark, so a disabled button never reads as a black well on a dark card (project-scaffolding#356).
 
 ## Files
 
@@ -140,7 +140,7 @@ An app-owned shape still draws from the design tokens and keeps its 44px hit tar
 
 ## Legacy-class migration
 
-Per-app adoption is tracked separately (fleet-config#279) — this table is the mapping when a consuming app re-skins its own buttons to the vendored classes:
+Per-app adoption is tracked separately — this table is the mapping when a consuming app re-skins its own buttons to the vendored classes:
 
 | Legacy class | Vendored class |
 | --- | --- |
@@ -151,7 +151,7 @@ Per-app adoption is tracked separately (fleet-config#279) — this table is the 
 
 ## Required design tokens
 
-Define these CSS custom properties in your app's `:root` / `[data-theme="dark"]` blocks, **wired to `~/.claude/design.md` (+ `design.dark.md`)**. Reference values (light):
+Define these CSS custom properties in your app's `:root` / `[data-theme="dark"]` blocks, **wired to the fleet design system (light + dark)**. Reference values (light):
 
 | Token | Light value | Used for |
 | --- | --- | --- |

@@ -1,6 +1,6 @@
 # `row-menu` — the kebab's floating action list
 
-One anchor button per list row (the 44px kebab of an `action-row`, or any button) opens a vertical list of icon + label actions. **The list is data the app passes in** — the component hard-codes no item — so an app can let its user choose what the kebab holds. The open menu escapes every scrolling ancestor (a sideways column carousel, a card with overflow), follows the menu-button keyboard pattern, and keeps a destructive action last, after a divider, in `danger-text` (the `action-row` contract, `~/.claude/design.md`). Normalized from app-launcher's `row-menu.js` (`app-launcher#953/#977/#996`); the first kebab of task-os's row redesign builds on it (`project-scaffolding#317`).
+One anchor button per list row (the 44px kebab of an `action-row`, or any button) opens a vertical list of icon + label actions. **The list is data the app passes in** — the component hard-codes no item — so an app can let its user choose what the kebab holds. The open menu escapes every scrolling ancestor (a sideways column carousel, a card with overflow), follows the menu-button keyboard pattern, and keeps a destructive action last, after a divider, in `danger-text` (the `action-row` contract, the fleet design system). Normalized from a shipped `row-menu.js`; a second app's row redesign builds its first kebab on it (`project-scaffolding#317`).
 
 ## Files
 
@@ -110,13 +110,13 @@ An unknown `side` or `align` throws when the controller is created. Whatever the
 | `--row-sm`, `--icon-inline`, `--font-body` | `44px`, `16px`, `1rem` | row height, glyph, text |
 | `--font-body-sm` | `0.875rem` | header line |
 
-The design spec has no `row-menu` token block yet; this recipe reuses the toast's `--shadow` and the card tokens (`project-scaffolding#317`). `--card-2` is not in the spec either: it is app-launcher's elevation-2 surface, made the fleet menu surface by the owner's decision (2026-10-13, #362), with the same values as the spec's control fill (`canvas-subtle` light, `border-muted` dark).
+The design spec has no `row-menu` token block yet; this recipe reuses the toast's `--shadow` and the card tokens (`project-scaffolding#317`). `--card-2` is not in the spec either: it is an adopter's elevation-2 surface, made the fleet menu surface by the owner's decision (2026-10-13, #362), with the same values as the spec's control fill (`canvas-subtle` light, `border-muted` dark).
 
 ## The fleet standard (#362)
 
 The owner asked for one ⋮ menu everywhere: same font, same glyph size, same placement. This component is that standard. It reconciles the two apps that had fixed the menu in their own copies:
 
-| | app-launcher (`app-launcher#1508`) | local-llm-hub (`local-llm-hub#767`) | This component |
+| | First app copy | Second app copy | This component |
 | --- | --- | --- | --- |
 | Row text | `--font-body`, weight 500 | `--font-body`, weight 500 | the same |
 | Row layout | 44px, glyph then label, 10px gap, 12px padding | the same | the same (`--row-sm`, `--icon-inline` glyph) |
@@ -125,11 +125,11 @@ The owner asked for one ⋮ menu everywhere: same font, same glyph size, same pl
 | Placement | band = viewport minus the visible fixed pill; flip across the anchor; clamp + internal scroll last | the same rule, plus: a menu inside a `<dialog>` ignores the pill | both: the band rule, with the `<dialog>` exemption |
 | Anchor gap | from the app's CSS offset | 0 (flush under the kebab) | 2px, mirrored when flipped |
 
-Differences resolved: app-launcher also supported a CSS-placed (`position: absolute`) menu bounded by its clipping ancestors; this component only ever places a `fixed` menu mounted outside every scroller, so that branch is not carried. The hub's "hidden until first placed" CSS isn't needed either: `row-menu.js` places the menu synchronously when it mounts, before the first paint.
+Differences resolved: the first copy also supported a CSS-placed (`position: absolute`) menu bounded by its clipping ancestors; this component only ever places a `fixed` menu mounted outside every scroller, so that branch is not carried. The second copy's "hidden until first placed" CSS isn't needed either: `row-menu.js` places the menu synchronously when it mounts, before the first paint.
 
 The placement rule is pinned by `tests/e2e/test_vendored_row_menu.py` at 390×844 with the real nav pill.
 
-**Options for adoption (#362, step 3).** app-launcher's menu also had a header line, brand marks in place of named glyphs, a separate screen-reader name, a menu floated against another element than its button (its Sessions menu left of the row's button column, its Composer image menu above the composer), and the `--card-2` surface. Those are the `header`, `brand`, `ariaLabel` and `placement` options and the surface above, built so app-launcher can adopt this component with no visible change (its rendering check, `app-launcher#1565`, is what confirms it). What app-launcher maps on its side: per-item classes become `dataset`, and its `disabled` buttons become `aria-disabled` rows.
+**Options for adoption (#362, step 3).** The first copy's menu also had a header line, brand marks in place of named glyphs, a separate screen-reader name, a menu floated against another element than its button (its Sessions menu left of the row's button column, its Composer image menu above the composer), and the `--card-2` surface. Those are the `header`, `brand`, `ariaLabel` and `placement` options and the surface above, built so that app can adopt this component with no visible change (its own rendering check confirms it). What it maps on its side: per-item classes become `dataset`, and its `disabled` buttons become `aria-disabled` rows.
 
 ## Don't diverge
 

@@ -1,6 +1,6 @@
 # `toast` — the neutral frosted toast
 
-The fleet's one transient message, for the result of a user-initiated command ("Saved", "Opening in Explorer", "Couldn't reach the server"). It is the floating nav bar's glass (translucent card fill, hairline border, `backdrop-filter: blur(20px) saturate(1.25)`), centred 8px above the nav so the nav never hides it, and above every overlay. **Only a real error tints** — a darkened `danger` fill, a `danger` border and `accent-fg` text. Success, info and warning stay neutral: the message says what happened, colour does not. Spec: `~/.claude/design.md` → `toast` component and its contract bullet; feedback altitude in "Async data & feedback". Normalized from app-launcher's "Neutral frosted toast" (ported from home-automation #782).
+The fleet's one transient message, for the result of a user-initiated command ("Saved", "Opening in Explorer", "Couldn't reach the server"). It is the floating nav bar's glass (translucent card fill, hairline border, `backdrop-filter: blur(20px) saturate(1.25)`), centred 8px above the nav so the nav never hides it, and above every overlay. **Only a real error tints** — a darkened `danger` fill, a `danger` border and `accent-fg` text. Success, info and warning stay neutral: the message says what happened, colour does not. Spec: the fleet design system → `toast` component and its contract bullet; feedback altitude in "Async data & feedback". Normalized from a shipped "Neutral frosted toast".
 
 ## Files
 

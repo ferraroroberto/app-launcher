@@ -23,7 +23,7 @@ function storageKey(app) {
 /**
  * The stored step for an app, or 'default' when unset, unknown or unreadable.
  *
- * @param {string} app  the app's localStorage prefix (e.g. 'app-launcher').
+ * @param {string} app  the app's localStorage prefix (e.g. 'my-app').
  * @returns {string}
  */
 export function readTextSize(app) {

@@ -5,7 +5,7 @@ carries contracts that are rendered-DOM facts no static CSS/HTML scan can
 prove: effective >=44x44px touch targets (visual box + `::before`/`::after`
 negative-inset hit-area expansion), pairwise non-overlap of expanded targets,
 horizontal page overflow, and the live Chart.js tick/cue configuration.
-home-automation#409 verified them with inline `page.evaluate` snippets; this
+An adopter first verified them with inline `page.evaluate` snippets; this
 module is those snippets promoted to one canonical, app-agnostic helper.
 
 Vendor-verbatim: consuming apps copy this file byte-identical into their own

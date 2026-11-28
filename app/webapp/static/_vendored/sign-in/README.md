@@ -1,6 +1,6 @@
 # `sign-in` — the one password sign-in sheet
 
-The fleet's password sign-in: a native `<dialog>` on the vendored [`modal`](../modal/) shell, styled like app-launcher's sign-in card, with a lock-glyph title, one hint line, one password field, one inline error line and one full-width `button-primary`. The JS builds the sheet and exposes one awaitable call, so any number of API calls that hit a 401 can wait on the same sign-in. It is UI only: it posts the password to the app's own route and hands the token back, and it never reads or writes storage. Contract: `~/.claude/design.md` → `modal` token block and "Component contracts".
+The fleet's password sign-in: a native `<dialog>` on the vendored [`modal`](../modal/) shell, styled as a sign-in card, with a lock-glyph title, one hint line, one password field, one inline error line and one full-width `button-primary`. The JS builds the sheet and exposes one awaitable call, so any number of API calls that hit a 401 can wait on the same sign-in. It is UI only: it posts the password to the app's own route and hands the token back, and it never reads or writes storage. Contract: the fleet design system → `modal` token block and "Component contracts".
 
 Every app that asks for its own password uses this sheet. The conventions ratchet's `password-input-vendored` rule ([docs/conventions-ratchet.md](../../../../../docs/conventions-ratchet.md)) fails any password input outside a `_vendored/sign-in/` folder.
 
@@ -105,7 +105,7 @@ async def login(request: Request) -> dict[str, str]:
 ```
 
 - **The key** is the client address the app already resolves and writes to its auth log. The module never reads addresses or headers.
-- **The exemption** is the app's call, with the check it already uses to skip the token for the PC itself (app-launcher: `trust.is_pc_itself`). Do not exempt a raw `127.0.0.1` or `::1`: a local tunnel delivers every public request over loopback.
+- **The exemption** is the app's call, with the check it already uses to skip the token for the PC itself (for example a `trust.is_pc_itself` helper). Do not exempt a raw `127.0.0.1` or `::1`: a local tunnel delivers every public request over loopback.
 - **The log**: the module writes one info line per lock (`🔒 login locked for N s after K failures`) that names no client or password. The app's own auth-log lines stay as they are.
 - **The test**: each app adds one route test. Six wrong passwords get six `401`s, then the next attempt gets a `429` with a `Retry-After` header; a correct password after the wait gets the token.
 

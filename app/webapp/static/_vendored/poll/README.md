@@ -1,6 +1,6 @@
 # `poll` — self-scheduling, single-flight polls that pause on a hidden tab
 
-The one way a fleet web page polls its own API. A `setInterval` poll starts a new read whether or not the last one came back and keeps ticking on a hidden tab or a locked phone; on a slow computer a few open pages fill the server's worker pools that way. This module schedules the next read when the last one settles, shares one in-flight read per shape, and arms nothing while the page is hidden. Normalized from app-launcher-lite's `shared/poll.js`. The rules and the reasons: [polling budget](../../../../../docs/polling-budget.md).
+The one way a fleet web page polls its own API. A `setInterval` poll starts a new read whether or not the last one came back and keeps ticking on a hidden tab or a locked phone; on a slow computer a few open pages fill the server's worker pools that way. This module schedules the next read when the last one settles, shares one in-flight read per shape, and arms nothing while the page is hidden. Normalized from a shipped `shared/poll.js`. The rules and the reasons: [polling budget](../../../../../docs/polling-budget.md).
 
 ## Files
 

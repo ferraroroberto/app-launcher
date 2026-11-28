@@ -18,7 +18,7 @@ Three findings shape the design — read them before changing anything here:
    live orphan to a name-based scan: unkillable (`taskkill` and `Stop-Process`
    correctly answer "no such process"), holding no sockets, and harmless.
    That much held. What did not is the inverse inference — #236 measured 39
-   such helpers on `home-automation`'s host (`home-automation#681`) where
+   such helpers on one fleet host where
    `GetExitCodeProcess` said `0` but `GetProcessTimes` reported **no exit
    time**, Toolhelp32 reported a **live thread**, `ReadProcessMemory` on the
    PEB **succeeded**, and the working directory was a real worktree path.
@@ -620,7 +620,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     Worth running before `git worktree remove` — a leaked helper holding the
     worktree as its cwd is what makes the removal fail as "busy".
 
-        python tests/e2e/_browser_sweep.py E:/automation/my-repo-wt-203 [--dry-run]
+        python tests/e2e/_browser_sweep.py <root>/my-repo-wt-203 [--dry-run]
 
     Exit codes: `0` nothing pins *scope*; `1` the sweep could not run at all
     (non-Windows — unknown, not clean) **or** a wedged helper pins *scope*, in

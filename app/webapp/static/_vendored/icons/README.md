@@ -1,6 +1,6 @@
 # `icons` — Lucide icon sprite + helper
 
-The fleet's canonical **icon component**: one inline SVG sprite of the handful of [Lucide](https://lucide.dev) glyphs an app actually uses, plus a one-line JS helper to reference them. Lucide is the fleet-wide icon set (see `~/.claude/design.md` → "Icons") — 24×24 grid, 2px outline stroke, ISC-licensed, no web-font payload. Normalized from `ferraroroberto/home-automation#77`, the fleet's first Lucide adopter.
+The fleet's canonical **icon component**: one inline SVG sprite of the handful of [Lucide](https://lucide.dev) glyphs an app actually uses, plus a one-line JS helper to reference them. Lucide is the fleet-wide icon set (see the fleet design system → "Icons") — 24×24 grid, 2px outline stroke, ISC-licensed, no web-font payload. Normalized from the fleet's first Lucide adopter.
 
 ## Files
 

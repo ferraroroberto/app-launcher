@@ -181,10 +181,10 @@ def _capture(page: Page, name: str, capture_dir: Path) -> None:
 def _load_capture_dir(capture_dir: Path) -> tuple[str, Any, str | None]:
     """`(script, params, theme_storage_key)` from the prepared directory."""
     try:
-        script = (capture_dir / _SCRIPT_FILE).read_text(encoding="utf-8")
-        params = json.loads((capture_dir / _PARAMS_FILE).read_text(encoding="utf-8"))
+        script = (capture_dir / _SCRIPT_FILE).read_text(encoding="utf-8-sig")
+        params = json.loads((capture_dir / _PARAMS_FILE).read_text(encoding="utf-8-sig"))
         options_path = capture_dir / _OPTIONS_FILE
-        options = json.loads(options_path.read_text(encoding="utf-8")) if options_path.exists() else {}
+        options = json.loads(options_path.read_text(encoding="utf-8-sig")) if options_path.exists() else {}
     except (OSError, ValueError) as exc:
         raise SurfaceCaptureError(
             f"{CAPTURE_ENV}={capture_dir} is not a usable capture directory "

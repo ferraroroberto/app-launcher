@@ -1,6 +1,6 @@
 # `disclosure` — the collapsible details/summary card
 
-The fleet's canonical **disclosure row**: a `<details>` card whose `<summary>` is a fixed 52px header — leading glyph + `<h3>` title left, chevron pinned right — so a vertical stack of collapsible cards is pixel-identical whether open or closed. home-automation's strongest de-facto component, promoted to canon by the #358 polish round. Contract: `~/.claude/design.md` → `disclosure` token block + "Components" prose.
+The fleet's canonical **disclosure row**: a `<details>` card whose `<summary>` is a fixed 52px header — leading glyph + `<h3>` title left, chevron pinned right — so a vertical stack of collapsible cards is pixel-identical whether open or closed. The strongest de-facto component of its first app, promoted to canon by the #358 polish round. Contract: the fleet design system → `disclosure` token block + "Components" prose.
 
 ## Files
 

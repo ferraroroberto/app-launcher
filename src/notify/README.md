@@ -15,7 +15,7 @@ A tiny, **stdlib-only** notifier primitive shared across fleet apps: deliver a p
 ## Vendoring recipe
 
 1. Copy this whole `src/notify/` folder **verbatim** into the consuming app's `src/notify/`. Don't edit the shipped files.
-2. In your app's **own** config layer, resolve the bot token + chat id from your secrets (`.env` / `config/*.json`, under whatever env names you like — `WR_TELEGRAM_*`, `TELEGRAM_*`, …) and build a `TelegramConfig(bot_token, chat_id)`. **Env-name resolution and file paths stay in your app — never in this vendored copy.**
+2. In your app's **own** config layer, resolve the bot token + chat id from your secrets (`.env` / `config/*.json`, under whatever env names you like — `MYAPP_TELEGRAM_*`, `TELEGRAM_*`, …) and build a `TelegramConfig(bot_token, chat_id)`. **Env-name resolution and file paths stay in your app — never in this vendored copy.**
 3. Build the notifier and send:
 
    ```python
@@ -44,4 +44,4 @@ A tiny, **stdlib-only** notifier primitive shared across fleet apps: deliver a p
 
 ## Adoption status
 
-- Source of the pattern: `whatsapp-radar/src/notify/` (digest + alert delivery). Its refactor onto this vendored copy, and the first consumer (`home-automation` — alarm/UPS alerts), are tracked separately (project-scaffolding#100 and its linked issues), not bundled into the vendoring.
+- Source of the pattern: one adopter's `src/notify/` (digest + alert delivery). Its refactor onto this vendored copy, and the first consumer (alarm and UPS alerts), are tracked separately (project-scaffolding#100 and its linked issues), not bundled into the vendoring.

@@ -1,6 +1,6 @@
 # `empty-state` — the canonical zero-items block
 
-The fleet's canonical **empty state**: a centered column — feature-size muted glyph + one-line reason + optional single action — rendered by any list/grid that can legitimately be empty. Never a silent blank area, never a bare "—". Contract: `~/.claude/design.md` → `empty-state` token block + "Component contracts".
+The fleet's canonical **empty state**: a centered column — feature-size muted glyph + one-line reason + optional single action — rendered by any list/grid that can legitimately be empty. Never a silent blank area, never a bare "—". Contract: the fleet design system → `empty-state` token block + "Component contracts".
 
 ## Files
 
@@ -37,7 +37,7 @@ The fleet's canonical **empty state**: a centered column — feature-size muted 
 
 - `grid-column: 1 / -1` makes the block span a grid container's full width (inert in flex/block containers).
 - **A list the user can fill from this tab names its way forward**: pass `actionLabel` (the verb that fills it, `Add a job`, `Launch an app`) and `onAction`. A block with no button or link is right only where the user cannot fill the list from here, and its message then says where the items come from (design-review `COMP-10`).
-- The action is the **quiet secondary** look (control fill + hairline), never a solid primary — an empty state suggests, it doesn't demand. The fill is `--input-bg`: `card-off` in light, `border-muted` (`#21262d`) in dark, so the action never sits on true black inside a dark card (fleet-config#1368, project-scaffolding#352).
+- The action is the **quiet secondary** look (control fill + hairline), never a solid primary — an empty state suggests, it doesn't demand. The fill is `--input-bg`: `card-off` in light, `border-muted` (`#21262d`) in dark, so the action never sits on true black inside a dark card (project-scaffolding#352).
 
 ## Required design tokens
 

@@ -1,6 +1,6 @@
 # `switch` — the one boolean control
 
-The fleet's canonical **switch** (shadcn Switch shape): a compact 44×26 track + 20px sliding thumb, no text label — state is read from thumb position + track color, with `role="switch"` + `aria-checked` for assistive tech. **The on-track is the accent (`accent-fill`)**, never green — a switch sits in the same palette as the buttons and tabs beside it (`design.md` `switch.trackOn`, fleet-config#1200). A **state** toggle (alarm armed, a destructive mode) may substitute `danger` / `attention` where that state carries its own meaning; `success` is never a switch's on-colour. One canonical size everywhere; never a native checkbox for on/off. Contract: `~/.claude/design.md` → `switch` token block + "Components" prose.
+The fleet's canonical **switch** (shadcn Switch shape): a compact 44×26 track + 20px sliding thumb, no text label — state is read from thumb position + track color, with `role="switch"` + `aria-checked` for assistive tech. **The on-track is the accent (`accent-fill`)**, never green — a switch sits in the same palette as the buttons and tabs beside it (`design.md` `switch.trackOn`). A **state** toggle (alarm armed, a destructive mode) may substitute `danger` / `attention` where that state carries its own meaning; `success` is never a switch's on-colour. One canonical size everywhere; never a native checkbox for on/off. Contract: the fleet design system → `switch` token block + "Components" prose.
 
 ## Files
 
@@ -28,7 +28,7 @@ The fleet's canonical **switch** (shadcn Switch shape): a compact 44×26 track +
    // …after the backend confirms:
    setSwitch(sw, confirmedState);
    ```
-   `onToggle` receives the *requested* state — optimistic flips are the caller's choice. Guard against double-taps with a busy flag while the request is in flight (home-automation#368).
+   `onToggle` receives the *requested* state — optimistic flips are the caller's choice. Guard against double-taps with a busy flag while the request is in flight.
 
 ## Markup contract
 
@@ -48,11 +48,11 @@ The fleet's canonical **switch** (shadcn Switch shape): a compact 44×26 track +
 
 | Token | Light value | Used for |
 | --- | --- | --- |
-| `--control-border` | `#818b98` (dark `#6e7681`) | off-track fill: a control boundary, 3:1+ against `card` (fleet-config#963); `--line` was about 1.4:1. `--toggle-track` is no longer read. |
+| `--control-border` | `#818b98` (dark `#6e7681`) | off-track fill: a control boundary, 3:1+ against `card` ; `--line` was about 1.4:1. `--toggle-track` is no longer read. |
 | `--toggle-knob` | `#ffffff` (light) / `var(--ink)` (dark) | thumb fill |
 | `--accent-fill` | `#0969da` (dark `#1f6feb`) | on-track fill; white thumb holds 4.63:1 in dark, track 3.73:1 against `card` |
 | `--radius-pill` | `9999px` | track corners |
 
 ## Don't diverge
 
-`switch.css` / `switch.js` are vendored verbatim — to change the contract, change it **here in `project-scaffolding`** and re-vendor downstream. In particular, don't re-inline the four-line render snippet per view file (the duplication this builder removes) and don't turn the on-track green again — the accent is the recorded design decision (fleet-config#1200 reversed the earlier green-on one). A state toggle that needs `danger` / `attention` overrides `background` on its own modifier class in the app, with the toggle's `.on` selector as specificity, rather than editing this file; an app that still declares its own `--on` is carrying a dead token to delete. If your own CSS declares the same selector this file touches (e.g. `.app`, `.card`), use longhand properties or a disjoint media condition — a shorthand property at equal specificity is decided by source order, and can silently override a rule you didn't intend to touch. Streamlit POC spikes are exempt.
+`switch.css` / `switch.js` are vendored verbatim — to change the contract, change it **here in `project-scaffolding`** and re-vendor downstream. In particular, don't re-inline the four-line render snippet per view file (the duplication this builder removes) and don't turn the on-track green again — the accent is the recorded design decision (it reversed the earlier green-on one). A state toggle that needs `danger` / `attention` overrides `background` on its own modifier class in the app, with the toggle's `.on` selector as specificity, rather than editing this file; an app that still declares its own `--on` is carrying a dead token to delete. If your own CSS declares the same selector this file touches (e.g. `.app`, `.card`), use longhand properties or a disjoint media condition — a shorthand property at equal specificity is decided by source order, and can silently override a rule you didn't intend to touch. Streamlit POC spikes are exempt.

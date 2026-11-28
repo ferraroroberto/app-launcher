@@ -2,7 +2,7 @@
 
 The fleet's **base layer**: element-selector rules that sit under every vendored component. Today it is one rule, which makes `<button>`, `<input>`, `<select>` and `<textarea>` inherit the app's font and text color.
 
-Why it exists: form controls don't inherit `font-family` or `color`. The UA stylesheet gives them their own font: Arial at 13.33px on Windows Chrome, and the system font on iOS and Android, which is why the bug only shows on desktop. An app that sets its font stack on `body` alone renders every bare control, and every list row built as a `<button>`, in a second typeface. The audit that found this (project-scaffolding#266) counted 62 elements in Arial on one app-launcher screen. Component classes that already declare `font: inherit` (`button-primary`, `empty-state-action`, the modal's save button) were covered. Bare controls and the other classed ones were not.
+Why it exists: form controls don't inherit `font-family` or `color`. The UA stylesheet gives them their own font: Arial at 13.33px on Windows Chrome, and the system font on iOS and Android, which is why the bug only shows on desktop. An app that sets its font stack on `body` alone renders every bare control, and every list row built as a `<button>`, in a second typeface. The audit that found this (project-scaffolding#266) counted 62 elements in Arial on one adopter's screen. Component classes that already declare `font: inherit` (`button-primary`, `empty-state-action`, the modal's save button) were covered. Bare controls and the other classed ones were not.
 
 ## Files
 
@@ -32,7 +32,7 @@ Why it exists: form controls don't inherit `font-family` or `color`. The UA styl
 
 ## Required design tokens
 
-None. It inherits whatever the app sets on `body` (normally `--font` and `--ink` from `~/.claude/design.md`).
+None. It inherits whatever the app sets on `body` (normally `--font` and `--ink` from the fleet design system).
 
 ## Don't diverge
 

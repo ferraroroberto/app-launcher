@@ -1,8 +1,8 @@
 # `segmented` — one choice among 2–5 peers
 
-The fleet's canonical **segmented control** (`~/.claude/design.md` → "Component contracts" → segmented control, token block `segmented`, `ferraroroberto/fleet-config#1334`): one control for a choice the user switches in place, such as a mode (alarm Off · Partial · Full, AC mode), a period (Day · Week · Month), a view (Items · Prices) or a scope (Mine · Issues · All). It is one `rounded.md` track on `neutral-soft` with a 3px inset and no outer border, holding equal borderless segments. **The selected segment is the state:** it is raised with a soft shadow, label in `fg`, `aria-pressed="true"`. Light fills it with `card`; dark fills it one step lighter than the track, so it reads raised rather than pressed in (see below).
+The fleet's canonical **segmented control** (the fleet design system → "Component contracts" → segmented control, token block `segmented`): one control for a choice the user switches in place, such as a mode (alarm Off · Partial · Full, AC mode), a period (Day · Week · Month), a view (Items · Prices) or a scope (Mine · Issues · All). It is one `rounded.md` track on `neutral-soft` with a 3px inset and no outer border, holding equal borderless segments. **The selected segment is the state:** it is raised with a soft shadow, label in `fg`, `aria-pressed="true"`. Light fills it with `card`; dark fills it one step lighter than the track, so it reads raised rather than pressed in (see below).
 
-Normalized from home-automation's `.segmented` (home-automation#879, #888, and the trailing cluster from #884), to stop a third variant (`project-scaffolding#341`).
+Normalized from a shipped `.segmented` and its trailing cluster, to stop a third variant (`project-scaffolding#341`).
 
 It replaces [`range-tab/`](../range-tab/), the older row of separate ghost pills with an accent active state, which is **deprecated**; a new choice control uses this one, and `range-tab/README.md` has the migration recipe.
 
@@ -46,7 +46,7 @@ It replaces [`range-tab/`](../range-tab/), the older row of separate ghost pills
   When the choice writes to a server, flip it after the write lands, or roll it back on failure, so the raised segment never lies about the state.
 - **Labels** are one word, or one glyph plus an accessible name (`<svg class="icon">` + `aria-label` on the button). Glyphs are `--icon-title` (18px). Labels never wrap.
 - **`.segmented--verbs`** is for a choice that acts on the world **and has a selected state** (an alarm mode, an AC mode). Its segments are a real 44px row. A plain picker keeps the 36px control height.
-- **Not for row verbs.** Verbs that only fire, with no selected state (a blind's Up · Stop · Down, a camera's Live · Wake), are not a choice among peers: they are plain icon-buttons in an [`.icon-button-group`](../icon-button/) with no track (`fleet-config#1420`, `project-scaffolding#386`). `segmented--verbs` is superseded by that for row verbs; the track stays for real mode selectors, unchanged.
+- **Not for row verbs.** Verbs that only fire, with no selected state (a blind's Up · Stop · Down, a camera's Live · Wake), are not a choice among peers: they are plain icon-buttons in an [`.icon-button-group`](../icon-button/) with no track (`project-scaffolding#386`). `segmented--verbs` is superseded by that for row verbs; the track stays for real mode selectors, unchanged.
 - **Unavailable segments** carry `disabled` and a `title` saying why. They keep the `fg` label: `fg-muted` on the track falls under 4.5:1 (4.3:1 light, 3.8:1 dark). The cursor and the title say it is unavailable. Never use opacity.
 - **Never red for a normal mode.** An armed alarm or a heating AC is the selected segment, not a `danger` fill. `danger` is for the emergency (design.md "Modes are not alarms").
 - **At most five options.** More than five, or options that are not peers, become a `select-native` (`_vendored/select-native/`) in a settings row.
